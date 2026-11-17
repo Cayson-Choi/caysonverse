@@ -3,7 +3,10 @@ import type { Client } from "colyseus";
 import { COASTER_CYCLE_MS, COASTER_DWELL_MS, COASTER_SEATS, COASTER_UNLOAD_MS } from "@caysonverse/shared/land/coaster";
 import { VillageMsg, VillageServerMsg } from "@caysonverse/shared/village/messages";
 import { CAROUSEL_CYCLE_MS, CAROUSEL_SEATS } from "@caysonverse/shared/land/carousel";
+import { WHEEL_N, WHEEL_STEP_MS, WHEEL_SEATS_PER, boardingSeatsOfWheel } from "@caysonverse/shared/land/wheel";
 import { VillageCoaster, type CoasterHost } from "./villageCoaster";
+
+const WHEEL_T0 = 1_900_000_000_000 - (1_900_000_000_000 % (WHEEL_STEP_MS * WHEEL_N));
 
 const CAROUSEL_T0 = 1_900_000_000_000 - (1_900_000_000_000 % CAROUSEL_CYCLE_MS);
 
@@ -174,5 +177,41 @@ describe("VillageCoaster (server rules)", () => {
     expect(r.players.get("a")!.rideSeat).toBe(-1);
     r.send("a", VillageMsg.RideBoard, { ride: "wheel" });
     expect(r.players.get("a")!.rideSeat).toBe(-1);
+  });
+
+  it("the wheel: a rider gets a seat of the bottom gondola, cannot get off aloft, and is put off after one revolution", () => {
+    const r = rig();
+    const a = r.add("a");
+    const pa = r.players.get("a")!;
+    pa.x = 211;
+    pa.z = -134.5;
+    r.setNow(WHEEL_T0 + 8000);
+    r.send("a", VillageMsg.RideBoard, { ride: "wheel" });
+    expect(pa.rideId).toBe(3);
+    expect(boardingSeatsOfWheel(WHEEL_T0 + 8000)).toContain(pa.rideSeat);
+    // four riders fill the gondola, the fifth gets "full" (the next gondola is not at the platform)
+    for (const sid of ["b", "c", "d", "e"]) {
+      r.add(sid);
+      const p = r.players.get(sid)!;
+      p.x = 211;
+      p.z = -134.5;
+      r.send(sid, VillageMsg.RideBoard, { ride: "wheel" });
+    }
+    const seated = [...r.players.values()].filter((p) => p.rideSeat >= 0);
+    expect(seated.length).toBe(WHEEL_SEATS_PER);
+    expect(new Set(seated.map((p) => Math.floor(p.rideSeat / WHEEL_SEATS_PER))).size).toBe(1);
+    // aloft: the leave is refused with a notice
+    r.setNow(WHEEL_T0 + 25_000);
+    r.send("a", VillageMsg.RideLeave);
+    expect(pa.rideSeat).toBeGreaterThanOrEqual(0);
+    expect(r.sent.some((m) => m.sid === "a" && (m.msg as { reason?: string }).reason === "aloft")).toBe(true);
+    // not put off by the next step, but by the same gondola's return
+    r.setNow(WHEEL_T0 + WHEEL_STEP_MS * 3 + 5000);
+    r.coaster.tick();
+    expect(pa.rideSeat).toBeGreaterThanOrEqual(0);
+    r.setNow(WHEEL_T0 + WHEEL_STEP_MS * WHEEL_N + 1000);
+    r.coaster.tick();
+    expect(pa.rideSeat).toBe(-1);
+    void a;
   });
 });

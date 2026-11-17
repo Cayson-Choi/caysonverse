@@ -20,6 +20,7 @@ import bpy
 import bmesh
 from mathutils import Vector
 
+LOD = os.environ.get("CR_LOD") == "1"  # CR_LOD=1: the far level of detail of the horse only (carousel_horse_lod.glb)
 OUT = os.path.abspath(sys.argv[sys.argv.index("--") + 1] if "--" in sys.argv else os.path.join(os.getcwd(), "out"))
 os.makedirs(OUT, exist_ok=True)
 
@@ -47,6 +48,33 @@ def mat(name, color, metallic=0.0, rough=0.5, coat=0.0, coat_rough=0.06, emit=No
         p.inputs["Emission Color"].default_value = (emit[0], emit[1], emit[2], 1.0)
         p.inputs["Emission Strength"].default_value = 1.0
     return m
+
+
+def bake_ao(obj, rays=40, dist=0.45):
+    """Ambient occlusion into a vertex colour (ray casts over each vertex's hemisphere): the body's folds, under the neck, between the legs, under the saddle go darker."""
+    import random
+    from mathutils import Matrix
+    from mathutils.bvhtree import BVHTree
+    bpy.context.view_layer.update()
+    bvh = BVHTree.FromObject(obj, bpy.context.evaluated_depsgraph_get())
+    me = obj.data
+    me.calc_normals() if hasattr(me, "calc_normals") else None
+    ca = me.color_attributes.new("AO", "BYTE_COLOR", "POINT")
+    me.color_attributes.active_color = ca
+    rnd = random.Random(7)
+    for v in me.vertices:
+        n = v.normal.normalized()
+        t = n.cross(Vector((0, 0, 1)) if abs(n.z) < 0.9 else Vector((1, 0, 0))).normalized()
+        b = n.cross(t)
+        hit = 0
+        for _ in range(rays):
+            u1, u2 = rnd.random(), rnd.random()
+            r = math.sqrt(u1)
+            d = (t * (r * math.cos(math.tau * u2)) + b * (r * math.sin(math.tau * u2)) + n * math.sqrt(max(0.0, 1 - u1))).normalized()
+            if bvh.ray_cast(v.co + n * 0.006, d, dist)[0] is not None:
+                hit += 1
+        c = 1.0 - 0.62 * hit / rays
+        ca.data[v.index].color = (c, c, c, 1.0)
 
 
 class Builder:
@@ -154,7 +182,7 @@ class Builder:
         pts = [(math.sin(i / n * math.tau) * r, y, -math.cos(i / n * math.tau) * r) for i in range(n + 1)]
         return self.tube(name, pts, tube, mname, 6)
 
-    def export(self, filename, smooth_angle=40.0):
+    def export(self, filename, smooth_angle=40.0, ao=False):
         if os.environ.get("CR_COUNT"):
             for o in sorted(self.parts, key=lambda o: -len(o.data.polygons))[:30]:
                 try:
@@ -165,6 +193,10 @@ class Builder:
         for o in self.parts:
             o.select_set(True)
         bpy.context.view_layer.objects.active = self.parts[0]
+        # every part's origin to the world origin first: the joined mesh then keeps the world frame (the game uses the geometry without the node's transform)
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+        self.scene.cursor.location = (0, 0, 0)
+        bpy.ops.object.origin_set(type="ORIGIN_CURSOR")
         bpy.ops.object.join()
         obj = bpy.context.view_layer.objects.active
         obj.name = os.path.splitext(filename)[0]
@@ -172,10 +204,16 @@ class Builder:
             bpy.ops.object.shade_smooth_by_angle(angle=math.radians(smooth_angle))
         except Exception:
             bpy.ops.object.shade_smooth()
-        bpy.ops.export_scene.gltf(
-            filepath=os.path.join(OUT, filename), export_format="GLB", export_apply=True, export_yup=True,
-            export_materials="EXPORT", export_cameras=False, export_lights=False,
-        )
+        if ao:
+            bake_ao(obj)
+        kw = dict(filepath=os.path.join(OUT, filename), export_format="GLB", export_apply=True, export_yup=True, export_materials="EXPORT", export_cameras=False, export_lights=False)
+        if ao:
+            kw["export_vertex_color"] = "ACTIVE"
+        try:
+            bpy.ops.export_scene.gltf(**kw)
+        except TypeError:
+            kw.pop("export_vertex_color", None)
+            bpy.ops.export_scene.gltf(**kw)
         tris = sum(len(p.vertices) - 2 for p in obj.data.polygons)
         print(filename, "triangles:", tris, "parts:", len(self.parts))
 
@@ -348,12 +386,12 @@ def skin_body(name, verts, edges, mname, sub=2):
         if i == 0:
             sv.use_root = True
     sd = obj.modifiers.new("sub", "SUBSURF")
-    sd.levels = sub
-    sd.render_levels = sub
+    sd.levels = 1 if LOD else sub
+    sd.render_levels = 1 if LOD else sub
     bpy.ops.object.modifier_apply(modifier="skin")
     bpy.ops.object.modifier_apply(modifier="sub")
     dm = obj.modifiers.new("dec", "DECIMATE")
-    dm.ratio = 0.42
+    dm.ratio = 0.4 if LOD else 0.42
     bpy.ops.object.modifier_apply(modifier="dec")
     obj.select_set(False)
     obj.data.materials.append(H.M[mname])
@@ -387,41 +425,52 @@ for sx in (-1, 1):
     H.cyl(f"fore_hoof_{sx}", (sx * 0.15, -0.93, 0.7), (sx * 0.15, -1.07, 0.7), 0.055, 0.075, "horse_gold", 14)
     H.cyl(f"hind_hoof_{sx}", (sx * 0.15, -0.99, -0.5), (sx * 0.15, -1.13, -0.5), 0.055, 0.075, "horse_gold", 14)
     # ears (pricked), eyes with a gold lid, nostril
-    H.ellipsoid(f"ear_{sx}", (sx * 0.065, 0.83, 0.97), (0.035, 0.1, 0.03), "horse_paint", rot_x=-12.0, seg=10, rings=8)
-    H.ellipsoid(f"ear_in_{sx}", (sx * 0.065, 0.83, 0.985), (0.02, 0.07, 0.015), "horse_red", rot_x=-12.0, seg=8, rings=6)
+    H.ellipsoid(f"ear_{sx}", (sx * 0.062, 0.79, 0.96), (0.03, 0.058, 0.024), "horse_paint", rot_x=-14.0, seg=10, rings=8)
+    if not LOD:
+        H.ellipsoid(f"ear_in_{sx}", (sx * 0.062, 0.79, 0.972), (0.018, 0.04, 0.012), "horse_red", rot_x=-12.0, seg=8, rings=6)
     H.ellipsoid(f"eye_{sx}", (sx * 0.1, 0.64, 1.1), (0.028, 0.034, 0.034), "horse_dark", seg=10, rings=8)
-    H.ellipsoid(f"eye_lid_{sx}", (sx * 0.097, 0.665, 1.1), (0.04, 0.012, 0.045), "horse_gold", seg=10, rings=6)
-    H.ellipsoid(f"nostril_{sx}", (sx * 0.045, 0.46, 1.4), (0.025, 0.02, 0.025), "horse_dark", seg=8, rings=6)
+    if not LOD:
+        H.ellipsoid(f"eye_lid_{sx}", (sx * 0.097, 0.665, 1.1), (0.04, 0.012, 0.045), "horse_gold", seg=10, rings=6)
+    if not LOD:
+        H.ellipsoid(f"nostril_{sx}", (sx * 0.045, 0.46, 1.4), (0.025, 0.02, 0.025), "horse_dark", seg=8, rings=6)
 # the open mouth: a dark red gap with a lower jaw and teeth
-H.ellipsoid("mouth", (0, 0.34, 1.36), (0.05, 0.03, 0.06), "horse_mouth", seg=10, rings=6)
-H.ellipsoid("jaw", (0, 0.335, 1.31), (0.06, 0.04, 0.085), "horse_paint", rot_x=-10.0, seg=12, rings=8)
-for k in range(5):
+if not LOD:
+    H.ellipsoid("mouth", (0, 0.34, 1.36), (0.05, 0.03, 0.06), "horse_mouth", seg=10, rings=6)
+if not LOD:
+    H.ellipsoid("jaw", (0, 0.335, 1.31), (0.06, 0.04, 0.085), "horse_paint", rot_x=-10.0, seg=12, rings=8)
+for k in range(0 if LOD else 5):
     H.ellipsoid(f"tooth_{k}", (-0.04 + k * 0.02, 0.366, 1.405), (0.009, 0.014, 0.008), "horse_tooth", seg=5, rings=4)
 # the carved mane: flowing locks that run down the crest, curling to one side at the ends
-for k in range(6):
-    f = k / 5
+for k in range(3 if LOD else 6):
+    f = k / (2 if LOD else 5)
     y0, z0 = 0.62 - f * 0.22, 0.95 - f * 0.3
     side = 0.06 + 0.02 * (k % 2)
     pts = [(0.0, y0 + 0.12, z0 + 0.04), (side * 0.5, y0 + 0.07, z0 - 0.05), (side, y0 - 0.06, z0 - 0.14), (side * 1.6, y0 - 0.16, z0 - 0.15), (side * 1.4, y0 - 0.2, z0 - 0.1)]
     H.tube(f"mane_{k}", pts, 0.05 - 0.01 * f, "horse_mane", 10, taper_end=0.35)
-H.tube("forelock", [(0, 0.8, 1.08), (0, 0.84, 1.17), (0, 0.76, 1.24), (0.03, 0.64, 1.25)], 0.04, "horse_mane", 8, taper_end=0.3)
+if not LOD:
+    H.tube("forelock", [(0, 0.8, 1.08), (0, 0.84, 1.17), (0, 0.76, 1.24), (0.03, 0.64, 1.25)], 0.04, "horse_mane", 8, taper_end=0.3)
 # the tail: several flowing locks swept back and down
-for k in range(4):
-    sx = (k - 1.5) * 0.06
+for k in range(2 if LOD else 4):
+    sx = (k - (0.5 if LOD else 1.5)) * 0.1
     H.tube(f"tail_{k}", [(0, 0.0, -0.72), (sx * 0.5, 0.0, -0.95), (sx * 1.4, -0.2, -1.18), (sx * 2.0, -0.55, -1.25), (sx * 2.4, -0.86, -1.16)], 0.07 - abs(k - 1.5) * 0.012, "horse_mane", 10, taper_end=0.25)
 # tack: indigo blanket with gold braid, a deep red saddle with high cantle and pommel, gold, roses and jewels
 H.ellipsoid("blanket", (0, 0.04, 0.0), (0.33, 0.06, 0.4), "horse_indigo", seg=16, rings=8)
-H.tube("blanket_braid", [(-0.3, 0.0, -0.3), (-0.34, -0.02, 0.0), (-0.3, 0.0, 0.3)], 0.014, "horse_gold", 6)
-H.tube("blanket_braid_r", [(0.3, 0.0, -0.3), (0.34, -0.02, 0.0), (0.3, 0.0, 0.3)], 0.014, "horse_gold", 6)
+if not LOD:
+    H.tube("blanket_braid", [(-0.3, 0.0, -0.3), (-0.34, -0.02, 0.0), (-0.3, 0.0, 0.3)], 0.014, "horse_gold", 6)
+if not LOD:
+    H.tube("blanket_braid_r", [(0.3, 0.0, -0.3), (0.34, -0.02, 0.0), (0.3, 0.0, 0.3)], 0.014, "horse_gold", 6)
 H.ellipsoid("saddle_seat", (0, 0.12, -0.02), (0.22, 0.07, 0.3), "horse_red", seg=16, rings=10)
 H.ellipsoid("saddle_cantle", (0, 0.2, -0.27), (0.2, 0.12, 0.07), "horse_red", seg=14, rings=8)
 H.ellipsoid("saddle_pommel", (0, 0.22, 0.22), (0.07, 0.11, 0.07), "horse_gold", seg=12, rings=8)
-for sx in (-1, 1):
+for sx in (() if LOD else (-1, 1)):
     H.cyl(f"stirrup_strap_{sx}", (sx * 0.26, 0.08, 0.0), (sx * 0.3, -0.4, 0.02), 0.014, 0.014, "horse_red", 6)
     H.box(f"stirrup_{sx}", (0.03, 0.02, 0.1), (sx * 0.3, -0.43, 0.02), "horse_gold", 0.006, 2)
-H.tube("girth", [(-0.3, 0.02, 0.0), (-0.33, -0.3, 0.0), (0, -0.5, 0.0), (0.33, -0.3, 0.0), (0.3, 0.02, 0.0)], 0.03, "horse_red", 8)
-H.tube("breast_collar", [(-0.24, 0.08, 0.58), (-0.27, -0.2, 0.62), (0, -0.34, 0.72), (0.27, -0.2, 0.62), (0.24, 0.08, 0.58)], 0.035, "horse_gold", 8)
-H.ellipsoid("collar_jewel", (0, -0.28, 0.745), (0.05, 0.05, 0.04), "horse_jewel", seg=10, rings=8)
+if not LOD:
+    H.tube("girth", [(-0.3, 0.02, 0.0), (-0.33, -0.3, 0.0), (0, -0.5, 0.0), (0.33, -0.3, 0.0), (0.3, 0.02, 0.0)], 0.03, "horse_red", 8)
+if not LOD:
+    H.tube("breast_collar", [(-0.24, 0.08, 0.58), (-0.27, -0.2, 0.62), (0, -0.34, 0.72), (0.27, -0.2, 0.62), (0.24, 0.08, 0.58)], 0.035, "horse_gold", 8)
+if not LOD:
+    H.ellipsoid("collar_jewel", (0, -0.28, 0.745), (0.05, 0.05, 0.04), "horse_jewel", seg=10, rings=8)
 
 
 def rose(name, c, r=0.045):
@@ -431,23 +480,31 @@ def rose(name, c, r=0.045):
         H.ellipsoid(f"{name}_p{j}", (c[0] + math.cos(a) * r * 0.9, c[1] + 0.012, c[2] + math.sin(a) * r * 0.9), (r * 0.6, r * 0.5, r * 0.6), "horse_rose", seg=6, rings=4)
 
 
-for sx in (-1, 1):
+for sx in (() if LOD else (-1, 1)):
     rose(f"rose_blanket_{sx}", (sx * 0.31, 0.06, -0.2))
     rose(f"rose_blanket_f_{sx}", (sx * 0.3, 0.06, 0.2))
     H.ellipsoid(f"leaf_{sx}", (sx * 0.35, 0.05, -0.12), (0.05, 0.015, 0.025), "horse_leaf", seg=6, rings=4)
     H.ellipsoid(f"leaf_f_{sx}", (sx * 0.34, 0.05, 0.12), (0.05, 0.015, 0.025), "horse_leaf", seg=6, rings=4)
-rose("rose_cantle", (0, 0.3, -0.3), 0.04)
+if not LOD:
+    rose("rose_cantle", (0, 0.3, -0.3), 0.04)
 # the bridle: gold straps with a jewelled brow band, cheek straps, a noseband, reins
-H.tube("bridle_brow", [(-0.108, 0.71, 1.04), (0, 0.745, 1.08), (0.108, 0.71, 1.04)], 0.014, "horse_gold", 6)
-H.ellipsoid("brow_jewel", (0, 0.745, 1.095), (0.03, 0.03, 0.02), "horse_jewel", seg=8, rings=6)
-H.tube("bridle_nose", [(-0.08, 0.47, 1.31), (0, 0.45, 1.39), (0.08, 0.47, 1.31)], 0.016, "horse_gold", 6)
-H.tube("bridle_cheek_l", [(0.108, 0.71, 1.04), (0.125, 0.56, 1.12), (0.08, 0.47, 1.31)], 0.012, "horse_gold", 6)
-H.tube("bridle_cheek_r", [(-0.108, 0.71, 1.04), (-0.125, 0.56, 1.12), (-0.08, 0.47, 1.31)], 0.012, "horse_gold", 6)
-H.tube("reins", [(0.09, 0.38, 1.3), (0.15, 0.4, 0.95), (0.12, 0.22, 0.4), (0.1, 0.2, 0.22)], 0.012, "horse_red", 6)
-H.tube("reins_r", [(-0.09, 0.38, 1.3), (-0.15, 0.4, 0.95), (-0.12, 0.22, 0.4), (-0.1, 0.2, 0.22)], 0.012, "horse_red", 6)
+if not LOD:
+    H.tube("bridle_brow", [(-0.108, 0.71, 1.04), (0, 0.745, 1.08), (0.108, 0.71, 1.04)], 0.014, "horse_gold", 6)
+if not LOD:
+    H.ellipsoid("brow_jewel", (0, 0.745, 1.095), (0.03, 0.03, 0.02), "horse_jewel", seg=8, rings=6)
+if not LOD:
+    H.tube("bridle_nose", [(-0.08, 0.47, 1.31), (0, 0.45, 1.39), (0.08, 0.47, 1.31)], 0.016, "horse_gold", 6)
+if not LOD:
+    H.tube("bridle_cheek_l", [(0.108, 0.71, 1.04), (0.125, 0.56, 1.12), (0.08, 0.47, 1.31)], 0.012, "horse_gold", 6)
+if not LOD:
+    H.tube("bridle_cheek_r", [(-0.108, 0.71, 1.04), (-0.125, 0.56, 1.12), (-0.08, 0.47, 1.31)], 0.012, "horse_gold", 6)
+if not LOD:
+    H.tube("reins", [(0.09, 0.38, 1.3), (0.15, 0.4, 0.95), (0.12, 0.22, 0.4), (0.1, 0.2, 0.22)], 0.012, "horse_red", 6)
+if not LOD:
+    H.tube("reins_r", [(-0.09, 0.38, 1.3), (-0.15, 0.4, 0.95), (-0.12, 0.22, 0.4), (-0.1, 0.2, 0.22)], 0.012, "horse_red", 6)
 # the pole sleeve (gilded), where the thin brass pole passes through the body
 H.cyl("pole_sleeve", (0, 0.5, 0.3), (0, -0.55, 0.3), 0.032, 0.032, "horse_gold", 10)
-H.export("carousel_horse.glb", 85.0)
+H.export("carousel_horse_lod.glb" if LOD else "carousel_horse.glb", 85.0, ao=True)
 
 # ═════════════════════════════ a carriage ═════════════════════════════
 C = Builder({

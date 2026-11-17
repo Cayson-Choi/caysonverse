@@ -119,12 +119,13 @@ export function parkTreeSpecs(): { trees: TreeSpec[]; bushes: Bush[] } {
   });
   // the hedge along the path's left edge and the park's south boundary: a continuous row of the village's clipped shrubs (replaces box hedges)
   const hedge: Bush[] = [];
-  ground.forEach((g) => {
+  ground.forEach((g, gi) => {
     if (g.z < 9 && g.x > -45 && g.x < 35) return;
-    const s = 0.9 + rnd() * 0.5;
+    if (isTouchDevice && gi % 2 === 1) return; // a phone gets every second shrub of the hedge (each a bit wider)
+    const s = (isTouchDevice ? 1.25 : 0.9) + rnd() * 0.5;
     hedge.push({ x: g.x - g.px * 3.5, y: 0, z: g.z - g.pz * 3.5, h: 1.0 * s, r: 1.25 * s, seed: rnd(), cards: [] });
   });
-  for (let x = PARK_BOUNDS.minX + 2; x < PARK_BOUNDS.maxX; x += 3) {
+  for (let x = PARK_BOUNDS.minX + 2; x < PARK_BOUNDS.maxX; x += isTouchDevice ? 6 : 3) {
     if (x > -30 && x < 30) continue;
     const s = 0.9 + rnd() * 0.5;
     hedge.push({ x, y: 0, z: -2.7, h: 1.15 * s, r: 1.45 * s, seed: rnd(), cards: [] });
@@ -144,7 +145,7 @@ export function ParkVegetation() {
     createVegetation(new Group(), "low", "new", () => dead, {
       parkTrees: specs.trees,
       parkBushes: specs.bushes,
-      farThin: isTouchDevice ? 0.22 : 0.4,
+      farThin: isTouchDevice ? 0.12 : 0.4,
       parkBeds: flowerBeds.beds,
       parkCards: flowerBeds.cards,
       makeWorker: () => new Worker(new URL("../village/veg/crownWorker.ts", import.meta.url), { type: "module" }),

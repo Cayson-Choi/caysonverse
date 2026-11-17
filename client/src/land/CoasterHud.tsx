@@ -8,11 +8,13 @@ import { rideMuted, setRideMuted } from "./coasterAudio";
 import { useLocalArea } from "../village/villageArea";
 import { RIDES, rideById } from "@caysonverse/shared/land/rides";
 import { villageClock } from "../village/villageClock";
+import { wheelSeatPose } from "@caysonverse/shared/land/wheel";
 
 const NOTICE_TEXT = {
   closed: "지금은 탈 수 없어요. 다음 출발을 기다려 주세요.",
-  full: `자리가 가득 찼어요 (${COASTER_SEATS}석). 다음 번에 타요.`,
+  full: `자리가 가득 찼어요. 다음 번에 타요. (${COASTER_SEATS}석 이하)`,
   busy: "앉아 있거나 버스·낚시 중에는 탈 수 없어요.",
+  aloft: "높이 떠 있을 땐 내릴 수 없어요. 바닥에 닿으면 내릴 수 있어요.",
 } as const;
 
 /** Re-render ~4 times a second (the countdown). */
@@ -88,6 +90,8 @@ export function CoasterHud() {
   const noticeFresh = rideNotice.reason !== null && performance.now() - rideNotice.at < 4500;
   const icon = def?.key === "carousel" ? "🎠" : def?.key === "wheel" ? "🎡" : "🎢";
   const isCoaster = !def || def.key === "coaster";
+  const isWheel = def?.key === "wheel";
+  const aloft = riding && !!def?.canLeave && !def.canLeave(selfRide.slot, wall);
   if (!riding) {
     if (!def) return null;
     return (
@@ -119,11 +123,15 @@ export function CoasterHud() {
       {isTouchDevice ? null : (
         <>
           <div style={{ opacity: 0.8 }}>
-            {now.status === "riding"
-              ? `${Math.max(0, Math.round((now.phase - (isCoaster ? COASTER_DWELL_MS : 30_000)) / 1000))}초 · ${isCoaster ? "안전바를 잡고 있어요" : "말이 오르내려요"}`
-              : now.status === "gate"
-                ? `곧 출발해요 (${secs}초)`
-                : "출발을 기다리는 중이에요"}
+            {isWheel
+              ? aloft
+                ? `${Math.round(wheelSeatPose(selfRide.slot, wall).y)}m 높이 · 한 바퀴 돌면 내려요`
+                : "승강장이에요 · 내릴 수 있어요"
+              : now.status === "riding"
+                ? `${Math.max(0, Math.round((now.phase - (isCoaster ? COASTER_DWELL_MS : 30_000)) / 1000))}초 · ${isCoaster ? "안전바를 잡고 있어요" : "말이 오르내려요"}`
+                : now.status === "gate"
+                  ? `곧 출발해요 (${secs}초)`
+                  : "출발을 기다리는 중이에요"}
           </div>
           <div style={{ marginTop: 4, opacity: 0.7 }}>화면을 끌면 둘러볼 수 있어요</div>
         </>
@@ -143,8 +151,8 @@ export function CoasterHud() {
           {muted ? "소리 켜기" : "소리 끄기"}
         </button>
       </div>
-      <button type="button" data-testid="coaster-leave" style={{ ...btn, marginTop: 6, width: "100%", background: "#ffd9d2" }} onClick={() => sendRideLeave()}>
-        {now.status === "riding" ? "비상 내리기" : "내리기"}
+      <button type="button" data-testid="coaster-leave" disabled={aloft} style={{ ...btn, marginTop: 6, width: "100%", background: aloft ? "#e6e1dc" : "#ffd9d2", opacity: aloft ? 0.6 : 1 }} onClick={() => sendRideLeave()}>
+        {aloft ? "높이 떠 있어요" : isWheel ? "내리기" : now.status === "riding" ? "비상 내리기" : "내리기"}
       </button>
     </div>
   );
