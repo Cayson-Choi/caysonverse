@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
+import { MessageType, type StandRejectedPayload } from "@caysonverse/shared/messages";
+import { useClickHint } from "../stores/clickHintStore";
 import { useFrame } from "@react-three/fiber";
 import { useAnimations, useKeyboardControls } from "@react-three/drei";
 import { Group, LoopOnce, type AnimationAction, type AnimationClip, type Plane } from "three";
@@ -180,7 +182,7 @@ function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
 }
 
-/** A Stand the server has not answered within this long (ms) is asked again while a move key is held. */
+/** A Stand the server has not answered within this long (ms) is asked again while a move key is held; also how long a held key waits after a refused Stand (StandRejected). */
 const STAND_RETRY_MS = 1200;
 
 export function LocalPlayer({
@@ -216,6 +218,7 @@ export function LocalPlayer({
   const prevSeatRef = useRef(-1); // previous confirmed seatIndex (transition edge)
   const standRequestedRef = useRef(false); // debounce: one Stand per seated episode (asked again after STAND_RETRY_MS)
   const standAtRef = useRef(0);
+  const standRetryAtRef = useRef(0); // after a refused Stand (StandRejected): not before this (performance.now())
   // A seat the sitter rests ON (a village bench, `seatY`): the lift of the seat in use, the seconds spent in the
   // current sit / stand clip and its length, and the glide onto the seat or off it (seatMotion.ts). A legacy chair
   // leaves all of it at rest (lift 0, no glide): it keeps its snap.
@@ -365,6 +368,19 @@ export function LocalPlayer({
   }, [actions, look, pose, orbit, seat, sessionId]);
 
   const sender = useRef(createMoveSender(sendMove)).current;
+
+  // Nothing in front of the seat is free to stand on (owner 2026-11-17, standSpot.ts): the server keeps us seated and says why. The
+  // line shows over the scene (the click hint), and the next key, stick or tap may ask again; a seated tap's walk is dropped.
+  useEffect(() => {
+    const room = getRoom();
+    if (!room) return;
+    return room.onMessage(MessageType.StandRejected, (m: StandRejectedPayload) => {
+      standRequestedRef.current = false;
+      standRetryAtRef.current = performance.now() + STAND_RETRY_MS; // a held key asks again after a pause, not every frame
+      clearClickTarget();
+      useClickHint.getState().show(m.reason);
+    });
+  }, []);
 
   // 클릭 자동 이동 리셋 (design 29 (e)): 이 컴포넌트는 접속 세대(epoch)마다
   // 리마운트되므로, 마운트/언마운트 양쪽에서 target을 비워 재접속·월드 교체
@@ -1119,9 +1135,10 @@ export function LocalPlayer({
     // 이동이 그 지점으로 이어진다 — "자동 기립 후 이동" 채택.
     if (seated) {
       // One Stand per press, asked again if the server has not stood us up a while later (a message lost, or refused
-      // while a sit was still settling: UX 2026-11-16, a held key must always get the player up).
+      // while a sit was still settling: UX 2026-11-16, a held key must always get the player up); after a StandRejected (nowhere
+      // to stand in front of a backed seat, seat-front) not before standRetryAtRef.
       const nowMs = performance.now();
-      if ((moving || getClickTarget() !== null) && (!standRequestedRef.current || nowMs - standAtRef.current > STAND_RETRY_MS)) {
+      if ((moving || getClickTarget() !== null) && nowMs >= standRetryAtRef.current && (!standRequestedRef.current || nowMs - standAtRef.current > STAND_RETRY_MS)) {
         sendStand();
         standRequestedRef.current = true;
         standAtRef.current = nowMs;

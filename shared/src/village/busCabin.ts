@@ -268,8 +268,16 @@ export function nearestFreeSpot(
   return best;
 }
 
-/** Where a rider stands up to: in front of the cushion or in the aisle beside the seat, the first spot not blocked. */
-export function seatStandUpSpot(seat: BusSeat, riders?: ReadonlyArray<BusLocalPoint>): { ahead: number; right: number; yaw: number } {
+/** How far behind its seat point (m) a stand-up spot may lie and still be beside the seat (the aisle next to it), not behind its back. */
+export const BUS_STAND_BEHIND_MAX = 0.15;
+
+/**
+ * Where a rider stands up to: in front of the cushion or in the aisle beside the seat, the first spot not blocked — never behind a
+ * backed seat's back (owner 2026-11-17: "일어서면 의자 앞에 서고"; the aisle a step back from a forward-facing seat is behind it).
+ * Null: nothing in front of it or beside it is free (the rider stays seated and is told why, standSpot.ts STAND_BLOCKED).
+ */
+export function seatStandUpSpot(seat: BusSeat, riders?: ReadonlyArray<BusLocalPoint>): { ahead: number; right: number; yaw: number } | null {
+  const f = facingVector(seat.yaw);
   const ap = seatApproachPoint(seat);
   const candidates: BusLocalPoint[] = [
     ap,
@@ -280,11 +288,11 @@ export function seatStandUpSpot(seat: BusSeat, riders?: ReadonlyArray<BusLocalPo
     { ahead: ap.ahead - 1.2, right: 0 },
     { ahead: ap.ahead + 1.8, right: 0 },
     { ahead: ap.ahead - 1.8, right: 0 },
-  ];
+  ].filter((c) => !seat.backed || (c.ahead - seat.ahead) * f.ahead + (c.right - seat.right) * f.right >= -BUS_STAND_BEHIND_MAX);
   const clear = (c: BusLocalPoint): boolean =>
     !cabinBlocked(c.ahead, c.right) && !(riders && riders.some((o) => Math.hypot(o.ahead - c.ahead, o.right - c.right) < BUS_RIDER_APART));
-  const hit = candidates.find(clear) ?? candidates.find((c) => !cabinBlocked(c.ahead, c.right)) ?? ap;
-  return { ahead: hit.ahead, right: hit.right, yaw: seat.yaw };
+  const hit = candidates.find(clear);
+  return hit ? { ahead: hit.ahead, right: hit.right, yaw: seat.yaw } : null;
 }
 
 /** A bus-local point in the world, for a bus at `bus` (the same math as busBody.busWorld). */
