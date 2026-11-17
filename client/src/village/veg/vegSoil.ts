@@ -141,33 +141,44 @@ function clumps(plants: Plant[]): SoilShape[] {
     }
     floor /= group.length;
     // the field: the largest (cover - distance) over the plants (a union of discs, soft-edged by its zero line)
-    // numeric cell keys and plain sqrt: this field is read a few hundred thousand times per village (perf/no-hitch: it was
-    // the build's largest single cost on a slow phone, string keys and Math.hypot)
-    const g2 = new Map<number, Plant[]>();
+    // a dense grid of cells over the bed (each cell's plants as flat x/z arrays) and plain sqrt: this field is read a few
+    // hundred thousand times per village (perf/no-hitch: it was the build's largest single cost on a slow phone)
     const c2 = 0.3;
-    const key2 = (gx: number, gz: number) => (gx + 32768) * 65536 + (gz + 32768);
+    const gx0 = Math.floor((x0 - COVER) / c2) - 3;
+    const gz0 = Math.floor((z0 - COVER) / c2) - 3;
+    const gw = Math.floor((x1 + COVER) / c2) + 3 - gx0 + 1;
+    const gh = Math.floor((z1 + COVER) / c2) + 3 - gz0 + 1;
+    const counts = new Int32Array(gw * gh + 1);
+    const cellOf = (x: number, z: number) => (Math.floor(z / c2) - gz0) * gw + (Math.floor(x / c2) - gx0);
+    for (const p of group) counts[cellOf(p.x, p.z) + 1]!++;
+    for (let i = 1; i < counts.length; i++) counts[i]! += counts[i - 1]!;
+    const px = new Float64Array(group.length);
+    const pz = new Float64Array(group.length);
+    const fill = counts.slice(0, gw * gh);
     for (const p of group) {
-      const k = key2(Math.floor(p.x / c2), Math.floor(p.z / c2));
-      const l = g2.get(k);
-      if (l) l.push(p);
-      else g2.set(k, [p]);
+      const at = fill[cellOf(p.x, p.z)]!++;
+      px[at] = p.x;
+      pz[at] = p.z;
     }
     const sd = (x: number, z: number) => {
       let best = -1;
-      const gx = Math.floor(x / c2);
-      const gz = Math.floor(z / c2);
-      for (let a = -2; a <= 2; a++)
-        for (let b = -2; b <= 2; b++) {
-          const cell = g2.get(key2(gx + a, gz + b));
-          if (!cell) continue;
-          for (let i = 0; i < cell.length; i++) {
-            const p = cell[i]!;
-            const dx = x - p.x;
-            const dz = z - p.z;
+      const gx = Math.floor(x / c2) - gx0;
+      const gz = Math.floor(z / c2) - gz0;
+      for (let b = -2; b <= 2; b++) {
+        const row = gz + b;
+        if (row < 0 || row >= gh) continue;
+        for (let a = -2; a <= 2; a++) {
+          const col = gx + a;
+          if (col < 0 || col >= gw) continue;
+          const c = row * gw + col;
+          for (let i = counts[c]!, e = counts[c + 1]!; i < e; i++) {
+            const dx = x - px[i]!;
+            const dz = z - pz[i]!;
             const v = COVER - Math.sqrt(dx * dx + dz * dz);
             if (v > best) best = v;
           }
         }
+      }
       // a little wobble on the edge (dug by hand)
       return best + 0.025 * (valueNoise3(x * 3.1, 0.5, z * 3.1, 77) - 0.5);
     };
