@@ -93,6 +93,10 @@
 `lot_library_chair_1..8`, `lot_library_nook_1/2`)는 `LOT_INTERIORS` 숫자 그대로(시험 `villageLotsInteriors.test.ts`), 외관 베이 창 안 창가 자리와 실내 창가 자리는 같은 물건으로 보이게.
 11장 예산(학교 60k/25k, 도서관 90k/35k)·KTX2·T13 감동 기준(층 있는 빛, 책벽·벽난로·칠판·창가 같은 중심, 고른 디테일)을 지켜요. 외관이 먼저 끝나면 B1a로 넘기고 실내를 B1b로 이어 가도 돼요.
 
+**B1이 덧붙인 것 (2026-11-17)**: 실내 `solids` 끝에 학교 `shelf_back`(뒤 창 아래 낮은 장: 책·화분·어항), 도서관 `armchair_w/e`(벽난로 안락의자, 자리 `armchair_nook`),
+`ladder`(동쪽 책장 굴림 사다리), `book_cart`(책 수레), `catalogue`(목록함). 실내 GLB `lot_school_class.glb`·`lot_library_reading.glb`는 노드 `lotroom__<unit>` 아래
+`_shell`·`_furniture`·`_goods` 메시와 `lotinst__<unit>_<kind>`, 창밖 풍경은 `M_screen`(빛 받지 않는 정점색), 재질은 lot과 같은 PBR 세트(`lots/<dir>/<unit>_textures.json`).
+
 순서: B1 · B2 · B3 동시에(서로 다른 파일, **Blender는 한 번에 하나씩 차례로** — PC 공유), L5v2는 동시에 시작 → L6. `art/`는 git 무시라 스크립트 사본은 `docs/designs/village-lots-v2/tools/`에.
 
 ## 10. 빌더 공통 규칙 (B1–B3·L5v2·L6 브리프에 그대로)

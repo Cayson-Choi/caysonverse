@@ -1115,6 +1115,8 @@ const SCHOOL_IN: LotInteriorSpec = {
     solid("partition_l", 0, 2.6, 2.3, 2.45, 3.7), solid("partition_r", 12.8, 15.4, 2.3, 2.45, 3.7), // glazed ends; the middle is open (the classroom's front)
     solid("board", 0, 0.12, 3, 7, 2.4), solid("teacher_desk", 1.2, 2, 4.4, 6, 0.78),
     ...[0, 1, 2, 3].flatMap((c) => [0, 1, 2].map((r) => solid(`desk_${c * 3 + r + 1}`, 4 + c * 2.2 - 1.32, 4 + c * 2.2 - 0.82, 3.6 + r * 1.4 - 0.4, 3.6 + r * 1.4 + 0.4, 0.72))),
+    // B1 (2026-11-17), appended: the low cupboard under the back windows (books, plants, the aquarium)
+    solid("shelf_back", 2.6, 14.8, 7.0, 7.4, 1.35),
   ],
   seats: [0, 1, 2, 3].flatMap((c) => [0, 1, 2].map((r) => iseat(`lot_school_chair_${c * 3 + r + 1}`, 4 + c * 2.2, 3.6 + r * 1.4, "left", "backed", 0.44, 1, 0.45, 0.22, 0.23))),
   budget: { pc: { triangles: 60_000, textureMB: 24, draws: 40 }, phone: { triangles: 25_000, textureMB: 8, draws: 25 } },
@@ -1131,6 +1133,10 @@ const LIBRARY_IN: LotInteriorSpec = {
     solid("stacks_w", 0, 1, 1.4, 10.4, 2.6), solid("stacks_e", 12.4, 13.4, 3, 10.4, 2.6), solid("stacks_b", 1, 12.4, 9.4, 10.4, 2.6),
     solid("table_a", 3.9, 5.1, 4.3, 6.7, 0.76), solid("table_b", 8.3, 9.5, 4.3, 6.7, 0.76),
     solid("librarian_desk", 9.6, 12, 1.6, 2.4, 1.05),
+    // B1 (2026-11-17), appended: the fireside armchairs (decor, slot armchair_nook), the rolling ladder on the east stacks,
+    // the book trolley behind the desk and the card catalogue by the door
+    solid("armchair_w", 1.05, 1.95, 8.15, 9.05, 1.05), solid("armchair_e", 11.45, 12.35, 8.15, 9.05, 1.05),
+    solid("ladder", 11.75, 12.4, 6.6, 7.2, 2.6), solid("book_cart", 12.5, 13.3, 0.7, 1.5, 1.0), solid("catalogue", 8.2, 9.2, 0.06, 0.56, 1.3),
   ],
   seats: [
     iseat("lot_library_chair_1", 3.05, 4.9, "right", "backed", 0.46, 1, 0.46, 0.22, 0.23),

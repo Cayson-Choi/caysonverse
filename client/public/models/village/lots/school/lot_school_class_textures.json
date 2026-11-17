@@ -1,0 +1,94 @@
+{
+  "lot": "lot_school_class",
+  "format": "ktx2",
+  "note": "Every LM_ material is a shared PBR library set (client/src/village/pbr/pbrLibrary.ts getPbrSet(id, tier, gl) -> createPbrMaterial(set, { repeatMeters: [1, 1] })): the model's UVs are metres, COLOR_0 multiplies the albedo (the tint of the neutral sets), roughness = the ORM's G times roughnessScale. The lot has no maps of its own (letters, clock and numerals are geometry). M_glass is the game's glass; lotnight__ nodes take the game's glow.",
+  "materials": {
+    "LM_school_floor": {
+      "pbr": "floor_wood",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.7,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_school_green": {
+      "pbr": "grass",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.4,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 0.5,
+      "metal": false
+    },
+    "LM_school_iron": {
+      "pbr": "cast_iron",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": true
+    },
+    "LM_school_oak": {
+      "pbr": "wood_oak",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.83,
+      "vertexColor": true,
+      "roughnessScale": 0.85,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_school_paint": {
+      "pbr": "wood_painted",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.8,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 0.5,
+      "metal": false
+    },
+    "LM_school_plaster": {
+      "pbr": "plaster_painted",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 2.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "M_glass": {
+      "kind": "glass"
+    },
+    "M_screen": {
+      "kind": "screen",
+      "note": "the garden-and-sky view behind interior windows: unlit, COLOR_0 is the colour"
+    }
+  },
+  "pbrSets": [
+    "cast_iron",
+    "floor_wood",
+    "grass",
+    "plaster_painted",
+    "wood_oak",
+    "wood_painted"
+  ]
+}

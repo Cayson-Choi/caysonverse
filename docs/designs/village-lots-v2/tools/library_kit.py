@@ -377,7 +377,7 @@ def book_run(seed, length=0.42):
         h = rg.uniform(0.2, 0.29)
         d = rg.uniform(0.16, 0.21)
         col = G.hexc(BOOK_COLS[rg.randrange(len(BOOK_COLS))])
-        s = FAB.t(col)
+        s = S("LM_library_paint", col)  # cloth-bound covers: the bright painted set takes the colours truly (fabric is too dark)
         m.poly([(x, 0.0, 0.0), (x + w, 0.0, 0.0), (x + w, h, 0.0), (x, h, 0.0)], s)
         m.poly([(x, h, 0.0), (x + w, h, 0.0), (x + w, h, -d), (x, h, -d)], PLASTER.t(G.hexc("F6EEDC")))
 
@@ -488,14 +488,14 @@ def bays(kit):
         # a folded blanket, a stack of books, a brass lamp on the seat's end; the side walls of the bay inside: small shelves
         D.poly([(A[0], 0.02, A[1] - 0.25), (Dd[0], 0.02, Dd[1] - 0.25), (C[0], 0.02, C[1] - 0.08), (B[0], 0.02, B[1] - 0.08)][::-1], FLOOR)
         D.box(B[0] - 0.1, C[0] + 0.1, 0.02, 0.42, FZ - 0.05, zf - 0.1, OAK, skip=("-y",))
-        D.cbox(B[0] - 0.08, C[0] + 0.08, 0.42, 0.55, FZ - 0.02, zf - 0.12, FAB.t(G.hexc("D9C8A8")), c=0.03)
+        D.cbox(B[0] - 0.08, C[0] + 0.08, 0.42, 0.55, FZ - 0.02, zf - 0.12, S("LM_library_plaster", G.hexc("F4E6C8")), c=0.03)
         for (bx, col) in ((B[0] + 0.12, "6E8FAE"), (C[0] - 0.12, "6E8FAE")):
-            D.member((bx, 0.65, FZ + 0.02), (bx, 0.65, zf - 0.18), G.prof_round(0.1, 8), FAB.t(G.hexc("C9D8EA")), caps=True)
+            D.member((bx, 0.65, FZ + 0.02), (bx, 0.65, zf - 0.18), G.prof_round(0.1, 8), S("LM_library_plaster", G.hexc("A9C6E4")), caps=True)
         for k, (cx, col) in enumerate(((xc - 0.35, "C96F5B"), (xc + 0.25, "E2B95A"))):
-            D.cbox(cx - 0.2, cx + 0.2, 0.55, 0.92, zf - 0.32, zf - 0.17, FAB.t(G.hexc(col)), c=0.06)
+            D.cbox(cx - 0.2, cx + 0.2, 0.55, 0.92, zf - 0.32, zf - 0.17, S("LM_library_plaster", G.hexc(col)), c=0.06)
         D.cbox(xc + 0.35, xc + 0.85, 0.55, 0.62, FZ + 0.05, FZ + 0.45, FAB.t(G.hexc("7E9C7A")), c=0.02)
         for k in range(4):
-            Gd.box(xc - 0.75 + 0.01 * k, xc - 0.45 + 0.012 * k, 0.55 + k * 0.04, 0.59 + k * 0.04, FZ + 0.12, FZ + 0.34, FAB.t(G.hexc(BOOK_COLS[(k + i * 3) % 12])))
+            Gd.box(xc - 0.75 + 0.01 * k, xc - 0.45 + 0.012 * k, 0.55 + k * 0.04, 0.59 + k * 0.04, FZ + 0.12, FZ + 0.34, S("LM_library_paint", G.hexc(BOOK_COLS[(k + i * 3) % 12])))
         # a brass reading lamp standing at the seat's right end (on the floor inside the body, behind the seat)
         lx, lz = C[0] - 0.05, FZ - 0.15
         Gd.lathe([(0.12, 0.0), (0.12, 0.03), (0.02, 0.05), (0.018, 1.25), (0.0, 1.25)], 8, GOLD, lx, lz, 0.02)

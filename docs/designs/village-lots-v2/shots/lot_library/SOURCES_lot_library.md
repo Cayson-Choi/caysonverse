@@ -11,3 +11,6 @@
 | li_carnegie | [Old Carnegie, Centre College, Walnut Street, Danville, KY.jpg](https://commons.wikimedia.org/wiki/File:Old_Carnegie,_Centre_College,_Walnut_Street,_Danville,_KY.jpg) | w_lemay | CC BY-SA 2.0 | 벽돌 + 밝은 돌 장식(띠·모서리돌·문틀), 가운데 현관 → 석회암 문틀·프리즈·페디먼트, 모서리돌 |
 | li_wisteria | [Wisteria bush and bench, Hampstead Pergola NW3 - geograph.org.uk - 3542315.jpg](https://commons.wikimedia.org/wiki/File:Wisteria_bush_and_bench,_Hampstead_Pergola_NW3_-_geograph.org.uk_-_3542315.jpg) | Robin Sones | CC BY-SA 2.0 | 등나무 퍼걸러 + 나무 벤치 → 퍼걸러 독서 정원, 늘어진 등꽃, 벤치 |
 | li_reading | [Reading room (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Reading_room_(Unsplash).jpg) | Samuel Zeller samuelzeller | CC0 | 나무 책장 벽 + 따뜻한 스탠드 → 창 너머 책장 벽, 창가 자리 스탠드 |
+| li_stlouis | [Reading Room, St. Louis Central Public Library, Olive Street, St. Louis, MO.jpg](https://commons.wikimedia.org/wiki/File:Reading_Room,_St._Louis_Central_Public_Library,_Olive_Street,_St._Louis,_MO.jpg) | w_lemay | CC BY-SA 2.0 | 높은 천장 열람실, 벽 책장, 긴 열람 테이블·독서등 → 책장 벽, 긴 테이블 2, 초록 독서등, 들보 천장 (실내) |
+
+비교 시트: `compare_exterior.jpg`, `compare_interior.jpg` (왼쪽 실제 사진, 오른쪽 B1 Blender 렌더). 게임 경로(KTX2) 룩데브: `lookdev_pc_phone.jpg`.

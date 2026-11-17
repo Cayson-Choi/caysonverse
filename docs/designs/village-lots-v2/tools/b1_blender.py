@@ -91,6 +91,12 @@ def make_materials(matdefs):
         b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
         vc = nt.nodes.new("ShaderNodeVertexColor")
         vc.layer_name = "Col"
+        if d.get("screen"):
+            b.inputs["Base Color"].default_value = (0, 0, 0, 1)
+            nt.links.new(vc.outputs["Color"], b.inputs["Emission Color"])
+            b.inputs["Emission Strength"].default_value = 1.6
+            mats[name] = m
+            continue
         if d.get("glass"):
             b.inputs["Base Color"].default_value = (0.6, 0.66, 0.7, 1)
             b.inputs["Roughness"].default_value = 0.03
@@ -174,7 +180,7 @@ def mesh_data(name, mesh, mats, xf):
     me = bpy.data.meshes.new(name)
     bm = bmesh.new()
     uvl = bm.loops.layers.uv.new("UVMap")
-    cl = bm.loops.layers.color.new("Col")
+    cl = bm.loops.layers.float_color.new("Col")  # linear floats (a byte layer would treat the tints as sRGB)
     order = sorted({p.mat for p in mesh.polys})
     idx = {m: i for i, m in enumerate(order)}
     for m in order:
@@ -452,10 +458,10 @@ def export(path, objs, extras):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     kw = dict(filepath=path, export_format="GLB", use_selection=True, export_apply=False, export_yup=True,
               export_texcoords=True, export_normals=True, export_tangents=False, export_materials="EXPORT",
-              export_image_format="NONE", export_vertex_color="ACTIVE", export_all_vertex_colors=False,
+              export_image_format="NONE", export_vertex_color="NAME", export_vertex_color_name="Col", export_all_vertex_colors=False,
               export_animations=False, export_cameras=False, export_lights=False, export_extras=False,
               export_skins=False, export_morph=False, export_gpu_instances=True,
-              export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=10,
+              export_draco_mesh_compression_enable=("--no-draco" not in argv), export_draco_mesh_compression_level=10,
               export_draco_position_quantization=14, export_draco_normal_quantization=10,
               export_draco_texcoord_quantization=14, export_draco_color_quantization=8, export_draco_generic_quantization=12)
     try:
@@ -478,6 +484,14 @@ def patch_glb(path, extras):
         for k in ("normalTexture", "occlusionTexture", "emissiveTexture"):
             m.pop(k, None)
         m.pop("extensions", None)
+        if m["name"] == "M_screen":
+            m.pop("alphaMode", None)
+            pbr["baseColorFactor"] = [0, 0, 0, 1]
+            pbr["metallicFactor"] = 0.0
+            pbr["roughnessFactor"] = 1.0
+            m["emissiveFactor"] = [1.0, 1.0, 1.0]
+            m["doubleSided"] = False
+            continue
         if m["name"] == "M_glass":
             m["alphaMode"] = "BLEND"
             pbr["baseColorFactor"] = [0.03, 0.045, 0.05, 0.3]
@@ -519,6 +533,9 @@ def write_manifest(kit, lot, path):
         if d.get("glass"):
             mats[name] = {"kind": "glass"}
             continue
+        if d.get("screen"):
+            mats[name] = {"kind": "screen", "note": "the garden-and-sky view behind interior windows: unlit, COLOR_0 is the colour"}
+            continue
         mats[name] = {"pbr": d["set"], "repeatMeters": [1, 1], "tileMeters": tiles[d["set"]], "vertexColor": True,
                       "roughnessScale": d.get("rough", 1.0), "normalScale": d.get("normal", 1.0), "metal": bool(d.get("metal"))}
     js = {
@@ -529,7 +546,7 @@ def write_manifest(kit, lot, path):
                 "(the tint of the neutral sets), roughness = the ORM's G times roughnessScale. The lot has no maps of its own "
                 "(letters, clock and numerals are geometry). M_glass is the game's glass; lotnight__ nodes take the game's glow.",
         "materials": mats,
-        "pbrSets": sorted({d["set"] for n, d in kit.mats.items() if not d.get("glass") and not n.startswith("PV_")}),
+        "pbrSets": sorted({d["set"] for n, d in kit.mats.items() if not d.get("glass") and not d.get("screen") and not n.startswith("PV_")}),
     }
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as f:
@@ -689,6 +706,146 @@ def run(lot_id, kit_mod, viewdef, prefix, tex_dir):
         write_manifest(kit, lot, manifest)
         export(out, objs, {"caysonverse": "%s (lots v2 B1 kit)" % lot_id, "textures": "lots/%s/%s_textures.json" % (tex_dir, lot_id),
                            "doors": door_extras, "roofSlabs": kit.roof_slabs})
+        report["glb"] = glb_stats(out)
+        log("wrote", out, report["glb"])
+    if REPORT:
+        with open(REPORT, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+    if BLEND:
+        bpy.ops.wm.save_as_mainfile(filepath=BLEND)
+    if RENDERS:
+        os.makedirs(RENDERS, exist_ok=True)
+        render_all(kit, mats, RENDERS, viewdef, prefix)
+    log("done")
+
+
+# ------------------------------------------------------------------------------------------------ walk-in rooms (design 11) --
+
+def room_check(kit, spec, size):
+    """The room's numbers: (1) every corner between 0.3 and 2.2 m high inside the room stands in a solid's rectangle or a
+    seat's box (or outside the room's floor: walls, window reveals, the bay alcove), 1.1 cm tolerance; (2) every seat keeps
+    its 0.6 m front strip clear (0.05 .. 1.8 m) of anything but the floor; (3) the exit pad and the arrival spot are clear."""
+    problems = []
+    tol = 0.011
+    solids = [(s["name"], (s["rect"]["x0"], s["rect"]["x1"], s["rect"]["z0"], s["rect"]["z1"]), s["height"]) for s in spec["solids"]]
+    seats = []
+    for s in spec["seats"]:
+        h, f, b = s["length"] / 2, s["frontEdge"], s["backDepth"]
+        x, z = s["x"], s["z"]
+        box = {"in": (x - h, x + h, z - b, z + f), "out": (x - h, x + h, z - f, z + b), "right": (x - b, x + f, z - h, z + h), "left": (x - f, x + b, z - h, z + h)}[s["faces"]]
+        c = 0.6
+        front = {"in": (x - h, x + h, z + f, z + f + c), "out": (x - h, x + h, z - f - c, z - f), "right": (x + f, x + f + c, z - h, z + h), "left": (x - f - c, x - f, z - h, z + h)}[s["faces"]]
+        # a built-in seat that starts within 0.3 m of a wall reaches back to it (window seats: the platform runs into the bay)
+        box = (box[0] if box[0] > 0.3 else -1.0, box[1] if box[1] < size["x"] - 0.3 else size["x"] + 1.0,
+               box[2] if box[2] > 0.3 else -1.0, box[3] if box[3] < size["z"] - 0.3 else size["z"] + 1.0)
+        seats.append((s["id"], box, front, s["kind"]))
+    zones = [r for _, r, _ in solids] + [b for _, b, _, _ in seats]
+
+    def inside(x, z):
+        # walls and what is fixed flat on them (wainscot, boards, frames: within 6 cm of the wall face) and beyond (reveals)
+        if x < 0.06 or z < 0.06 or x > size["x"] - 0.06 or z > size["z"] - 0.06:
+            return True
+        return any(r[0] - tol <= x <= r[1] + tol and r[2] - tol <= z <= r[3] + tol for r in zones)
+
+    def corners():
+        for m in [kit.S, kit.D, kit.G]:
+            for p in m.polys:
+                for q in p.pts:
+                    yield m.name, q
+        for kind, places in kit.inst.items():
+            pts = {q for p in kit.kinds[kind].polys for q in p.pts}
+            for (x, y, z, yaw) in places:
+                for q in pts:
+                    yield "inst:" + kind, G.rot_y(q, yaw, x, y, z)
+
+    seen = {}
+    for who, q in corners():
+        x, y, z = q
+        if 0.3 < y < 2.2 and not inside(x, z):
+            seen.setdefault(("LOOSE", who), q)
+        for sid, box, front, kind in seats:
+            if kind == "floor":
+                continue
+            if front[0] + tol < x < front[1] - tol and front[2] + tol < z < front[3] - tol and 0.05 < y < 1.8:
+                seen.setdefault(("SEAT-FRONT " + sid, who), q)
+        for (px, pz) in ((spec["doorX"], 0.8), (spec["doorX"], 1.6)):
+            if abs(x - px) < 0.4 and abs(z - pz) < 0.4 and 0.05 < y < 2.0:
+                seen.setdefault(("DOOR-CLEAR", who), q)
+    for (k, who), q in seen.items():
+        problems.append("%s: %s at (%.3f, %.3f, %.3f)" % (k, who, *q))
+    return {"checked": {"solids": len(solids), "seats": len(seats)}, "problems": problems}
+
+
+def run_room(unit_id, kit_mod, viewdef, prefix, tex_dir):
+    """Build a lot's walk-in room (its own GLB `<unit>.glb`, frame at the unit's interior origin): `lotroom__<unit>` with the
+    shell / furniture / goods meshes and instanced kinds, `col__<unit>_<solid>`, `seat__<seat id>`, `door__<unit>_exit`."""
+    global LOT, YAW, CX, CZ
+    for o in list(bpy.data.objects):
+        bpy.data.objects.remove(o)
+    with open(LAYOUT, encoding="utf-8") as f:
+        L = json.load(f)
+    spec = next(i for i in L["interiors"] if i["unit"] == unit_id)
+    lot = next(l for l in L["lots"] if l["id"] == spec["lot"])
+    unit = next(u for u in lot["units"] if u["id"] == unit_id)
+    org, size = unit["interior"]["origin"], unit["interior"]["size"]
+    LOT, YAW, CX, CZ = unit_id, 0.0, org["x"], org["z"]
+    kit = kit_mod.build(spec, unit, L)
+    add_letters(kit)
+    mats = make_materials(kit.mats)
+    objs = []
+    root = obj("lotroom__" + unit_id)
+    objs.append(root)
+    for name, m in (("shell", kit.S), ("furniture", kit.D), ("goods", kit.G)):
+        if m.polys:
+            objs.append(world_obj("lotroom__%s_%s" % (unit_id, name), m, mats, root))
+    inst_tris = 0
+    for kind, places in sorted(kit.inst.items()):
+        grp = obj("lotinst__%s_%s" % (unit_id, kind), None, root)
+        objs.append(grp)
+        me = mesh_data("kind_" + kind, kit.kinds[kind], mats, lambda p: (p[0], -p[2], p[1]))
+        for i, (x, y, z, yaw) in enumerate(places):
+            o = obj("lotinst__%s_%s_%d" % (unit_id, kind, i), me, grp)
+            o.location = l2b((x, y, z))
+            o.rotation_euler = (0.0, 0.0, yaw)
+            objs.append(o)
+        inst_tris += kit.kinds[kind].tris() * len(places)
+    for part, g in sorted(kit.night.items()):
+        objs.append(world_obj("lotnight__%s_%s" % (unit_id, part), g, mats))
+    yaw_of = {"in": 0.0, "out": math.pi, "left": -math.pi / 2, "right": math.pi / 2}
+    for s in spec["seats"]:
+        objs.append(empty("seat__" + s["id"], (CX + s["x"], -(CZ + s["z"]), s["seatTop"]), yaw_of[s["faces"]]))
+    objs.append(empty("door__%s_exit" % unit_id, (CX + spec["doorX"], -CZ, 0.0), math.pi))
+    cube = bpy.data.meshes.new("col_unit_cube")
+    v = [(x, y, z) for x in (-0.5, 0.5) for y in (-0.5, 0.5) for z in (-0.5, 0.5)]
+    cube.from_pydata(v, [], [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)])
+    for s in spec["solids"]:
+        r = s["rect"]
+        o = obj("col__%s_%s" % (unit_id, s["name"]), cube)
+        o.location = (CX + (r["x0"] + r["x1"]) / 2, -(CZ + (r["z0"] + r["z1"]) / 2), s["height"] / 2)
+        o.scale = (r["x1"] - r["x0"], r["z1"] - r["z0"], s["height"])
+        o.hide_render = True
+        o.display_type = "WIRE"
+        objs.append(o)
+    allm = set()
+    for m in [kit.S, kit.D, kit.G] + list(kit.kinds.values()):
+        allm |= {p.mat for p in m.polys}
+    report = {"unit": unit_id, "triangles": kit.S.tris() + kit.D.tris() + kit.G.tris() + inst_tris,
+              "shell": kit.S.tris(), "furniture": kit.D.tris(), "goods": kit.G.tris(), "instanced": inst_tris,
+              "instancedKinds": {k: {"count": len(v), "triangles": kit.kinds[k].tris()} for k, v in sorted(kit.inst.items())},
+              "materials": sorted(allm), "draws": sum(len({p.mat for p in m.polys}) for m in [kit.S, kit.D, kit.G]) + sum(len({p.mat for p in kit.kinds[k].polys}) for k in kit.inst),
+              "budget": spec["budget"]}
+    report["overlap"] = room_check(kit, spec, size)
+    log("room", unit_id, "triangles", report["triangles"], "/", spec["budget"]["pc"]["triangles"], "draws", report["draws"], "materials", len(allm))
+    for p in report["overlap"]["problems"][:150]:
+        log(p)
+    log("room problems:", len(report["overlap"]["problems"]))
+    out = arg("--out", os.path.join(LOTS, unit_id + ".glb"))
+    if "--no-export" not in argv:
+        manifest = os.path.join(LOTS, tex_dir, "%s_textures.json" % unit_id)
+        write_manifest(kit, {"id": unit_id}, manifest)
+        export(out, objs, {"caysonverse": "%s (lots v2 B1 room kit)" % unit_id, "textures": "lots/%s/%s_textures.json" % (tex_dir, unit_id),
+                           "origin": org, "size": size})
         report["glb"] = glb_stats(out)
         log("wrote", out, report["glb"])
     if REPORT:

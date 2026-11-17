@@ -9,12 +9,14 @@ import path from "node:path";
 import { extractColliders, parseGlb, type Gltf } from "../../../scripts/lib/schoolGlb";
 import {
   LOT_GLB_BUDGET,
+  LOT_INTERIORS,
   LOT_SURFACE_RULES,
   LOT_TRIANGLES,
   lotColliders,
   lotDetailNode,
   lotDoorNode,
   lotDoorPoints,
+  lotInteriorDoor,
   lotSeatMarkers,
   lotShellNode,
   lotSlots,
@@ -193,6 +195,62 @@ export function describeLotGlb(id: LotId, dir: string, want: { night: string[]; 
         expect(used, f).toContain(f);
       }
       expect(used.size).toBeLessThanOrEqual(LOT_GLB_BUDGET.pbrSets.maxDistinct);
+    });
+  });
+}
+
+/** A walk-in room's GLB (design 11 / contract 11): `<unit>.glb` in the room frame at the unit's interior origin. */
+export function describeRoomGlb(unitId: string, dir: string): void {
+  const spec = LOT_INTERIORS.find((i) => i.unit === unitId)!;
+  const unit = villageLot(spec.lot).units.find((u) => u.id === unitId)!;
+  const o = unit.interior.origin;
+  describe(`${unitId}.glb (lots v2 B1 room)`, () => {
+    const load2 = () => {
+      const f = path.join(LOTS, `${unitId}.glb`);
+      return { g: parseGlb(new Uint8Array(fs.readFileSync(f))).gltf, bytes: fs.statSync(f).size };
+    };
+    it("has the room node, every solid as a collider to the centimetre, the seats and the exit (T14)", () => {
+      const { g } = load2();
+      node(g, `lotroom__${unitId}`);
+      const { colliders, problems } = extractColliders(g);
+      expect(problems).toEqual([]);
+      expect(colliders.map((c) => c.name).sort()).toEqual(spec.solids.map((s) => `col__${unitId}_${s.name}`).sort());
+      for (const s of spec.solids) {
+        const got = colliders.find((c) => c.name === `col__${unitId}_${s.name}`)!;
+        expect(got.box.minX, s.name).toBeCloseTo(o.x + s.rect.x0, 2);
+        expect(got.box.maxX, s.name).toBeCloseTo(o.x + s.rect.x1, 2);
+        expect(got.box.minZ, s.name).toBeCloseTo(o.z + s.rect.z0, 2);
+        expect(got.box.maxZ, s.name).toBeCloseTo(o.z + s.rect.z1, 2);
+        const n = node(g, `col__${unitId}_${s.name}`);
+        expect(n.translation![1]! + n.scale![1]! / 2, s.name).toBeCloseTo(s.height, 2);
+      }
+      for (const s of spec.seats) {
+        const t = node(g, `seat__${s.id}`).translation!;
+        expect(close(t[0]!, o.x + s.x) && close(t[2]!, o.z + s.z) && close(t[1]!, s.seatTop), s.id).toBe(true);
+      }
+      const d = lotInteriorDoor(spec);
+      const t = node(g, d.node).translation!;
+      expect(close(t[0]!, o.x + spec.doorX) && close(t[2]!, o.z), d.node).toBe(true);
+    });
+
+    it("stays in the room's budget, no images, KTX2 library sets only", () => {
+      const { g, bytes } = load2();
+      let tris = 0;
+      const root = g.nodes!.findIndex((n) => n.name === `lotroom__${unitId}`);
+      tris = drawnTris(g, root);
+      expect(tris).toBeLessThanOrEqual(spec.budget.pc.triangles);
+      expect(g.images ?? []).toHaveLength(0);
+      expect(bytes).toBeLessThanOrEqual(1024 * 1024);
+      const man = JSON.parse(fs.readFileSync(path.join(LOTS, dir, `${unitId}_textures.json`), "utf8")) as Manifest;
+      const ids = pbrIds();
+      for (const name of g.materials!.map((m) => m.name!)) {
+        const m = man.materials[name];
+        expect(m, name).toBeDefined();
+        if (m!.kind === "glass" || m!.kind === "screen") continue;
+        expect(ids.has(m!.pbr!), name).toBe(true);
+        expect(fs.existsSync(path.join(PBR, "1k", `${m!.pbr}_albedo.ktx2`))).toBe(true);
+      }
+      for (const n of g.nodes!.map((q) => q.name ?? "")) expect(n).not.toMatch(MONEY);
     });
   });
 }
