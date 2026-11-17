@@ -42,6 +42,7 @@ TEXDIR = arg("--tex", os.path.join(REPO, "client", "public", "models", "village"
 WINDOWS = arg("--windows", os.path.join(REPO, "shared", "src", "village", "generated", "exterior_windows.json"))
 OUT = arg("--out", os.path.join(REPO, "client", "public", "models", "village", "village_houses.glb"))
 TABLE_OUT = arg("--table-out")
+BOXES_OUT = arg("--boxes-out")
 REPORT = arg("--report")
 ONLY = arg("--houses")
 RENDERS = arg("--renders")
@@ -510,6 +511,24 @@ def main():
             json.dump({"format": "caysonverse-exterior-windows", "version": 1, "source": "build", "houses": houses}, f, indent=2)
             f.write("\n")
         log("window table", TABLE_OUT)
+    if BOXES_OUT:
+        # the window boxes' and baskets' soil (world, game axes) for the village vegetation: the 3D geraniums grow there
+        out = {}
+        for hid in ids:
+            H = built[hid]
+            hx = hxs[hid]
+            c = (hx["centre"]["x"], hx["centre"]["z"])
+            rows = []
+            for bx in getattr(H, "window_boxes", []):
+                p0 = K.local_to_world(c, hx["doorSide"], bx["x0"], bx["z0"])
+                p1 = K.local_to_world(c, hx["doorSide"], bx["x1"], bx["z1"])
+                rows.append({"x0": round(min(p0[0], p1[0]), 3), "x1": round(max(p0[0], p1[0]), 3), "z0": round(min(p0[1], p1[1]), 3),
+                             "z1": round(max(p0[1], p1[1]), 3), "y": round(bx["y"], 3)})
+            out[hid] = rows
+        with open(BOXES_OUT, "w", encoding="utf-8", newline="\n") as f:
+            json.dump({"format": "caysonverse-house-flower-boxes", "version": 1, "houses": out}, f, indent=1)
+            f.write("\n")
+        log("flower boxes", BOXES_OUT, sum(len(v) for v in out.values()))
     if REPORT:
         with open(REPORT, "w", encoding="utf-8", newline="\n") as f:
             json.dump(report, f, indent=2)

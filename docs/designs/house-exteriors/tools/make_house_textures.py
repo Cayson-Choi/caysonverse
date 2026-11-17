@@ -227,6 +227,102 @@ def set_pvc(src):
     return neutral(alb, 0.86, contrast=1.3)[512:], normal_strength(nor[512:].copy(), 0.8), rough_remap(rou[512:], 0.36, 1.0)
 
 
+# ------------------------------------------------------------------------------- Colmar sets (2026-11-17) --
+# Owner 2026-11-17 (Colmar Petite Venise photo): a storybook Alsatian village, half-timbered, every house brand new.
+
+TILE_ROWS = 14
+TILE_M = 2.0                  # 1024 px = 2 m: 512 px/m; 14 courses of 0.1429 m, 11 tiles of 0.1818 m per row
+
+
+def set_tile(src):
+    """Biberschwanz (beaver-tail) clay tiles, new: 11 tiles of 18 cm per 2 m row, rounded (segmental) butt ends, each course
+    shifted half a tile (double-lap), between the round ends the course below in shadow, per-tile tone (orange to red-brown,
+    as a new kiln batch varies), fine fired-clay grain with the plaster scan's micro relief. Each modelled course maps ONE row."""
+    rng = np.random.default_rng(23)
+    H = W = N
+    rh = H / TILE_ROWS
+    tw = W / 11.0
+    d = os.path.join(src, "Plaster001", "Plaster001_2K-JPG_")
+    micro = resize(load(d + "NormalGL.jpg"), N)
+    grain = blur(rng.standard_normal((H, W)).astype(np.float32), 1) * 0.5 + rng.standard_normal((H, W)).astype(np.float32) * 0.25
+    alb = np.zeros((H, W, 3), np.float32)
+    height = np.zeros((H, W), np.float32)
+    rough = np.zeros((H, W), np.float32)
+    xx = np.arange(W, dtype=np.float32)
+    clay = [np.array(c, np.float32) for c in ((0.80, 0.34, 0.17), (0.74, 0.29, 0.15), (0.85, 0.40, 0.20), (0.69, 0.27, 0.16),
+                                             (0.80, 0.37, 0.22))]
+    for r in range(TILE_ROWS):
+        y0, y1 = int(round(r * rh)), int(round((r + 1) * rh))
+        off = (r % 2) * tw * 0.5 + rng.uniform(-3, 3)
+        ys = np.arange(y0, y1, dtype=np.float32)
+        t = (ys - y0) / (y1 - y0)                                  # 0 at the row's top (under the course above), 1 at the butt
+        for k in range(12):
+            xa = (off + k * tw) % W
+            cols = (xx - xa) % W
+            sel = cols < tw - 1.5                                  # 1.5 px between tiles
+            c = clay[rng.integers(len(clay))] * (1 + rng.normal(0, 0.04))
+            u = (cols[sel] / tw) * 2 - 1                           # -1 .. 1 across the tile
+            arc = 1 - 0.22 * (u ** 2)                              # the rounded butt (row fraction; 1 = the row's bottom)
+            inside = t[:, None] <= arc[None, :]
+            block = np.where(inside[..., None], c[None, None, :], (c * 0.38)[None, None, :])
+            sub_a = alb[y0:y1]
+            sub_a[:, sel] = block
+            h = np.where(inside, 0.55 + 0.25 * t[:, None] - np.clip(np.abs(u) - 0.85, 0, 1)[None, :], 0.12)
+            sub_h = height[y0:y1]
+            sub_h[:, sel] = h
+            sub_r = rough[y0:y1]
+            sub_r[:, sel] = np.where(inside, 0.62 + rng.normal(0, 0.03), 0.8)
+        sh = np.clip(1 - (np.arange(y1 - y0) / (rh * 0.26)), 0, 1) ** 1.6
+        alb[y0:y1] *= (1 - 0.45 * sh)[:, None, None]
+        height[y0:y1] -= (0.18 * sh)[:, None]
+    alb = np.clip(alb * (1 + grain[..., None] * 0.08), 0, 1)
+    nor = height_to_normal(height + grain * 0.02, 6.0) * 2 - 1
+    m = micro * 2 - 1
+    v = np.stack([nor[..., 0] + m[..., 0] * 0.6, nor[..., 1] + m[..., 1] * 0.6, nor[..., 2]], -1)
+    v /= np.linalg.norm(v, axis=-1, keepdims=True)
+    rough = np.clip(rough + grain * 0.03, 0.4, 0.95)
+    return alb, v * 0.5 + 0.5, rough
+
+
+def set_sandstone(src):
+    """Dressed Vosges sandstone, new: the plinths, sills, door surrounds, quoins and steps of Alsace. Neutral warm-light so a
+    pink or a buff stone is a tint: fine sand grain, faint bedding laminae along U; relief from the granite scan's fine pitting
+    (CC0) softened, no weathering."""
+    rng = np.random.default_rng(31)
+    d = os.path.join(src, "Granite005A", "Granite005A_2K-JPG_")
+    nor = normal_strength(resize(load(d + "NormalGL.jpg"), N), 0.55)
+    g = rng.standard_normal((N, N)).astype(np.float32)
+    fine = g * 0.35 + blur(g, 1) * 0.9
+    lam = np.cumsum(blur(rng.standard_normal((N, N)).astype(np.float32), 2), axis=1)
+    lam = blur((lam - lam.mean(1, keepdims=True)) / (lam.std() + 1e-4), 3) * 0.6
+    broad = blur(blur(rng.standard_normal((N, N)).astype(np.float32), 24), 24)
+    broad = broad / (np.abs(broad).max() + 1e-4)
+    lum = 0.66 * (1 + fine * 0.035 + lam * 0.025 + broad * 0.03)
+    base = np.array([1.0, 0.93, 0.86], np.float32)
+    alb = l2s(np.clip(s2l(lum)[..., None] * base, 0, 1))
+    h = (fine - fine.min()) / (fine.max() - fine.min())
+    m = height_to_normal(h, 1.6) * 2 - 1
+    n = nor * 2 - 1
+    v = np.stack([n[..., 0] + m[..., 0], n[..., 1] + m[..., 1], n[..., 2]], -1)
+    v /= np.linalg.norm(v, axis=-1, keepdims=True)
+    rou = np.clip(0.80 + fine * 0.03, 0.6, 0.95)
+    return alb, v * 0.5 + 0.5, rou
+
+
+def set_painted_boards(src):
+    """Painted boards (shutters, plank doors, soffits, porch ceilings): the cedar scan's boards and joints with its colour taken
+    out (a bright neutral that the paint colour tints) and a satin paint's smoother sheen, new."""
+    p = os.path.join(src, "japanese_cedar_planks_")
+    alb = np.rot90(resize(load(p + "diff_2k.jpg"), N), 1)
+    nor = rot_normal(np.rot90(resize(load(p + "nor_gl_2k.jpg"), N), 1))
+    lin = fresh(s2l(alb), 40, keep=0.2)
+    lum = lin @ LUMA
+    r = lum / lum.mean()
+    a = l2s(np.clip(0.80 * (1 + (r - 1) * 0.35), 0, 1))[..., None].repeat(3, -1)
+    rou = np.full((N, N), 0.42, np.float32) + (1 - r) * 0.05
+    return a[:512], normal_strength(nor[:512].copy(), 0.9), np.clip(rou[:512], 0.3, 0.6)
+
+
 def save(out, name, alb, nor, rou):
     os.makedirs(out, exist_ok=True)
     files = {}
@@ -241,12 +337,12 @@ def save(out, name, alb, nor, rou):
 # metres of surface per whole texture width (U); band V ranges in Blender UV (v = 0 at the image's bottom)
 LAYOUT = {
     "LM_render": {"sets": ["render"], "u_m": 2.0, "v_m": 2.0},
-    "LM_stone": {"sets": ["granite"], "u_m": 1.0, "v_m": 1.0},
-    "LM_roof": {"sets": ["shingle"], "u_m": TILE_SHINGLE_M, "rows": SHINGLE_ROWS, "exposure_m": TILE_SHINGLE_M / SHINGLE_ROWS},
-    "LM_wood": {"sets": ["oak", "timber_cladding"],
+    "LM_stone": {"sets": ["sandstone"], "u_m": 1.0, "v_m": 1.0},
+    "LM_roof": {"sets": ["clay_tile"], "u_m": TILE_M, "rows": TILE_ROWS, "exposure_m": TILE_M / TILE_ROWS},
+    "LM_wood": {"sets": ["oak", "painted_boards"],
                 "bands": {"oak": {"v0": 0.5, "v1": 1.0, "u_m": 1.83, "v_m": 0.915},
                           "timber_cladding": {"v0": 0.0, "v1": 0.5, "u_m": 1.13, "v_m": 0.565}}},
-    "LM_metal": {"sets": ["metal_painted", "pvc_frame"],
+    "LM_metal": {"sets": ["iron", "painted_frame"],
                  "bands": {"metal_painted": {"v0": 0.5, "v1": 1.0, "u_m": 1.0, "v_m": 0.5},
                            "pvc_frame": {"v0": 0.0, "v1": 0.5, "u_m": 1.0, "v_m": 0.5}}},
 }
@@ -259,9 +355,9 @@ def main():
     a = ap.parse_args()
     out = {
         "LM_render": save(a.out, "render", *set_render(a.src)),
-        "LM_stone": save(a.out, "granite", *set_granite(a.src)),
-        "LM_roof": save(a.out, "shingle", *set_shingle(a.src)),
-        "LM_wood": save(a.out, "wood", *band_pair(set_oak(a.src), set_cedar(a.src))),
+        "LM_stone": save(a.out, "sandstone", *set_sandstone(a.src)),
+        "LM_roof": save(a.out, "tile", *set_tile(a.src)),
+        "LM_wood": save(a.out, "wood", *band_pair(set_oak(a.src), set_painted_boards(a.src))),
         "LM_metal": save(a.out, "metal", *band_pair(set_metal(a.src), set_pvc(a.src))),
     }
     total = sum(os.path.getsize(os.path.join(a.out, f)) for m in out.values() for f in m.values())

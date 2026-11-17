@@ -57,11 +57,15 @@ LPG_MIRROR = ("house_10",)
 FLUSH = {"house_3": (5.6, 7.6, -2.005, 3.125), "house_9": (-3.0, 3.0, -7.375, -5.355)}
 SLOTS = {"nameplate": (1.45, 3.145, 1.90, 0.42, 0.16), "mailbox": (-1.55, 3.325, 1.45, 0.20, 0.06),
          "sign": (4.2, 4.775, 0.925, 0.90, 0.55)}
+# 2026-11-17: the Colmar dress (house_kit.STYLE): the deck houses get a sandstone terrace (Porch.terrace); LM_stone is the
+# sandstone set now, so every "granite" part of the porches (slabs, steps, kerbs, beds) is sandstone, tinted per house
+COLMAR = True
 # the front door (house_kit.door): leaves hinged on the inner jamb faces x +-0.83, 0.14 m inside the wall, 0.826 wide
 DOOR = dict(hinge=0.83, leaf=0.826, d=0.14, t=0.028, y0=FL + 0.015, y1=FL + 2.9 - 0.074, max_deg=95.0)
 # a canopy of glass on steel arms instead of the design's box canopy on house 8 (X2 decision: the brief's glass /
 # polycarbonate canopy, on the most modern of the three canopy houses)
-GLASS_CANOPY = ("house_8",)
+# Colmar (2026-11-17): no glass canopy (house 8 takes the box canopy in its beam colour, as 3 and 4)
+GLASS_CANOPY = () if COLMAR else ("house_8",)
 
 GRANITE = (1.0, 1.0, 1.0, 1.0)
 JOINT = mul(GRANITE, 0.42)
@@ -88,6 +92,11 @@ class Porch:
         self.shell0 = H.shell.tris()
         self.detail0 = H.detail.tris()
         self.dark_trim = H.spec["fascia"] == "dark"
+        if COLMAR:
+            # the porch's stone is the house's sandstone (pink or buff), the colour every "granite" part takes
+            global GRANITE, JOINT
+            GRANITE = tuple(H.trim)
+            JOINT = mul(GRANITE, 0.42)
 
     # ---------------------------------------------------------------------------------------------- helpers --
     def reg(self, name, group, role, x0, x1, y0, y1, z0, z1, col=None):
@@ -157,7 +166,7 @@ class Porch:
         k = self.kind
         self.cost = {}
         if k == "deck":
-            self.run("deck", self.deck_porch)
+            self.run("deck", self.terrace if COLMAR else self.deck_porch)
         else:
             self.run("porch", self.stone_porch)
         if k == "gable":
@@ -259,6 +268,54 @@ class Porch:
                 xa, xb = sorted((sgn * hst, sgn * hs))
                 self.sbox(de, "kerb_%d" % i, "kerb_%d" % i, "col", xa, xb, FL, FL + 0.08, HZ - KERB, HZ, "granite", mul(GRANITE, 0.97),
                           skip=("bot",), along="x", col="porch_%d" % (3 + i))
+
+    # ------------------------------------------------------------------------ Colmar terrace (2026-11-17) --
+    def terrace(self):
+        """Houses 2, 9, 10 in the Colmar dress (owner 2026-11-17: porches and decks may become stone steps with flower pots
+        and a bench): the deck's rectangles as a sandstone terrace — the paved slab (+0.30), the two sandstone steps and the
+        kerb band beside them (stone_porch), four sandstone pillars in the posts' colliders with a terracotta pot of
+        geraniums on each, a low wrought-iron railing on the kerbs (in porch_3 / porch_4), and the oak bench."""
+        de = self.de
+        self.stone_porch()
+        stone = GRANITE
+        iron = lin("#2A2A2C")
+        pz = self.spec["pz"]
+        for i, px in enumerate(self.spec["posts"]):
+            cid = "porch_%d" % (5 + i)
+            grp = "pillar_%d" % i
+            h = 0.11
+            self.sbox(de, "pillar", grp, "col", px - h, px + h, FL, 0.95, pz - h, pz + h, "granite", stone, skip=("bot",), along="y",
+                      col=cid)
+            self.sbox(de, "pillarcap", grp, "col", px - 0.114, px + 0.114, 0.95, 1.0, pz - 0.114, pz + 0.114, "granite", mul(stone, 1.04),
+                      along="x", col=cid)
+            # a terracotta pot on the cap and its geraniums (planting card: the game grows them)
+            n = 6
+            for kk in range(n):
+                a0, a1 = 2 * math.pi * kk / n, 2 * math.pi * (kk + 1) / n
+                r0, r1 = 0.075, 0.10
+                q = [(px + r0 * math.cos(a0), 1.0, pz + r0 * math.sin(a0)), (px + r0 * math.cos(a1), 1.0, pz + r0 * math.sin(a1)),
+                     (px + r1 * math.cos(a1), 1.17, pz + r1 * math.sin(a1)), (px + r1 * math.cos(a0), 1.17, pz + r1 * math.sin(a0))]
+                face(de, q, "granite", lin("#C8653E"), (math.cos((a0 + a1) / 2), 0, math.sin((a0 + a1) / 2)), uax=UP)
+            self.quad(de, [(px - 0.09, 1.155, pz - 0.09), (px + 0.09, 1.155, pz - 0.09), (px + 0.09, 1.155, pz + 0.09),
+                           (px - 0.09, 1.155, pz + 0.09)], "granite", lin("#4A3A2E"), UP)
+            self.reg("pot", grp, "col", px - 0.10, px + 0.10, 1.0, 1.17, pz - 0.10, pz + 0.10, col=cid)
+            self.card(px, pz, 1.155, 0.26, 0.28, self.rng.uniform(0, math.pi), 0, lin(self.rng.choice(["#E5323C", "#F0506E"])))
+            self.reg("plant", "plant", "col", px - 0.114, px + 0.114, 1.155, 1.50, pz - 0.114, pz + 0.114, col=cid)
+        # the railing on the kerbs beside the steps: a top rail, a bottom rail, round bars with a scroll at the middle
+        for sgn in (-1, 1):
+            xa, xb = (1.25, 3.35) if sgn > 0 else (-3.35, -1.25)
+            grp = "rail_%d" % (0 if sgn < 0 else 1)
+            cid = "porch_%d" % (3 if sgn < 0 else 4)
+            zc = HZ - KERB / 2
+            self.sbox(de, "toprail", grp, "col", xa, xb, 0.92, 0.95, zc - 0.02, zc + 0.02, "metal_painted", iron, along="x", col=cid)
+            self.sbox(de, "botrail", grp, "col", xa, xb, FL + 0.10, FL + 0.125, zc - 0.012, zc + 0.012, "metal_painted", iron,
+                      along="x", col=cid)
+            nb = int((xb - xa) / 0.19)
+            for k in range(1, nb):
+                bx = xa + k * (xb - xa) / nb
+                self.sbox(de, "bar", grp, "col", bx - 0.008, bx + 0.008, FL + 0.125, 0.92, zc - 0.008, zc + 0.008, "metal_painted",
+                          iron, skip=("top", "bot"), along="y", col=cid)
+        self.bench(lin("#B07E5C"))
 
     # --------------------------------------------------------------------------------------------- deck porch --
     def deck_porch(self):
@@ -627,7 +684,7 @@ class Porch:
         """Houses 3, 4: a steel box canopy 0.18 thick over the door (dark powder-coated fascia, a membrane top falling to a
         spout, cedar soffit with two downlights), on two wall brackets; house 4 also hangs on two steel tie rods."""
         de = self.de
-        dark = lin("#33363A")
+        dark = self.H.fascia if COLMAR else lin("#33363A")       # Colmar: the house's beam colour (painted)
         x0, x1, z1 = -1.85, 1.85, ZF + 1.6
         y0, y1 = 3.50, 3.68
         g = "canopy"

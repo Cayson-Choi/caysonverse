@@ -21,3 +21,13 @@ No new texture sets (the seven sets are at the 3 MB budget): the porch, steps, b
 the sets above, tinted per part. The flower / vegetable cards use the village's own procedural `T_flora` atlas
 (`docs/handoff/art-tools/make_textures.py`, no third-party pixels) through village.glb's `M_leaf_flora`. The porch reference
 photos (other people's) stay in `art/village/refs/exterior_x2/` with their `SOURCES.txt`, never committed.
+
+## Colmar dress (2026-11-17)
+| Set | Material | Source | Licence |
+|---|---|---|---|
+| clay_tile (Biberschwanz) | LM_roof | procedural (numpy, `set_tile`); micro relief from ambientCG Plaster001's normal | CC0 1.0 |
+| sandstone (Vosges) | LM_stone | procedural grain and laminae; fine pitting from ambientCG Granite005A's normal | CC0 1.0 |
+| painted_boards | LM_wood (bottom band) | Poly Haven japanese_cedar_planks (boards and joints), colour removed | CC0 1.0 |
+
+The Colmar / Riquewihr / Eguisheim / Kaysersberg photos the dress was designed from (28, Wikimedia Commons, CC BY-SA, found
+in one Aside session) are listed in `art/village/refs/colmar/SOURCES.txt` and stay out of the repository.

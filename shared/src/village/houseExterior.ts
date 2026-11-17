@@ -42,8 +42,8 @@ export const HOUSE_A8 = Object.freeze({
   /** Front door: 1.8 x 2.9 glass double door, centred on the body (local x +-0.9), in the front wall. */
   doorHalfWidth: 0.9,
   doorHeight: 2.9,
-  /** The house's camera box (the body's solid box), as tall as the ridge plus the lift with room to spare. */
-  cameraHeight: 12,
+  /** The house's camera box (the body's solid box), as tall as the ridge: 14.5 since the Colmar roofs (2026-11-17: 45-50 degrees, ridge tiles at ~14.3 m). */
+  cameraHeight: 14.5,
 });
 
 const R2 = (v: number): number => Math.round(v * 100) / 100;
@@ -381,9 +381,9 @@ export function houseProxyNode(houseId: string): string {
 export const HOUSE_GLB_BUDGET = Object.freeze({
   file: "village_houses.glb",
   maxBytes: 1.2 * 1024 * 1024,
-  shellTriangles: 1_800,
+  shellTriangles: 2_700,
   detailTriangles: 6_000,
-  totalTriangles: 78_000,
+  totalTriangles: 87_000,
   maxMaterials: 10,
   materials: Object.freeze(["LM_render", "LM_roof", "LM_stone", "LM_wood", "LM_metal", "M_glass", "M_window", "M_lamp", "M_leaf_flora", "M_screen"]),
   maxTextureSide: 2048,
@@ -433,7 +433,7 @@ export const HOUSE_SURFACE_RULES = Object.freeze({
   texelsPerMetre: Object.freeze({ firstPerson: 512, far: 256 }),
   firstPersonMaxHeight: 3.5,
   /** One tiling set per surface family, each map <= `mapSide` px, WebP (normal: lossless or q >= 90). */
-  sets: Object.freeze(["render", "granite", "shingle", "oak", "pvc_frame", "metal_painted", "timber_cladding"] as const),
+  sets: Object.freeze(["render", "sandstone", "clay_tile", "oak", "painted_boards", "iron", "painted_frame"] as const),
   mapSide: 1024,
   /** Download budget of all the houses' sets together (all maps), so the first visit stays within design 5.1 D3. */
   setsMaxBytes: 3 * 1024 * 1024,

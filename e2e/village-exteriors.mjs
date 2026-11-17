@@ -7,7 +7,7 @@
  *   server:  PORT=3100 npx tsx src/index.ts            (in server/)
  *   client:  VITE_SERVER_URL=http://localhost:3100 npx vite --port 5700 --strictPort   (in client/)
  *   CV_CLIENT_URL=http://localhost:5700 node e2e/village-exteriors.mjs [--out=<dir>] [--tag=after] [--old]
- *        [--times=12:30,17:20,21:30] [--devices=desktop,phone] [--houses=1,..,10] [--views=street,aerial]
+ *        [--times=12:30,17:20,21:30] [--devices=desktop,phone] [--houses=1,..,10] [--views=street,aerial,door,window,upper]
  */
 import { join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -66,6 +66,21 @@ function shotFor(h, n, view) {
     const [x, z] = local(h, -14, ZF + 16);
     const [tx, tz] = local(h, 0, 0);
     return { x, y: 17, z, tx, ty: 2.5, tz, fov: 50 };
+  }
+  if (view === "door") {
+    const [x, z] = local(h, 0.6, ZF + 1.7);
+    const [tx, tz] = local(h, 0.0, ZF);
+    return { x, y: 1.95, z, tx, ty: 1.9, tz, fov: 62 };
+  }
+  if (view === "window") {
+    const [x, z] = local(h, -2.5, ZF + 1.35);
+    const [tx, tz] = local(h, -3.3, ZF);
+    return { x, y: 1.95, z, tx, ty: 1.85, tz, fov: 62 };
+  }
+  if (view === "upper") {
+    const [x, z] = local(h, -1.8, ZF + 6.5);
+    const [tx, tz] = local(h, 0.0, ZF);
+    return { x, y: 1.6, z, tx, ty: 6.0, tz, fov: 58 };
   }
   const d = NEAR[n];
   const [x, z] = d ? local(h, -0.45 * d, ZF + d) : local(h, -7.5, ZF + 13.5);

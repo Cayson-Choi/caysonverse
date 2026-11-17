@@ -45,6 +45,7 @@ import { removePlazaZelkova, zelkovaSkeleton } from "./zelkova";
 import { TriangleGrid, faceNormal, openEdges, type DrawnGap, type V3 } from "./drawnGap";
 import { PLAZA_BEDS, placeFlowers, SPECIES_COUNT, linearHex, type Plant } from "./flowerPlacement";
 import { a8TreeShift, housesMode, makeHouseGrounds } from "../houses/housesPrep";
+import { houseFlowerBoxBeds } from "../houses/houseFlowerBoxes";
 import { keepTriangles, readCards, type AttributeLike, type Card } from "./vegCards";
 import { makeBlossomAtlas } from "./vegAtlas";
 import { GeoBuilder, blossomBunch, bunchSprite, leafSpray, willowSpray } from "./vegGeometry";
@@ -684,7 +685,9 @@ export class VillageVegetation {
     if (await step("cards")) return v.abandon();
     // the houses' own model (집 외관 A8) takes the old porches' beds and the new footprints: no flowers or soil planted there
     const houseGrounds = housesMode() === "new" && !options.flowersOnly ? makeHouseGrounds() : null;
-    const placed = placeFlowers(houseGrounds ? allCards.filter((c) => !houseGrounds((c.ax + c.bx) / 2, (c.az + c.bz) / 2)) : allCards);
+    // the houses' own file (flowersOnly): their window boxes and baskets are beds too (geraniums, spilling over the rims)
+    const beds = options.flowersOnly ? [...PLAZA_BEDS, ...houseFlowerBoxBeds()] : PLAZA_BEDS;
+    const placed = placeFlowers(houseGrounds ? allCards.filter((c) => !houseGrounds((c.ax + c.bx) / 2, (c.az + c.bz) / 2)) : allCards, beds);
     // the beds' soil (vegSoil.ts, 2026-11-16 plants2): built round the placed plants, and the plants set on it
     const soil = buildSoil(placed.plants);
     for (const p of placed.plants) {

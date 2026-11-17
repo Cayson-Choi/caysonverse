@@ -1126,9 +1126,22 @@ def vent(H, W, u, y):
                     (u + sx * hw, y - hy, -0.012)], "metal_painted", mul(st, 0.9), (sx, 0, 0))
 
 
+# 2026-11-17 (owner, the Colmar Petite Venise photo): the houses are dressed as Alsatian half-timbered houses (colmar_kit.py);
+# "modern" keeps the 2026-11-16 body (stucco, PVC, shingles) for the before / after renders
+STYLE = "colmar"
+
+
 def build_house(hid, colour, windows, seed):
     H = House(hid, colour, seed, windows)
     H.lit = lit_choice(H)
+    if STYLE == "colmar":
+        import colmar_kit
+        C = colmar_kit.COLORS[hid]
+        H.spec = dict(H.spec, roof_tint=colmar_kit.TILE[C["tile"]], fascia="dark", frame="white")
+        H.fascia = lin(C["beam"])
+        H.trim = lin(colmar_kit.STONE[C["stone"]])
+        H.colmar = colmar_kit.build(H)
+        return H
     body(H, H.lit)
     roof(H)
     chimney(H)

@@ -11,7 +11,8 @@
                or the body kit's parts near it (sills, mouldings, belt course, down pipes, splash blocks, vents);
   C7 door      the front door's two leaves, swung 0..95 degrees (they stop on the reveal), with their bar pulls and the
                lock, keep >= 5 cm from every solid (owner 2026-11-17: "자동문이 주위의 물체와 겹치잖아 제발 좀 꼼꼼하게 확인해");
-  C8 budget    shell <= 1,800, detail <= 6,000 and <= 6 materials, the shells' materials unchanged, total <= 78k;
+  C8 budget    shell <= 2,700 (Colmar, 2026-11-17), detail <= 6,000 and <= 6 materials, the shells' materials unchanged,
+               total <= 87k;
   C9 texels    every textured porch face below 3.5 m >= 512 px/m, above >= 256 px/m (contract 6).
 
   python docs/designs/house-exteriors/tools/check_porch.py [--layout art/village/layout.json] [--out <report.json>]
@@ -343,7 +344,12 @@ def check_house(hx, colour, windows, seed):
                 fails.append("C6 %s/%s %s x %s/%s %s" % (S[i]["group"], S[i]["name"], fmt(S[i]["box"]), S[j]["group"], S[j]["name"],
                                                           fmt(S[j]["box"])))
     bb, _ = body_boxes()
-    xp = x1_parts(windows)
+    # the Colmar dress (2026-11-17): the body's own fittings as built (shutters, boxes, sills, door surround, arches, signs,
+    # baskets, down pipes), and a jettied upper front
+    xp = [(sd["name"], sd["box"]) for sd in getattr(H, "solids", [])] or x1_parts(windows)
+    C = getattr(H, "colmar", None)
+    if C is not None and C.J > 0:
+        bb = bb + [("jetty", (-K.HB - 0.03, K.HB + 0.03, K.FL + K.STOREY - 0.40, K.WT, K.ZF, K.ZF + C.J + 0.05))]
     for s in S:
         if s["role"] == "pierce":
             continue
@@ -369,8 +375,8 @@ def check_house(hx, colour, windows, seed):
         fails.append("C7 door %s within %.3f m of %s" % (best[2], best[0], best[1]))
     # ---- C8: budgets
     st, dt = H.shell.tris(), H.detail.tris()
-    if st > 1800:
-        fails.append("C8 shell %d > 1800" % st)
+    if st > 2700:
+        fails.append("C8 shell %d > 2700" % st)
     if dt > 6000:
         fails.append("C8 detail %d > 6000" % dt)
     dm = H.detail.mats()
@@ -444,7 +450,7 @@ def main():
         for f in rep["fails"][:12]:
             print("   ", f)
     report["totalTriangles"] = total
-    if total > 78000:
+    if total > 87000:
         bad += 1
         print("total %d > 78000" % total)
     report["pass"] = bad == 0

@@ -5,17 +5,16 @@
   "house_1": {
    "kind": "gable",
    "shell": {
-    "body": 1636,
+    "body": 2228,
     "porch": 154,
-    "total": 1790
+    "total": 2382
    },
    "detail": {
-    "body": 3026,
+    "body": 3378,
     "porch": 1720,
-    "total": 4746
+    "total": 5098
    },
    "shellMaterials": [
-    "LM_metal",
     "LM_render",
     "LM_roof",
     "LM_stone",
@@ -32,8 +31,8 @@
     "M_screen"
    ],
    "doorClearance": {
-    "metres": 0.314,
-    "nearest": "nameplate/np_back",
+    "metres": 0.058,
+    "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
    "solids": 268,
@@ -202,17 +201,16 @@
   "house_2": {
    "kind": "deck",
    "shell": {
-    "body": 1638,
-    "porch": 40,
-    "total": 1678
+    "body": 2278,
+    "porch": 50,
+    "total": 2328
    },
    "detail": {
-    "body": 3026,
-    "porch": 2878,
-    "total": 5904
+    "body": 3820,
+    "porch": 1906,
+    "total": 5726
    },
    "shellMaterials": [
-    "LM_metal",
     "LM_render",
     "LM_roof",
     "LM_stone",
@@ -229,15 +227,15 @@
     "M_screen"
    ],
    "doorClearance": {
-    "metres": 0.314,
-    "nearest": "nameplate/np_back",
+    "metres": 0.058,
+    "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
-   "solids": 252,
+   "solids": 240,
    "cost": {
     "deck": {
-     "shell": 28,
-     "detail": 1564
+     "shell": 38,
+     "detail": 592
     },
     "beds": {
      "shell": 4,
@@ -337,12 +335,12 @@
       5.375
      ],
      "solids": [
-      -3.398,
-      -1.202,
-      0.005,
-      1.145,
-      5.279,
-      5.373
+      -3.4,
+      -1.2,
+      0.3,
+      0.95,
+      5.275,
+      5.375
      ]
     },
     "porch_4": {
@@ -353,12 +351,12 @@
       5.375
      ],
      "solids": [
-      1.202,
-      3.398,
-      0.005,
-      1.145,
-      5.279,
-      5.373
+      1.2,
+      3.4,
+      0.3,
+      0.95,
+      5.275,
+      5.375
      ]
     },
     "porch_5": {
@@ -369,12 +367,12 @@
       5.275
      ],
      "solids": [
-      -3.37,
-      -3.19,
+      -3.394,
+      -3.166,
       0.3,
-      1.2,
-      5.115,
-      5.275
+      1.5,
+      5.041,
+      5.269
      ]
     },
     "porch_6": {
@@ -385,12 +383,12 @@
       5.275
      ],
      "solids": [
-      -1.665,
-      -1.485,
+      -1.689,
+      -1.461,
       0.3,
-      1.2,
-      5.115,
-      5.275
+      1.5,
+      5.041,
+      5.269
      ]
     },
     "porch_7": {
@@ -401,12 +399,12 @@
       5.275
      ],
      "solids": [
-      1.485,
-      1.665,
+      1.461,
+      1.689,
       0.3,
-      1.2,
-      5.115,
-      5.275
+      1.5,
+      5.041,
+      5.269
      ]
     },
     "porch_8": {
@@ -417,12 +415,12 @@
       5.275
      ],
      "solids": [
-      3.19,
-      3.37,
+      3.166,
+      3.394,
       0.3,
-      1.2,
-      5.115,
-      5.275
+      1.5,
+      5.041,
+      5.269
      ]
     },
     "porch_9": {
@@ -447,17 +445,16 @@
   "house_3": {
    "kind": "canopy",
    "shell": {
-    "body": 1648,
+    "body": 2640,
     "porch": 54,
-    "total": 1702
+    "total": 2694
    },
    "detail": {
-    "body": 3076,
+    "body": 3526,
     "porch": 1960,
-    "total": 5036
+    "total": 5486
    },
    "shellMaterials": [
-    "LM_metal",
     "LM_render",
     "LM_roof",
     "LM_stone",
@@ -474,8 +471,8 @@
     "M_screen"
    ],
    "doorClearance": {
-    "metres": 0.314,
-    "nearest": "nameplate/np_back",
+    "metres": 0.058,
+    "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
    "solids": 240,
@@ -584,18 +581,18 @@
   "house_4": {
    "kind": "canopy",
    "shell": {
-    "body": 1758,
+    "body": 1916,
     "porch": 42,
-    "total": 1800
+    "total": 1958
    },
    "detail": {
-    "body": 3026,
+    "body": 3274,
     "porch": 1546,
-    "total": 4572
+    "total": 4820
    },
    "shellMaterials": [
-    "LM_metal",
     "LM_render",
+    "LM_roof",
     "LM_stone",
     "LM_wood",
     "M_glass",
@@ -610,8 +607,8 @@
     "M_screen"
    ],
    "doorClearance": {
-    "metres": 0.314,
-    "nearest": "nameplate/np_back",
+    "metres": 0.058,
+    "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
    "solids": 259,
@@ -716,17 +713,16 @@
   "house_5": {
    "kind": "gable",
    "shell": {
-    "body": 1632,
+    "body": 2174,
     "porch": 154,
-    "total": 1786
+    "total": 2328
    },
    "detail": {
-    "body": 3026,
+    "body": 3570,
     "porch": 1720,
-    "total": 4746
+    "total": 5290
    },
    "shellMaterials": [
-    "LM_metal",
     "LM_render",
     "LM_roof",
     "LM_stone",
@@ -743,8 +739,8 @@
     "M_screen"
    ],
    "doorClearance": {
-    "metres": 0.314,
-    "nearest": "nameplate/np_back",
+    "metres": 0.058,
+    "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
    "solids": 268,
@@ -913,17 +909,16 @@
   "house_6": {
    "kind": "gable",
    "shell": {
-    "body": 1644,
+    "body": 1924,
     "porch": 154,
-    "total": 1798
+    "total": 2078
    },
    "detail": {
-    "body": 3026,
+    "body": 3666,
     "porch": 1720,
-    "total": 4746
+    "total": 5386
    },
    "shellMaterials": [
-    "LM_metal",
     "LM_render",
     "LM_roof",
     "LM_stone",
@@ -940,8 +935,8 @@
     "M_screen"
    ],
    "doorClearance": {
-    "metres": 0.314,
-    "nearest": "nameplate/np_back",
+    "metres": 0.058,
+    "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
    "solids": 268,
@@ -1110,17 +1105,16 @@
   "house_7": {
    "kind": "gable",
    "shell": {
-    "body": 1638,
+    "body": 2236,
     "porch": 154,
-    "total": 1792
+    "total": 2390
    },
    "detail": {
-    "body": 3026,
+    "body": 3674,
     "porch": 1720,
-    "total": 4746
+    "total": 5394
    },
    "shellMaterials": [
-    "LM_metal",
     "LM_render",
     "LM_roof",
     "LM_stone",
@@ -1137,8 +1131,8 @@
     "M_screen"
    ],
    "doorClearance": {
-    "metres": 0.314,
-    "nearest": "nameplate/np_back",
+    "metres": 0.058,
+    "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
    "solids": 268,
@@ -1307,18 +1301,18 @@
   "house_8": {
    "kind": "canopy",
    "shell": {
-    "body": 1734,
-    "porch": 46,
-    "total": 1780
+    "body": 2398,
+    "porch": 42,
+    "total": 2440
    },
    "detail": {
-    "body": 3026,
-    "porch": 1636,
-    "total": 4662
+    "body": 3274,
+    "porch": 1486,
+    "total": 4760
    },
    "shellMaterials": [
-    "LM_metal",
     "LM_render",
+    "LM_roof",
     "LM_stone",
     "LM_wood",
     "M_glass",
@@ -1333,27 +1327,23 @@
     "M_screen"
    ],
    "doorClearance": {
-    "metres": 0.314,
-    "nearest": "nameplate/np_back",
+    "metres": 0.058,
+    "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
-   "solids": 257,
+   "solids": 239,
    "cost": {
     "porch": {
      "shell": 34,
      "detail": 40
     },
     "canopy": {
-     "shell": 4,
-     "detail": 186
+     "shell": 8,
+     "detail": 124
     },
     "beds": {
      "shell": 0,
      "detail": 240
-    },
-    "sconces": {
-     "shell": 8,
-     "detail": 88
     },
     "nameplate": {
      "shell": 0,
@@ -1443,17 +1433,16 @@
   "house_9": {
    "kind": "deck",
    "shell": {
-    "body": 1584,
-    "porch": 46,
-    "total": 1630
+    "body": 2093,
+    "porch": 56,
+    "total": 2149
    },
    "detail": {
-    "body": 2928,
-    "porch": 3000,
-    "total": 5928
+    "body": 3632,
+    "porch": 2028,
+    "total": 5660
    },
    "shellMaterials": [
-    "LM_metal",
     "LM_render",
     "LM_roof",
     "LM_stone",
@@ -1470,15 +1459,15 @@
     "M_screen"
    ],
    "doorClearance": {
-    "metres": 0.314,
-    "nearest": "nameplate/np_back",
+    "metres": 0.058,
+    "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
-   "solids": 169,
+   "solids": 157,
    "cost": {
     "deck": {
-     "shell": 28,
-     "detail": 1564
+     "shell": 38,
+     "detail": 592
     },
     "beds": {
      "shell": 4,
@@ -1562,12 +1551,12 @@
       5.375
      ],
      "solids": [
-      -3.398,
-      -1.202,
-      0.005,
-      1.145,
-      5.279,
-      5.373
+      -3.4,
+      -1.2,
+      0.3,
+      0.95,
+      5.275,
+      5.375
      ]
     },
     "porch_4": {
@@ -1578,12 +1567,12 @@
       5.375
      ],
      "solids": [
-      1.202,
-      3.398,
-      0.005,
-      1.145,
-      5.279,
-      5.373
+      1.2,
+      3.4,
+      0.3,
+      0.95,
+      5.275,
+      5.375
      ]
     },
     "porch_5": {
@@ -1594,12 +1583,12 @@
       5.275
      ],
      "solids": [
-      -3.37,
-      -3.19,
+      -3.394,
+      -3.166,
       0.3,
-      1.2,
-      5.115,
-      5.275
+      1.5,
+      5.041,
+      5.269
      ]
     },
     "porch_6": {
@@ -1610,12 +1599,12 @@
       5.275
      ],
      "solids": [
-      -1.665,
-      -1.485,
+      -1.689,
+      -1.461,
       0.3,
-      1.2,
-      5.115,
-      5.275
+      1.5,
+      5.041,
+      5.269
      ]
     },
     "porch_7": {
@@ -1626,12 +1615,12 @@
       5.275
      ],
      "solids": [
-      1.485,
-      1.665,
+      1.461,
+      1.689,
       0.3,
-      1.2,
-      5.115,
-      5.275
+      1.5,
+      5.041,
+      5.269
      ]
     },
     "porch_8": {
@@ -1642,12 +1631,12 @@
       5.275
      ],
      "solids": [
-      3.19,
-      3.37,
+      3.166,
+      3.394,
       0.3,
-      1.2,
-      5.115,
-      5.275
+      1.5,
+      5.041,
+      5.269
      ]
     },
     "porch_9": {
@@ -1672,18 +1661,18 @@
   "house_10": {
    "kind": "deck",
    "shell": {
-    "body": 1732,
-    "porch": 40,
-    "total": 1772
+    "body": 2116,
+    "porch": 50,
+    "total": 2166
    },
    "detail": {
-    "body": 3026,
-    "porch": 2878,
-    "total": 5904
+    "body": 3408,
+    "porch": 1906,
+    "total": 5314
    },
    "shellMaterials": [
-    "LM_metal",
     "LM_render",
+    "LM_roof",
     "LM_stone",
     "LM_wood",
     "M_glass",
@@ -1698,15 +1687,15 @@
     "M_screen"
    ],
    "doorClearance": {
-    "metres": 0.314,
-    "nearest": "nameplate/np_back",
+    "metres": 0.058,
+    "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
-   "solids": 252,
+   "solids": 240,
    "cost": {
     "deck": {
-     "shell": 28,
-     "detail": 1564
+     "shell": 38,
+     "detail": 592
     },
     "beds": {
      "shell": 4,
@@ -1806,12 +1795,12 @@
       5.375
      ],
      "solids": [
-      -3.398,
-      -1.202,
-      0.005,
-      1.145,
-      5.279,
-      5.373
+      -3.4,
+      -1.2,
+      0.3,
+      0.95,
+      5.275,
+      5.375
      ]
     },
     "porch_4": {
@@ -1822,12 +1811,12 @@
       5.375
      ],
      "solids": [
-      1.202,
-      3.398,
-      0.005,
-      1.145,
-      5.279,
-      5.373
+      1.2,
+      3.4,
+      0.3,
+      0.95,
+      5.275,
+      5.375
      ]
     },
     "porch_5": {
@@ -1838,12 +1827,12 @@
       5.275
      ],
      "solids": [
-      -3.37,
-      -3.19,
+      -3.394,
+      -3.166,
       0.3,
-      1.2,
-      5.115,
-      5.275
+      1.5,
+      5.041,
+      5.269
      ]
     },
     "porch_6": {
@@ -1854,12 +1843,12 @@
       5.275
      ],
      "solids": [
-      -1.665,
-      -1.485,
+      -1.689,
+      -1.461,
       0.3,
-      1.2,
-      5.115,
-      5.275
+      1.5,
+      5.041,
+      5.269
      ]
     },
     "porch_7": {
@@ -1870,12 +1859,12 @@
       5.275
      ],
      "solids": [
-      1.485,
-      1.665,
+      1.461,
+      1.689,
       0.3,
-      1.2,
-      5.115,
-      5.275
+      1.5,
+      5.041,
+      5.269
      ]
     },
     "porch_8": {
@@ -1886,12 +1875,12 @@
       5.275
      ],
      "solids": [
-      3.19,
-      3.37,
+      3.166,
+      3.394,
       0.3,
-      1.2,
-      5.115,
-      5.275
+      1.5,
+      5.041,
+      5.269
      ]
     },
     "porch_9": {
@@ -1914,6 +1903,6 @@
    "fails": []
   }
  },
- "totalTriangles": 68518,
+ "totalTriangles": 75847,
  "pass": true
 }

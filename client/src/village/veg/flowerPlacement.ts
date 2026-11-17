@@ -66,6 +66,11 @@ export interface Plant {
 /** A raised bed on the plaza: plants are kept on its soil, and those near its rim lean out over it. */
 export type Bed =
   | { kind: "ring"; x: number; z: number; rMin: number; rMax: number; lean: number }
+  /**
+   * A house's window box or hanging basket (the Colmar houses, 2026-11-17: shared/.../generated/house_flower_boxes.json):
+   * a level rectangle of soil at height y, planted full of geraniums that spill over its rims.
+   */
+  | { kind: "box"; x0: number; x1: number; z0: number; z1: number; y: number }
   | { kind: "square"; x: number; z: number; half: number; hole: number; lean: number }
   | { kind: "fountain"; half: number; rMin: number; lean: number };
 
@@ -86,14 +91,29 @@ export const BED_GRID = 0.07;
 
 /** A raised bed's bounding box [x0, x1, z0, z1]. */
 export function bedBox(bed: Bed): [number, number, number, number] {
+  if (bed.kind === "box") return [bed.x0, bed.x1, bed.z0, bed.z1];
   if (bed.kind === "ring") return [bed.x - bed.rMax, bed.x + bed.rMax, bed.z - bed.rMax, bed.z + bed.rMax];
   if (bed.kind === "square") return [bed.x - bed.half, bed.x + bed.half, bed.z - bed.half, bed.z + bed.half];
   return [-bed.half, bed.half, -bed.half, bed.half];
 }
 
 /** Which bed a point is on (or null), and whether it is allowed there. */
-export function bedAt(beds: readonly Bed[], x: number, z: number): { bed: Bed; ok: boolean; out: [number, number] } | null {
+export function bedAt(beds: readonly Bed[], x: number, z: number, y?: number): { bed: Bed; ok: boolean; out: [number, number] } | null {
   for (const bed of beds) {
+    if (bed.kind === "box") {
+      // a box is found only at its own height (boxes of the two storeys stand one over the other)
+      if (y === undefined || Math.abs(y - bed.y) > 0.3) continue;
+      if (x < bed.x0 - 0.15 || x > bed.x1 + 0.15 || z < bed.z0 - 0.15 || z > bed.z1 + 0.15) continue;
+      const ok = x >= bed.x0 && x <= bed.x1 && z >= bed.z0 && z <= bed.z1;
+      // trailing over the rims: the plants near a long side lean out across it (the short axis), the ends a little
+      const cx = (bed.x0 + bed.x1) / 2;
+      const cz = (bed.z0 + bed.z1) / 2;
+      const hx = Math.max(1e-3, (bed.x1 - bed.x0) / 2);
+      const hz = Math.max(1e-3, (bed.z1 - bed.z0) / 2);
+      const ex = hx < hz ? (x - cx) / hx : ((x - cx) / hx) * 0.35;
+      const ez = hz <= hx ? (z - cz) / hz : ((z - cz) / hz) * 0.35;
+      return { bed, ok, out: [Math.max(-1, Math.min(1, ex)), Math.max(-1, Math.min(1, ez))] };
+    }
     if (bed.kind === "ring") {
       const dx = x - bed.x;
       const dz = z - bed.z;
@@ -134,6 +154,15 @@ export function linearHex(hex: string): [number, number, number] {
 
 /** Colour palettes (sRGB, weight). Petunias as in the Seoul beds (magenta, pink, white, purple, red). */
 export const PALETTES = {
+  /** Window boxes and hanging baskets (the Colmar houses): zonal geranium reds, a coral, two pinks, a little white. */
+  geranium: [
+    ["#D21F2C", 4],
+    ["#E8323C", 3],
+    ["#F25A4E", 1.5],
+    ["#E8559A", 1.5],
+    ["#F7A1C0", 1],
+    ["#FBF7F9", 0.5],
+  ],
   petunia: [
     ["#C2187A", 3],
     ["#E8559A", 3],
@@ -282,7 +311,7 @@ export function placeFlowers(cards: readonly Card[], beds: readonly Bed[] = PLAZ
       }
       continue;
     }
-    const onBed = bedAt(beds, cx, cz);
+    const onBed = bedAt(beds, cx, cz, card.floor);
     if (onBed) {
       let list = bedCards.get(onBed.bed);
       if (!list) bedCards.set(onBed.bed, (list = []));
@@ -302,7 +331,7 @@ export function placeFlowers(cards: readonly Card[], beds: readonly Bed[] = PLAZ
       for (let z = z0; z <= z1; z += step) {
         const px = x + (rand() - 0.5) * step;
         const pz = z + (rand() - 0.5) * step;
-        const at = bedAt([bed], px, pz);
+        const at = bedAt([bed], px, pz, bed.kind === "box" ? bed.y : undefined);
         if (!at || !at.ok) continue;
         // the planting (row) and the light of the nearest old card
         let best = list[0]!;
@@ -326,9 +355,10 @@ export function placeFlowers(cards: readonly Card[], beds: readonly Bed[] = PLAZ
   }
   for (const c of candidates) {
     const { x, y, z, row } = c;
-    const onBed = bedAt(beds, x, z);
+    const onBed = bedAt(beds, x, z, y);
     if (onBed && !onBed.ok) continue;
-    const { species, palette } = speciesFor(row, x, z);
+    // window boxes and baskets: geraniums (the petunia plant in the geranium reds and pinks)
+    const { species, palette } = onBed?.bed.kind === "box" ? { species: SPECIES.petunia, palette: "geranium" as PaletteName } : speciesFor(row, x, z);
     if (tooClose(x, y, z, SPACING[species] * (c.wild ? WILD_SPACING : 1))) continue;
     const drift = driftUnit(x, z, species * 7 + row);
     const base = linearHex(pick(PALETTES[palette], drift));

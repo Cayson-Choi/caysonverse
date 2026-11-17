@@ -2,7 +2,7 @@
   "format": "caysonverse-house-textures",
   "version": 1,
   "mapSide": 1024,
-  "bytes": 2896464,
+  "bytes": 2100262,
   "materials": {
     "LM_render": {
       "sets": [
@@ -18,33 +18,33 @@
     },
     "LM_stone": {
       "sets": [
-        "granite"
+        "sandstone"
       ],
       "u_m": 1.0,
       "v_m": 1.0,
       "maps": {
-        "albedo": "house_granite_albedo.webp",
-        "normal": "house_granite_normal.webp",
-        "rough": "house_granite_rough.webp"
+        "albedo": "house_sandstone_albedo.webp",
+        "normal": "house_sandstone_normal.webp",
+        "rough": "house_sandstone_rough.webp"
       }
     },
     "LM_roof": {
       "sets": [
-        "shingle"
+        "clay_tile"
       ],
       "u_m": 2.0,
       "rows": 14,
       "exposure_m": 0.14285714285714285,
       "maps": {
-        "albedo": "house_shingle_albedo.webp",
-        "normal": "house_shingle_normal.webp",
-        "rough": "house_shingle_rough.webp"
+        "albedo": "house_tile_albedo.webp",
+        "normal": "house_tile_normal.webp",
+        "rough": "house_tile_rough.webp"
       }
     },
     "LM_wood": {
       "sets": [
         "oak",
-        "timber_cladding"
+        "painted_boards"
       ],
       "bands": {
         "oak": {
@@ -68,8 +68,8 @@
     },
     "LM_metal": {
       "sets": [
-        "metal_painted",
-        "pvc_frame"
+        "iron",
+        "painted_frame"
       ],
       "bands": {
         "metal_painted": {
