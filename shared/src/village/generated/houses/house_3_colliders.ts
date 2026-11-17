@@ -27,7 +27,7 @@ export const HOUSE_3_COLLIDERS: readonly AABB[] = [
   { minX: 411.74, maxX: 411.86, minZ: 24, maxZ: 24.8 }, // col__h3_2_part_a_1
   { minX: 411.74, maxX: 411.86, minZ: 26.6, maxZ: 30 }, // col__h3_2_part_a_0
   { minX: 411.9, maxX: 413, minZ: -7.8, maxZ: -7.46 }, // col__h3_1_upper2
-  { minX: 412, maxX: 413.7, minZ: 28.98, maxZ: 29.93 }, // col__h3_2_sofa
+  { minX: 412, maxX: 413.7, minZ: 29.02, maxZ: 29.88 }, // col__h3_2_sofa
   { minX: 412.35, maxX: 413.35, minZ: 27, maxZ: 27.5 }, // col__h3_2_coffee
   { minX: 412.4, maxX: 413.8, minZ: 22.25, maxZ: 22.65 }, // col__h3_2_tvstand
   { minX: 412.82, maxX: 413.77, minZ: -6, maxZ: -4.1 }, // col__h3_1_dtable

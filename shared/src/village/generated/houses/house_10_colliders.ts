@@ -21,8 +21,8 @@ export const HOUSE_10_COLLIDERS: readonly AABB[] = [
   { minX: 576.32, maxX: 576.68, minZ: -2.73, maxZ: -2.37 }, // col__h10_1_lamp_f
   { minX: 576.32, maxX: 576.68, minZ: 27.52, maxZ: 27.88 }, // col__h10_2_lamp_f
   { minX: 577.07, maxX: 578.13, minZ: -7.75, maxZ: -6.55 }, // col__h10_1_rocker
-  { minX: 579.48, maxX: 580.43, minZ: -6.95, maxZ: -4.85 }, // col__h10_1_sofa
   { minX: 579.5, maxX: 579.6, minZ: -1.5, maxZ: 0 }, // col__h10_1_part_entry_0
+  { minX: 579.52, maxX: 580.38, minZ: -6.95, maxZ: -4.85 }, // col__h10_1_sofa
   { minX: 579.58, maxX: 580.22, minZ: 29.08, maxZ: 29.72 }, // col__h10_2_plant
   { minX: 579.6, maxX: 579.92, minZ: -1.4, maxZ: -0.1 }, // col__h10_1_part_entry_3
   { minX: 579.73, maxX: 580.18, minZ: -7.7, maxZ: -7.3 }, // col__h10_1_side

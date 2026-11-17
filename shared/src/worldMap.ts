@@ -105,6 +105,13 @@ export interface Seat {
    */
   reachFrom?: { x: number; z: number };
   /**
+   * How deep (m) behind the front edge a backed seat's click volume goes, when its furniture is deeper than the default 0.62 m
+   * (furnitureClick): a house sofa or armchair is ~0.85 m from its front to the back of its backrest, and a tap on the top of
+   * that backrest from behind fell outside every seat — the ray then entered the neighbours' volumes at the same plane and the
+   * next seat won by a float (release 4: h7_1_1 sat the visitor on h7_1_2). Absent: the default.
+   */
+  clickDepth?: number;
+  /**
    * How far (m) behind the seat point its backrest's face stands, when it has one (standSpot.ts: a stand spot past it, within the
    * seat's width, is "behind" — never stood up to). Absent: `sidePlane`, else the front edge plus a seat's depth.
    */

@@ -820,6 +820,14 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
         }),
       );
       for (const seat of made) {
+        // a sofa's / armchair's click volume reaches the back of its backrest (worldMap Seat.clickDepth): from the seat's front edge
+        // to its cushion marker, the marker's `back` to the backrest's face, and the backrest's ~0.3 m thickness
+        if (m.kind === "backed" && (m.furn === "sofa" || m.furn === "armchair")) {
+          const fx = Math.sin(seat.yaw);
+          const fz = Math.cos(seat.yaw);
+          const toMarker = (seat.x - m.x) * fx + (seat.z - m.z) * fz;
+          seat.clickDepth = Math.round((toMarker + m.back + 0.3 - (seat.frontEdge ?? 0)) * 1000) / 1000;
+        }
         if (LATE_HOUSE_SEATS.includes(m.id)) late.push(seat);
         else if (HOUSE_SEAT_ORDER.includes(seat.id)) houseMade.set(seat.id, seat);
         else houseNew.push(seat);
