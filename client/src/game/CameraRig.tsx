@@ -1277,7 +1277,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         rideBeforeRef.current = { mode: viewState.mode, fov: persp.fov, near: persp.near };
         if (viewState.mode !== "fp") enterFp(orbit.yaw);
         viewState.fpYaw = 0;
-        viewState.fpPitch = 0;
+        viewState.fpPitch = 0.1; // a rider settles looking a little down at the bar
         resetRideCamera();
         persp.near = 0.05;
         persp.updateProjectionMatrix();

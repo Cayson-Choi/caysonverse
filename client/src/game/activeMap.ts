@@ -28,6 +28,7 @@ import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benc
 import { MEMORIAL_SEAT_MARKERS } from "@caysonverse/shared/village/generated/memorialSeats";
 import { fallsShoreSpot, inFallsRestArea, villagePickArea, villageWalkArea } from "@caysonverse/shared/village/fallsWalk";
 import { lotAt, lotLocalToWorld, lotRoomOf, lotRoomSolids, VILLAGE_LOTS } from "@caysonverse/shared/village/villageLots";
+import { PARK_BOUNDS, parkGeometry } from "@caysonverse/shared/village/parkArea";
 import type { Bounds, MapGeometry } from "@caysonverse/shared/school/geometry";
 import type { AABB } from "@caysonverse/shared/collision";
 import { HALL_CAMERA_LIMIT, VILLAGE_CAMERA_PAD, type CameraLimit } from "./indoorCamera";
@@ -228,8 +229,17 @@ function lotRoomActiveMap(area: AreaId): ActiveMap {
   return map;
 }
 
+/** 케이슨랜드 (the park area): its own geometry and frame, open sky, no seats (rides are rideSeat), the coaster's circuit fenced off at its south edge. */
+export const PARK_ACTIVE_MAP: ActiveMap = Object.freeze({
+  geometry: parkGeometry,
+  bounds: PARK_BOUNDS,
+  cameraPad: VILLAGE_CAMERA_PAD,
+  zoneLabel: () => "케이슨랜드",
+});
+
 /** The village map for the area the local player is in: one of two prebuilt maps, so a re-render is never a switch. */
 export function villageActiveMap(area: AreaId): ActiveMap {
+  if (area === "park") return PARK_ACTIVE_MAP;
   if (area === "hall") return HALL_ACTIVE_MAP;
   if (area === "village") return VILLAGE_ACTIVE_MAP;
   if (lotRoomOf(area)) return lotRoomActiveMap(area);

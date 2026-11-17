@@ -5,6 +5,7 @@ import { HOUSE_KEYPAD_REACH_M, keypadEntries } from "@caysonverse/shared/village
 import { GUIDE_ASK_LABEL, nearestGuide } from "@caysonverse/shared/village/guides";
 import type { InteractTarget } from "../game/interact";
 import { lotDoorTarget, lotExitTarget } from "./lots/lotTargets";
+import { COASTER_BOARD_REACH_M, COASTER_QUEUE_PAD, PARK_EXIT_PAD, parkGateDoor } from "@caysonverse/shared/village/parkArea";
 import { BUS_SEATS, busPlaceOf, busSeatNumber, inExitZone, nearestFreeSpot, seatApproachOk } from "@caysonverse/shared/village/busCabin";
 
 /**
@@ -58,12 +59,41 @@ export function doorPadFor(area: AreaId, layout: VillageLayout = VILLAGE_LAYOUT)
   return area === "village" ? layout.memorial.exterior.doorPad : layout.memorial.interior.doorPad;
 }
 
+/** The park gate (케이슨랜드): the door in the village at the gate lot, the way out under the arch inside; and the coaster's boarding target. */
+export const PARK_DOOR_ID = "park_door";
+export const COASTER_BOARD_TARGET_ID = "coaster_board";
+
+/** What the park offers at a spot: the way out under the arch, and the coaster at its queue gate. */
+export function parkTargets(x: number, z: number): readonly InteractTarget[] {
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return NONE;
+  const out: InteractTarget[] = [];
+  const dExit = Math.hypot(x - PARK_EXIT_PAD.x, z - PARK_EXIT_PAD.z);
+  if (dExit <= PARK_EXIT_PAD.radius + DOOR_OFFER_REACH_M) out.push({ kind: "door", id: PARK_DOOR_ID, dist: dExit, icon: "🚪", label: "케이슨랜드 나가기", short: "나가기" });
+  const dQ = Math.hypot(x - COASTER_QUEUE_PAD.x, z - COASTER_QUEUE_PAD.z);
+  if (dQ <= COASTER_QUEUE_PAD.radius + COASTER_BOARD_REACH_M - 1) out.push({ kind: "object", id: COASTER_BOARD_TARGET_ID, dist: dQ, icon: "🎢", label: "별똥별 급행 타기", short: "타기" });
+  return out;
+}
+
+/** The village side of the park gate: "케이슨랜드 들어가기" at the gate lot's door pad. */
+export function parkGateTarget(x: number, z: number): InteractTarget | null {
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
+  const g = parkGateDoor();
+  const d = Math.hypot(x - g.pad.x, z - g.pad.z);
+  if (d > g.pad.radius + DOOR_OFFER_REACH_M) return null;
+  return { kind: "door", id: PARK_DOOR_ID, dist: d, icon: "🚪", label: "케이슨랜드 들어가기", short: "들어가기" };
+}
+
 export function villageTargets(
   area: AreaId,
   x: number,
   z: number,
   layout: VillageLayout = VILLAGE_LAYOUT,
 ): readonly InteractTarget[] {
+  if (area === "park") return parkTargets(x, z);
+  if (area === "village") {
+    const gate = parkGateTarget(x, z);
+    if (gate) return [gate];
+  }
   // a house floor: its way out (floor 1) and its stair (both floors), houseTargets.ts
   if (isHouseArea(area)) {
     const offers = houseOffers(area, x, z);

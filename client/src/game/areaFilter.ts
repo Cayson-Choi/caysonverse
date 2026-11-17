@@ -13,7 +13,7 @@ import { isHouseArea, isLotArea, type AreaId } from "@caysonverse/shared/village
 
 /** Preserve a validated house area so each house is isolated; unknown values still fall back to the village. */
 export function normalizeArea(value: unknown): AreaId {
-  return value === "hall" || (typeof value === "string" && (isHouseArea(value) || isLotArea(value))) ? value : "village";
+  return value === "hall" || value === "park" || (typeof value === "string" && (isHouseArea(value) || isLotArea(value))) ? value : "village";
 }
 
 /** True when a player in `remoteArea` has an avatar for a viewer standing in `localArea`. */

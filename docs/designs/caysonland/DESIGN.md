@@ -78,7 +78,7 @@ RideDef = { id, seats, cycleMs, dwell{unloadMs, boardMs, gateMs}, at(nowMs) → 
 1. `RideBoard`: 열린 구간(`unloading` 뒤 ~ `gate` 전)만. 앉아 있거나 버스·낚시 중이면 `busy`. 12석이 차면 `full`.
 2. 좌석은 서버가 준다(`Player.rideSeat`). 클라이언트는 자리를 고르지 못한다 → 자리 싸움·부정 없음.
 3. 하차: `tick`(0.5초)이 "탄 주기"가 끝난 사람을 다음 주기 하차 시간에 내려 준다. 연결이 끊기면 즉시 비운다.
-4. 1단계는 거리 검사가 없다(공원 area가 아직 없고 시험 입구가 어디서나 탄다). 2단계에서 `canBoard`에 "탑승 문 반경 안"을 넣는다.
+4. 거리 규칙: park area에서 코스터 대기줄 패드 9.2 m 안(2단계 구현).
 5. 한 방 30명이라 한 기구에 같이 탈 수 있는 수는 좌석 수(코스터 12)가 위다.
 
 ## 6. 1인칭 카메라 (구현됨: `client/src/land/coasterRide.ts`)
@@ -121,20 +121,18 @@ RideDef = { id, seats, cycleMs, dwell{unloadMs, boardMs, gateMs}, at(nowMs) → 
 - 열차 인스턴싱: 칸 6개를 1호출. 좌석 사람 6~12명은 일반 아바타 예산 안.
 - 측정 한계: 헤드리스 Chrome(vsync 60 fps 상한)이라 "남는 여유"는 보이지 않는다. 2단계에서 100명 부하(`loadtest`)와 느린 폰 한 대로 다시 잰다.
 
-## 9. 시험 입구 (임시, 1단계)
+## 9. 공원 area와 정문 (2단계, 구현됨)
 
-실행: 서버 `PORT=2811 npx tsx src/index.ts`(server/), 클라이언트 `VITE_SERVER_URL=http://localhost:2811 npx vite --port 5411`(client/), 브라우저 `http://localhost:5411/?land=coaster`. 열차는 130초마다 한 바퀴(내림 5초 → 탑승 29초 → 출발 문 6초 → 운행 90초).
-
-공원 area가 아직 없으므로 `?land=coaster` 주소로만 켜진다.
-
-- 켜면 마을 모델 대신 **빈 시험장**(잔디·하늘·코스터)이 선다. 승강장은 입장 지점 바로 옆이다. 조작 패널의 **탑승하기** 버튼이 어디서나 탑승을 요청한다(거리 검사 없음).
-- 서버 규칙(탑승 구간·좌석·하차)은 그대로 진짜다. `e2e/coaster-ride.mjs`(PC 1280x800, 폰 375x812 `--phone`)가 이 길로 한 바퀴를 돈다: 탑승 → 리프트 중간·꼭대기 → 낙하 → 풀아웃 → 루프 오르막·꼭대기 → 경사 커브 → 제동 → 하차, 둘째 접속(B)이 구경하며 차 안의 라이더를 본다.
-- 지우는 법: `client/src/land/site.ts`의 `coasterEnabled`와 `VillageScene.tsx`의 두 줄(`CoasterSandbox`, `CoasterHud`)을 걷으면 된다. 2단계에서 정문 문 + park area로 대체.
+- `Player.area === "park"`(`shared/village/parkArea.ts`). 마을 정문 문 패드(`lot_gate`의 `lot_gate_main`)에서 "케이슨랜드 들어가기"(E / 폰은 동그란 버튼) → 검은 막(`DoorFade`) → 서버 `UseDoor`(`useParkDoor`)가 공원 도착 지점으로 옮기고 area를 바꾼다. 공원 안 아치 아래 패드에서 "케이슨랜드 나가기"로 돌아온다.
+- 공원은 **자기 좌표계**(코스터 트랙 로컬 미터: 승강장이 원점, z는 남쪽). 마을과 겹쳐도 area 필터 때문에 서로 안 보인다. 서버는 `geometryFor(player)`로 공원 전용 충돌(`parkGeometry`: 경계 + 상점·큐 홀·승강장·분수·나무)을 쓴다. 클라이언트는 `PARK_ACTIVE_MAP`.
+- 공원 지도: 정문 아치(z -186) → 산책로(상점 6채) → 별빛 광장(분수, z -112) → 서쪽으로 코스터 대기줄(탑승 패드 (-17,-46)), 동쪽 대로는 다음 기구 자리(회전목마 (110,-135), 관람차 (205,-135))를 비워 둠. 코스터 회로는 z ≥ 0으로 공원 남쪽 끝(z -2.2)에서 막는다.
+- 탑승: 대기줄 입구 패드 근처에서 "별똥별 급행 타기"(E). 서버는 area가 park이고 패드에서 9.2 m 안일 때만 허락한다(`villageCoaster.canBoard`).
+- 시험 입구(`?land=coaster`)는 없앴다. e2e(`e2e/coaster-ride.mjs`)는 마을에서 정문 문으로 들어가 대기줄까지 걸어가서 탄다.
+- 아직 없는 것: 공원 입장 막 뒤의 로딩 표시(지금은 막이 걷히며 공원이 바로 선다), 밤 하늘·조명(하늘은 낮 그라디언트), 공원 안 앉을 자리(400번대 좌석 예약만).
 
 ## 10. 텍스처와 미술
 
-- 지금 쓰는 실사: 집 공용 CC0 소나무·돌 텍스처(`client/public/textures/houses`). 나머지(잔디, 도장 강판, 레일)는 **자체 생성 임시값**이다.
-- 2단계에서 실사 CC0 세트(Poly Haven / ambientCG: 도장 금속, 잔디, 자갈, 목재, 벽돌)를 쓰려면 **파일 내려받기 허락**이 필요하다(주인님 확인 후). KTX2로 구워 폰에서 절반 크기.
+- 실사 CC0: ambientCG `Grass001`(잔디), `PavingStones070`(포장), `Gravel023`(샛길), `PaintedMetal013`(도장 강관의 표면·광택), `RoofingTiles013A`(지붕), `Concrete034`(기초). 1K WebP로 `client/public/textures/park/`, 라이선스 기록은 같은 폴더 `LICENSE.md`(주인님 허락 2026-11-17). 집 공용 소나무·회반죽(`textures/houses`)도 쓴다. 폰용 절반 크기·KTX2 변환은 남았다.
 - 구조물은 Blender 스크립트로 만든 GLB(구역별), 코스터는 코드로 생성(트랙 곡선이 데이터)이라 GLB가 필요 없다.
 - 실제 놀이기구 참고(오리지널 보장): 구조 비율·지지대 간격·안전바·체인 리프트 같은 "실제 구조 상식"만 참고하고, 어떤 공원의 기구도 모양을 따라 그리지 않는다.
 

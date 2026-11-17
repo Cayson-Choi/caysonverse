@@ -119,6 +119,93 @@ export class GeoBuilder {
     });
   }
 
+  /**
+   * A lofted solid: closed superellipse rings (half width w, half height h, centred at y = yc) at each z, joined end to end and
+   * capped at both ends; smooth normals are averaged from the faces. `power` 2 = an ellipse, higher = a rounder box.
+   * `colorAt(angle01, z, x, y)` colours each vertex (the livery).
+   */
+  loft(sections: { z: number; w: number; h: number; yc: number }[], sides: number, power: number, colorAt: (a: number, z: number, x: number, y: number) => V3): void {
+    const base = this.vertices;
+    const e = 2 / power;
+    const ring = sides;
+    for (const sec of sections) {
+      for (let k = 0; k < ring; k++) {
+        const th = (k / ring) * Math.PI * 2;
+        const c = Math.cos(th);
+        const sn = Math.sin(th);
+        const x = sec.w * Math.sign(c) * Math.pow(Math.abs(c), e);
+        const y = sec.yc + sec.h * Math.sign(sn) * Math.pow(Math.abs(sn), e);
+        this.vert([x, y, sec.z], [0, 0, 0], k / ring, sec.z, colorAt(k / ring, sec.z, x, y));
+      }
+    }
+    for (let i = 0; i < sections.length - 1; i++) {
+      for (let k = 0; k < ring; k++) {
+        const a = base + i * ring + k;
+        const b = base + i * ring + ((k + 1) % ring);
+        const c2 = a + ring;
+        const d = b + ring;
+        this.idx.push(a, b, c2, b, d, c2);
+      }
+    }
+    // end caps (fans from a centre vertex)
+    for (const end of [0, sections.length - 1]) {
+      const sec = sections[end]!;
+      const cen = this.vert([0, sec.yc, sec.z], [0, 0, 0], 0.5, 0.5, colorAt(0, sec.z, 0, sec.yc));
+      const first = base + end * ring;
+      for (let k = 0; k < ring; k++) {
+        const a = first + k;
+        const b = first + ((k + 1) % ring);
+        if (end === 0) this.idx.push(cen, b, a);
+        else this.idx.push(cen, a, b);
+      }
+    }
+    this.smoothNormals(base);
+  }
+
+  /** Recompute the normals of vertices from `from` on as the average of their faces (for lofts). */
+  smoothNormals(from: number): void {
+    const n = this.vertices;
+    const acc = new Float32Array((n - from) * 3);
+    for (let i = 0; i < this.idx.length; i += 3) {
+      const a = this.idx[i]!;
+      const b = this.idx[i + 1]!;
+      const c = this.idx[i + 2]!;
+      if (a < from || b < from || c < from) continue;
+      const pa: V3 = [this.pos[3 * a]!, this.pos[3 * a + 1]!, this.pos[3 * a + 2]!];
+      const pb: V3 = [this.pos[3 * b]!, this.pos[3 * b + 1]!, this.pos[3 * b + 2]!];
+      const pc: V3 = [this.pos[3 * c]!, this.pos[3 * c + 1]!, this.pos[3 * c + 2]!];
+      const f = cross([pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]], [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]]);
+      for (const v of [a, b, c]) {
+        acc[(v - from) * 3] += f[0];
+        acc[(v - from) * 3 + 1] += f[1];
+        acc[(v - from) * 3 + 2] += f[2];
+      }
+    }
+    for (let v = from; v < n; v++) {
+      const k = (v - from) * 3;
+      const l = Math.hypot(acc[k]!, acc[k + 1]!, acc[k + 2]!) || 1;
+      this.nor[3 * v] = acc[k]! / l;
+      this.nor[3 * v + 1] = acc[k + 1]! / l;
+      this.nor[3 * v + 2] = acc[k + 2]! / l;
+    }
+  }
+
+  /** A tube along an arbitrary polyline (the radial basis is derived from the path). */
+  tube(points: V3[], radius: number, sides: number, color: V3): void {
+    const a: V3[] = [];
+    const b: V3[] = [];
+    for (let i = 0; i < points.length; i++) {
+      const p0 = points[Math.max(0, i - 1)]!;
+      const p1 = points[Math.min(points.length - 1, i + 1)]!;
+      const t = norm([p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]]);
+      const hint: V3 = Math.abs(t[1]) > 0.95 ? [1, 0, 0] : [0, 1, 0];
+      const u = norm(cross(t, hint));
+      a.push(u);
+      b.push(cross(u, t));
+    }
+    this.sweep(points, a, b, radius, sides, color, 0.5);
+  }
+
   build(): BufferGeometry {
     const g = new BufferGeometry();
     g.setAttribute("position", new Float32BufferAttribute(this.pos, 3));

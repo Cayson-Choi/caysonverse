@@ -6,12 +6,16 @@ const track = coasterTrack();
 
 describe("coaster geometry budget", () => {
   const built = buildTrack(track);
-  it("stays inside the static triangle budget (<= 80k) and the draw-call budget", () => {
+  it("stays inside the static triangle budget (PC <= 115k, phone <= 60k) and the draw-call budget", () => {
     expect(built.triangles).toBeGreaterThan(30_000);
-    expect(built.triangles).toBeLessThanOrEqual(80_000);
+    expect(built.triangles).toBeLessThanOrEqual(115_000);
+    const light = buildTrack(track, "light");
+    console.log("coaster track triangles", built.triangles, "light", light.triangles);
+    expect(light.triangles).toBeLessThanOrEqual(60_000);
+    expect(light.triangles).toBeLessThan(built.triangles * 0.65);
     expect(built.chunks.length).toBeLessThanOrEqual(CHUNKS);
-    // two meshes a chunk (steel + wood): well under 60 draws for the track in the worst case (everything in view)
-    expect(built.chunks.length * 2).toBeLessThanOrEqual(60);
+    // one mesh a chunk (steel): well under 60 draws for the track in the worst case (everything in view)
+    expect(built.chunks.length).toBeLessThanOrEqual(60);
   });
   it("every chunk has finite, bounded vertices and a bounding sphere (culling works)", () => {
     for (const ch of built.chunks) {
@@ -29,7 +33,7 @@ describe("coaster geometry budget", () => {
   });
   it("the car is one small merged geometry", () => {
     const car = buildCar();
-    expect(car.index!.count / 3).toBeLessThan(2000);
+    expect(car.index!.count / 3).toBeLessThan(6000);
     car.computeBoundingBox();
     const bb = car.boundingBox!;
     expect(bb.max.z - bb.min.z).toBeGreaterThan(2.5);

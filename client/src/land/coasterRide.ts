@@ -32,6 +32,9 @@ import {
 import { villageClock } from "../village/villageClock";
 import { COASTER_SITE } from "./site";
 
+/** My standing place (the scene copies the live pose here every frame: the HUD column has no pose of its own). */
+export const landPose = { x: 0, z: 0 };
+
 /** Which seat I sit in (the server's `Player.rideSeat` for me), -1 = not riding. */
 export const selfRide = { slot: -1 };
 

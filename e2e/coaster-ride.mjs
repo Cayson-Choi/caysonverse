@@ -13,7 +13,8 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CLIENT_URL, DESKTOP, PHONE, SLOW, createRun, entryReady, launchBrowser, openPlayer, press, sleep } from "./lib/common.mjs";
+import { CLIENT_URL, DESKTOP, PHONE, SLOW, createRun, entryReady, launchBrowser, openPlayer, press, sleep, walkAndWait, pos } from "./lib/common.mjs";
+import { act } from "./lib/village.mjs";
 
 const phone = process.argv.includes("--phone");
 const outArg = process.argv.find((a) => a.startsWith("--out="));
@@ -24,7 +25,7 @@ mkdirSync(run.evidence, { recursive: true });
 const NOON = "2026-11-03T12:30";
 let nickSeq = 0;
 async function joinLand(p, prefix) {
-  await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(NOON)}&land=coaster`, { waitUntil: "domcontentloaded" });
+  await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(NOON)}`, { waitUntil: "domcontentloaded" });
   await entryReady(p);
   const nick = `${prefix}${++nickSeq}${Math.floor(Math.random() * 90 + 10)}`.slice(0, 10);
   await p.page.locator("input.cv-input").first().fill(nick);
@@ -33,6 +34,42 @@ async function joinLand(p, prefix) {
   await p.page.waitForFunction(() => !!window.__cv?.getPos && !!window.__cvBgm, null, { timeout: 30000 * SLOW });
   await sleep(2500);
   p.nick = nick;
+}
+
+/** Walk to (x, z) the way the game would: its own detour search round the colliders (e2e/seat-front.mjs goTo). */
+async function goTo(p, x, z, tol = 1.2) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await p.page.evaluate(
+      async ([x, z]) => {
+        const plan = await window.__imp("/src/game/clickPlan.ts");
+        const move = await window.__imp("/src/game/clickMove.ts");
+        const am = await window.__imp("/src/game/activeMap.ts");
+        const P = window.__cv.getPos();
+        const via = plan.findDetour(P.x, P.z, x, z, am.getActiveMap().geometry.obstacles, am.activeBounds(), undefined, { ratio: 6, slack: 40, margin: 40 });
+        move.setClickTarget(x, z, 0, via ?? undefined);
+      },
+      [x, z],
+    );
+    await sleep(400);
+    await until(async () => (await p.page.evaluate(() => window.__cvClickTarget?.() ?? null)) === null, 90000);
+    await sleep(300);
+    const at = await pos(p);
+    if (Math.hypot(at.x - x, at.z - z) < tol) return at;
+  }
+  return pos(p);
+}
+
+const areaOf = (p) => p.page.evaluate(async () => (await window.__imp("/src/village/villageArea.ts")).localArea());
+
+/** Walk to the gate lot's door in the village and use it: the curtain, then the park (area "park"). */
+async function enterPark(p) {
+  const g = await p.page.evaluate(async () => (await window.__imp("/village/parkArea.ts")).parkGateDoor().pad);
+  // the gate is on the south bank: a route through the village (plaza, the footbridge) to its pad
+  await goTo(p, g.x, g.z - 0.5, 1.0);
+  await act(p);
+  const ok = await until(async () => (await areaOf(p)) === "park", 15000);
+  await sleep(4000);
+  return ok;
 }
 
 const probe = (p) =>
@@ -71,29 +108,40 @@ const B = await openPlayer(b, run, { tag: "B-pc", device: DESKTOP });
 await run.step("join", async () => {
   await joinLand(A, "Ra");
   await joinLand(B, "Rb");
-  const url = A.page.url();
-  run.check("A has the test entry on", url.includes("land=coaster"));
-  const hud = await A.page.locator("[data-testid=coaster-hud]").count();
-  run.check("the coaster panel is in A's HUD", hud === 1);
+  await run.shot(A, "00-village-before-the-gate.png");
+  run.check("A goes through the gate door into the park", await enterPark(A), { area: await areaOf(A) });
+  run.check("B goes through the gate door into the park", await enterPark(B), { area: await areaOf(B) });
+  await run.shot(A, "00b-park-arrival.png");
   const tris = await A.page.evaluate(() => window.__cvCoasterTris ?? null);
-  run.check("the park's static geometry is built (triangles)", typeof tris === "number" && tris > 20000, { tris });
+  run.check("the coaster's static geometry is built (triangles)", typeof tris === "number" && tris > 20000, { tris });
+  // look round the park: the plaza and the queue approach, first-person eyes at 1.5 m
+  for (const [name, x, z, tx, ty, tz] of [["01a-promenade", 40, -168, 40, 2.5, -112], ["01b-plaza", 40, -140, 40, 3, -112], ["01c-queue-approach", -17, -100, -17, 3, -40]]) {
+    await A.page.evaluate(([x, z, tx, ty, tz]) => { window.__cvShot = { x, y: 1.7, z, tx, ty, tz, fov: 62 }; }, [x, z, tx, ty, tz]);
+    await sleep(900);
+    await run.shot(A, `${name}.png`);
+  }
+  await A.page.evaluate(() => { window.__cvShot = null; });
 });
 
 /** the cost of the park: draw calls and triangles with the coaster in view, and the frame times */
 const renderInfo = (p) => p.page.evaluate(() => (window.__ri ? { maxCalls: window.__ri.calls, maxTriangles: window.__ri.triangles, meanCalls: Math.round(window.__ri.sumCalls / Math.max(1, window.__ri.n)), meanTriangles: Math.round(window.__ri.sumTris / Math.max(1, window.__ri.n)) } : null));
 
 await run.step("board", async () => {
-  // wait for the boarding window (the station loads for 35 s of every 130 s cycle)
+  // A walks from the arch to the coaster queue's gate (park metres) ...
+  await goTo(A, 40, -120, 2);
+  await goTo(A, -17, -112, 2);
+  await goTo(A, -17, -50, 1.5);
+  const at = await pos(A);
+  run.check("A stands at the queue gate", Math.hypot(at.x + 17, at.z + 46) < 6, at);
+  await run.shot(A, "01-queue-gate.png");
+  // ... and waits for the boarding window (the station loads 29 s of every 130 s cycle)
   const t0 = Date.now();
   let st = await probe(A);
   while (st.status !== "boarding" && Date.now() - t0 < 140000 * SLOW) {
-    await sleep(1000);
+    await sleep(500);
     st = await probe(A);
   }
   run.check("the station opens for boarding", st.status === "boarding", { status: st.status });
-  // before boarding: refused outside the window is the server's rule; here we only check the panel reads it
-  await run.shot(A, "01-village-with-station-panel.png");
-  // stand A on the village's south edge so the coaster is in view of the screenshot (optional), then board
   await A.page.evaluate(() => {
     window.__fpsSamples = [];
     window.__ri = { calls: 0, triangles: 0, n: 0, sumCalls: 0, sumTris: 0 };
@@ -116,7 +164,7 @@ await run.step("board", async () => {
     };
     requestAnimationFrame(tick);
   });
-  await press(A, A.page.locator("[data-testid=coaster-board]"));
+  await act(A);
   const seated = await until(async () => (await probe(A)).slot >= 0, 8000);
   run.check("A boards: the server gives a seat", seated);
   const me = await probe(A);
@@ -125,7 +173,7 @@ await run.step("board", async () => {
   const bsee = await remotes(B);
   const a = bsee.find((r) => r.nickname === A.nick);
   run.check("B sees A riding (Player.rideSeat synced)", !!a && a.rideSeat === me.slot, { rideSeat: a?.rideSeat });
-  run.check("the ride panel replaced the boarding button", (await A.page.locator("[data-testid=coaster-ride-hud]").count()) === 1);
+  run.check("the ride panel is up", (await A.page.locator("[data-testid=coaster-ride-hud]").count()) === 1);
   await run.shot(A, "02-station-seated-first-person.png");
   await aimAtRider(B, 0);
   await sleep(800);
@@ -192,7 +240,7 @@ await run.step("unload", async () => {
   const freed = await until(async () => (await probe(A)).slot < 0, 20000);
   run.check("the server put A off at the station", freed);
   await sleep(1200);
-  run.check("A is back on the village camera (the panel shows the boarding button again)", (await A.page.locator("[data-testid=coaster-board]").count()) === 1);
+  run.check("A is back on the park camera (the ride panel is gone)", (await A.page.locator("[data-testid=coaster-ride-hud]").count()) === 0);
   const fov = await A.page.evaluate(async () => (await window.__imp("/src/game/cameraProbe.ts")).cameraProbe?.mode ?? null);
   run.check("camera mode is back", fov !== undefined);
   await run.shot(A, "13-after-the-ride.png");
@@ -227,7 +275,7 @@ await run.step("rules", async () => {
   if (st.status === "boarding") {
     run.check("(skipped) the window is open again already", true);
   } else {
-    await press(A, A.page.locator("[data-testid=coaster-board]"));
+    await act(A);
     await sleep(900);
     const note = await A.page.locator("[data-testid=coaster-notice]").count();
     run.check("boarding outside the window is refused and says so", note === 1 && (await probe(A)).slot === -1);

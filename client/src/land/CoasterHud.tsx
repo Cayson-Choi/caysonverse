@@ -1,10 +1,12 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { isTouchDevice } from "../device";
-import { getRoom, sendRideBoard, sendRideLeave } from "../net/connection";
+import { getRoom, sendRideLeave } from "../net/connection";
 import { VillageServerMsg, type RideNoticePayload } from "@caysonverse/shared/village/messages";
 import { COASTER_DWELL_MS, COASTER_SEATS } from "@caysonverse/shared/land/coaster";
-import { coasterNow, rideComfort, rideNotice, selfRide, setRideComfort, subscribeRideComfort, type RideComfort } from "./coasterRide";
-import { rideMuted, setRideMuted, startRideAudio } from "./coasterAudio";
+import { coasterNow, landPose, rideComfort, rideNotice, selfRide, setRideComfort, subscribeRideComfort, type RideComfort } from "./coasterRide";
+import { rideMuted, setRideMuted } from "./coasterAudio";
+import { useLocalArea } from "../village/villageArea";
+import { COASTER_QUEUE_PAD } from "@caysonverse/shared/village/parkArea";
 
 const NOTICE_TEXT = {
   closed: "지금은 탈 수 없어요. 다음 출발을 기다려 주세요.",
@@ -52,6 +54,8 @@ const btn = {
  * Riding: the way off (always there), the comfort setting, the sound switch, and what the ride is doing.
  */
 export function CoasterHud() {
+  const pose = landPose;
+  const area = useLocalArea();
   useTick();
   useEffect(() => {
     const r = getRoom();
@@ -68,32 +72,23 @@ export function CoasterHud() {
   const secs = Math.max(0, Math.ceil(now.departsInMs / 1000));
   const noticeFresh = rideNotice.reason !== null && performance.now() - rideNotice.at < 4500;
   if (!riding) {
-    const boarding = now.status === "boarding";
+    // in the park, within sight of the coaster's queue: when it leaves, and how to get on
+    if (area !== "park" || Math.hypot(pose.x - COASTER_QUEUE_PAD.x, pose.z - COASTER_QUEUE_PAD.z) > 70) return null;
     return (
       <div style={box} data-testid="coaster-hud">
-        <div>🎢 별똥별 급행 (시험 운행)</div>
+        <div>🎢 별똥별 급행</div>
         <div style={{ opacity: 0.8 }}>
           {now.status === "unloading" && `손님이 내리는 중 · ${secs}초 뒤 출발`}
           {now.status === "boarding" && `탑승 중 · ${secs}초 뒤 출발`}
           {now.status === "gate" && `곧 출발해요 (${secs}초)`}
           {now.status === "riding" && `운행 중 · 다음 출발까지 ${secs}초`}
         </div>
+        <div style={{ opacity: 0.7 }}>대기줄 입구에서 "타기"</div>
         {noticeFresh ? (
           <div role="alert" data-testid="coaster-notice" style={{ marginTop: 5, background: "rgba(255,196,64,0.28)", borderRadius: 8, padding: "5px 8px" }}>
             {NOTICE_TEXT[rideNotice.reason!]}
           </div>
         ) : null}
-        <button
-          type="button"
-          data-testid="coaster-board"
-          style={{ ...btn, marginTop: 6, width: "100%", opacity: boarding ? 1 : 0.6 }}
-          onClick={() => {
-            startRideAudio(); // inside the press: the browser lets the sound start
-            sendRideBoard();
-          }}
-        >
-          탑승하기
-        </button>
       </div>
     );
   }
