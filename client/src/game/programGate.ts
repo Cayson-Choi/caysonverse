@@ -49,6 +49,8 @@ interface Track {
 export const MAX_SKIP_MS = 3000;
 /** Bytes of never-drawn geometry a frame may upload (its first draw copies its buffers to the GPU). */
 export const GEOMETRY_BYTES_PER_FRAME = 4 * 1024 * 1024;
+/** DEV `?gatelog=1`: time every draw and log the slow ones and program switches (stats.mismatches). Off: the draw path as in production. */
+const LOG = import.meta.env.DEV && typeof location !== "undefined" && new URLSearchParams(location.search).get("gatelog") === "1";
 /** Programs one flush (one frame) may start. */
 const MAX_COMPILES_PER_FLUSH = 2;
 /** Main-thread time (ms) one flush may spend starting compiles before it hands the thread back. */
@@ -327,7 +329,7 @@ export function installProgramGate(
       t = { programs: new Map(), since: new Map(), version: material.version, texReady: null };
       tracks.set(material, t);
       if (props.currentProgram && props.currentProgram.isReady() !== false) {
-        if (import.meta.env.DEV) (props.currentProgram as { tag?: string }).tag ??= "trusted";
+        if (LOG) (props.currentProgram as { tag?: string }).tag ??= "trusted";
         t.programs.set(keyOf(shadow, material, sceneFor, object, geometry), props.currentProgram);
       }
     }
@@ -367,7 +369,7 @@ export function installProgramGate(
       }
       if (ready !== false) {
         used.add(p);
-        const t0 = import.meta.env.DEV ? performance.now() : 0;
+        const t0 = LOG ? performance.now() : 0;
         const r = original.call(this, camera, scene, geometry, material, object, group);
         const cur = (gl.properties.get(material) as { currentProgram?: ProgramLike & { cacheKey?: string } }).currentProgram;
         // three switched program (the scene's lights changed, a define): follow it, so the next readiness check is about it
@@ -375,7 +377,7 @@ export function installProgramGate(
           t.programs.set(variant, cur);
           used.add(cur);
         }
-        if (!import.meta.env.DEV) return r;
+        if (!LOG) return r;
         const ms = performance.now() - t0;
         if ((ms > 20 || (cur && cur !== p)) && stats.mismatches.length < 80) {
           const k = `${material.name}|${variant}|${ms > 20 ? "slow" : "other"}`;

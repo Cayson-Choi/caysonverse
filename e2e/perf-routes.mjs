@@ -56,6 +56,8 @@ const { values: args } = parseArgs({
     "bus-wait": { type: "string", default: "200" },
     "no-profile": { type: "boolean", default: false },
     "crowd-ms": { type: "string", default: "15000" },
+    /** extra page query, e.g. gate=off (DEV: the shader gate left out, to compare) */
+    query: { type: "string" },
   },
 });
 const PHONE_DEV = args.device === "phone";
@@ -405,7 +407,7 @@ try {
   // ── entry (always: the other routes need the village) ──
   await setPhase("entry");
   const tEntry = Date.now();
-  await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(args.time)}`, { waitUntil: "domcontentloaded" });
+  await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(args.time)}${args.query ? `&${args.query}` : ""}`, { waitUntil: "domcontentloaded" });
   await entryReady(p);
   entry.entryScreenMs = Date.now() - tEntry;
   await p.page.locator("input.cv-input").first().fill(`perf${Math.floor(Math.random() * 900 + 100)}`);
