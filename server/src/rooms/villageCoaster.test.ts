@@ -1,0 +1,122 @@
+import { describe, expect, it } from "vitest";
+import type { Client } from "colyseus";
+import { COASTER_CYCLE_MS, COASTER_DWELL_MS, COASTER_SEATS, COASTER_UNLOAD_MS } from "@caysonverse/shared/land/coaster";
+import { VillageMsg, VillageServerMsg } from "@caysonverse/shared/village/messages";
+import { VillageCoaster, type CoasterHost } from "./villageCoaster";
+
+interface P {
+  rideSeat: number;
+  seatIndex: number;
+  busSeat: number;
+  fishSpot: number;
+  area: string;
+}
+const newPlayer = (): P => ({ rideSeat: -1, seatIndex: -1, busSeat: -1, fishSpot: -1, area: "village" });
+const T0 = 1_900_000_000_000 - (1_900_000_000_000 % COASTER_CYCLE_MS);
+
+function rig() {
+  const players = new Map<string, P>();
+  const sent: Array<{ sid: string; type: string; msg: unknown }> = [];
+  const handlers = new Map<string, (c: Client, p: unknown) => void>();
+  let now = T0 + 10_000;
+  const clients = new Map<string, Client>();
+  const client = (sid: string): Client => {
+    let c = clients.get(sid);
+    if (!c) {
+      c = { sessionId: sid, send: (type: string, msg: unknown) => sent.push({ sid, type, msg }) } as unknown as Client;
+      clients.set(sid, c);
+    }
+    return c;
+  };
+  const host: CoasterHost = {
+    wallClock: () => now,
+    player: (sid) => players.get(sid),
+    players: () => players.entries(),
+    clients: () => clients.values(),
+    onMessage: (type, h) => handlers.set(type, h),
+  };
+  const coaster = new VillageCoaster(host);
+  coaster.register();
+  return {
+    coaster,
+    players,
+    sent,
+    add(sid: string) {
+      players.set(sid, newPlayer());
+      return client(sid);
+    },
+    send: (sid: string, type: string) => handlers.get(type)!(client(sid), {}),
+    setNow: (t: number) => {
+      now = t;
+    },
+  };
+}
+
+describe("VillageCoaster (server rules)", () => {
+  it("gives the lowest free seat while boarding is open, and only one", () => {
+    const r = rig();
+    r.add("a");
+    r.add("b");
+    r.send("a", VillageMsg.RideBoard);
+    r.send("b", VillageMsg.RideBoard);
+    expect(r.players.get("a")!.rideSeat).toBe(0);
+    expect(r.players.get("b")!.rideSeat).toBe(1);
+    r.send("a", VillageMsg.RideBoard); // already aboard: nothing changes
+    expect(r.players.get("a")!.rideSeat).toBe(0);
+  });
+  it("refuses outside the boarding window (unloading, gate, riding) and says why", () => {
+    const r = rig();
+    r.add("a");
+    for (const t of [T0 + 1000, T0 + COASTER_DWELL_MS - 3000, T0 + COASTER_DWELL_MS + 5000]) {
+      r.setNow(t);
+      r.send("a", VillageMsg.RideBoard);
+      expect(r.players.get("a")!.rideSeat).toBe(-1);
+    }
+    expect(r.sent.filter((s) => s.type === VillageServerMsg.RideNotice).every((s) => (s.msg as { reason: string }).reason === "closed")).toBe(true);
+    expect(r.sent.length).toBe(3);
+  });
+  it("refuses a seated, bus or fishing player (busy) and a full train (full)", () => {
+    const r = rig();
+    r.add("sitter");
+    r.players.get("sitter")!.seatIndex = 5;
+    r.send("sitter", VillageMsg.RideBoard);
+    expect(r.players.get("sitter")!.rideSeat).toBe(-1);
+    expect((r.sent[0]!.msg as { reason: string }).reason).toBe("busy");
+    for (let i = 0; i < COASTER_SEATS; i++) {
+      r.add(`p${i}`);
+      r.send(`p${i}`, VillageMsg.RideBoard);
+    }
+    r.add("late");
+    r.send("late", VillageMsg.RideBoard);
+    expect(r.players.get("late")!.rideSeat).toBe(-1);
+    expect((r.sent.at(-1)!.msg as { reason: string }).reason).toBe("full");
+    // seats are unique
+    const seats = [...r.players.values()].map((p) => p.rideSeat).filter((s) => s >= 0);
+    expect(new Set(seats).size).toBe(COASTER_SEATS);
+  });
+  it("a leave frees the seat for the next rider", () => {
+    const r = rig();
+    r.add("a");
+    r.add("b");
+    r.send("a", VillageMsg.RideBoard);
+    r.send("a", VillageMsg.RideLeave);
+    expect(r.players.get("a")!.rideSeat).toBe(-1);
+    r.send("b", VillageMsg.RideBoard);
+    expect(r.players.get("b")!.rideSeat).toBe(0);
+  });
+  it("the unload is the server's: riders stay through the lap and are put off when the next cycle begins", () => {
+    const r = rig();
+    r.add("a");
+    r.send("a", VillageMsg.RideBoard);
+    r.setNow(T0 + COASTER_DWELL_MS + 30_000); // mid-ride
+    r.coaster.tick();
+    expect(r.players.get("a")!.rideSeat).toBe(0);
+    r.setNow(T0 + COASTER_CYCLE_MS - 500); // the train is rolling in
+    r.coaster.tick();
+    expect(r.players.get("a")!.rideSeat).toBe(0);
+    r.setNow(T0 + COASTER_CYCLE_MS + 200); // the next cycle's unloading phase
+    r.coaster.tick();
+    expect(r.players.get("a")!.rideSeat).toBe(-1);
+    void COASTER_UNLOAD_MS;
+  });
+});

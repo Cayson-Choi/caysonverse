@@ -38,6 +38,7 @@ import {
 } from "./transitRuntime";
 import { BUS_DRIVER, BusDriver, busDriveTrip } from "@caysonverse/shared/village/busDrive";
 import { busDismountSpot } from "@caysonverse/shared/village/busSeats";
+import { VillageCoaster } from "./villageCoaster";
 import {
   BUS_CAPACITY,
   BUS_SEATS,
@@ -155,6 +156,17 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     },
   });
 
+  /** The 별똥별 급행 (villageCoaster.ts): who sits where; the train is the wall clock's. */
+  private readonly coaster: VillageCoaster = new VillageCoaster({
+    wallClock: () => this.wallClock(),
+    player: (sid) => this.state.players.get(sid),
+    players: () => this.state.players.entries(),
+    clients: () => this.clients,
+    onMessage: (type, handler) => {
+      this.onMessage(type, handler);
+    },
+  });
+
   /** The process's candles (every room's hall shows the same ones); a test may swap in its own. */
   protected candles: CandleBook = CANDLES;
   private offCandles: (() => void) | null = null;
@@ -195,6 +207,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       this.handleBusStand(client);
     });
     this.fishing.register(); // the fishing messages (villageFishing.ts)
+    this.coaster.register(); // RideBoard / RideLeave (villageCoaster.ts)
     this.onMessage(VillageMsg.Keypad, (client, payload: unknown) => {
       this.handleKeypad(client, payload);
     });
@@ -206,6 +219,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     this.clock.setInterval(() => this.tickBus(), BUS_DRIVER.tickMs);
     // The fishing stages that end by themselves (nibble, bite, the fight, ...). The client never chooses these transitions.
     this.clock.setInterval(() => this.fishing.tick(), 100);
+    // The coaster's laps that are over unload (the train and its stations are the wall clock's; only the seats are state).
+    this.clock.setInterval(() => this.coaster.tick(), 500);
   }
 
   /** The server's wall clock (Unix epoch ms, UTC). A seam for tests; the door and move caps use `now()`. */
@@ -412,6 +427,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     }
     this.releaseSeat(client.sessionId);
     this.fishing.leave(client.sessionId);
+    this.coaster.leave(client.sessionId);
     super.onLeave(client);
   }
 

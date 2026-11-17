@@ -47,6 +47,10 @@ export const VillageMsg = {
   UseStair: "UseStair",
   /** Submit a house keypad code. The server validates the claimed house against the authoritative player position. */
   Keypad: "Keypad",
+  /** Get on the roller coaster (케이슨랜드 별똥별 급행): the server picks the lowest free seat while the station is boarding. Empty payload. */
+  RideBoard: "RideBoard",
+  /** Get off (the server also unloads everyone itself when the train is back). Empty payload. */
+  RideLeave: "RideLeave",
 } as const;
 
 export type VillageMsg = (typeof VillageMsg)[keyof typeof VillageMsg];
@@ -82,6 +86,8 @@ export interface VillageMsgPayloads {
   [VillageMsg.FishingStand]: FishingEmptyPayload;
   [VillageMsg.FishingBoardRequest]: FishingEmptyPayload;
   [VillageMsg.Keypad]: KeypadPayload;
+  [VillageMsg.RideBoard]: Record<string, never>;
+  [VillageMsg.RideLeave]: Record<string, never>;
 }
 
 /** Fishing actions carry no client-controlled state; the server reads its own player pose and clock. */
@@ -129,6 +135,8 @@ export const VillageServerMsg = {
   FishingBoard: "FishingBoard",
   /** Result of a house keypad attempt; the expected code is never sent. */
   KeypadResult: "KeypadResult",
+  /** Why a RideBoard was refused: { reason: "closed" | "full" | "busy" }. */
+  RideNotice: "RideNotice",
 } as const;
 
 export type VillageServerMsg = (typeof VillageServerMsg)[keyof typeof VillageServerMsg];
@@ -240,4 +248,9 @@ export interface KeypadResultPayload {
   reason?: KeypadResultReason;
   retryAfterMs?: number;
   area?: string;
+}
+
+/** Server → client: a RideBoard was refused. */
+export interface RideNoticePayload {
+  reason: "closed" | "full" | "busy";
 }

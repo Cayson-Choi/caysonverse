@@ -17,6 +17,8 @@ describe("VillageMsg", () => {
       FishingStand: "FishingStand",
       FishingBoardRequest: "FishingBoardRequest",
       Keypad: "Keypad",
+      RideBoard: "RideBoard",
+      RideLeave: "RideLeave",
     });
     const values = Object.values(VillageMsg);
     expect(new Set(values).size).toBe(values.length);
@@ -35,6 +37,7 @@ describe("VillageMsg", () => {
       FishingTrophy: "FishingTrophy",
       FishingBoard: "FishingBoard",
       KeypadResult: "KeypadResult",
+      RideNotice: "RideNotice",
     });
     const others = new Set<string>([
       ...Object.values(MessageType),
