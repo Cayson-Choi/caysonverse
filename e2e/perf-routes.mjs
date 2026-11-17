@@ -579,6 +579,8 @@ try {
 // ───────────────────────────── report ─────────────────────────────
 const rec = await p.page.evaluate(() => window.__perf);
 const gate = await p.page.evaluate(() => window.__cvProgramGate?.() ?? null).catch(() => null);
+const clipWarm = await p.page.evaluate(() => window.__cvClipWarm ?? null).catch(() => null);
+console.log(`bench clip warm-up: ${JSON.stringify(clipWarm)}`);
 if (gate) console.log(`shader gate: held ${gate.held}, compiles ${gate.compiles}, forced ${gate.forced}, mismatches ${gate.mismatches?.length ?? 0}`);
 const phases = {};
 for (const name of ["entry", ...ROUTES.filter((r) => r !== "entry")]) {
