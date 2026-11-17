@@ -201,8 +201,10 @@ async function oneCast(n) {
     // lake v2: the whole lift-out as frames (under the water, out with a splash, hanging on the line, into the hand)
     const dir = join(OUT, `${tag}-lift`);
     mkdirSync(dir, { recursive: true });
+    // until the fish is landed (26 full PNGs outlasted the 2.5 s show on a loaded machine and the landed check below missed it)
     for (let k = 0; k < 26; k++) {
-      await p.page.screenshot({ path: join(dir, `f${String(k).padStart(2, "0")}.png`) });
+      await p.page.screenshot({ path: join(dir, `f${String(k).padStart(2, "0")}.jpg`), type: "jpeg", quality: 80 });
+      if ((await view()).name === "landed") break;
       await sleep(70);
     }
   } else {

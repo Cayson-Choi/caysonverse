@@ -10,7 +10,7 @@ import { CanvasTexture, CylinderGeometry, Group, Mesh, MeshBasicMaterial, MeshSt
 import { viewState } from "../game/viewState";
 import { LAKE_WATER_Y } from "@caysonverse/shared/village/lakeLayout";
 import { FISH_PHASE, species, type FishView } from "./lakeProtocol";
-import { FISH_VIEW_SCALE, createFishModel, type FishModel } from "./lakeProps";
+import { createFishModel, fishDrawnLen, type FishModel } from "./lakeProps";
 import { REEL_S, HANG_END_S, catchState, reelProgress, releasePoint, skimming, underPos, type CatchState, type Pt3 } from "./fishCatch";
 import { setHookPoint } from "./fishHooks";
 import { lakeRipple, lakeSplash } from "./lakeFx";
@@ -268,7 +268,7 @@ export function createCatchRig(sid: string): CatchRig {
       const sh = shadow!;
       f.setCm(view.cm);
       f.setKind(view.kind, sp.color);
-      const len = (view.cm / 100) * FISH_VIEW_SCALE; // the drawn length
+      const len = fishDrawnLen(view.cm); // the drawn length
       const newCatch = view.seq !== lastSeq || view.phase !== lastPhase;
       if (view.seq !== lastSeq) dropSplashed = false;
       lastSeq = view.seq;
@@ -449,10 +449,11 @@ export function createCatchRig(sid: string): CatchRig {
               bf.y = 0;
               if (bf.lengthSq() > 1e-4) fwd = bf.normalize();
             }
-            const bodyAt = i.body ? i.body.getWorldPosition(new Vector3()) : mid.clone().addScaledVector(fwd, -0.25);
-            const out = 0.2 + 0.12 * len;
-            target = new Vector3(bodyAt.x, mid.y + 0.04, bodyAt.z).addScaledVector(fwd, out);
-            const tilt = Math.max(0.12, 0.5 - 0.35 * len);
+            // on the two fists (hotfix 2026-11-17: placed off the body it floated by the shoulder, the hands empty on screen): the
+            // belly rests on them, a little out in front so the fists hold it from below and the flank is seen whole
+            target = mid.clone().addScaledVector(fwd, 0.05 + 0.04 * len);
+            target.y += 0.03 + 0.07 * len;
+            const tilt = Math.max(0.12, 0.42 - 0.25 * len);
             const nose = side.clone().multiplyScalar(Math.cos(tilt)).add(new Vector3(0, Math.sin(tilt), 0)).normalize();
             lookAlong(nose, 0, tq);
             // the flank toward the front (the fish shown off), a little roll with its flapping

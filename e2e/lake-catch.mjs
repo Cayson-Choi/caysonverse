@@ -150,7 +150,22 @@ const probe = () =>
         let vis = true;
         for (let u = o; u; u = u.parent) if (!u.visible) vis = false;
         const w = o.getWorldPosition(new o.position.constructor());
-        out.fish.push({ name: o.name, vis, x: +w.x.toFixed(2), y: +w.y.toFixed(2), z: +w.z.toFixed(2), s: +o.parent.scale.x.toFixed(3) });
+        // where it is on the screen (NDC; on screen when |x|, |y| < 1 and in front of the camera)
+        const n = w.clone().project(t.camera);
+        out.fish.push({
+          name: o.name,
+          vis,
+          x: +w.x.toFixed(2),
+          y: +w.y.toFixed(2),
+          z: +w.z.toFixed(2),
+          s: +o.parent.scale.x.toFixed(3),
+          onScreen: Math.abs(n.x) < 0.95 && Math.abs(n.y) < 0.95 && n.z < 1,
+        });
+      }
+      // the hands (third person: the fish shown must be in them, the 2026-11-17 live bug had it floating by the shoulder)
+      if (/^handslot.?[lr]$/.test(o.name) && !out.hands?.some((h) => h.uuid === o.uuid)) {
+        const w = o.getWorldPosition(new o.position.constructor());
+        (out.hands ??= []).push({ uuid: o.uuid, x: +w.x.toFixed(2), y: +w.y.toFixed(2), z: +w.z.toFixed(2) });
       }
     });
     const cam = t.camera.position;
@@ -158,13 +173,20 @@ const probe = () =>
     return out;
   });
 
-async function frames(dir, n, gap) {
+/** n frames, or with `untilShown` until the show (landed) was seen for 6 frames or the catch is over (at most 160 frames): a fixed
+ *  count ended inside the lift on a slow machine and never saw the fish shown (the check then proved nothing). */
+async function frames(dir, n, gap, untilShown = false) {
   mkdirSync(dir, { recursive: true });
   const probes = [];
-  for (let k = 0; k < n; k++) {
+  let shownFrames = 0;
+  for (let k = 0; k < (untilShown ? 160 : n); k++) {
     const v = await view();
     probes.push({ k, phase: v.name, probe: await probe() });
-    await p.page.screenshot({ path: join(dir, `f${String(k).padStart(2, "0")}.jpg`), type: "jpeg", quality: 70 });
+    await p.page.screenshot({ path: join(dir, `f${String(k).padStart(3, "0")}.jpg`), type: "jpeg", quality: 70 });
+    if (untilShown) {
+      if (v.name === "landed") shownFrames++;
+      if (shownFrames >= 6 || ["releasing", "ready", "missed"].includes(v.name)) break;
+    }
     if (gap) await sleep(gap);
   }
   return probes;
@@ -203,10 +225,22 @@ await run.step("casts: the catch from the strike to the release", async () => {
         else await p.page.mouse.up();
       }
     }
-    probes = probes.concat(await frames(join(OUT, `${tag}-c${n}`), 40, 0));
+    probes = probes.concat(await frames(join(OUT, `${tag}-c${n}`), 0, 0, true));
     const shown = probes.filter((x) => ["landed"].includes(x.phase));
     const visibleShow = shown.filter((x) => x.probe?.fish.some((f) => f.vis));
     run.check(`cast ${n}: the fish is drawn (visible) while it is shown`, shown.length > 0 && visibleShow.length === shown.length, shown.slice(0, 3));
+    // hotfix 2026-11-17 (live: "손에 아무것도 표시가 안돼"): drawn, on the screen, big enough to read, and (third person) in the hands
+    const shownFish = shown.map((x) => ({ k: x.k, f: x.probe?.fish.find((f) => f.vis), hands: x.probe?.hands ?? [] }));
+    run.check(`cast ${n}: the fish shown is on the screen`, shownFish.length > 0 && shownFish.every((x) => x.f?.onScreen), shownFish.slice(0, 2));
+    run.check(`cast ${n}: the fish shown is drawn at least 0.5 m long (readable beside the chibi)`, shownFish.length > 0 && shownFish.every((x) => (x.f?.s ?? 0) >= 0.5), shownFish.map((x) => x.f?.s));
+    if (!FIRST_PERSON) {
+      const gap = (x) => Math.min(...x.hands.map((h) => Math.hypot(h.x - x.f.x, h.y - x.f.y, h.z - x.f.z)));
+      // from the third shown frame (the first ones are the 0.35 s ease from the one-hand hold into the arms)
+      const settled = shownFish.slice(2);
+      run.check(`cast ${n}: the fish shown is held in the hands (a hand within 0.4 m of it, once settled)`, settled.length > 0 && settled.every((x) => x.f && x.hands.length > 0 && gap(x) < 0.4), shownFish.map((x) => x.f && x.hands.length ? +gap(x).toFixed(2) : null));
+      const lifted = probes.filter((x) => x.phase === "lifting" && x.probe?.fish.some((f) => f.vis && f.onScreen && f.y > 0.2));
+      run.check(`cast ${n}: the fish is seen coming up out of the water on the line (on screen, above the water)`, lifted.length > 0, lifted.length);
+    }
     const onLine = probes.filter((x) => ["lifting"].includes(x.phase) && x.probe?.hook);
     run.check(`cast ${n}: the line ends at the fish while it is lifted`, big || onLine.length > 0, probes.filter((x) => x.phase === "lifting").slice(0, 3));
     writeFileSync(join(OUT, `${tag}-c${n}-probes.json`), JSON.stringify(probes, null, 1));
