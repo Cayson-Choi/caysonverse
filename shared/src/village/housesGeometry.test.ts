@@ -24,7 +24,8 @@ import { isRemovedHouseSeat } from "./houseFixes";
 import { GENERATED_HOUSES, GENERATED_HOUSE_NUMBERS } from "./generated/houses";
 import { HOUSES_APRON, HOUSES_BLOCK, HOUSES_ZONE, allHouseWalls, houseCeilingSlab, houseFloorGeometry, houseFloorOuter, houseIsReady, housesBlockers } from "./housesGeometry";
 import { VILLAGE_LAYOUT, houseArea, isHouseArea, buildingIdFromArea, villageBounds, villageGeometry } from "./villageLayout";
-import { LATE_HOUSE_SEATS, VILLAGE_SEATS } from "./benchSeats";
+import { LATE_HOUSE_SEATS, VILLAGE_SEATS, isLotSeat } from "./benchSeats";
+import { LOT_ROOMS } from "./villageLots";
 import { keypadEntries } from "./buildingAccess";
 import { generatedHouseNumbers, renderIndex } from "../../../scripts/gen-houses-index";
 
@@ -80,7 +81,8 @@ describe("the houses' ground: bounds, walls, blockers", () => {
     for (let x = L.areas.village.maxX + 0.5; x <= bounds.maxX; x += 0.5) {
       for (let z = bounds.minZ; z <= bounds.maxZ; z += 0.5) {
         probed++;
-        const inRoom = rooms.some((r) => inside(r, { x, z })) || inside(L.areas.hall, { x, z });
+        // (and the lot buildings' five rooms, L5v2: walled holes in this ground)
+        const inRoom = rooms.some((r) => inside(r, { x, z })) || inside(L.areas.hall, { x, z }) || LOT_ROOMS.some((r) => inside(r.bounds, { x, z }));
         if (!inRoom && !blockedAt(x, z)) free++;
       }
     }
@@ -210,8 +212,11 @@ describe("the house seats in the one global list", () => {
     const inRun = houseSeats.filter((s) => !LATE_HOUSE_SEATS.includes(s.bench));
     const end = firstHouse + inRun.length;
     expect(VILLAGE_SEATS.slice(firstHouse, end).every((s) => isHouseArea(s.area))).toBe(true);
-    expect(VILLAGE_SEATS.slice(end, VILLAGE_SEATS.length - LATE_HOUSE_SEATS.length).some((s) => isHouseArea(s.area))).toBe(false);
-    expect(VILLAGE_SEATS.slice(-LATE_HOUSE_SEATS.length).map((s) => s.bench)).toEqual([...LATE_HOUSE_SEATS]);
+    // (lots v2's seats come after main's last, L5v2)
+    const lotFirst = VILLAGE_SEATS.findIndex((s) => isLotSeat(s));
+    const mainEnd = lotFirst >= 0 ? lotFirst : VILLAGE_SEATS.length;
+    expect(VILLAGE_SEATS.slice(end, mainEnd - LATE_HOUSE_SEATS.length).some((s) => isHouseArea(s.area))).toBe(false);
+    expect(VILLAGE_SEATS.slice(mainEnd - LATE_HOUSE_SEATS.length, mainEnd).map((s) => s.bench)).toEqual([...LATE_HOUSE_SEATS]);
     const keys = inRun.map((s) => {
       const m = /^house:house_(\d+):([12])$/.exec(s.area)!;
       const k = Number(/^h\d+_[12]_(\d+)/.exec(s.bench)![1]);

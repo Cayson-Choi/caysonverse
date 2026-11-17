@@ -25,7 +25,7 @@ export function compileSafely(
         let ready = true;
         try {
           // (a program released meanwhile — its material freed, three's destroy() clears `program` — is never asked: a deleted object)
-          ready = !program || program.program === undefined || program.isReady() !== false;
+          ready = !program || ("program" in program && program.program === undefined) || program.isReady() !== false;
         } catch {
           ready = true; // a lost context, a freed program: nothing left to wait for
         }

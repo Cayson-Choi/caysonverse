@@ -194,7 +194,7 @@ export function installProgramGate(
     for (const p of compiling) {
       // released meanwhile (a material freed while its program linked: three's destroy() clears `program`): never ask a deleted program
       // (each ask was a "glGetProgramiv: Program object expected" warning; lots v2, a door into a room)
-      if (p.program === undefined) {
+      if ("program" in p && p.program === undefined) {
         compiling.delete(p);
         continue;
       }
@@ -334,7 +334,7 @@ export function installProgramGate(
       const props = gl.properties.get(material) as { currentProgram?: ProgramLike };
       t = { programs: new Map(), since: new Map(), version: material.version, texReady: null };
       tracks.set(material, t);
-      if (props.currentProgram && props.currentProgram.program !== undefined && props.currentProgram.isReady() !== false) {
+      if (props.currentProgram && !("program" in props.currentProgram && props.currentProgram.program === undefined) && props.currentProgram.isReady() !== false) {
         if (LOG) (props.currentProgram as { tag?: string }).tag ??= "trusted";
         t.programs.set(keyOf(shadow, material, sceneFor, object, geometry), props.currentProgram);
       }

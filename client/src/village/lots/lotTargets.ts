@@ -67,6 +67,7 @@ export function lotShortName(lot: LotId): string {
  * 열어요"), or null.
  */
 export function lotDoorTarget(x: number, z: number): InteractTarget | null {
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
   let best: { p: LotDoorPad; dist: number } | null = null;
   for (const p of LOT_DOOR_PADS) {
     const dist = Math.hypot(x - p.x, z - p.z);
@@ -83,7 +84,7 @@ export function lotDoorTarget(x: number, z: number): InteractTarget | null {
 /** Inside a room: its way out when (x, z) is within reach (past the pad only straight in front of the door, the server's rule). */
 export function lotExitTarget(area: string, x: number, z: number): InteractTarget | null {
   const r = lotRoomOf(area);
-  if (!r) return null;
+  if (!r || !Number.isFinite(x) || !Number.isFinite(z)) return null;
   const pad = lotRoomDoor(r).exitPad;
   const dist = Math.hypot(x - pad.x, z - pad.z);
   const inFront = dist <= pad.radius || (Math.abs(x - pad.x) <= LOT_DOOR_INSIDE_HALF_WIDTH_M - 0.1 && z >= pad.z);

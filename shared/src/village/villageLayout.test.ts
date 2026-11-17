@@ -1,3 +1,4 @@
+import { LOT_ROOMS, VILLAGE_LOTS, replacedByLot, carveBlockers, lotDoorPoints, lotGeometryColliders, lotRoomColliders, lotRoomOuter, lotRoomWalls } from "./villageLots";
 import { describe, it, expect } from "vitest";
 import { isBlocked } from "../collision";
 import type { AABB } from "../collision";
@@ -36,6 +37,7 @@ import {
   busEnvelope,
   MODEL_LEGACY_BUS_BOX,
   withoutLegacyBus,
+  withoutLotReplaced,
   colliderNode,
   cubbyAnchorNode,
   cubbyAnchors,
@@ -760,27 +762,34 @@ describe("village colliders are built from the layout", () => {
   });
 
   it("buildVillageGeometry takes a named collider list or the extractor's { obstacles, cameraBoxes }", () => {
-    const walls = [...hallWalls(L), ...allHouseWalls()]; // the hall's four and the twenty house floors' four each
-    const fixed = walls.length + houseBlockBlockers(L).length + areaGapBlockers(L).length + hallSurroundBlockers(L).length + lakeColliders().length + busShelterColliders(L).length + 1 /* the shelter's bench */ + signalPoleColliders().length + streetPoleColliders(L).length + waterfallObstacles(L).length;
+    // the hall's four, the twenty house floors' four each and the five lot rooms' four each (L5v2)
+    const walls = [...hallWalls(L), ...allHouseWalls(), ...lotRoomWalls()];
+    const rooms = lotRoomColliders(); // the lot rooms' furniture (obstacles, last) and their ceilings, walls and tall pieces (camera)
+    const blockers = carveBlockers(houseBlockBlockers(L), LOT_ROOMS.map((r) => lotRoomOuter(r))).length;
+    const fixed = walls.length + blockers + areaGapBlockers(L).length + hallSurroundBlockers(L).length + lakeColliders().length + busShelterColliders(L).length + 1 /* the shelter's bench */ + signalPoleColliders().length + streetPoleColliders(L).length + waterfallObstacles(L).length + rooms.obstacles.length;
     const bare = buildVillageGeometry(L, []);
     expect(bare.obstacles).toHaveLength(fixed);
     // the bus is no static collider (it left an invisible wall at the empty stop): no slice of it in the map
     for (const b of busParkedColliders(L)) expect(bare.obstacles).not.toContainEqual({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ });
     for (const b of streetPoleColliders(L)) expect(bare.obstacles).toContainEqual(b);
-    expect(bare.cameraBoxes).toEqual([...walls, ...lakeCameraBoxes(), busShelterRoofSlab(L), busShelterLightBoxCameraBox(L), ...cameraWallBoxes(L)]); // the waterfall's camera wall last (B1 W5)
+    expect(bare.cameraBoxes).toEqual([...walls, ...lakeCameraBoxes(), busShelterRoofSlab(L), busShelterLightBoxCameraBox(L), ...cameraWallBoxes(L), ...rooms.cameraBoxes]); // the waterfall's camera wall (B1 W5), the lot rooms (L5v2)
     const box = { minX: 0, maxX: 1, minZ: 0, maxZ: 1 };
     const one = buildVillageGeometry(L, [{ id: "x", box, camera: false }]);
     expect(one.obstacles).toHaveLength(fixed + 1);
-    expect(one.cameraBoxes).toHaveLength(walls.length + lakeCameraBoxes().length + 2 + cameraWallBoxes(L).length); // the lake's boxes, the shelter's roof slab and light box, the waterfall's camera wall
+    expect(one.cameraBoxes).toHaveLength(walls.length + lakeCameraBoxes().length + 2 + cameraWallBoxes(L).length + rooms.cameraBoxes.length); // the lake's boxes, the shelter's roof slab and light box, the waterfall's camera wall, the lot rooms
     const tall = { ...box, height: 3 };
     const generated = buildVillageGeometry(L, { obstacles: [box], cameraBoxes: [tall] });
     expect(generated.obstacles).toHaveLength(fixed + 1);
     expect(generated.obstacles).toContainEqual(box);
-    const rest = waterfallObstacles(L).length; // the rest area's solid boxes close the list (B1 W5)
-    expect(generated.obstacles.slice(-rest)).toEqual(waterfallObstacles(L));
-    expect(generated.obstacles.slice(-busShelterColliders(L).length - 1 - rest, -1 - rest)).toEqual(busShelterColliders(L));
-    expect(generated.obstacles.at(-1 - rest)).toEqual(busShelterBenchCollider(L));
-    expect(generated.cameraBoxes).toEqual([...walls, tall, ...lakeCameraBoxes(), busShelterRoofSlab(L), busShelterLightBoxCameraBox(L), ...cameraWallBoxes(L)]); // the height is kept; the shelter's glass is no camera box (seen through), its opaque light box is
+    // the rest area's solid boxes (B1 W5), then the lot rooms' furniture (L5v2) close the list
+    const tailN = rooms.obstacles.length;
+    const gen = generated.obstacles.slice(0, generated.obstacles.length - tailN);
+    expect(generated.obstacles.slice(generated.obstacles.length - tailN)).toEqual(rooms.obstacles);
+    const rest = waterfallObstacles(L).length;
+    expect(gen.slice(-rest)).toEqual(waterfallObstacles(L));
+    expect(gen.slice(-busShelterColliders(L).length - 1 - rest, -1 - rest)).toEqual(busShelterColliders(L));
+    expect(gen.at(-1 - rest)).toEqual(busShelterBenchCollider(L));
+    expect(generated.cameraBoxes).toEqual([...walls, tall, ...lakeCameraBoxes(), busShelterRoofSlab(L), busShelterLightBoxCameraBox(L), ...cameraWallBoxes(L), ...rooms.cameraBoxes]); // the height is kept; the shelter's glass is no camera box (seen through), its opaque light box is
     expect(generated.bounds).toEqual(bare.bounds);
   });
 
@@ -858,14 +867,16 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
     expect(HOUSES_BLOCK).toEqual({ minX: 359.7, maxX: 586.9, minZ: -8.1, maxZ: 30.3 });
     for (const w of hallWalls(L)) expect(villageGeometry.cameraBoxes).toContainEqual(w);
     // + the guides (Task 9A) and the parked bus's mirrors (bus review r3)
-    expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS, [...guideColliders()], houseColliders()));
+    expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS, [...guideColliders()], houseColliders(), lotGeometryColliders()));
     // the model's old parked-bus box (square to the map, over the centre line) is left out: the bus is its slices
-    expect(VILLAGE_MODEL_COLLIDERS).toEqual(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES }));
+    // ...and what a lot building replaces (plot_w's scaffold, col__construction: L5, villageLots LOT_REPLACED_MODEL_BOXES) is left out too
+    expect(VILLAGE_MODEL_COLLIDERS).toEqual(withoutLotReplaced(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES })));
     expect(VILLAGE_COLLIDERS.filter((b) => sameBox(b, MODEL_LEGACY_BUS_BOX))).toHaveLength(1);
-    expect(VILLAGE_MODEL_COLLIDERS.obstacles).toHaveLength(VILLAGE_COLLIDERS.length - 1);
-    expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toHaveLength(VILLAGE_CAMERA_BOXES.length - 1);
-    for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles.some((o) => sameBox(o, b))).toBe(!sameBox(b, MODEL_LEGACY_BUS_BOX));
-    for (const b of VILLAGE_CAMERA_BOXES) if (!sameBox(b, MODEL_LEGACY_BUS_BOX)) expect(villageGeometry.cameraBoxes).toContainEqual(b);
+    const gone = (b: { minX: number; maxX: number; minZ: number; maxZ: number }) => sameBox(b, MODEL_LEGACY_BUS_BOX) || replacedByLot(b);
+    expect(VILLAGE_MODEL_COLLIDERS.obstacles).toHaveLength(VILLAGE_COLLIDERS.filter((b) => !gone(b)).length);
+    expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toHaveLength(VILLAGE_CAMERA_BOXES.filter((b) => !gone(b)).length);
+    for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles.some((o) => sameBox(o, b))).toBe(!gone(b));
+    for (const b of VILLAGE_CAMERA_BOXES) if (!gone(b)) expect(villageGeometry.cameraBoxes).toContainEqual(b);
     for (const b of busParkedColliders(L)) expect(villageGeometry.cameraBoxes).not.toContainEqual(b);
   });
 
@@ -1031,7 +1042,11 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
     it("every plot, house, the café, the pavilion and the bus stop can be reached from the spawn, without the bridge", () => {
       for (const p of L.plots) {
         expect(cut.some((q) => inside(boxOf(p), q)), p.id).toBe(true);
-        if (p.sign !== null) {
+        const lot = VILLAGE_LOTS.find((l) => l.plot === p.id);
+        if (lot) {
+          // a plot a lot building stands on (lots v2, L5v2): its door's arrival spot is reached
+          for (const d of lotDoorPoints(lot)) expect(hasNear(cut, { x: d.arrival.x, z: d.arrival.z }, GRID), `${p.id} ${d.door}`).toBe(true);
+        } else if (p.sign !== null) {
           // The empty plots can be walked onto: their centres are free and reached (plot markers are not colliders).
           expect(hasNear(cut, p.centre, GRID), p.id).toBe(true);
           expect(isBlocked(p.centre.x, p.centre.z, PLAYER_RADIUS, obstacles), p.id).toBe(false);
@@ -1336,7 +1351,7 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
       for (let x = L.areas.village.maxX + 0.5; x <= geo.bounds.maxX; x += 0.5) {
         for (let z = geo.bounds.minZ; z <= geo.bounds.maxZ; z += 0.5) {
           if (isBlocked(x, z, PLAYER_RADIUS, obstacles)) continue;
-          if (!inside(HALL, { x, z }) && !inAnyHouseRoom({ x, z })) free++;
+          if (!inside(HALL, { x, z }) && !inAnyHouseRoom({ x, z }) && !LOT_ROOMS.some((r) => inside(r.bounds, { x, z }))) free++; // (the lot rooms, L5v2)
         }
       }
       expect(free).toBe(0);
