@@ -18,6 +18,7 @@
 | `T_h_leather` | Poly Haven `brown_leather` | CC0 1.0 |
 | `T_h_stone` (대리석·석재 상판, 난로 앞 받침) | Poly Haven `marble_01` | CC0 1.0 |
 | `T_h_floral` (다마스크 리넨: 커튼·퀼트·쿠션) | Poly Haven `floral_jacquard` | CC0 1.0 |
+| `T_h_check` (깅엄 체크 리넨: 체크 안락의자·쿠션·커튼, 체크 무늬는 직접 그림) | ambientCG `Fabric030` 노멀(짜임 요철) | CC0 1.0 |
 | `T_h_fabric` | ambientCG `Fabric030` (https://ambientcg.com/view?id=Fabric030) | CC0 1.0 |
 | `T_h_rattan` | ambientCG `Wicker007B` | CC0 1.0 |
 | `T_h_rug` | ambientCG `Carpet016` | CC0 1.0 |

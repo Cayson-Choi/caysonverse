@@ -11,7 +11,8 @@ export const HOUSE_7_COLLIDERS: readonly AABB[] = [
   { minX: 503.7, maxX: 514.9, minZ: 21.9, maxZ: 22.2 }, // col__h7_2_wall_back
   { minX: 503.7, maxX: 504, minZ: 22.2, maxZ: 30 }, // col__h7_2_wall_left
   { minX: 503.7, maxX: 514.9, minZ: 30, maxZ: 30.3 }, // col__h7_2_wall_front
-  { minX: 504.04, maxX: 504.44, minZ: -3.3, maxZ: -1.1 }, // col__h7_1_audio
+  { minX: 504, maxX: 504.41, minZ: 26.85, maxZ: 29.56 }, // col__h7_2_bookcase_built
+  { minX: 504.04, maxX: 504.74, minZ: -3.08, maxZ: -1.32 }, // col__h7_1_fireplace
   { minX: 504.05, maxX: 504.65, minZ: -0.75, maxZ: -0.25 }, // col__h7_1_guitar
   { minX: 504.1, maxX: 505.46, minZ: -7.7, maxZ: -6.4 }, // col__h7_1_stair_low
   { minX: 504.1, maxX: 509.54, minZ: 22.3, maxZ: 23.6 }, // col__h7_2_stairwell
@@ -28,7 +29,7 @@ export const HOUSE_7_COLLIDERS: readonly AABB[] = [
   { minX: 509.66, maxX: 510.3, minZ: -7.62, maxZ: -6.98 }, // col__h7_1_plant_b
   { minX: 510.28, maxX: 510.92, minZ: 29.08, maxZ: 29.72 }, // col__h7_2_plant
   { minX: 510.3, maxX: 511, minZ: -1.6, maxZ: -1.4 }, // col__h7_1_part_entry_2
-  { minX: 510.5, maxX: 511.02, minZ: -2.65, maxZ: -2.15 }, // col__h7_1_dchair
+  { minX: 510.51, maxX: 511.03, minZ: -2.65, maxZ: -2.15 }, // col__h7_1_dchair
   { minX: 510.9, maxX: 511.7, minZ: 22.27, maxZ: 22.73 }, // col__h7_2_toolchest
   { minX: 511, maxX: 511.1, minZ: -1.5, maxZ: 0 }, // col__h7_1_part_entry_1
   { minX: 511.9, maxX: 513, minZ: -2.95, maxZ: -1.85 }, // col__h7_1_table
@@ -39,8 +40,8 @@ export const HOUSE_7_COLLIDERS: readonly AABB[] = [
   { minX: 512.9, maxX: 514.1, minZ: -0.35, maxZ: -0.05 }, // col__h7_1_case
   { minX: 513.46, maxX: 514.04, minZ: 23.36, maxZ: 23.94 }, // col__h7_2_stool2
   { minX: 513.54, maxX: 513.9, minZ: -7.4, maxZ: -6.4 }, // col__h7_1_bench
+  { minX: 513.87, maxX: 514.39, minZ: -2.65, maxZ: -2.15 }, // col__h7_1_dchair2
   { minX: 513.88, maxX: 514.52, minZ: -5.57, maxZ: -4.93 }, // col__h7_1_plant_r
-  { minX: 513.88, maxX: 514.4, minZ: -2.65, maxZ: -2.15 }, // col__h7_1_dchair2
   { minX: 513.94, maxX: 514.61, minZ: -7.65, maxZ: -6.15 }, // col__h7_1_piano
   { minX: 514.2, maxX: 514.6, minZ: 22.6, maxZ: 23.8 }, // col__h7_2_mat4
   { minX: 514.2, maxX: 514.6, minZ: 23.85, maxZ: 25.05 }, // col__h7_2_mat3
@@ -59,6 +60,8 @@ export const HOUSE_7_CAMERA_BOXES: readonly CameraBox[] = [
   { minX: 503.7, maxX: 514.9, minZ: 21.9, maxZ: 22.2, height: 3.7 }, // col__h7_2_wall_back
   { minX: 503.7, maxX: 504, minZ: 22.2, maxZ: 30, height: 3.7 }, // col__h7_2_wall_left
   { minX: 503.7, maxX: 514.9, minZ: 30, maxZ: 30.3, height: 3.7 }, // col__h7_2_wall_front
+  { minX: 504, maxX: 504.41, minZ: 26.85, maxZ: 29.56, height: 2.6 }, // col__h7_2_bookcase_built
+  { minX: 504.04, maxX: 504.74, minZ: -3.08, maxZ: -1.32, height: 3.7 }, // col__h7_1_fireplace
   { minX: 505.46, maxX: 509.54, minZ: -7.7, maxZ: -6.4, height: 3.7 }, // col__h7_1_stair_high
   { minX: 507.5, maxX: 507.6, minZ: -1.5, maxZ: 0, height: 3.7 }, // col__h7_1_part_entry_0
   { minX: 510.3, maxX: 511, minZ: -1.6, maxZ: -1.4, height: 2.4 }, // col__h7_1_part_entry_2
