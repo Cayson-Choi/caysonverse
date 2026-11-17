@@ -155,8 +155,16 @@ export function installProgramGate(
   let lastRender: { scene: Scene; camera: Camera } | null = null;
   const ownRender = gl as WebGLRenderer & { render: WebGLRenderer["render"] };
   const originalRender = ownRender.render;
+  let lastRenderAt = -1e9;
   ownRender.render = function (this: WebGLRenderer, scene, camera) {
     const r = { scene: scene as Scene, camera };
+    // a frame after a long gap (the loading veil draws the scene a few times a second: VeilFrameThrottle): nobody watches
+    // a frame rate there, so new geometry is not rationed (otherwise it took many seconds and objects were forced)
+    if (renders.length === 0) {
+      const at = now();
+      if (at - lastRenderAt > 150) geometryBudget = Infinity;
+      lastRenderAt = at;
+    }
     renders.push(r);
     try {
       return originalRender.call(this, scene, camera);
@@ -183,6 +191,12 @@ export function installProgramGate(
   let rafId = 0;
   const perFrame = () => {
     geometryBudget = perFrameBytes;
+    // the queued work goes on every display frame, drawn or not (under the loading veil the scene is drawn a few times a
+    // second only, and its compiles would crawl: VeilFrameThrottle)
+    if (!flushQueued && (queue.size > 0 || uploads.size > 0)) {
+      flushQueued = true;
+      setTimeout(flush, 0);
+    }
     rafId = requestAnimationFrame(perFrame);
   };
   if (typeof requestAnimationFrame === "function") rafId = requestAnimationFrame(perFrame);

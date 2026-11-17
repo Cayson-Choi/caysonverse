@@ -661,6 +661,8 @@ export class VillageVegetation {
     v.root = root;
     // the crowns' workers start loading now, while the flowers are laid out (crownGrow.ts)
     const grower = createCrownGrower(options.makeWorker);
+    // the plant atlas drawn in the first worker (an OffscreenCanvas) while the page reads the cards and the skeletons
+    const texturesJob = grower.atlas();
     v.stopGrowing = () => grower.dispose();
     const steps = v.statsData.steps;
     let work = 0;
@@ -716,7 +718,9 @@ export class VillageVegetation {
     //    page makes the materials and asks for the crowns; dressed here when it comes back ──
     const floraJob = grower.flora(floraCards, beds);
     let placed: { plants: Plant[]; replaced: Card[] } = { plants: [], replaced: [] };
-    const plantAtlas: Texture | null = makePlantAtlas();
+    // the textures drawn in code, made in the first worker meanwhile (null: no worker, made here)
+    const texMade = await texturesJob;
+    const plantAtlas: Texture | null = makePlantAtlas(texMade?.atlas ?? undefined);
     if (plantAtlas) v.own.push(plantAtlas);
     const dressFlora = (fr: FloraResult) => {
       placed = { plants: fr.plants, replaced: fr.replaced.map((i) => floraCards[i]!) };
@@ -857,7 +861,7 @@ export class VillageVegetation {
     const barkMats = {} as Record<BarkPattern, Material>;
     const twigMats = {} as Record<BarkPattern, Material>;
     for (const pattern of ["cherry", "plates", "willow", "smooth", "plum"] as const) {
-      const map = barkTexture(pattern);
+      const map = barkTexture(pattern, texMade?.bark[pattern]);
       // the trunks and limbs lit per pixel with the bark photo's normal map (2026-11-16 plants2), no moss (owner 2026-11-16: "이끼는 안껴도 돼")
       const normal = flatNormal();
       const surf = BARK_SURFACE[pattern];

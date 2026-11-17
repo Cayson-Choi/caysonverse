@@ -894,11 +894,12 @@ function drawStrap(g: Ctx, ox: number, oy: number, rand: Rand): void {
 // ─────────────────────────────────────────── the atlas ───────────────────────────────────────────
 
 /** Draw the atlas on a canvas (1024 x 1024). */
-export function drawPlantAtlas(canvas: HTMLCanvasElement): void {
+export function drawPlantAtlas(canvas: HTMLCanvasElement | OffscreenCanvas): void {
   const size = CELL * PLANT_GRID;
   canvas.width = size;
   canvas.height = size;
-  const g = canvas.getContext("2d");
+  // the same 2D calls on a page canvas and an OffscreenCanvas
+  const g = canvas.getContext("2d") as CanvasRenderingContext2D | null;
   if (!g) return;
   g.clearRect(0, 0, size, size);
   const at = (cell: number) => [(cell % PLANT_GRID) * CELL, Math.floor(cell / PLANT_GRID) * CELL] as const;
@@ -974,15 +975,26 @@ export function bleedColour(px: Uint8ClampedArray | Uint8Array, w: number, h: nu
 }
 
 /** The atlas as a texture (sRGB, mipmapped). Null where there is no DOM (tests). */
-export function makePlantAtlas(): Texture | null {
-  if (typeof document === "undefined") return null;
-  const canvas = document.createElement("canvas");
+/**
+ * The atlas's pixels (drawn and colour-bled), on a page canvas or an OffscreenCanvas (the vegetation worker draws it
+ * there while the page lays the village out: perf/no-hitch, about a second of a slow phone's arrival), or null.
+ */
+export function plantAtlasPixels(): { data: Uint8Array; width: number; height: number } | null {
+  const canvas: HTMLCanvasElement | OffscreenCanvas | null =
+    typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(1, 1) : typeof document !== "undefined" ? document.createElement("canvas") : null;
+  if (!canvas) return null;
   drawPlantAtlas(canvas);
-  const g = canvas.getContext("2d");
+  const g = canvas.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
   if (!g) return null;
   const img = g.getImageData(0, 0, canvas.width, canvas.height);
   bleedColour(img.data, canvas.width, canvas.height);
-  const t = new DataTexture(new Uint8Array(img.data.buffer.slice(0)), canvas.width, canvas.height, RGBAFormat, UnsignedByteType);
+  return { data: new Uint8Array(img.data.buffer), width: canvas.width, height: canvas.height };
+}
+
+/** The atlas as a texture, from pixels made here or (`pixels`) by the worker. */
+export function makePlantAtlas(pixels: { data: Uint8Array; width: number; height: number } | null = typeof document === "undefined" ? null : plantAtlasPixels()): Texture | null {
+  if (!pixels) return null;
+  const t = new DataTexture(pixels.data, pixels.width, pixels.height, RGBAFormat, UnsignedByteType);
   t.colorSpace = SRGBColorSpace;
   t.minFilter = LinearMipmapLinearFilter;
   t.magFilter = LinearFilter;

@@ -738,8 +738,9 @@ export function flatNormal(): DataTexture {
 }
 
 /** A pattern's texture (linear values: a multiplier on the bark colour), repeating, mipmapped. */
-export function barkTexture(pattern: BarkPattern): DataTexture {
-  const t = new DataTexture(barkPixels(pattern), TEX_W, TEX_H, RGBAFormat, UnsignedByteType);
+/** A bark texture, from its pixels made here or (`pixels`) by the vegetation worker (crownGrow.ts). */
+export function barkTexture(pattern: BarkPattern, pixels: Uint8Array = barkPixels(pattern)): DataTexture {
+  const t = new DataTexture(pixels, TEX_W, TEX_H, RGBAFormat, UnsignedByteType);
   t.wrapS = RepeatWrapping;
   t.wrapT = RepeatWrapping;
   t.magFilter = LinearFilter;

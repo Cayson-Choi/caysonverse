@@ -48,7 +48,12 @@ import { lineOnFish } from "./fishCatch";
 import { installLakeFx } from "./lakeFx";
 import { useLakeStore } from "./lakeStore";
 
-const IDLE_WAIT_MS = 5000;
+/**
+ * How long (ms) after the village the lake file is asked for. Short (perf/no-hitch, 2026-11-17): its preparation (the
+ * water's ripple maps, the lake model) is a few hundred ms of main thread on a slow phone, best done while the arrival's
+ * veil still covers the village (it lifts when the trees are grown, ~10 s on a 4x-CPU phone) than after.
+ */
+const IDLE_WAIT_MS = 1500;
 /** A lamp's light at night (B's `light__lake_lamp_*`: warm, 14 m): physical units, tuned by eye on the pier at 23:00. */
 const LAMP_LIGHT = { color: "#ffd9a0", intensity: 9, distance: 13, decay: 1.6 } as const;
 /** A player past this x (the village's east edge region) asks for the lake file at once (design 10). */

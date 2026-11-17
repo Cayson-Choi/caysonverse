@@ -45,11 +45,21 @@ export function valueNoise3(x: number, y: number, z: number, seed = 0): number {
   const sx = fx * fx * (3 - 2 * fx);
   const sy = fy * fy * (3 - 2 * fy);
   const sz = fz * fz * (3 - 2 * fz);
-  const h = (i: number, j: number, k: number) => hashUnit(xi + i + seed * 131, yi + j, zi + k + seed * 17);
-  const x00 = h(0, 0, 0) + (h(1, 0, 0) - h(0, 0, 0)) * sx;
-  const x10 = h(0, 1, 0) + (h(1, 1, 0) - h(0, 1, 0)) * sx;
-  const x01 = h(0, 0, 1) + (h(1, 0, 1) - h(0, 0, 1)) * sx;
-  const x11 = h(0, 1, 1) + (h(1, 1, 1) - h(0, 1, 1)) * sx;
+  // the 8 corners once each (the same values as before, perf/no-hitch: this is read millions of times per village)
+  const ax = xi + seed * 131;
+  const az = zi + seed * 17;
+  const h000 = hashUnit(ax, yi, az);
+  const h100 = hashUnit(ax + 1, yi, az);
+  const h010 = hashUnit(ax, yi + 1, az);
+  const h110 = hashUnit(ax + 1, yi + 1, az);
+  const h001 = hashUnit(ax, yi, az + 1);
+  const h101 = hashUnit(ax + 1, yi, az + 1);
+  const h011 = hashUnit(ax, yi + 1, az + 1);
+  const h111 = hashUnit(ax + 1, yi + 1, az + 1);
+  const x00 = h000 + (h100 - h000) * sx;
+  const x10 = h010 + (h110 - h010) * sx;
+  const x01 = h001 + (h101 - h001) * sx;
+  const x11 = h011 + (h111 - h011) * sx;
   const y0 = x00 + (x10 - x00) * sy;
   const y1 = x01 + (x11 - x01) * sy;
   return y0 + (y1 - y0) * sz;
