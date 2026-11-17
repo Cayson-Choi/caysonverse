@@ -43,7 +43,7 @@ export interface LotRect {
 
 /**
  * When a part opens to players (design 4): 1 = phase 1 (every exterior, yards and gardens, the seats, what is visible through the
- * windows — the library's reading nooks), 2 = the walk-in interiors (library → school → chapel → church → temple hall), 3 = unused
+ * windows) AND every walk-in interior (owner 2026-11-17 "모든 건물은 안에 들어가서 … 앉아볼 수 있어야"), 2 = interactions (swings, the temple bell), 3 = unused
  * in v2 (kept for the type), 4 = with 케이슨랜드 (B11).
  */
 export type LotPhase = 1 | 2 | 3 | 4;
@@ -302,11 +302,11 @@ const SCHOOL: VillageLot = {
   body: rect(-8, 8, -10, -2),
   apron: 12,
   entry: "door",
-  doors: [door("lot_school_main", 0, 2.2, "swing", "door", 2, "front", 3.2)],
+  doors: [door("lot_school_main", 0, 2.2, "swing", "door", 1, "front", 3.2)],
   units: [
     {
       id: "lot_school_class", name: "교실", sign: "교실", x0: -8, x1: 8, door: "lot_school_main",
-      interior: interior("lot_school_class", { x: 410, z: 0 }, { x: 15.4, z: 7.4 }, 3.7, 2),
+      interior: interior("lot_school_class", { x: 410, z: 0 }, { x: 15.4, z: 7.4 }, 3.7, 1),
     },
   ],
   colliders: [
@@ -342,7 +342,7 @@ const SCHOOL: VillageLot = {
     slot("nameplate", "nameplate", 0, -0.45, 3.9, "out", 2.2, 0.5, 1), // the porch's carved name board
   ],
   approach: { x: 48.5, z: 15 },
-  phase: { exterior: 1, interior: 2 },
+  phase: { exterior: 1, interior: 1 },
   priority: 2,
 };
 
@@ -369,11 +369,11 @@ const CHAPEL: VillageLot = {
   body: rect(-5, 5, -5.5, 5.5),
   apron: 3,
   entry: "door",
-  doors: [{ ...door("lot_chapel_main", 0, 2.4, "swing", "door", 2, "front", 3.6), closedNote: "조용히 둘러보세요" }],
+  doors: [{ ...door("lot_chapel_main", 0, 2.4, "swing", "door", 1, "front", 3.6), closedNote: "조용히 둘러보세요" }],
   units: [
     {
       id: "lot_chapel_nave", name: "성당 안", sign: "케이슨 마을 성당", x0: -5, x1: 5, door: "lot_chapel_main",
-      interior: interior("lot_chapel_nave", { x: 440, z: 0 }, { x: 9.4, z: 13.4 }, 9, 2),
+      interior: interior("lot_chapel_nave", { x: 440, z: 0 }, { x: 9.4, z: 13.4 }, 9, 1),
     },
   ],
   colliders: [
@@ -398,7 +398,7 @@ const CHAPEL: VillageLot = {
     slot("nameplate", "nameplate", 3.6, 5.56, 2.0, "out", 1.0, 0.4, 1),
   ],
   approach: { x: 40, z: -37 },
-  phase: { exterior: 1, interior: 2 },
+  phase: { exterior: 1, interior: 1 },
   priority: 4,
 };
 
@@ -425,11 +425,11 @@ const LIBRARY: VillageLot = {
   body: rect(-10, 4, -7.5, 3.5),
   apron: 4,
   entry: "door",
-  doors: [door("lot_library_main", -3, 2.2, "swing", "door", 2, "front", 3.4)],
+  doors: [door("lot_library_main", -3, 2.2, "swing", "door", 1, "front", 3.4)],
   units: [
     {
       id: "lot_library_reading", name: "열람실", sign: "열람실", x0: -10, x1: 4, door: "lot_library_main",
-      interior: interior("lot_library_reading", { x: 470, z: 0 }, { x: 13.4, z: 10.4 }, 5.2, 2),
+      interior: interior("lot_library_reading", { x: 470, z: 0 }, { x: 13.4, z: 10.4 }, 5.2, 1),
     },
   ],
   colliders: [
@@ -454,15 +454,15 @@ const LIBRARY: VillageLot = {
     seat("lot_library_bench_2", 7, 1.6, "out", "backed", 1.8),
   ],
   slots: [
-    slot("nook_l", "reading_nook", -7.1, 3.9, 0.5, "in", 2.4, 0.5, 2), // window seat inside the bay (sat on from the interior, phase 2)
-    slot("nook_r", "reading_nook", 1.1, 3.9, 0.5, "in", 2.4, 0.5, 2),
+    slot("nook_l", "reading_nook", -7.1, 3.9, 0.5, "in", 2.4, 0.5, 1), // the bay's window seat (sat on inside: lot_library_nook_1)
+    slot("nook_r", "reading_nook", 1.1, 3.9, 0.5, "in", 2.4, 0.5, 1),
     slot("book_return", "book_return", -9.2, 5.05, 0.9, "out", 0.6, 1.0, 2),
     slot("notice", "notice_board", 3.2, 3.56, 1.6, "out", 1.0, 1.2, 1),
     slot("nameplate", "nameplate", -3, 3.56, 4.3, "out", 3.4, 0.5, 1), // carved stone frieze over the door
-    slot("armchair_nook", "reading_nook", 1.2, 8.6, 0.45, "right", 1.0, 0.5, 2, "interior:lot_library_reading"), // fireside armchairs (phase 2)
+    slot("armchair_nook", "reading_nook", 1.2, 8.6, 0.45, "right", 1.0, 0.5, 1, "interior:lot_library_reading"), // fireside armchairs (phase 1)
   ],
   approach: { x: -49, z: 15 },
-  phase: { exterior: 1, interior: 2 },
+  phase: { exterior: 1, interior: 1 },
   priority: 1,
 };
 
@@ -490,11 +490,11 @@ const TEMPLE: VillageLot = {
   body: rect(-6.5, 6.5, -11.5, -3),
   apron: 16,
   entry: "door",
-  doors: [{ ...door("lot_temple_main", 0, 3, "swing", "door", 2, "front", 3.4), closedNote: "조용히 둘러보세요" }],
+  doors: [{ ...door("lot_temple_main", 0, 3, "swing", "door", 1, "front", 3.4), closedNote: "조용히 둘러보세요" }],
   units: [
     {
       id: "lot_temple_hall", name: "대웅전", sign: "대웅전", x0: -6.5, x1: 6.5, door: "lot_temple_main",
-      interior: interior("lot_temple_hall", { x: 410, z: 40 }, { x: 11.4, z: 7.4 }, 6, 2),
+      interior: interior("lot_temple_hall", { x: 410, z: 40 }, { x: 11.4, z: 7.4 }, 6, 1),
     },
   ],
   colliders: [
@@ -527,7 +527,7 @@ const TEMPLE: VillageLot = {
     slot("gate_plaque", "nameplate", 0, 12.2, 5.4, "out", 1.8, 0.7, 1),
   ],
   approach: { x: -39, z: -37 },
-  phase: { exterior: 1, interior: 2 },
+  phase: { exterior: 1, interior: 1 },
   priority: 5,
 };
 
@@ -554,11 +554,11 @@ const CHURCH: VillageLot = {
   body: rect(-4.2, 4.2, -8, 3),
   apron: 5,
   entry: "door",
-  doors: [{ ...door("lot_church_main", 0, 2.2, "swing", "door", 2, "front", 3.4), closedNote: "조용히 둘러보세요" }],
+  doors: [{ ...door("lot_church_main", 0, 2.2, "swing", "door", 1, "front", 3.4), closedNote: "조용히 둘러보세요" }],
   units: [
     {
       id: "lot_church_nave", name: "예배당", sign: "예배당", x0: -4.2, x1: 4.2, door: "lot_church_main",
-      interior: interior("lot_church_nave", { x: 440, z: 40 }, { x: 9.4, z: 9.4 }, 7, 2),
+      interior: interior("lot_church_nave", { x: 440, z: 40 }, { x: 7.8, z: 10.4 }, 7, 1),
     },
   ],
   colliders: [
@@ -581,7 +581,7 @@ const CHURCH: VillageLot = {
     slot("nameplate", "nameplate", 0, 3.06, 5.2, "out", 3.0, 0.45, 1),
   ],
   approach: { x: 0, z: 50 },
-  phase: { exterior: 1, interior: 2 },
+  phase: { exterior: 1, interior: 1 },
   priority: 3,
 };
 
@@ -1052,4 +1052,171 @@ export function lotAt(x: number, z: number): VillageLot | null {
     if (x >= f.minX && x <= f.maxX && z >= f.minZ && z <= f.maxZ) return l;
   }
   return null;
+}
+
+// ─────────────────────────────── the walk-in interiors (v2 amendment, owner 2026-11-17) ───────────────────────────────
+
+/**
+ * Owner 2026-11-17: "모든 건물은 안에 들어가서 의자가 있으면 앉아볼 수 있어야 … 성당, 교회, 절은 … 정말 실제 건물안의 모습 같아야 해". Every lot
+ * building is enterable from phase 1, the same pattern as the houses and the memorial hall: the door pad loads the room's own
+ * area (`lot:<unit id>`, its frame at `units[].interior.origin`, far from the village), an exit pad by the inside of the door
+ * takes the visitor back to the door's arrival point outside. The interior frame: x = across the room from the left wall as
+ * one comes in (0..size.x), z = from the inside face of the door wall inwards (0..size.z), y = the floor (flat; steps and
+ * daises are colliders). Only the room the visitor is in is loaded and drawn (design 11).
+ */
+export interface LotInteriorSeat {
+  /** Stable forever, append-only (`LOT_INTERIOR_SEAT_ORDER`). */
+  id: string;
+  /** Centre of the seat board in the interior frame. */
+  x: number;
+  z: number;
+  /** The way the sitter faces: "in" = +z (toward the altar / far wall), "out" = -z, "left" = -x, "right" = +x. */
+  faces: "in" | "out" | "left" | "right";
+  kind: "backed" | "backless" | "floor";
+  seatTop: number;
+  /** Along the seat (m): a pew's length, a chair's width. */
+  length: number;
+  /** Seat centre to its front edge, and to its back (incl. backrest), along the facing. */
+  frontEdge: number;
+  backDepth: number;
+  places: number;
+}
+
+export interface LotInteriorSpec {
+  unit: string;
+  lot: LotId;
+  /** The room's door on the frame's z = 0 wall: its centre x and width (the exit pad stands 0.8 m in; arrival 1.6 m in). */
+  doorX: number;
+  doorWidth: number;
+  /** Fixed furniture boxes (pews, altar, 수미단, desks, stacks): interior frame rects, `col__<unit>_<name>` in the model. */
+  solids: readonly { name: string; rect: LotRect; height: number }[];
+  seats: readonly LotInteriorSeat[];
+  /** Triangles (all drawn at once inside; statues and scans at their game LOD), GPU texture MB (KTX2), draws: PC and phone. */
+  budget: { pc: { triangles: number; textureMB: number; draws: number }; phone: { triangles: number; textureMB: number; draws: number } };
+  /** What must be there (design 11): the review checks every item. */
+  program: readonly string[];
+}
+
+/** Minimum clear floor in front of a seat's front edge (owner rule P6: sit and stand from the front). */
+export const LOT_INTERIOR_FRONT_CLEAR = 0.6;
+
+const iseat = (id: string, x: number, z: number, faces: LotInteriorSeat["faces"], kind: LotInteriorSeat["kind"], length: number, places: number, seatTop = 0.45, frontEdge = 0.25, backDepth = 0.35): LotInteriorSeat =>
+  ({ id, x, z, faces, kind, seatTop, length, frontEdge, backDepth, places });
+const solid = (name: string, x0: number, x1: number, z0: number, z1: number, height: number) => ({ name, rect: rect(x0, x1, z0, z1), height });
+
+/** 교실 + 복도: lockers along the corridor (z 0..2.4), a glazed partition, 12 pupils' desks facing the blackboard on the left wall. */
+const SCHOOL_IN: LotInteriorSpec = {
+  unit: "lot_school_class",
+  lot: "lot_school",
+  doorX: 7.7,
+  doorWidth: 2.2,
+  solids: [
+    solid("lockers_l", 0.2, 5.6, 0, 0.5, 1.9), solid("lockers_r", 9.8, 15.2, 0, 0.5, 1.9),
+    solid("partition_l", 0, 2.6, 2.3, 2.45, 3.7), solid("partition_r", 12.8, 15.4, 2.3, 2.45, 3.7), // glazed ends; the middle is open (the classroom's front)
+    solid("board", 0, 0.12, 3, 7, 2.4), solid("teacher_desk", 1.2, 2, 4.4, 6, 0.78),
+    ...[0, 1, 2, 3].flatMap((c) => [0, 1, 2].map((r) => solid(`desk_${c * 3 + r + 1}`, 4 + c * 2.2 - 1.32, 4 + c * 2.2 - 0.82, 3.6 + r * 1.4 - 0.4, 3.6 + r * 1.4 + 0.4, 0.72))),
+  ],
+  seats: [0, 1, 2, 3].flatMap((c) => [0, 1, 2].map((r) => iseat(`lot_school_chair_${c * 3 + r + 1}`, 4 + c * 2.2, 3.6 + r * 1.4, "left", "backed", 0.44, 1, 0.45, 0.22, 0.23))),
+  budget: { pc: { triangles: 60_000, textureMB: 24, draws: 40 }, phone: { triangles: 25_000, textureMB: 8, draws: 25 } },
+  program: ["복도 사물함(번호판·손잡이)", "유리 칸막이", "칠판(새 칠판)·분필 받침", "교탁·교사 의자", "책상 12 + 의자 12(앉기)", "벽시계", "게시판(그림·시간표)", "창가 화분", "펜던트 조명"],
+};
+
+/** 열람실: wall stacks full of books (instanced), two reading tables with four chairs each, the two bay window nooks, a librarian desk. */
+const LIBRARY_IN: LotInteriorSpec = {
+  unit: "lot_library_reading",
+  lot: "lot_library",
+  doorX: 6.7,
+  doorWidth: 2.2,
+  solids: [
+    solid("stacks_w", 0, 1, 1.4, 10.4, 2.6), solid("stacks_e", 12.4, 13.4, 3, 10.4, 2.6), solid("stacks_b", 1, 12.4, 9.4, 10.4, 2.6),
+    solid("table_a", 3.9, 5.1, 4.3, 6.7, 0.76), solid("table_b", 8.3, 9.5, 4.3, 6.7, 0.76),
+    solid("librarian_desk", 9.6, 12, 1.6, 2.4, 1.05),
+  ],
+  seats: [
+    iseat("lot_library_chair_1", 3.05, 4.9, "right", "backed", 0.46, 1, 0.46, 0.22, 0.23),
+    iseat("lot_library_chair_2", 3.05, 6.1, "right", "backed", 0.46, 1, 0.46, 0.22, 0.23),
+    iseat("lot_library_chair_3", 5.95, 4.9, "left", "backed", 0.46, 1, 0.46, 0.22, 0.23),
+    iseat("lot_library_chair_4", 5.95, 6.1, "left", "backed", 0.46, 1, 0.46, 0.22, 0.23),
+    iseat("lot_library_chair_5", 7.45, 4.9, "right", "backed", 0.46, 1, 0.46, 0.22, 0.23),
+    iseat("lot_library_chair_6", 7.45, 6.1, "right", "backed", 0.46, 1, 0.46, 0.22, 0.23),
+    iseat("lot_library_chair_7", 10.35, 4.9, "left", "backed", 0.46, 1, 0.46, 0.22, 0.23),
+    iseat("lot_library_chair_8", 10.35, 6.1, "left", "backed", 0.46, 1, 0.46, 0.22, 0.23),
+    iseat("lot_library_nook_1", 2.6, 0.4, "in", "backless", 2.4, 2, 0.48, 0.2, 0.2), // the bay window seats (cushion, sat facing the room)
+    iseat("lot_library_nook_2", 10.8, 0.4, "in", "backless", 2.4, 2, 0.48, 0.2, 0.2),
+  ],
+  budget: { pc: { triangles: 90_000, textureMB: 32, draws: 45 }, phone: { triangles: 35_000, textureMB: 10, draws: 28 } },
+  program: ["벽 책장 가득한 책(책등 다양, 인스턴스)", "열람 테이블 2 + 의자 8(앉기)", "초록 갓 독서등", "창가 독서 자리 2(쿠션·담요·책 더미, 앉기)", "사서 데스크(도장·책 수레)", "벽난로·안락의자(장식)", "책장 사다리", "천장 들보·펜던트"],
+};
+
+/** 성당 안: nave with pews (2 x 5), a central aisle, the sanctuary in the apse. */
+const CHAPEL_IN: LotInteriorSpec = {
+  unit: "lot_chapel_nave",
+  lot: "lot_chapel",
+  doorX: 4.7,
+  doorWidth: 2.4,
+  solids: [
+    solid("font", 2.9, 3.3, 0.5, 0.9, 1.0), // holy-water font by the door
+    solid("confessional", 0, 1.4, 0.2, 1.6, 2.6),
+    solid("sanctuary", 0.6, 8.8, 10.2, 13.4, 0.45), // the raised sanctuary (2 steps): altar, tabernacle, crucifix, ambo on it
+    solid("mary", 0.2, 1.0, 9.5, 10.2, 2.4), solid("saint", 8.4, 9.2, 9.5, 10.2, 2.4), // 성모상 and a saint's statue on plinths
+    ...[0, 1, 2, 3, 4].flatMap((r) => [solid(`pew_l${r + 1}`, 0.7, 3.7, 2.6 + r * 1.5 - 0.35, 2.6 + r * 1.5 + 0.25, 1.0), solid(`pew_r${r + 1}`, 5.7, 8.7, 2.6 + r * 1.5 - 0.35, 2.6 + r * 1.5 + 0.25, 1.0)]),
+  ],
+  seats: [0, 1, 2, 3, 4].flatMap((r) => [iseat(`lot_chapel_pew_l${r + 1}`, 2.2, 2.6 + r * 1.5, "in", "backed", 3, 3), iseat(`lot_chapel_pew_r${r + 1}`, 7.2, 2.6 + r * 1.5, "in", "backed", 3, 3)]),
+  budget: { pc: { triangles: 140_000, textureMB: 48, draws: 60 }, phone: { triangles: 55_000, textureMB: 14, draws: 35 } },
+  program: ["장의자 10 + 무릎틀(앉기)", "가운데 통로", "제대·감실·십자고상·독서대·제대 초", "성수대", "고해소", "십자가의 길 14처(부조)", "성모상", "성인상", "구상 스테인드글라스(측창·장미창, 바닥에 색 빛)", "리브 볼트 천장", "샹들리에", "성가대석(오르간 로프트)", "꽃"],
+};
+
+/** 예배당: wooden pews (2 x 4), pulpit, communion table, a simple cross, hymn board, organ or piano, beamed ceiling. */
+const CHURCH_IN: LotInteriorSpec = {
+  unit: "lot_church_nave",
+  lot: "lot_church",
+  doorX: 3.9,
+  doorWidth: 2.2,
+  solids: [
+    solid("chancel", 0.4, 7.4, 8.4, 10.4, 0.3), // raised chancel: pulpit, communion table, the cross on the wall
+    solid("organ", 6.6, 7.6, 7.6, 8.4, 1.3), solid("hymn_board", 0.2, 0.5, 7.2, 7.8, 1.8),
+    ...[0, 1, 2, 3].flatMap((r) => [solid(`pew_l${r + 1}`, 0.5, 3.1, 2.2 + r * 1.5 - 0.35, 2.2 + r * 1.5 + 0.25, 1.0), solid(`pew_r${r + 1}`, 4.7, 7.3, 2.2 + r * 1.5 - 0.35, 2.2 + r * 1.5 + 0.25, 1.0)]),
+  ],
+  seats: [0, 1, 2, 3].flatMap((r) => [iseat(`lot_church_pew_l${r + 1}`, 1.8, 2.2 + r * 1.5, "in", "backed", 2.6, 3), iseat(`lot_church_pew_r${r + 1}`, 6, 2.2 + r * 1.5, "in", "backed", 2.6, 3)]),
+  budget: { pc: { triangles: 70_000, textureMB: 28, draws: 40 }, phone: { triangles: 28_000, textureMB: 8, draws: 25 } },
+  program: ["나무 장의자 8(앉기)", "강대상(설교단)", "성찬상", "단순한 나무 십자가", "찬송 번호판(숫자만)", "오르간 또는 피아노", "맑은 유리 또는 단순한 색유리", "노출 들보 천장", "펜던트 등", "꽃"],
+};
+
+/** 대웅전 안: 방석 floor seats (3 x 4) facing the 수미단, wooden floor, 닫집 over the main 불상 and two 협시보살, 탱화 behind. */
+const TEMPLE_IN: LotInteriorSpec = {
+  unit: "lot_temple_hall",
+  lot: "lot_temple",
+  doorX: 5.7,
+  doorWidth: 3,
+  solids: [
+    solid("sumidan", 2.5, 8.9, 5.6, 7.4, 1.1), // 수미단 with the three figures
+    solid("offering", 4.2, 7.2, 4.9, 5.4, 0.85), // 공양상: candles, incense burner, flowers, fruit
+    solid("bell_small", 0.3, 0.9, 5.8, 6.6, 1.2), solid("drum", 10.5, 11.1, 5.8, 6.6, 1.2),
+  ],
+  seats: [0, 1, 2].flatMap((r) => [0, 1, 2, 3].map((c) => iseat(`lot_temple_cushion_${r * 4 + c + 1}`, 3.3 + c * 1.6, 1.8 + r * 1.0, "in", "floor", 0.7, 1, 0.12, 0.35, 0.35))),
+  budget: { pc: { triangles: 140_000, textureMB: 48, draws: 60 }, phone: { triangles: 55_000, textureMB: 14, draws: 35 } },
+  program: ["본존불(석가모니불)", "협시보살 2", "수미단(조각·단청)", "닫집(조각·채색)", "후불탱화", "단청 천장(우물반자)", "공양상: 촛대·향로·꽃·과일", "연등", "방석 12(바닥에 앉기)", "마루 바닥", "목탁·작은 종(장식)", "꽃살문 안쪽 창호지 빛"],
+};
+
+/** Every walk-in interior, in fixed order (interior seat ids follow it; never reorder). */
+export const LOT_INTERIORS: readonly LotInteriorSpec[] = deepFreeze([SCHOOL_IN, LIBRARY_IN, CHAPEL_IN, CHURCH_IN, TEMPLE_IN]);
+
+/** Every interior seat id in its one fixed order (append-only: a new seat goes at the end). Game ids `lotin:<id>…`. */
+export const LOT_INTERIOR_SEAT_ORDER: readonly string[] = Object.freeze(LOT_INTERIORS.flatMap((i) => i.seats.map((s) => s.id)));
+
+/** The interior's exit: its pad, the spot a visitor arrives on when coming in (interior frame), and the model's node. */
+export function lotInteriorDoor(i: LotInteriorSpec): { exitPad: { x: number; z: number; radius: number }; arrival: { x: number; z: number; faces: "in" }; node: string } {
+  return { exitPad: { x: i.doorX, z: 0.8, radius: 1.0 }, arrival: { x: i.doorX, z: 1.6, faces: "in" }, node: `door__${i.unit}_exit` };
+}
+
+/** A seat's box (board + backrest) and the floor strip in front of it that must stay clear (interior frame). */
+export function lotInteriorSeatBoxes(s: LotInteriorSeat): { seat: LotRect; front: LotRect } {
+  const h = s.length / 2;
+  const f = s.frontEdge, b = s.backDepth, c = LOT_INTERIOR_FRONT_CLEAR;
+  switch (s.faces) {
+    case "in": return { seat: rect(s.x - h, s.x + h, s.z - b, s.z + f), front: rect(s.x - h, s.x + h, s.z + f, s.z + f + c) };
+    case "out": return { seat: rect(s.x - h, s.x + h, s.z - f, s.z + b), front: rect(s.x - h, s.x + h, s.z - f - c, s.z - f) };
+    case "right": return { seat: rect(s.x - b, s.x + f, s.z - h, s.z + h), front: rect(s.x + f, s.x + f + c, s.z - h, s.z + h) };
+    case "left": return { seat: rect(s.x - f, s.x + b, s.z - h, s.z + h), front: rect(s.x - f - c, s.x - f, s.z - h, s.z + h) };
+  }
 }

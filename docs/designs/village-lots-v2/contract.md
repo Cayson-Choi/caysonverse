@@ -1,6 +1,6 @@
 # 마을 부지 건물 v2 — 약속 (contract)
 
-2026-11-17 · `feat/lots2-design` · 설계는 `design.md`, **숫자는 코드가 정답**: `shared/src/village/villageLots.ts`(시험 `villageLots.test.ts` 30개).
+2026-11-17 · `feat/lots2-design` · 설계는 `design.md`, **숫자는 코드가 정답**: `shared/src/village/villageLots.ts`(시험 `villageLots.test.ts` 30개 + `villageLotsInteriors.test.ts` 6개).
 틀은 v1(feat/lots-design)과 같고, L5 연결 모듈(feat/lots-wiring 0fbbbaa)이 읽는 이름·함수는 그대로 두었어요. 바뀌는 것은 **lot id, `LOT_SEAT_ORDER`, GLB 목록**뿐이에요.
 
 | 파일 | 내용 |
@@ -24,7 +24,7 @@
 | `lot_gate` 정문 (남쪽 둑, 북) — 75ab7df | x −34..−14, z 83..95 | 문 줄 z 92.6..95 | (−24, 91.95) · (−24, 90.4) | 16.5 |
 
 문: 정문 빼고 모두 앞벽 가운데 **안쪽으로 여는 참나무 쌍여닫이**(`leaf: "swing"`), 쓸기 = 폭 × 폭/2가 몸체 안(시험). 노드 `door__<door id>`, 문짝 둘
-`door__<id>_l`/`_r`(경첩 = 문설주, 0 → 90°). 2단계 전 문 패드 안내: 학교·도서관 "준비 중", 성당·절·교회 `closedNote` "조용히 둘러보세요".
+`door__<id>_l`/`_r`(경첩 = 문설주, 0 → 90°). 문은 1단계부터 실내로(11장); `closedNote`는 실내를 받는 동안·실패 때 안내.
 
 ## 3. 충돌 상자 (`lotColliders`) — id 순서 고정, 모델 `col__<id>`와 0.01 m까지 같게
 몸체 `col__<lot>`(카메라 상자, 높이 = `cameraHeight`) 다음 순서대로:
@@ -82,11 +82,16 @@
 ## 9. 빌더 덩어리 (파일 주인)
 | 덩어리 | 하는 일 | 주인 파일(밖은 읽기만) | 먼저 |
 |---|---|---|---|
-| **B1 학교 + 도서관** | 두 건물 Blender 키트 + 룩데브 + GLB + 시험; NEW 세트 `roof_clay_tile`, `wood_painted`, `play_rubber`, `sand`, `stone_ashlar`, `roof_slate` | `docs/designs/village-lots-v2/tools/{school_kit,library_kit,parts_lot_school,parts_lot_library}.py`, `client/public/models/village/lots/{lot_school,lot_library}.glb`·`lots/school/`·`lots/library/`, `client/dev/{school,library}Lookdev.ts`, `e2e/{school,library}-lookdev.mjs`, `server/src/tools/lot{School,Library}Glb.test.ts`, 라이브러리의 그 세트 줄 | 이 약속 |
-| **B2 성당 + 교회** | 두 건물 + 색유리 + 종; NEW `copper_new`(B1의 `stone_ashlar`·`roof_slate`·`wood_painted`를 씀 — 먼저 끝난 쪽이 더하고 다른 쪽은 기다리지 말고 같은 이름으로 씀) | `…/tools/{chapel_kit,church_kit,parts_lot_chapel,parts_lot_church}.py`, `lot_chapel.glb`·`lot_church.glb`·`lots/chapel/`·`lots/church/`, 룩데브·e2e·`lot{Chapel,Church}Glb.test.ts` | 〃 |
-| **B3 절 + 정문 손질** | 한옥 절(일주문·대웅전·공포 인스턴스·단청 아틀라스·석탑·범종각·연못·돌담·소나무) + 정문 새것 손질(KTX2 변환, 가격판 떼기, 때 없애기 — 위치·충돌·좌석·자리 이름 그대로); NEW `dancheong_wood`, `wood_pine_natural`, `stone_wall_korean` | `…/tools/{temple_kit,parts_lot_temple}.py`, `gate_kit.py`(D:\ClaudeCode\caysonverse-l4 75ab7df에서 가져와 이 브랜치에서 고침), `lot_temple.glb`·`lot_gate.glb`·`lots/temple/`·`lots/martgate/`의 정문 몫, 룩데브·e2e·`lot{Temple,Gate}Glb.test.ts` | 〃 |
-| **L5v2 연결** | feat/lots-wiring 모듈 재사용: `LOTS_WITH_MODEL`에 GLB가 들어온 lot 추가, 로더 GLB 목록·`LOT_TEXTURE_MANIFESTS`(KTX2 → pbrLibrary/KTX2Loader), `VillageLots.tsx` 탐침 표를 v2 lot으로, `lotVillageSeats` 그대로(12자리), `closedNote` 안내, 슬롯 훅(시계·종·놀이터만 1–2단계), `villageLayout.ts` 부지 팻말·공사 끄기, export `lots`, `e2e/lots-walk.mjs` 커밋 | `client/src/village/lots/*`, `shared/src/village/villageLots.ts`(넓히기만), `benchSeats.ts`·`villageLayout.ts`(그 줄만), `scripts/export-village-layout.ts`의 `lots` 줄, `PlotMarkers.tsx`·`plotSigns.ts` | 이 약속(대역 상자로 먼저 붙임), B1–B3 GLB |
-| **L6 굽기·조립** | lot GLB마다 라이트맵 낮·밤 굽기(Blender 하나, `CV_CPU=1`), 충돌·좌석 뽑기 대조, 예산·KTX2 GPU MB·폰 fps·100명 측정, 광장 4방향·위 화면, 사진 나란히 시트 | `docs/designs/village-lots-v2/tools/bake_lots.py`, `client/public/models/village/lots/*_lm*.webp`, `docs/designs/village-lots-v2/shots/` | B1–B3, vrb2 village.glb |
+| **B1 학교 + 도서관** (진행 중) | 두 건물 외관 + **실내 2개**(교실·복도, 열람실: 11장 구성·좌석 22·solids 그대로) + 룩데브 + GLB + 시험; NEW 세트 `roof_clay_tile`, `wood_painted`, `play_rubber`, `sand`, `stone_ashlar`, `roof_slate`. 나뉠 수 있음: B1a 외관, B1b 실내 | `docs/designs/village-lots-v2/tools/{school_kit,library_kit,parts_lot_school,parts_lot_library,school_room_kit,library_room_kit}.py`, `client/public/models/village/lots/{lot_school,lot_library,lot_school_class,lot_library_reading}.glb`·`lots/school/`·`lots/library/`, `client/dev/{school,library}Lookdev.ts`, `e2e/{school,library}-lookdev.mjs`, `server/src/tools/lot{School,Library}Glb.test.ts`, 라이브러리의 그 세트 줄 | 이 약속 |
+| **B2 성당 + 교회** | 두 건물 외관 + **실내 2개**(성당: 장의자·제대·감실·십자고상·14처·성모상·성인상·구상 색유리·리브 볼트·오르간 로프트; 교회: 장의자·강대상·성찬상·십자가·찬송판·오르간) — 성상은 CC0/PD 스캔 먼저(11장); NEW `copper_new`(B1 세트는 같은 이름으로 씀). 나뉠 수 있음: B2a 외관 둘, B2b 성당 실내, B2c 교회 실내, B2s 성상·색유리 조달·굽기 | `…/tools/{chapel_kit,church_kit,parts_lot_chapel,parts_lot_church,chapel_room_kit,church_room_kit}.py`, `lot_chapel.glb`·`lot_church.glb`·`lot_chapel_nave.glb`·`lot_church_nave.glb`·`lots/chapel/`·`lots/church/`, 룩데브·e2e·`lot{Chapel,Church}Glb.test.ts`, `SOURCES_lot_chapel.md`·`SOURCES_lot_church.md` | 〃 |
+| **B3 절 + 정문 손질** | 한옥 절 외관(일주문·대웅전·공포 인스턴스·단청 아틀라스·석탑·범종각·연못·돌담·소나무) + **대웅전 실내**(수미단·본존불·협시보살 2·닫집·후불탱화·단청 우물반자·공양상·연등·방석 12) — 불상·보살상은 CC0/PD 스캔 먼저 + 정문 새것 손질(KTX2, 가격판 떼기, 때 없애기 — 위치·충돌·좌석·자리 이름 그대로); NEW `dancheong_wood`, `wood_pine_natural`, `stone_wall_korean`. 나뉠 수 있음: B3a 절 외관, B3b 대웅전 실내 + 불상 조달, B3c 정문 손질 | `…/tools/{temple_kit,parts_lot_temple,temple_room_kit}.py`, `gate_kit.py`(D:\ClaudeCode\caysonverse-l4 75ab7df에서 가져와 이 브랜치에서 고침), `lot_temple.glb`·`lot_temple_hall.glb`·`lot_gate.glb`·`lots/temple/`·`lots/martgate/`의 정문 몫, 룩데브·e2e·`lot{Temple,Gate}Glb.test.ts`, `SOURCES_lot_temple.md` | 〃 |
+| **L5v2 연결** | feat/lots-wiring 모듈 재사용: `LOTS_WITH_MODEL`, 로더 GLB 목록·`LOT_TEXTURE_MANIFESTS`(KTX2 → pbrLibrary/KTX2Loader), `VillageLots.tsx` 탐침 표를 v2 lot으로, `lotVillageSeats` 그대로(바깥 12), **실내 영역 5개**(`AreaId`에 `lot:<unit>`, 문 패드 → 방, 나가기 → 문 도착점, 들어갔을 때만 받고 나오면 놓기, 집 실내 카메라 규칙, 방 좌석 52 `lotin:`), 슬롯 훅(시계·종·놀이터), `villageLayout.ts` 팻말·공사 끄기, export `lots`, `e2e/lots-walk.mjs` + 실내 걷기·앉기 e2e | `client/src/village/lots/*`, `shared/src/village/villageLots.ts`(넓히기만), `benchSeats.ts`·`villageLayout.ts`·영역 목록(그 줄만), `scripts/export-village-layout.ts`의 `lots` 줄, `PlotMarkers.tsx`·`plotSigns.ts` | 이 약속(대역 상자·빈 방으로 먼저 붙임), B1–B3 GLB |
+| **L6 굽기·조립** | lot GLB와 실내 GLB마다 라이트맵 낮·밤 굽기(Blender 하나, `CV_CPU=1`; 실내는 색유리 빛 무늬 포함, 구경하기 충분히 밝게), 충돌·좌석 뽑기 대조, 예산·KTX2 GPU MB·폰 fps·100명 측정, 광장 4방향·위 화면, 방마다 입구·중심·앉은 자리 화면 + 사진 나란히(T13 감동 기준) | `docs/designs/village-lots-v2/tools/bake_lots.py`, `client/public/models/village/lots/*_lm*`, `docs/designs/village-lots-v2/shots/` | B1–B3, vrb2 village.glb |
+
+**B1 넘겨주기(이미 진행 중, 2026-11-17 추가)**: 학교·도서관도 **들어가서 앉는 실내**가 1단계예요. 외관 키트는 그대로 계속하고, 실내 2개를
+`school_room_kit.py`·`library_room_kit.py`로 따로 만들어 `lot_school_class.glb`·`lot_library_reading.glb`로 내보내요. 방 크기·문·`solids`·좌석 22(`lot_school_chair_1..12`,
+`lot_library_chair_1..8`, `lot_library_nook_1/2`)는 `LOT_INTERIORS` 숫자 그대로(시험 `villageLotsInteriors.test.ts`), 외관 베이 창 안 창가 자리와 실내 창가 자리는 같은 물건으로 보이게.
+11장 예산(학교 60k/25k, 도서관 90k/35k)·KTX2·T13 감동 기준(층 있는 빛, 책벽·벽난로·칠판·창가 같은 중심, 고른 디테일)을 지켜요. 외관이 먼저 끝나면 B1a로 넘기고 실내를 B1b로 이어 가도 돼요.
 
 순서: B1 · B2 · B3 동시에(서로 다른 파일, **Blender는 한 번에 하나씩 차례로** — PC 공유), L5v2는 동시에 시작 → L6. `art/`는 git 무시라 스크립트 사본은 `docs/designs/village-lots-v2/tools/`에.
 
@@ -100,6 +105,21 @@
 - 꼬마 규모(문 ≥ 3.2 m 높이, 통로 ≥ 3 m), 좌석 P6, 좌석·충돌은 끝에만 덧붙이기.
 - **돈 없음**: 가격·판매·가게·매표·ATM 자리나 글자 금지.
 - 종교 건물: 종단·교구·실제 절 이름·경전 글귀·卍·성인 이름 없음, 공손하고 조용하게.
-- design 9장 검토 표 T1–T12 전체를 처음부터(검토 때 처음 듣는 항목 없게).
+- design 9장 검토 표 T1–T12와 11.3장 T13(감동 기준)–T15 전체를 처음부터(검토 때 처음 듣는 항목 없게).
 - 커밋은 경로를 적어서(`git add -A` 금지), 꼬리말 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. 푸시·배포 안 함.
 - 다른 작업(vrb2·x1·m1·추모관·호수)의 파일은 고치지 않기 — 필요하면 요청서. 라이브러리에 세트 더하기만 예외(m1과 같은 형식).
+
+## 11. 실내 약속 (사장님 2026-11-17 추가 — design 11장)
+- 다섯 채 모두 **1단계에 들어가는 실내**(문 phase 1, 방 phase 1). 숫자: `LOT_INTERIORS`(방 틀·문·고정 가구 `solids`·좌석·예산·필수 구성 `program`), 시험 `villageLotsInteriors.test.ts`.
+- 틀: 방 원점 = `units[].interior.origin`, x = 들어서서 왼쪽 벽부터 가로, z = 문 벽 안쪽 면부터 안으로, 바닥 y = 0. 문 = z 0 벽의 `doorX`.
+  나가기 패드 (doorX, 0.8, r 1.0), 들어올 때 도착점 (doorX, 1.6), 노드 `door__<unit>_exit`.
+- 모델: 방마다 `client/public/models/village/lots/<unit>.glb`(실내 따로, 들어갔을 때만 받음), 노드 `lotroom__<unit>`, 충돌 `col__<unit>_<solid name>`(0.01 m),
+  좌석 `seat__<seat id>`(방 틀 좌표), 밤·낮 라이트맵 `<unit>_lm*.ktx2`, 성상 `lotstatue__<unit>_<name>`(LOD 2단: PC/폰).
+- 좌석 52: 학교 의자 12 → 도서관 의자 8 + 창가 2 → 성당 장의자 10 → 교회 장의자 8 → 대웅전 방석 12. 덧붙이기만. 앞 0.6 m 비움(방석 제외), 장의자는 3명, 창가 2명.
+  L5v2: `lotin:<seat id>:<place>` 좌석을 그 방 영역 좌석 목록에(집 실내 좌석과 같은 방식), 탭 = 걷기, 버튼 = 앉기.
+- 예산(방 하나 안에서 그리는 전부): 학교 60k/25k, 도서관 90k/35k, 성당 140k/55k, 교회 70k/28k, 대웅전 140k/55k 삼각형(PC/폰), KTX2 GPU MB 24/8 · 32/10 · 48/14 · 28/8 · 48/14,
+  그리기 40/25 · 45/28 · 60/35 · 40/25 · 60/35. 반복물(책·장의자·연등·초)은 인스턴스. 폰 30 fps(방 가운데·앉은 자리에서 측정).
+- **사실적 성상·그림·색유리**(design 11.2): CC0/퍼블릭 도메인 실제 스캔 먼저(Smithsonian 3D Open Access CC0, Scan The World, Sketchfab CC0만) → 라이선스·출처 기록 →
+  디시메이트 + 노멀/AO 굽기; 없으면 Blender 고해상 조각 + 퍼블릭 도메인 사진 질감 + 굽기. 색유리 = 퍼블릭 도메인 작품, 입체 납 띠, 투과 빛 무늬.
+  **AI 3D 금지**, 실제 단체 이름·로고·경전 글귀·卍 금지, 공손하게. 빛은 구워서 사실적으로, 구경하기 충분히 밝게.
+- **감동 기준 T13**: 실제 같고 깨끗하며 아름답고 세련, 층 있는 빛, 강한 중심, 고른 디테일. "맞기만 한" 결과는 검토에서 돌려보냄.
