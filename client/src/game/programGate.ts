@@ -47,6 +47,8 @@ interface Track {
 
 /** How long (ms) an object may be held back before three draws it its own way (it waits for the compile). */
 export const MAX_SKIP_MS = 3000;
+/** Bytes of never-drawn geometry a frame may upload (its first draw copies its buffers to the GPU). */
+export const GEOMETRY_BYTES_PER_FRAME = 4 * 1024 * 1024;
 /** Programs one flush (one frame) may start. */
 const MAX_COMPILES_PER_FLUSH = 2;
 /** Main-thread time (ms) one flush may spend starting compiles before it hands the thread back. */
@@ -64,6 +66,13 @@ export function variantOf(object: Object3D, geometry: BufferGeometry): string {
     (a.color ? "c" : "") +
     (a.tangent ? "t" : "")
   );
+}
+
+/** The bytes a geometry's buffers take (index and attributes). */
+export function geometryBytes(g: BufferGeometry): number {
+  let n = g.index?.array.byteLength ?? 0;
+  for (const k in g.attributes) n += (g.attributes[k] as { array?: { byteLength: number } }).array?.byteLength ?? 0;
+  return n;
 }
 
 /** The textures a material samples (its own map slots and, for a shader material, its uniforms). */
@@ -116,9 +125,12 @@ function depthVariant(m: Material): string {
 }
 
 /** Install the gate on a renderer; returns the uninstall. Without KHR_parallel_shader_compile it does nothing. */
-export function installProgramGate(gl: WebGLRenderer, now: () => number = () => performance.now()): { uninstall: () => void; stats: ProgramGateStats } {
+export function installProgramGate(
+  gl: WebGLRenderer,
+  now: () => number = () => performance.now(),
+): { uninstall: () => void; stats: ProgramGateStats; prefetch: (root: Object3D) => void } {
   const stats: ProgramGateStats = { held: 0, compiles: 0, forced: 0, pending: 0, decoded: 0, uploads: 0, mismatches: [] };
-  if (!gl.extensions.has("KHR_parallel_shader_compile")) return { uninstall: () => {}, stats };
+  if (!gl.extensions.has("KHR_parallel_shader_compile")) return { uninstall: () => {}, stats, prefetch: () => {} };
   const own = gl as WebGLRenderer & { renderBufferDirect: RenderBufferDirect };
   const original = own.renderBufferDirect;
   const tracks = new WeakMap<Material, Track>();
@@ -148,6 +160,15 @@ export function installProgramGate(gl: WebGLRenderer, now: () => number = () => 
     }
   } as WebGLRenderer["render"];
   let programCount = 0;
+  /** geometries drawn at least once (their buffers are on the GPU), and this frame's upload budget */
+  const drawnGeometries = new WeakSet<BufferGeometry>();
+  let geometryBudget = GEOMETRY_BYTES_PER_FRAME;
+  let rafId = 0;
+  const perFrame = () => {
+    geometryBudget = GEOMETRY_BYTES_PER_FRAME;
+    rafId = requestAnimationFrame(perFrame);
+  };
+  if (typeof requestAnimationFrame === "function") rafId = requestAnimationFrame(perFrame);
   const anyCompiling = (): boolean => {
     // programs made elsewhere (the scenes' warm-ups: compileAsync) count too
     const all = (gl.info as { programs?: ProgramLike[] | null } | undefined)?.programs;
@@ -174,6 +195,20 @@ export function installProgramGate(gl: WebGLRenderer, now: () => number = () => 
 
   /** textures to upload, a few per frame (an upload with its mipmaps is 10-60 ms for 2048²) */
   const uploads = new Set<Texture>();
+  /**
+   * Textures whose <img> was swapped for its decoded bitmap. Once uploaded, the <img> goes back (and the bitmap is closed:
+   * a decoded 2048² light map is 16 MB of memory the page would otherwise keep twice). A later re-upload (needsUpdate, a
+   * lost context) reads the <img> again, as three always did.
+   */
+  const swapped = new WeakMap<Texture, { img: HTMLImageElement; flipY: boolean; bmp: ImageBitmap }>();
+  const giveBack = (tex: Texture) => {
+    const s = swapped.get(tex);
+    if (!s || !isUploaded(tex) || tex.image !== s.bmp) return;
+    swapped.delete(tex);
+    tex.image = s.img; // the source's version stays: no upload
+    tex.flipY = s.flipY;
+    s.bmp.close();
+  };
   const isUploaded = (tex: Texture) => (gl.properties.get(tex) as { __webglInit?: boolean }).__webglInit === true;
 
   /** After a frame that held something back: start compiles and upload textures, within a slice of main-thread time. */
@@ -238,6 +273,7 @@ export function installProgramGate(gl: WebGLRenderer, now: () => number = () => 
       } catch {
         // leave it to three's own path
       }
+      giveBack(tex);
       n++;
     }
     stats.pending = queue.size + uploads.size;
@@ -251,7 +287,10 @@ export function installProgramGate(gl: WebGLRenderer, now: () => number = () => 
     if (t.texReady) return true;
     let ready = true;
     for (const tex of texturesOf(material)) {
-      if (isUploaded(tex)) continue;
+      if (isUploaded(tex)) {
+        giveBack(tex);
+        continue;
+      }
       const img = tex.image as { width?: number; height?: number } | null;
       // render targets, depth and empty textures: nothing to upload ahead
       if ((tex as Texture & { isRenderTargetTexture?: boolean }).isRenderTargetTexture || (tex as Texture & { isDepthTexture?: boolean }).isDepthTexture || !img || !img.width) continue;
@@ -275,6 +314,7 @@ export function installProgramGate(gl: WebGLRenderer, now: () => number = () => 
             (bmp) => {
               // still the same image and not uploaded meanwhile (three's own path took it): swap the decoded copy in
               if (tex.image === img && !isUploaded(tex)) {
+                swapped.set(tex, { img, flipY: tex.flipY, bmp });
                 tex.image = bmp;
                 tex.flipY = false;
                 tex.needsUpdate = true;
@@ -335,6 +375,16 @@ export function installProgramGate(gl: WebGLRenderer, now: () => number = () => 
       }
       // its first use waits (synchronously) for whatever the GPU process is still compiling: not while the gate's compiles run
       if (ready !== false && !used.has(p) && anyCompiling()) ready = false;
+      // a geometry never drawn uploads its buffers now: a frame takes a few MB of them (the map's first view of the whole
+      // village brings hundreds), the rest wait a frame; the first one of a frame always goes (whatever its size)
+      if (ready !== false && !drawnGeometries.has(geometry)) {
+        const bytes = geometryBytes(geometry);
+        if (bytes > geometryBudget && geometryBudget < GEOMETRY_BYTES_PER_FRAME) ready = false;
+        else {
+          geometryBudget -= bytes;
+          drawnGeometries.add(geometry);
+        }
+      }
       if (ready !== false) {
         used.add(p);
         const t0 = import.meta.env.DEV ? performance.now() : 0;
@@ -380,9 +430,30 @@ export function installProgramGate(gl: WebGLRenderer, now: () => number = () => 
     }
   } as RenderBufferDirect;
 
+  /**
+   * Put every texture of `root`'s materials on the GPU ahead, a few a frame (an <img> decoded off the main thread first):
+   * what the view has not shown yet (the map's whole village, the night's lamps) then costs no upload when it comes.
+   */
+  const prefetch = (root: Object3D) => {
+    const mats = new Set<Material>();
+    root.traverse((o) => {
+      const m = (o as Object3D & { material?: Material | Material[] }).material;
+      if (Array.isArray(m)) for (const x of m) mats.add(x);
+      else if (m) mats.add(m);
+    });
+    // the textures only: the material's program is left for its first draw (a throwaway track, not the gate's)
+    for (const m of mats) texturesReady(m, { programs: new Map(), since: new Map(), version: m.version, texReady: null });
+    if (!flushQueued && uploads.size > 0) {
+      flushQueued = true;
+      setTimeout(flush, 0);
+    }
+  };
+
   return {
     stats,
+    prefetch,
     uninstall: () => {
+      if (rafId) cancelAnimationFrame(rafId);
       own.renderBufferDirect = original;
       ownRender.render = originalRender;
       queue.clear();

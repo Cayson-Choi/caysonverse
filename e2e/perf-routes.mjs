@@ -10,6 +10,7 @@
  *
  *   entry     the entry screen → the village (load time; the vegetation veil); not judged (loading screen)
  *   plaza     stand, orbit the camera round, walk round the fountain
+ *   map       open the 🗺 map (the camera rises over the whole village), close it, open it again
  *   crowd     stand on the plaza looking at the other players (run bots alongside: see below)
  *   daynight  the clock swept noon → sunset → night → morning (the DEV pin, villageClock.pin), a frame budget all the way
  *   hall      to the memorial's door, in, a walk inside, out again
@@ -42,7 +43,7 @@ import { bigButton, waitButton } from "./lib/lakeMock.mjs";
 const { values: args } = parseArgs({
   options: {
     device: { type: "string", default: "pc" },
-    routes: { type: "string", default: "entry,plaza,crowd,daynight,hall,house,lake,bus" },
+    routes: { type: "string", default: "entry,plaza,map,crowd,daynight,hall,house,lake,bus" },
     label: { type: "string", default: "run" },
     throttle: { type: "string" },
     "max-hitch": { type: "string", default: "100" },
@@ -435,6 +436,18 @@ try {
     await dragOrbit(PHONE_DEV ? -600 : -900);
     await sleep(1500);
     for (const [x, z] of [[8, 8], [8, -8], [-8, -8], [-8, 8], [0, 12]]) await walkAndWait(p, x, z, 30000, 1.2);
+    await sleep(2000);
+  });
+
+  await phase("map", async () => {
+    const btn = p.page.locator('[aria-label="지도 보기"]');
+    await press(p, btn);
+    await sleep(5000);
+    await press(p, btn);
+    await sleep(2500);
+    await press(p, btn);
+    await sleep(3500);
+    await press(p, btn);
     await sleep(2000);
   });
 

@@ -3,7 +3,7 @@
  * Joins at noon (rich tier), opens the map, and records every animation frame's gap for a few seconds, plus the live sun
  * shadows' own counters (__cvSunShadows: cascade redraws, the longest shadow draw). `--sun=off` compares without them (DEV).
  *
- *   CV_CLIENT_URL=http://localhost:5631 node e2e/map-hitch.mjs [--out=<dir>] [--sun=off] [--time=2026-11-03T12:30] [--phone]
+ *   CV_CLIENT_URL=http://localhost:5631 node e2e/map-hitch.mjs [--out=<dir>] [--sun=off] [--time=2026-11-03T12:30] [--phone] [--query=gate=off]
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,6 +13,8 @@ const arg = (k) => process.argv.find((a) => a.startsWith(`--${k}=`))?.slice(k.le
 const sunOff = arg("sun") === "off";
 const time = arg("time") ?? "2026-11-03T12:30";
 const phone = process.argv.includes("--phone");
+/** extra page query, e.g. --query=gate=off (DEV: the shader gate left out, to compare) */
+const query = arg("query");
 const run = createRun(`map-hitch${sunOff ? "-sunoff" : ""}`);
 const OUT = arg("out") ?? run.evidence;
 mkdirSync(OUT, { recursive: true });
@@ -20,7 +22,7 @@ mkdirSync(OUT, { recursive: true });
 const browser = await launchBrowser();
 try {
   const p = await openPlayer(browser, run, { tag: "A", device: phone ? PHONE : DESKTOP, settings: { graphics: "high" } });
-  await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(time)}${sunOff ? "&sun=off" : ""}`, { waitUntil: "domcontentloaded" });
+  await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(time)}${sunOff ? "&sun=off" : ""}${query ? `&${query}` : ""}`, { waitUntil: "domcontentloaded" });
   await entryReady(p);
   await p.page.locator("input.cv-input").first().fill("지도" + Math.floor(Math.random() * 90 + 10));
   await press(p, p.page.locator(".cv-submit"));
