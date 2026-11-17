@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createVegDressing, FAIL_SAFE_MS } from "./vegDressing";
+import { createVegDressing, FAIL_SAFE_MS, HARD_CAP_MS } from "./vegDressing";
 
 function fakeTimers() {
   let now = 0;
@@ -11,6 +11,7 @@ function fakeTimers() {
       return id;
     },
     clear: (h: unknown) => void pending.delete(h as number),
+    now: () => now,
     advance(ms: number) {
       now += ms;
       for (const [k, t] of [...pending]) {
@@ -100,5 +101,31 @@ describe("vegDressing", () => {
     // a new build covers again
     d.begin();
     expect(d.dressed()).toBe(false);
+  });
+
+  it("a build that keeps growing stays covered past the fail-safe, up to the hard cap", () => {
+    const t = fakeTimers();
+    const d = createVegDressing(t);
+    const b = d.begin();
+    for (let i = 0; i < 4; i++) {
+      t.advance(FAIL_SAFE_MS - 1000);
+      d.progress(b);
+    }
+    expect(d.dressed()).toBe(false); // 44 s of steady growth: still covered
+    d.progress(b);
+    t.advance(HARD_CAP_MS); // never past the cap
+    expect(d.dressed()).toBe(true);
+  });
+
+  it("a stalled build still uncovers after the fail-safe; an old build's progress does nothing", () => {
+    const t = fakeTimers();
+    const d = createVegDressing(t);
+    const old = d.begin();
+    const b = d.begin();
+    t.advance(FAIL_SAFE_MS - 1000);
+    d.progress(old);
+    t.advance(1000);
+    expect(d.dressed()).toBe(true);
+    void b;
   });
 });

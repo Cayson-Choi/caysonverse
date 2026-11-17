@@ -167,7 +167,11 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
           // (nothing to see but the loading screen, whose animations run off the main thread) in long ones: every hand-back
           // draws a whole village frame nobody sees (UX 2026-11-16: 50 ms slices spent about a third of the build drawing)
           sliceMs: () => (state === "live" && !vegDressing.dressed() ? COVERED_SLICE_MS : 12),
-          onProgress: (f) => villageLoad.build(f),
+          onProgress: (f) => {
+            villageLoad.build(f);
+            // still growing: the cover waits for it (vegDressing.ts HARD_CAP_MS), the trees never grow on screen
+            vegDressing.progress(dressing);
+          },
           // the trees nearest the camera grow first, and each shows as soon as it is grown
           focus: () => {
             const p = getThree().camera.position;
