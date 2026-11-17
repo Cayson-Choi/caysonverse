@@ -23,6 +23,7 @@ import {
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { LoadBoundary } from "../village/LoadBoundary";
+import { SceneWarmUp } from "../game/SceneWarmUp";
 import { LakeShopkeeper } from "./LakeShopkeeper";
 import { clearNpcCache } from "../village/npcAvatar";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
@@ -236,6 +237,8 @@ function LakeFromFile({ tier, pose }: { tier: VillageTier; pose: Pose }) {
     >
       <Suspense fallback={null}>
         <LakeGlb tier={tier} pose={pose} />
+        {/* its materials compiled as soon as it is in, not the first time the lake comes into view (the map's first open) */}
+        <SceneWarmUp key={tier} />
       </Suspense>
     </LoadBoundary>
   );
