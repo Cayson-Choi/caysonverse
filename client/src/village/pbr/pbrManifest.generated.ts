@@ -1279,5 +1279,287 @@ export const PBR_SETS: readonly PbrSetInfo[] = [
         }
       }
     }
+  },
+  {
+    "id": "roof_clay_tile",
+    "label": "붉은 점토 기와 (유럽 시골 학교 지붕)",
+    "group": "roof",
+    "use": "New red clay pantile roofs of the European storybook lots (village school). Brand-new: no moss, no lichen; lay the rows along the eaves.",
+    "tileMeters": 2.9,
+    "tileEstimated": false,
+    "density": 512,
+    "source": {
+      "provider": "ambientcg",
+      "asset": "RoofingTiles012A",
+      "page": "https://ambientcg.com/view?id=RoofingTiles012A",
+      "license": "CC0 1.0 Universal"
+    },
+    "meanAlbedo": [
+      0.6726,
+      0.3855,
+      0.2789
+    ],
+    "meanOrm": [
+      0.8036,
+      0.6172,
+      0
+    ],
+    "tiers": {
+      "2k": {
+        "albedo": {
+          "bytes": 487045,
+          "hash": "b023230f95"
+        }
+      },
+      "1k": {
+        "albedo": {
+          "bytes": 158562,
+          "hash": "0a1b3fb191"
+        },
+        "normal": {
+          "bytes": 521885,
+          "hash": "e087c3518b"
+        },
+        "orm": {
+          "bytes": 852225,
+          "hash": "fa8e792276"
+        }
+      }
+    }
+  },
+  {
+    "id": "wood_painted",
+    "label": "흰 칠 목재 (창틀, 울타리, 큐폴라, 판벽)",
+    "group": "wood",
+    "use": "Freshly painted timber: window frames and glazing bars, picket fences, cupolas, porches, trims. White; tint with material.color for sage, green or blue paint.",
+    "tileMeters": 1.8,
+    "tileEstimated": false,
+    "density": 512,
+    "source": {
+      "provider": "polyhaven",
+      "asset": "white_planks_clean",
+      "page": "https://polyhaven.com/a/white_planks_clean",
+      "license": "CC0 1.0 Universal"
+    },
+    "meanAlbedo": [
+      0.801,
+      0.79,
+      0.7828
+    ],
+    "meanOrm": [
+      0.9494,
+      0.4193,
+      0.0035
+    ],
+    "tiers": {
+      "2k": {
+        "albedo": {
+          "bytes": 627972,
+          "hash": "8a2fb73ed2"
+        }
+      },
+      "1k": {
+        "albedo": {
+          "bytes": 157728,
+          "hash": "f9c0b72bae"
+        },
+        "normal": {
+          "bytes": 452767,
+          "hash": "f84c043719"
+        },
+        "orm": {
+          "bytes": 405286,
+          "hash": "a680c0417c"
+        }
+      }
+    }
+  },
+  {
+    "id": "play_rubber",
+    "label": "놀이터 고무 바닥 (안전 매트)",
+    "group": "ground",
+    "use": "Rubber safety tiles under swings, slides and climbing frames (EPDM playground tiles). Recoloured to terracotta red; tint for green.",
+    "tileMeters": 2,
+    "tileEstimated": false,
+    "density": 512,
+    "source": {
+      "provider": "polyhaven",
+      "asset": "rubber_tiles",
+      "page": "https://polyhaven.com/a/rubber_tiles",
+      "license": "CC0 1.0 Universal"
+    },
+    "meanAlbedo": [
+      0.6597,
+      0.27,
+      0.2
+    ],
+    "meanOrm": [
+      0.9718,
+      0.75,
+      0.0055
+    ],
+    "tiers": {
+      "2k": {
+        "albedo": {
+          "bytes": 747881,
+          "hash": "6c4fc5fba2"
+        }
+      },
+      "1k": {
+        "albedo": {
+          "bytes": 195932,
+          "hash": "59e211ae10"
+        },
+        "normal": {
+          "bytes": 415993,
+          "hash": "431d33d610"
+        },
+        "orm": {
+          "bytes": 582146,
+          "hash": "0d73149372"
+        }
+      }
+    }
+  },
+  {
+    "id": "sand",
+    "label": "놀이 모래 (모래밭)",
+    "group": "ground",
+    "use": "Clean play sand in sandpits and long-jump pits.",
+    "tileMeters": 1.8,
+    "tileEstimated": false,
+    "density": 512,
+    "source": {
+      "provider": "polyhaven",
+      "asset": "dense_sand",
+      "page": "https://polyhaven.com/a/dense_sand",
+      "license": "CC0 1.0 Universal"
+    },
+    "meanAlbedo": [
+      0.8,
+      0.71,
+      0.55
+    ],
+    "meanOrm": [
+      0.9315,
+      0.9763,
+      0.0034
+    ],
+    "tiers": {
+      "2k": {
+        "albedo": {
+          "bytes": 832369,
+          "hash": "7c6d3470ab"
+        }
+      },
+      "1k": {
+        "albedo": {
+          "bytes": 237033,
+          "hash": "1c943ee786"
+        },
+        "normal": {
+          "bytes": 1280648,
+          "hash": "5f7baca4ad"
+        },
+        "orm": {
+          "bytes": 924473,
+          "hash": "a0bc573bb2"
+        }
+      }
+    }
+  },
+  {
+    "id": "stone_ashlar",
+    "label": "꿀색 석회암 마름돌 (성당 벽, 도서관 장식)",
+    "group": "stone",
+    "use": "Honey-coloured dressed limestone ashlar: chapel walls, the library's bands, arches, quoins, sills and copings. Brand-new: clean faces, crisp joints.",
+    "tileMeters": 3,
+    "tileEstimated": false,
+    "density": 512,
+    "source": {
+      "provider": "polyhaven",
+      "asset": "sandstone_blocks_08",
+      "page": "https://polyhaven.com/a/sandstone_blocks_08",
+      "license": "CC0 1.0 Universal"
+    },
+    "meanAlbedo": [
+      0.6878,
+      0.6247,
+      0.5245
+    ],
+    "meanOrm": [
+      0.973,
+      0.5058,
+      0.0025
+    ],
+    "tiers": {
+      "2k": {
+        "albedo": {
+          "bytes": 656293,
+          "hash": "2d249a4a4d"
+        }
+      },
+      "1k": {
+        "albedo": {
+          "bytes": 171266,
+          "hash": "2da9f7f019"
+        },
+        "normal": {
+          "bytes": 395649,
+          "hash": "28b1259bf8"
+        },
+        "orm": {
+          "bytes": 474416,
+          "hash": "b0089af165"
+        }
+      }
+    }
+  },
+  {
+    "id": "roof_slate",
+    "label": "천연 슬레이트 지붕",
+    "group": "roof",
+    "use": "Natural slate roofs (library, chapel): even blue-grey slates in courses, brand-new.",
+    "tileMeters": 2,
+    "tileEstimated": true,
+    "density": 512,
+    "source": {
+      "provider": "ambientcg",
+      "asset": "RoofingTiles003",
+      "page": "https://ambientcg.com/view?id=RoofingTiles003",
+      "license": "CC0 1.0 Universal"
+    },
+    "meanAlbedo": [
+      0.3577,
+      0.3874,
+      0.4268
+    ],
+    "meanOrm": [
+      1,
+      0.6834,
+      0
+    ],
+    "tiers": {
+      "2k": {
+        "albedo": {
+          "bytes": 887995,
+          "hash": "adf4aa649f"
+        }
+      },
+      "1k": {
+        "albedo": {
+          "bytes": 257956,
+          "hash": "b6660cf83d"
+        },
+        "normal": {
+          "bytes": 1329180,
+          "hash": "4e7e387107"
+        },
+        "orm": {
+          "bytes": 991010,
+          "hash": "c4b0812d41"
+        }
+      }
+    }
   }
 ] as const;

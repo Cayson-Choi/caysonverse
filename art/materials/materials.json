@@ -414,6 +414,138 @@
       "tileMeters": 0.5,
       "tileEstimated": true,
       "density": 1024
+    },
+    {
+      "id": "roof_clay_tile",
+      "label": "붉은 점토 기와 (유럽 시골 학교 지붕)",
+      "group": "roof",
+      "use": "New red clay pantile roofs of the European storybook lots (village school). Brand-new: no moss, no lichen; lay the rows along the eaves.",
+      "source": {
+        "provider": "ambientcg",
+        "asset": "RoofingTiles012A"
+      },
+      "tileMeters": 2.9,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "saturation": 1.05,
+          "lift": 0.01
+        }
+      },
+      "note": "Added by lots v2 B1 (2026-11-17). A clean, brand-new interlocking clay tile scan (ambientCG RoofingTiles012A, 2.9 m); Poly Haven roof_tiles was tried first and dropped (lichen-blotched)."
+    },
+    {
+      "id": "wood_painted",
+      "label": "흰 칠 목재 (창틀, 울타리, 큐폴라, 판벽)",
+      "group": "wood",
+      "use": "Freshly painted timber: window frames and glazing bars, picket fences, cupolas, porches, trims. White; tint with material.color for sage, green or blue paint.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "white_planks_clean"
+      },
+      "tileMeters": 1.8,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "saturation": 0.2,
+          "lift": 0.13
+        },
+        "roughness": {
+          "scale": 0.8,
+          "offset": 0
+        }
+      },
+      "note": "Added by lots v2 B1 (2026-11-17). Desaturated and lifted toward clean white paint; roughness lowered (fresh paint is a little glossier)."
+    },
+    {
+      "id": "play_rubber",
+      "label": "놀이터 고무 바닥 (안전 매트)",
+      "group": "ground",
+      "use": "Rubber safety tiles under swings, slides and climbing frames (EPDM playground tiles). Recoloured to terracotta red; tint for green.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "rubber_tiles"
+      },
+      "tileMeters": 2,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "recolor": [
+            0.66,
+            0.27,
+            0.2
+          ],
+          "saturation": 1
+        }
+      },
+      "note": "Added by lots v2 B1 (2026-11-17). The scan is black gym tiles; recoloured to the terracotta red of playground safety tiles."
+    },
+    {
+      "id": "sand",
+      "label": "놀이 모래 (모래밭)",
+      "group": "ground",
+      "use": "Clean play sand in sandpits and long-jump pits.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "dense_sand"
+      },
+      "tileMeters": 1.8,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "recolor": [
+            0.8,
+            0.71,
+            0.55
+          ],
+          "saturation": 1
+        }
+      },
+      "note": "Added by lots v2 B1 (2026-11-17). Recoloured toward clean, light play sand."
+    },
+    {
+      "id": "stone_ashlar",
+      "label": "꿀색 석회암 마름돌 (성당 벽, 도서관 장식)",
+      "group": "stone",
+      "use": "Honey-coloured dressed limestone ashlar: chapel walls, the library's bands, arches, quoins, sills and copings. Brand-new: clean faces, crisp joints.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "sandstone_blocks_08"
+      },
+      "tileMeters": 3,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "saturation": 0.95,
+          "lift": 0.05,
+          "contrast": 0.9
+        }
+      },
+      "note": "Added by lots v2 B1 (2026-11-17). Lifted a little toward fresh-cut limestone."
+    },
+    {
+      "id": "roof_slate",
+      "label": "천연 슬레이트 지붕",
+      "group": "roof",
+      "use": "Natural slate roofs (library, chapel): even blue-grey slates in courses, brand-new.",
+      "source": {
+        "provider": "ambientcg",
+        "asset": "RoofingTiles003"
+      },
+      "tileMeters": 2,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "recolor": [
+            0.36,
+            0.39,
+            0.43
+          ],
+          "saturation": 1
+        }
+      },
+      "note": "Added by lots v2 B1 (2026-11-17). Clean square natural slates (ambientCG RoofingTiles003), recoloured from green-grey to blue-grey Welsh slate. Poly Haven roof_slates_03 was tried first and dropped (a ridge strip in the tile).",
+      "tileEstimated": true
     }
   ]
 }

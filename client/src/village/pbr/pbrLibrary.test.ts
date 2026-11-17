@@ -133,7 +133,10 @@ describe("PBR budgets (PLAN.md)", () => {
     for (const { id, tier, kind, f } of allFiles()) expect(f.bytes, `${id} ${tier} ${kind}`).toBeLessThanOrEqual(cap[kind as "albedo"][tier]);
   });
 
-  it("a phone set downloads under 3.2 MB; the whole library stays under 90 MB on disk", () => {
+  // 90 MB was M1's 27 sets; the lots v2 contract (design 6) adds about ten NEW sets (B1: roof_clay_tile, wood_painted,
+  // play_rubber, sand, stone_ashlar, roof_slate; B2/B3: copper_new, dancheong_wood, wood_pine_natural, stone_wall_korean),
+  // ~2.5 MB each: the repo budget grows to 120 MB with them (B1, 2026-11-17).
+  it("a phone set downloads under 3.2 MB; the whole library stays under 120 MB on disk", () => {
     let total = 0;
     for (const s of PBR_SETS) {
       expect(pbrDownloadBytes(s.id, "1k"), s.id).toBeLessThanOrEqual(3.2 * MB);
@@ -141,7 +144,7 @@ describe("PBR budgets (PLAN.md)", () => {
     }
     const dir = join(PUBLIC, "textures", "pbr", "basis");
     for (const n of readdirSync(dir)) total += statSync(join(dir, n)).size;
-    expect(total).toBeLessThanOrEqual(90 * MB);
+    expect(total).toBeLessThanOrEqual(120 * MB);
   });
 
   it("GPU memory: 16 phone sets fit 60 MB, 14 PC sets fit 180 MB", () => {

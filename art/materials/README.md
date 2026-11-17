@@ -93,6 +93,12 @@ mesh.material = mat;
 | `aluminium_brushed` | 헤어라인 알루미늄 | Window frames, door handles, kiosk trim, signal housings, mailbox fronts. | 1 (추정) | 2048 / 1024 (목표 512) | 557 / - | 172 / 263 / 418 | [ambientcg Metal009](https://ambientcg.com/view?id=Metal009) |
 | `cast_iron` | 주철 (검정 도장, 마모) | Cast-iron bench legs, manhole and drain covers, the fountain's spout, old pump. | 1 (추정) | 2048 / 1024 (목표 512) | 732 / - | 212 / 611 / 1070 | [ambientcg Metal046B](https://ambientcg.com/view?id=Metal046B) |
 | `fabric_upholstery` | 패브릭 (소파, 방석) | Sofas, cushions, chair seats, curtains. Neutral grey; tint with material.color. | 0.5 (추정) | 4096 / 2048 (목표 1024) | 873 / - | 234 / 1188 / 962 | [ambientcg Fabric030](https://ambientcg.com/view?id=Fabric030) |
+| `roof_clay_tile` | 붉은 점토 기와 (유럽 시골 학교 지붕) | New red clay pantile roofs of the European storybook lots (village school). Brand-new: no moss, no lichen; lay the rows along the eaves. | 2.9 | 706 / 353 (목표 512) | 476 / - | 155 / 510 / 832 | [ambientcg RoofingTiles012A](https://ambientcg.com/view?id=RoofingTiles012A) |
+| `wood_painted` | 흰 칠 목재 (창틀, 울타리, 큐폴라, 판벽) | Freshly painted timber: window frames and glazing bars, picket fences, cupolas, porches, trims. White; tint with material.color for sage, green or blue paint. | 1.8 | 1138 / 569 (목표 512) | 613 / - | 154 / 442 / 396 | [polyhaven white_planks_clean](https://polyhaven.com/a/white_planks_clean) |
+| `play_rubber` | 놀이터 고무 바닥 (안전 매트) | Rubber safety tiles under swings, slides and climbing frames (EPDM playground tiles). Recoloured to terracotta red; tint for green. | 2 | 1024 / 512 (목표 512) | 730 / - | 191 / 406 / 569 | [polyhaven rubber_tiles](https://polyhaven.com/a/rubber_tiles) |
+| `sand` | 놀이 모래 (모래밭) | Clean play sand in sandpits and long-jump pits. | 1.8 | 1138 / 569 (목표 512) | 813 / - | 231 / 1251 / 903 | [polyhaven dense_sand](https://polyhaven.com/a/dense_sand) |
+| `stone_ashlar` | 꿀색 석회암 마름돌 (성당 벽, 도서관 장식) | Honey-coloured dressed limestone ashlar: chapel walls, the library's bands, arches, quoins, sills and copings. Brand-new: clean faces, crisp joints. | 3 | 683 / 341 (목표 512) | 641 / - | 167 / 386 / 463 | [polyhaven sandstone_blocks_08](https://polyhaven.com/a/sandstone_blocks_08) |
+| `roof_slate` | 천연 슬레이트 지붕 | Natural slate roofs (library, chapel): even blue-grey slates in courses, brand-new. | 2 (추정) | 1024 / 512 (목표 512) | 867 / - | 252 / 1298 / 968 | [ambientcg RoofingTiles003](https://ambientcg.com/view?id=RoofingTiles003) |
 <!-- sets:end -->
 
 ## 다시 만들기
