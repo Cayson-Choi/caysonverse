@@ -5,8 +5,8 @@
 import type { HouseSeatMarker } from "../../houseAreas";
 
 export const HOUSE_4_SEAT_MARKERS: readonly HouseSeatMarker[] = [
-  { id: "h4_1_0", n: 4, floor: 1, k: 0, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 440.9, z: -1.85, y: 0.455, yaw: 3.141593, edge: 0.22, back: 0.2, width: 0.4, group: "h4_1_0", both: false, exitTurn: 0, lean: 0.22 },
-  { id: "h4_1_1", n: 4, floor: 1, k: 1, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 440.9, z: -3.25, y: 0.455, yaw: 0.000003, edge: 0.22, back: 0.2, width: 0.4, group: "h4_1_1", both: false, exitTurn: 0, lean: 0.22 },
+  { id: "h4_1_0", n: 4, floor: 1, k: 0, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 440.9, z: -1.05, y: 0.455, yaw: 3.141593, edge: 0.22, back: 0.2, width: 0.4, group: "h4_1_0", both: false, exitTurn: 0, lean: 0.22 },
+  { id: "h4_1_1", n: 4, floor: 1, k: 1, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 440.9, z: -4.05, y: 0.455, yaw: 0.000003, edge: 0.22, back: 0.2, width: 0.4, group: "h4_1_1", both: false, exitTurn: 0, lean: 0.22 },
   { id: "h4_1_2", n: 4, floor: 1, k: 2, furn: "cushion", kind: "floor", pose: "floor", approach: "any", x: 437.201, z: -5.201, y: 0.05, yaw: -0.785403, edge: 0.25, back: 0, width: 0.5, group: "h4_1_2", both: false, exitTurn: 0, lean: 0 },
   { id: "h4_1_3", n: 4, floor: 1, k: 3, furn: "cushion", kind: "floor", pose: "floor", approach: "any", x: 435.999, z: -5.201, y: 0.05, yaw: 0.785403, edge: 0.25, back: 0, width: 0.5, group: "h4_1_3", both: false, exitTurn: 0, lean: 0 },
   { id: "h4_1_4", n: 4, floor: 1, k: 4, furn: "cushion", kind: "floor", pose: "floor", approach: "any", x: 435.999, z: -3.999, y: 0.05, yaw: 2.356193, edge: 0.25, back: 0, width: 0.5, group: "h4_1_4", both: false, exitTurn: 0, lean: 0 },

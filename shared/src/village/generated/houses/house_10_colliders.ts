@@ -20,7 +20,6 @@ export const HOUSE_10_COLLIDERS: readonly AABB[] = [
   { minX: 576.32, maxX: 576.68, minZ: -2.73, maxZ: -2.37 }, // col__h10_1_lamp_f
   { minX: 576.32, maxX: 576.68, minZ: 27.52, maxZ: 27.88 }, // col__h10_2_lamp_f
   { minX: 577.07, maxX: 578.13, minZ: -7.75, maxZ: -6.55 }, // col__h10_1_rocker
-  { minX: 578.62, maxX: 579.18, minZ: -7.33, maxZ: -6.77 }, // col__h10_1_basket
   { minX: 579.48, maxX: 580.43, minZ: -6.95, maxZ: -4.85 }, // col__h10_1_sofa
   { minX: 579.5, maxX: 579.6, minZ: -1.5, maxZ: 0 }, // col__h10_1_part_entry_0
   { minX: 579.58, maxX: 580.22, minZ: 29.08, maxZ: 29.72 }, // col__h10_2_plant
@@ -35,7 +34,6 @@ export const HOUSE_10_COLLIDERS: readonly AABB[] = [
   { minX: 582.37, maxX: 582.82, minZ: 22.23, maxZ: 22.63 }, // col__h10_2_bedside2
   { minX: 582.58, maxX: 583.22, minZ: -5.52, maxZ: -4.88 }, // col__h10_1_plant2
   { minX: 583, maxX: 583.1, minZ: -1.5, maxZ: 0 }, // col__h10_1_part_entry_1
-  { minX: 583.38, maxX: 583.82, minZ: -1.22, maxZ: -0.78 }, // col__h10_1_block
   { minX: 583.4, maxX: 584.4, minZ: -3.48, maxZ: -2.93 }, // col__h10_1_trunk
   { minX: 584.1, maxX: 585.1, minZ: -7.78, maxZ: -7.48 }, // col__h10_1_case
   { minX: 584.55, maxX: 585.45, minZ: 29.46, maxZ: 29.92 }, // col__h10_2_drawers

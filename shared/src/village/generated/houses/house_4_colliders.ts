@@ -25,26 +25,20 @@ export const HOUSE_4_COLLIDERS: readonly AABB[] = [
   { minX: 437.5, maxX: 438.5, minZ: 26.35, maxZ: 27.05 }, // col__h4_2_ctable
   { minX: 437.87, maxX: 438.23, minZ: -7.53, maxZ: -7.17 }, // col__h4_1_lamp
   { minX: 438.4, maxX: 438.8, minZ: -7.1, maxZ: -6.7 }, // col__h4_1_plant2
-  { minX: 438.5, maxX: 439, minZ: -6.15, maxZ: -5.65 }, // col__h4_1_fan
   { minX: 438.55, maxX: 438.95, minZ: -2.4, maxZ: -2 }, // col__h4_1_plant
   { minX: 438.6, maxX: 442.6, minZ: 24.94, maxZ: 25.06 }, // col__h4_2_part_a_1
   { minX: 438.67, maxX: 439.62, minZ: 22.38, maxZ: 22.83 }, // col__h4_2_seoan
   { minX: 438.7, maxX: 441.3, minZ: -0.63, maxZ: -0.01 }, // col__h4_1_sinkrun
-  { minX: 438.8, maxX: 440.6, minZ: -4, maxZ: -3.87 }, // col__h4_1_screen
-  { minX: 439.97, maxX: 441.03, minZ: -7.78, maxZ: -7.02 }, // col__h4_1_futon
-  { minX: 440.16, maxX: 440.64, minZ: 22.86, maxZ: 23.34 }, // col__h4_2_fan
+  { minX: 439.9, maxX: 441.1, minZ: -7.8, maxZ: -7.46 }, // col__h4_1_vignette
   { minX: 440.4, maxX: 441.4, minZ: -2.9, maxZ: -2.2 }, // col__h4_1_dtable
-  { minX: 440.65, maxX: 441.15, minZ: -3.53, maxZ: -3 }, // col__h4_1_kchair2
-  { minX: 440.65, maxX: 441.15, minZ: -2.1, maxZ: -1.57 }, // col__h4_1_kchair
-  { minX: 441.12, maxX: 442.08, minZ: 28.47, maxZ: 29.13 }, // col__h4_2_books
+  { minX: 440.65, maxX: 441.15, minZ: -4.33, maxZ: -3.8 }, // col__h4_1_kchair2
+  { minX: 440.65, maxX: 441.15, minZ: -1.3, maxZ: -0.77 }, // col__h4_1_kchair
   { minX: 441.45, maxX: 442.35, minZ: -0.34, maxZ: 0 }, // col__h4_1_upper
   { minX: 441.5, maxX: 442.1, minZ: 26.1, maxZ: 26.7 }, // col__h4_2_plant
   { minX: 441.7, maxX: 442.46, minZ: -0.8, maxZ: -0.1 }, // col__h4_1_fridge
-  { minX: 441.75, maxX: 442.05, minZ: 29.4, maxZ: 29.7 }, // col__h4_2_purifier
   { minX: 441.99, maxX: 442.61, minZ: -2.2, maxZ: -1.2 }, // col__h4_1_gas
-  { minX: 442.01, maxX: 442.59, minZ: -7.3, maxZ: -5.4 }, // col__h4_1_jagae
+  { minX: 442.02, maxX: 442.57, minZ: -7.3, maxZ: -5.4 }, // col__h4_1_jagae
   { minX: 442.07, maxX: 442.53, minZ: 27.25, maxZ: 28.15 }, // col__h4_2_banndaji
-  { minX: 442.17, maxX: 442.3, minZ: 22.6, maxZ: 24.4 }, // col__h4_2_screen
   { minX: 442.6, maxX: 442.9, minZ: -7.8, maxZ: 0 }, // col__h4_1_wall_right
   { minX: 442.6, maxX: 442.9, minZ: 22.2, maxZ: 30 }, // col__h4_2_wall_right
 ];
@@ -62,7 +56,7 @@ export const HOUSE_4_CAMERA_BOXES: readonly CameraBox[] = [
   { minX: 438.6, maxX: 442.6, minZ: 24.94, maxZ: 25.06, height: 3.7 }, // col__h4_2_part_a_1
   { minX: 441.45, maxX: 442.35, minZ: -0.34, maxZ: 0, height: 2.2 }, // col__h4_1_upper
   { minX: 441.7, maxX: 442.46, minZ: -0.8, maxZ: -0.1, height: 1.85 }, // col__h4_1_fridge
-  { minX: 442.01, maxX: 442.59, minZ: -7.3, maxZ: -5.4, height: 2.05 }, // col__h4_1_jagae
+  { minX: 442.02, maxX: 442.57, minZ: -7.3, maxZ: -5.4, height: 1.9 }, // col__h4_1_jagae
   { minX: 442.6, maxX: 442.9, minZ: -7.8, maxZ: 0, height: 3.7 }, // col__h4_1_wall_right
   { minX: 442.6, maxX: 442.9, minZ: 22.2, maxZ: 30, height: 3.7 }, // col__h4_2_wall_right
 ];
