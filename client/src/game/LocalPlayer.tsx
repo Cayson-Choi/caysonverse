@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
+import { MessageType, type StandRejectedPayload } from "@caysonverse/shared/messages";
+import { useClickHint } from "../stores/clickHintStore";
+
+/** After a refused Stand, how long (ms) a held key or the stick waits before asking again. */
+const STAND_RETRY_MS = 1200;
 import { useFrame } from "@react-three/fiber";
 import { useAnimations, useKeyboardControls } from "@react-three/drei";
 import { Group, LoopOnce, type Plane } from "three";
@@ -197,6 +202,7 @@ export function LocalPlayer({
   const animTimerRef = useRef(0); // seconds left in the current transient clip
   const prevSeatRef = useRef(-1); // previous confirmed seatIndex (transition edge)
   const standRequestedRef = useRef(false); // debounce: one Stand per seated episode
+  const standRetryAtRef = useRef(0); // after a refused Stand (StandRejected): not before this (performance.now())
   // A seat the sitter rests ON (a village bench, `seatY`): the lift of the seat in use, the seconds spent in the
   // current sit / stand clip and its length, and the glide onto the seat or off it (seatMotion.ts). A legacy chair
   // leaves all of it at rest (lift 0, no glide): it keeps its snap.
@@ -325,6 +331,19 @@ export function LocalPlayer({
   }, [actions, look, pose, orbit, seat, sessionId]);
 
   const sender = useRef(createMoveSender(sendMove)).current;
+
+  // Nothing in front of the seat is free to stand on (owner 2026-11-17, standSpot.ts): the server keeps us seated and says why. The
+  // line shows over the scene (the click hint), and the next key, stick or tap may ask again; a seated tap's walk is dropped.
+  useEffect(() => {
+    const room = getRoom();
+    if (!room) return;
+    return room.onMessage(MessageType.StandRejected, (m: StandRejectedPayload) => {
+      standRequestedRef.current = false;
+      standRetryAtRef.current = performance.now() + STAND_RETRY_MS; // a held key asks again after a pause, not every frame
+      clearClickTarget();
+      useClickHint.getState().show(m.reason);
+    });
+  }, []);
 
   // 클릭 자동 이동 리셋 (design 29 (e)): 이 컴포넌트는 접속 세대(epoch)마다
   // 리마운트되므로, 마운트/언마운트 양쪽에서 target을 비워 재접속·월드 교체
@@ -969,7 +988,7 @@ export function LocalPlayer({
     // 잡히면 Stand 한 번을 보내고 target은 남겨 두어, 기립이 확정되면 자동
     // 이동이 그 지점으로 이어진다 — "자동 기립 후 이동" 채택.
     if (seated) {
-      if ((moving || getClickTarget() !== null) && !standRequestedRef.current) {
+      if ((moving || getClickTarget() !== null) && !standRequestedRef.current && performance.now() >= standRetryAtRef.current) {
         sendStand();
         standRequestedRef.current = true;
       }

@@ -1,4 +1,9 @@
 import { SEAT_APPROACH_SLACK, SEAT_REACH, approachesSeat, seatDistance, seatTaken, type Seat } from "@caysonverse/shared/worldMap";
+import { standsClear } from "@caysonverse/shared/village/benchSeats";
+import { BODY_APART, pickStandSpot } from "@caysonverse/shared/village/standSpot";
+import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
+import { villageWalkArea } from "@caysonverse/shared/village/fallsWalk";
+import { houseFloorBounds, parseHouseFloorArea } from "@caysonverse/shared/village/houseAreas";
 
 /**
  * Pure, clock-free sit validation (mirrors movement.ts / emoji.ts discipline).
@@ -61,4 +66,22 @@ export function validateSit(
   if (seatTaken(seats, seatIndex, heldByOther)) return { reason: SEAT_OCCUPIED };
 
   return { seatIndex };
+}
+
+/**
+ * Where a sitter on `seat` stands up to (owner 2026-11-17: "일어서면 의자 앞에 서고", never behind the backrest): its stand point, else
+ * front-left / front-right of the seat, else a little further forward (standSpot.ts `standCandidates`) — the first clear of the
+ * furniture (`standsClear`, the area's rectangle) and of every other body in the area (`others`, BODY_APART). Null: none is free, the
+ * sitter stays seated (the caller sends STAND_BLOCKED).
+ */
+export function chooseStandSpot(
+  seat: Seat,
+  area: string,
+  others: ReadonlyArray<{ x: number; z: number }>,
+): { x: number; z: number } | null {
+  const house = parseHouseFloorArea(area);
+  // the open village's walkable rectangle reaches past areas.village to the waterfall's rest area (fallsWalk.ts: its stone seats)
+  const bounds = house ? houseFloorBounds(house.n, house.floor) : area === "village" ? villageWalkArea(VILLAGE_LAYOUT) : (VILLAGE_LAYOUT.areas as Record<string, (typeof VILLAGE_LAYOUT.areas)["village"]>)[area];
+  if (!bounds) return { x: seat.standX, z: seat.standZ };
+  return pickStandSpot(seat, (x, z) => standsClear(x, z, bounds) && others.every((o) => Math.hypot(o.x - x, o.z - z) >= BODY_APART));
 }

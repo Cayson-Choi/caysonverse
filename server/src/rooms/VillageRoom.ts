@@ -27,7 +27,8 @@ import { candleCubby } from "./villageCandle";
 import { memorial } from "../memorial/service";
 import { MemorialServerMsg } from "@caysonverse/shared/memorial/messages";
 import { CANDLES, type CandleBook } from "./candleBook";
-import { validateSit } from "./seating";
+import { chooseStandSpot, validateSit } from "./seating";
+import { STAND_BLOCKED } from "@caysonverse/shared/village/standSpot";
 import { VillageFishing } from "./villageFishing";
 import {
   BUS_STATE_RATE_MS,
@@ -591,6 +592,11 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     if (place.kind === "free") return;
     if (place.kind === "seat") {
       const spot = seatStandUpSpot(BUS_SEATS[place.index]!, this.otherBusPoints(player));
+      // never behind the seat's back; nothing free in front or beside it: still seated, and told why (owner 2026-11-17)
+      if (!spot) {
+        client.send(MessageType.BusRejected, { reason: STAND_BLOCKED });
+        return;
+      }
       player.busAhead = spot.ahead;
       player.busRight = spot.right;
       player.busYaw = spot.yaw;
@@ -694,8 +700,19 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
     const seat = VILLAGE_SEATS[player.seatIndex];
     if (seat) {
-      player.x = seat.standX;
-      player.z = seat.standZ;
+      // in front of the seat — its stand point, else front-left / front-right, else further forward — never behind its backrest;
+      // nothing free (another visitor standing there, the furniture): still seated, and told why (owner 2026-11-17, standSpot.ts)
+      const others: { x: number; z: number }[] = [];
+      this.state.players.forEach((o, id) => {
+        if (id !== client.sessionId && o.area === player.area) others.push({ x: o.x, z: o.z });
+      });
+      const spot = chooseStandSpot(seat, player.area, others);
+      if (!spot) {
+        client.send(MessageType.StandRejected, { reason: STAND_BLOCKED });
+        return;
+      }
+      player.x = spot.x;
+      player.z = spot.z;
     }
     this.releaseSeat(client.sessionId);
     track.lastAcceptedAt = this.now();

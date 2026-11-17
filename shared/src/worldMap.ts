@@ -104,6 +104,11 @@ export interface Seat {
    * the nearest seat point flipped with a step and E sat on the chair beside the one walked to; their cushions are 1.2 m apart.
    */
   reachFrom?: { x: number; z: number };
+  /**
+   * How far (m) behind the seat point its backrest's face stands, when it has one (standSpot.ts: a stand spot past it, within the
+   * seat's width, is "behind" — never stood up to). Absent: `sidePlane`, else the front edge plus a seat's depth.
+   */
+  backrest?: number;
   /** How far (rad) a sitter leans back into a backrest (a sofa, an armchair, a chair); absent or 0: sits upright. */
   lean?: number;
   /**

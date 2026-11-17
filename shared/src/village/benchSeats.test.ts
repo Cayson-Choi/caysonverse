@@ -1,3 +1,4 @@
+import { standSide } from "./standSpot";
 import { describe, expect, it } from "vitest";
 import { isBlocked, type AABB } from "../collision";
 import { PLAYER_RADIUS, SEAT_APPROACH_SLACK, SEAT_REACH, approachesSeat, nearestFreeSeat, seatTaken } from "../worldMap";
@@ -431,12 +432,14 @@ describe("the art's marked seats: café terrace chairs and porch benches (review
       const ahead = (s.x - m.x) * f.x + (s.z - m.z) * f.z;
       expect(ahead).toBeCloseTo(m.frontEdge + SIT_ROOT_AHEAD, 3);
       expect(s.seatY).toBe(m.seatTop);
-      // the art's spot, or further out on the line from the chair where the terrace's clearance needs it
-      expect(Math.hypot(s.standX - m.standX!, s.standZ - m.standZ!)).toBeLessThanOrEqual(0.5);
-      // the get-up spot is beside the chair (not ahead: the table is there), within reach and a short step
+      // owner 2026-11-17: in FRONT of the chair where its table leaves room (standSpot.ts); else beside it — the art's spot, or further
+      // out on the line from the chair where the terrace's clearance needs it — never behind it
       const standAhead = (s.standX - m.x) * f.x + (s.standZ - m.z) * f.z;
+      if (standSide(s, s.standX, s.standZ) !== "front") {
+        expect(Math.hypot(s.standX - m.standX!, s.standZ - m.standZ!)).toBeLessThanOrEqual(0.5);
+        expect(standAhead).toBeLessThanOrEqual(m.frontEdge);
+      }
       expect(standAhead).toBeGreaterThanOrEqual(-CHAIR_BACK_BEHIND);
-      expect(standAhead).toBeLessThanOrEqual(m.frontEdge);
       expect(Math.hypot(s.standX - s.x, s.standZ - s.z)).toBeLessThan(1.2); // a step aside, well within SEAT_REACH
       expect(approachesSeat(s, s.standX, s.standZ)).toBe(true);
       expect(nearestFreeSeat(s.standX, s.standZ, () => false, SEAT_REACH, VILLAGE_SEATS)).toBe(i);

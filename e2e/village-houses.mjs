@@ -365,7 +365,15 @@ for (const n of houses) {
           const k = window.__cvClickPick?.();
           return k && { pick: k.pick && { name: k.pick.name, x: +k.pick.x.toFixed(2), y: +k.pick.y.toFixed(2), z: +k.pick.z.toFixed(2) }, plan: k.plan && { ok: k.plan.ok, reason: k.plan.reason, x: k.plan.x, z: k.plan.z }, sitOn: k.sitOn };
         });
-        sat = await page.waitForFunction(() => window.__cv.getPos().seatIndex >= 0, null, { timeout: 15000 }).then(() => true, () => false);
+        // owner 2026-11-17 ("의자를 찍으면 자동 앉기는 빼줘"): the tap walks to the seat and stops there standing; 앉기 (E / the button) sits
+        await page.waitForFunction(() => window.__cvClickTarget?.() === null, null, { timeout: 15000 }).catch(() => {});
+        await sleep(700);
+        const standing = (await me()).seatIndex < 0;
+        if (pk && pk.sitOn === seat.index) {
+          if (!standing) tries.push({ vantage, autoSat: true });
+          else await act();
+        }
+        sat = standing && (await page.waitForFunction(() => window.__cv.getPos().seatIndex >= 0, null, { timeout: 8000 }).then(() => true, () => false));
         const st = await me();
         tries.push({ vantage, at: [Math.round(at.x * 100) / 100, Math.round(at.z * 100) / 100], click: pk, end: { i: st.seatIndex, x: Math.round(st.x * 100) / 100, z: Math.round(st.z * 100) / 100 } });
         if (sat) break;
@@ -375,7 +383,7 @@ for (const n of houses) {
       const st = await me();
       const satOn = seatList.find((x) => x.index === st.seatIndex);
       const ok = sat && (st.seatIndex === seat.index || (satOn && satOn.bench === seat.bench));
-      run.check(`${seat.id}: a tap walks there and sits on it`, ok, { want: seat.index, got: satOn?.id ?? null, tries });
+      run.check(`${seat.id}: a tap walks there (standing), then 앉기 sits on it`, ok, { want: seat.index, got: satOn?.id ?? null, tries });
       if (sat && !ok) {
         await act();
         await sleep(1200);
