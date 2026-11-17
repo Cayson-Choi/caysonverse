@@ -18,6 +18,7 @@ import { useGLTF } from "@react-three/drei";
 import { DoubleSide, MeshBasicMaterial, type Material, type Mesh, type MeshStandardMaterial, type Object3D } from "three";
 import { versionedUrl } from "../village/modelUrl";
 import { LoadBoundary } from "../village/LoadBoundary";
+import { SceneWarmUp } from "../game/SceneWarmUp";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 
 export const SHOP_INTERIOR_URL = versionedUrl("/models/lake/lake_shop_interior.glb");
@@ -157,6 +158,8 @@ export function LakeShopInterior() {
     <LoadBoundary fallback={null} onReset={() => useGLTF.clear(SHOP_INTERIOR_URL)} notice="낚시점 안을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
       <Suspense fallback={null}>
         <ShopInteriorModel />
+        {/* its materials compiled in idle time once it is in (perf-routes: a 0.5-0.6 s hitch the first time the shop came into view) */}
+        <SceneWarmUp />
       </Suspense>
     </LoadBoundary>
   );

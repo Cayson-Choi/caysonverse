@@ -151,6 +151,8 @@ function LakeGlb({ tier, pose }: { tier: VillageTier; pose: Pose }) {
       <LoadBoundary fallback={null} onReset={clearNpcCache} notice="대여점 주인 모습을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
         <Suspense fallback={null}>
           <LakeShopkeeper structures={structs.scene} pose={pose} />
+          {/* the shopkeeper's materials (npc.glb) compiled in idle time once he is in, not the first time he comes into view */}
+          <SceneWarmUp />
         </Suspense>
       </LoadBoundary>
     </>
