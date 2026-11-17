@@ -167,9 +167,7 @@ for (nm, size, loc) in (
 ):
     G.box(nm, size, loc, "g_glass")
 # the door on the east face: a frame, a handle plate
-G.box("door_frame_l", (0.06, TOP - FLOOR - 0.3, 0.06), (GX + 0.02, (TOP + FLOOR) / 2 - 0.05, -0.5), "g_gold", 0.01, 1)
-G.box("door_frame_r", (0.06, TOP - FLOOR - 0.3, 0.06), (GX + 0.02, (TOP + FLOOR) / 2 - 0.05, 0.5), "g_gold", 0.01, 1)
-G.box("door_handle", (0.06, 0.22, 0.04), (GX + 0.06, FLOOR + 1.15, 0.38), "g_gold", 0.01, 1)
+G.box("door_handle", (0.06, 0.22, 0.04), (GX + 0.06, FLOOR + 1.15, 0.0), "g_gold", 0.01, 1)
 # the roof: a shallow pyramid of eight panels, a gold lantern cap, rods up to the pivot
 G.cyl("roof_ring", (0, TOP, 0), (0, TOP + 0.12, 0), 1.95, 1.95, "g_gold", 8)
 G.cyl("roof", (0, TOP + 0.12, 0), (0, TOP + 0.8, 0), 1.9, 0.35, "g_indigo", 8)

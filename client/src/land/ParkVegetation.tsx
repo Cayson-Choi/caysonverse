@@ -7,6 +7,7 @@ import { PARK_PONDS } from "./ParkScenery";
 import type { Bed } from "../village/veg/flowerPlacement";
 import type { Card } from "../village/veg/vegCards";
 import { isTouchDevice } from "../device";
+import { selfRide } from "./coasterRide";
 import { createVegetation, type VillageVegetation } from "../village/veg/villageVegetation";
 import type { Bush } from "../village/veg/shrubs";
 import type { TreeSpec } from "../village/veg/treeSkeleton";
@@ -173,6 +174,8 @@ export function ParkVegetation() {
     };
   }, [specs, flowerBeds, getThree]);
   useFrame(({ clock, gl, camera }) => {
+    // a carousel or wheel ride: the vegetation is judged from the ride's foot, not from the turning / rising eye
+    if (veg) veg.setViewOverride(selfRide.slot >= 0 && selfRide.ride === 2 ? [110, 1.7, -119] : selfRide.slot >= 0 && selfRide.ride === 3 ? [211, 1.7, -134.5] : null);
     veg?.update(camera, clock.elapsedTime, gl.domElement.height);
     // the park's crowns draw no shadow of their own (the village's near ones do): every leaf layer twice in the shadow pass is the frame's largest cost
     if (veg && Math.floor(clock.elapsedTime * 2) !== lastSweep.current) {

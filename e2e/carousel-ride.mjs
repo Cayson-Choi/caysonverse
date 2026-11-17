@@ -115,9 +115,12 @@ await run.step("board", async () => {
     window.__ri = { calls: 0, triangles: 0, n: 0, sumCalls: 0, sumTris: 0 };
     const gl = window.__cvThree?.().gl;
     if (gl) gl.info.autoReset = false;
+    window.__long = [];
+    const t00 = performance.now();
     let last = performance.now();
     const tick = (t) => {
       window.__fpsSamples.push(t - last);
+      if (t - last > 60) window.__long.push({ at: Math.round(t - t00), dt: Math.round(t - last) });
       last = t;
       if (gl) {
         const r = gl.info.render;
@@ -204,6 +207,7 @@ const fps = await A.page.evaluate(() => {
 const info = await A.page.evaluate(() => (window.__ri ? { maxCalls: window.__ri.calls, maxTriangles: window.__ri.triangles, meanCalls: Math.round(window.__ri.sumCalls / Math.max(1, window.__ri.n)), meanTriangles: Math.round(window.__ri.sumTris / Math.max(1, window.__ri.n)) } : null));
 console.log("frame times", JSON.stringify(fps));
 console.log("render info", JSON.stringify(info));
+console.log("long frames", JSON.stringify(await A.page.evaluate(() => (window.__long ?? []).slice(0, 20))));
 writeFileSync(join(run.evidence, "ride-log.json"), JSON.stringify({ fps, info, log }, null, 1));
 const code = run.finish({ fps });
 await b.close();

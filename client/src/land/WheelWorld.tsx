@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { CanvasTexture, Color, Euler, Group, InstancedMesh, Matrix4, MeshStandardMaterial, Quaternion, SphereGeometry, SRGBColorSpace, Texture, Vector3 } from "three";
 import { WHEEL_HUB_Y, WHEEL_N, WHEEL_R, WHEEL_SITE, WHEEL_STEP, wheelAt, wheelPivot, wheelSway, type WheelState } from "@caysonverse/shared/land/wheel";
@@ -70,6 +70,9 @@ export function WheelWorld({ env }: { env: Texture }) {
   const frameParts = useMemo(() => partsOf(frame.scene, env), [frame, env]);
   const gondolaParts = useMemo(() => partsOf(gondola.scene, env), [gondola, env]);
   const rotorRef = useRef<Group>(null);
+  const root = useRef<Group>(null);
+  const gl = useThree((s) => s.gl);
+  const cam = useThree((s) => s.camera);
   const gondolaRefs = useRef<(InstancedMesh | null)[]>([]);
   const bulbRef = useRef<InstancedMesh>(null);
   const bulbs = useMemo(rimBulbs, []);
@@ -87,6 +90,18 @@ export function WheelWorld({ env }: { env: Texture }) {
     });
     if (bulbRef.current) bulbRef.current.instanceMatrix.needsUpdate = true;
   }, [bulbs]);
+
+  // compile the wheel's programs once at arrival (glass, lamps, instanced gondolas), not on the first ride
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      try {
+        if (root.current) gl.compile(root.current, cam);
+      } catch {
+        /* an optimisation only */
+      }
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [gl, cam, gondolaParts]);
 
   useFrame(() => {
     const now = villageClock.liveMs();
@@ -107,7 +122,7 @@ export function WheelWorld({ env }: { env: Texture }) {
   });
 
   return (
-    <group>
+    <group ref={root}>
       <group position={[WHEEL_SITE.x, 0, WHEEL_SITE.z]}>
         {frameParts.map((p, i) => (
           <mesh key={i} geometry={p.geometry} material={p.material} castShadow receiveShadow dispose={null} />

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { BufferGeometry, CanvasTexture, Color, Euler, Group, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, Quaternion, SphereGeometry, SRGBColorSpace, Texture, Vector3 } from "three";
 import {
@@ -202,6 +202,9 @@ export function CarouselWorld({ env, all }: { env: Texture; all: Texture[] }) {
   const slotLo = useRef<number[]>([]);
   const carriageParts = useMemo(() => partsOf(carriage.scene, env), [carriage, env]);
   const turning = useRef<Group>(null);
+  const root = useRef<Group>(null);
+  const gl = useThree((s) => s.gl);
+  const cam = useThree((s) => s.camera);
   const horseRefs = useRef<(InstancedMesh | null)[]>([]);
   const carriageRefs = useRef<(InstancedMesh | null)[]>([]);
   const bulbRef = useRef<InstancedMesh>(null);
@@ -229,6 +232,28 @@ export function CarouselWorld({ env, all }: { env: Texture; all: Texture[] }) {
     });
     if (bulbRef.current) bulbRef.current.instanceMatrix.needsUpdate = true;
   }, [bulbs]);
+
+  // compile every horse / carriage program once at arrival (the hi and lo horses, the instance colour on their paint), so the first ride and the
+  // first level-of-detail swap never stall a frame on a shader compile
+  useEffect(() => {
+    for (const [refs, parts] of [[horseRefs.current, horseParts], [loRefs.current, loParts]] as const) {
+      parts.forEach((p, i) => {
+        const mesh = refs[i];
+        if (mesh && p.material.name === "horse_paint" && !mesh.instanceColor) mesh.setColorAt(0, tmpColor.setRGB(1, 1, 1));
+      });
+    }
+    if (root.current) {
+      const t = window.setTimeout(() => {
+        try {
+          if (root.current) gl.compile(root.current, cam);
+        } catch {
+          /* the compile is an optimisation only */
+        }
+      }, 0);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+  }, [gl, cam, horseParts, loParts]);
 
   useFrame(({ camera }) => {
     const now = villageClock.liveMs();
@@ -292,7 +317,7 @@ export function CarouselWorld({ env, all }: { env: Texture; all: Texture[] }) {
   });
   // the platform's own origin is the centre on the ground; its parts are in that frame
   return (
-    <group>
+    <group ref={root}>
       <group ref={turning} position={[CAROUSEL_CENTER.x, 0, CAROUSEL_CENTER.z]}>
         {statParts.map((p, i) => (
           <mesh key={i} geometry={p.geometry} material={p.material} castShadow receiveShadow />
