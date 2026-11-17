@@ -33,7 +33,9 @@ import type { BufferGeometry, Camera, Material, Object3D, Scene, Texture, WebGLR
 
 interface ProgramLike {
   isReady(): boolean | null;
+  /** three's WebGLProgram: the GL program (undefined once destroyed) and how many materials use it (0: released). */
   program?: unknown;
+  usedTimes?: number;
 }
 interface Track {
   /** variant → the program `renderer.compile` made for it */
@@ -43,6 +45,19 @@ interface Track {
   version: number;
   /** the material's <img> textures are uploaded or decoded (null: not looked at yet) */
   texReady: boolean | null;
+}
+
+/**
+ * Whether a program's compile is done, without asking GL about one three has released (its GL object deleted, or about
+ * to be: a deleted program warns "glGetProgramiv: Program object expected"). A released program counts as done.
+ */
+function programReady(p: ProgramLike): boolean {
+  if (("program" in p && p.program === undefined) || p.usedTimes === 0) return true;
+  try {
+    return p.isReady() !== false;
+  } catch {
+    return true;
+  }
 }
 
 /** How long (ms) an object may be held back before three draws it its own way (it waits for the compile). */
@@ -210,15 +225,7 @@ export function installProgramGate(
       for (const p of compiling) if (!live.has(p)) compiling.delete(p);
       for (const p of all) if (!used.has(p)) compiling.add(p);
     }
-    for (const p of compiling) {
-      let r: boolean | null = true;
-      try {
-        r = p.isReady();
-      } catch {
-        r = true;
-      }
-      if (r !== false) compiling.delete(p);
-    }
+    for (const p of compiling) if (programReady(p)) compiling.delete(p);
     return compiling.size > 0;
   };
   let ids = new WeakMap<Material, number>();
@@ -350,7 +357,7 @@ export function installProgramGate(
       const props = gl.properties.get(material) as { currentProgram?: ProgramLike };
       t = { programs: new Map(), since: new Map(), version: material.version, texReady: null };
       tracks.set(material, t);
-      if (props.currentProgram && props.currentProgram.isReady() !== false) {
+      if (props.currentProgram && programReady(props.currentProgram)) {
         if (LOG) (props.currentProgram as { tag?: string }).tag ??= "trusted";
         t.programs.set(keyOf(shadow, material, sceneFor, object, geometry), props.currentProgram);
       }
@@ -371,12 +378,7 @@ export function installProgramGate(
     const p = t.programs.get(variant);
     const texOk = texturesReady(material, t);
     if (p && texOk) {
-      let ready: boolean | null = true;
-      try {
-        ready = p.isReady();
-      } catch {
-        ready = true;
-      }
+      let ready: boolean | null = programReady(p);
       // its first use waits (synchronously) for whatever the GPU process is still compiling: not while the gate's compiles run
       if (ready !== false && !used.has(p) && anyCompiling()) ready = false;
       // a geometry never drawn uploads its buffers now: a frame takes a few MB of them (the map's first view of the whole
