@@ -1,80 +1,62 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Color, DataTexture, DoubleSide, LinearFilter, LinearMipmapLinearFilter, RGBAFormat, UnsignedByteType, Vector2, Group, InstancedMesh, Matrix4, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, type Texture } from "three";
+import { useGLTF, useTexture } from "@react-three/drei";
+import { BufferGeometry, Color, DoubleSide, Mesh, Group, InstancedMesh, Matrix4, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, type Texture } from "three";
 import { COASTER_CARS, carArc, coasterTrack, emptyFrame, frameAt, STATION_Y } from "@caysonverse/shared/land/coaster";
 import { isTouchDevice } from "../device";
-import { buildCar, buildTrack, type TrackBuild, type TrackDetail } from "./coasterGeometry";
+import { buildTrack, type TrackBuild, type TrackDetail } from "./coasterGeometry";
 import { coasterNow } from "./coasterRide";
 import { parkMaterial, pickSet } from "./pbr";
 import { signTexture } from "./canvasTextures";
 
 const DETAIL: TrackDetail = isTouchDevice ? "light" : "full";
 
-/** A fine leather / vinyl grain as a tangent-space normal map (procedural, 128 px, tiling): the upholstery's pebbled surface and the paint's faint orange peel. */
-function grainNormal(): DataTexture {
-  const N = 128;
-  const h = new Float32Array(N * N);
-  let seed = 31;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  // pebbles: random bumps with a soft falloff, wrapped
-  for (let k = 0; k < 900; k++) {
-    const cx = rnd() * N;
-    const cy = rnd() * N;
-    const r = 2 + rnd() * 3;
-    for (let dy = -6; dy <= 6; dy++) {
-      for (let dx = -6; dx <= 6; dx++) {
-        const d = Math.hypot(dx, dy) / r;
-        if (d > 1) continue;
-        const x = (Math.floor(cx + dx) + N) % N;
-        const y = (Math.floor(cy + dy) + N) % N;
-        h[y * N + x] = Math.max(h[y * N + x]!, 1 - d * d);
-      }
-    }
-  }
-  const data = new Uint8Array(N * N * 4);
-  for (let y = 0; y < N; y++) {
-    for (let x = 0; x < N; x++) {
-      const dx = h[y * N + ((x + 1) % N)]! - h[y * N + ((x - 1 + N) % N)]!;
-      const dy = h[((y + 1) % N) * N + x]! - h[((y - 1 + N) % N) * N + x]!;
-      const nx = -dx * 1.6;
-      const ny = -dy * 1.6;
-      const l = Math.hypot(nx, ny, 1);
-      const i = (y * N + x) * 4;
-      data[i] = Math.round(((nx / l) * 0.5 + 0.5) * 255);
-      data[i + 1] = Math.round(((ny / l) * 0.5 + 0.5) * 255);
-      data[i + 2] = Math.round(((1 / l) * 0.5 + 0.5) * 255);
-      data[i + 3] = 255;
-    }
-  }
-  const t = new DataTexture(data, N, N, RGBAFormat, UnsignedByteType);
-  t.wrapS = t.wrapT = RepeatWrapping;
-  t.repeat.set(3, 3);
-  t.magFilter = LinearFilter;
-  t.minFilter = LinearMipmapLinearFilter;
-  t.generateMipmaps = true;
-  t.needsUpdate = true;
-  return t;
-}
+export const CAR_URL = "/models/land/coaster_car.glb";
+export const CAR_AO_URL = "/models/land/coaster_car_ao.webp";
 
-/** The cars: one InstancedMesh, its matrices set from the train's place on the shared clock every frame. */
-function Train({ geometry, material }: { geometry: ReturnType<typeof buildCar>; material: MeshPhysicalMaterial }) {
-  const ref = useRef<InstancedMesh>(null);
+/**
+ * The cars: the Blender model (tools/land/make_coaster_car.py), one InstancedMesh per material (paint, gold, white, chrome, pad, dark, rubber),
+ * the matrices set from the train's place on the shared clock every frame. The baked AO and the sky's environment map go on every material.
+ */
+function Train({ env, ao }: { env: Texture; ao: Texture }) {
+  const gltf = useGLTF(CAR_URL);
+  const parts = useMemo(() => {
+    const out: { geometry: BufferGeometry; material: MeshStandardMaterial }[] = [];
+    gltf.scene.updateMatrixWorld(true);
+    gltf.scene.traverse((o) => {
+      const mesh = o as Mesh;
+      if (!mesh.isMesh) return;
+      const material = (mesh.material as MeshStandardMaterial).clone();
+      material.aoMap = ao;
+      material.aoMapIntensity = 0.4;
+      material.envMap = env;
+      material.envMapIntensity = material.name === "car_paint" ? 1.3 : material.name === "car_pad" ? 0.35 : 0.9;
+      material.needsUpdate = true;
+      out.push({ geometry: mesh.geometry, material });
+    });
+    return out;
+  }, [gltf, env, ao]);
+  const refs = useRef<(InstancedMesh | null)[]>([]);
   const m = useMemo(() => new Matrix4(), []);
   const f = useMemo(() => emptyFrame(), []);
   const track = useMemo(() => coasterTrack(), []);
   useFrame(() => {
-    const mesh = ref.current;
-    if (!mesh) return;
     const now = coasterNow();
     for (let i = 0; i < COASTER_CARS; i++) {
       frameAt(track, carArc(now.s, i), f);
       // car space: +x is the car's LEFT (a right-handed basis: left x up = forward), +z forward
       m.set(-f.rx, f.ux, f.tx, f.x, -f.ry, f.uy, f.ty, f.y, -f.rz, f.uz, f.tz, f.z, 0, 0, 0, 1);
-      mesh.setMatrixAt(i, m);
+      for (const mesh of refs.current) mesh?.setMatrixAt(i, m);
     }
-    mesh.instanceMatrix.needsUpdate = true;
+    for (const mesh of refs.current) if (mesh) mesh.instanceMatrix.needsUpdate = true;
   });
-  return <instancedMesh ref={ref} args={[geometry, material, COASTER_CARS]} frustumCulled={false} castShadow receiveShadow />;
+  return (
+    <group>
+      {parts.map((p, i) => (
+        <instancedMesh key={i} ref={(r) => { refs.current[i] = r; }} args={[p.geometry, p.material, COASTER_CARS]} frustumCulled={false} castShadow receiveShadow />
+      ))}
+    </group>
+  );
 }
 
 /** The boarding gates along the platform edge: panels that swing open while the train stands at the station and shut for the ride. */
@@ -156,14 +138,12 @@ function Station({ concrete, pine }: { concrete: ReturnType<typeof pickSet>; pin
 }
 
 export function CoasterWorld({ all, pine, env }: { all: Texture[]; pine: Texture; env: Texture }) {
+  const ao = useTexture(CAR_AO_URL) as Texture;
   const track = useMemo(() => coasterTrack(), []);
   const built: TrackBuild = useMemo(() => buildTrack(track, DETAIL), [track]);
-  const car = useMemo(() => buildCar(DETAIL), []);
   const maps = useMemo(() => ({ metal: pickSet(all, "PaintedMetal013"), concrete: pickSet(all, "Concrete034") }), [all]);
   // painted steel: the vertex colours are the paint; the set gives the surface (orange-peel bump, the gloss that varies)
   const steelMat = useMemo(() => parkMaterial(maps.metal, 0.5, { useColor: false, vertexColors: true, metalness: 0.25, normalScale: 0.35, envMap: env, envMapIntensity: 0.45 }), [maps, env]);
-  const grain = useMemo(() => grainNormal(), []);
-  const carMat = useMemo(() => new MeshPhysicalMaterial({ normalMap: grain, normalScale: new Vector2(0.35, 0.35), vertexColors: true, roughness: 0.3, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.06, envMap: env, envMapIntensity: 1.25 }), [env, grain]);
   // (no dispose on cleanup: React's dev double-mount would delete the programs the memoised materials still use)
   if (import.meta.env.DEV && typeof window !== "undefined") (window as unknown as { __cvCoasterTris?: number }).__cvCoasterTris = built.triangles;
   return (
@@ -171,7 +151,7 @@ export function CoasterWorld({ all, pine, env }: { all: Texture[]; pine: Texture
       {built.chunks.map((ch, i) => (
         <mesh key={i} geometry={ch.steel} material={steelMat} receiveShadow />
       ))}
-      <Train geometry={car} material={carMat} />
+      <Train env={env} ao={ao} />
       <Station concrete={maps.concrete} pine={pine} />
     </group>
   );

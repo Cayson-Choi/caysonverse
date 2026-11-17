@@ -56,13 +56,13 @@ function macroTexture(): CanvasTexture {
   ctx.fillRect(0, 0, 512, 256);
   let seed = 11;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < 160; i++) {
+  for (let i = 0; i < 420; i++) {
     const x = rnd() * 512;
     const y = rnd() * 256;
-    const r = 14 + rnd() * 46;
+    const r = 5 + rnd() * 40;
     const g = ctx.createRadialGradient(x, y, 0, x, y, r);
     const v = rnd() < 0.5 ? 70 : 200;
-    g.addColorStop(0, `rgba(${v},${v},${v},0.32)`);
+    g.addColorStop(0, `rgba(${v},${v},${v},0.42)`);
     g.addColorStop(1, `rgba(${v},${v},${v},0)`);
     ctx.fillStyle = g;
     ctx.fillRect(x - r, y - r, r * 2, r * 2);
@@ -110,7 +110,7 @@ function Ground({ all }: { all: Texture[] }) {
   const grass = useMemo(() => {
     // the village lawn's own set (Poly Haven leafy_grass), graded green-gold like the village lawn (GROUND_GRADE LM_grass: sunny, lime; the raw albedo is dry straw)
     const m = parkMaterial(pickSet(all, "LeafyGrass"), 1, { color: new Color(0.4, 1.2, 0.26), normalScale: 0.9 });
-    setRepeat(m, 700 / 5, 620 / 5);
+    setRepeat(m, 1700 / 5, 1500 / 5);
     // broad light and dark patches (a mown-and-wild mottle) so the lawn is not one flat green at a distance
     m.lightMap = macroTexture();
     m.lightMapIntensity = 0.9;
@@ -154,7 +154,7 @@ function Ground({ all }: { all: Texture[] }) {
   return (
     <group>
       <mesh rotation-x={-Math.PI / 2} position={[105, 0, 14]} material={grass} receiveShadow>
-        <planeGeometry args={[700, 620]} />
+        <planeGeometry args={[1700, 1500]} />
       </mesh>
       {rects}
       <mesh rotation-x={-Math.PI / 2} position={[PARK_PLAZA.x, 0.04, PARK_PLAZA.z]} geometry={plazaGeo} material={plazaMat} receiveShadow />

@@ -5,7 +5,6 @@ import {
   BufferGeometry,
   CanvasTexture,
   Color,
-  CylinderGeometry,
   FileLoader,
   Float32BufferAttribute,
   IcosahedronGeometry,
@@ -21,7 +20,6 @@ import {
   ClampToEdgeWrapping,
   LinearMipmapLinearFilter,
 } from "three";
-import { isTouchDevice } from "../device";
 import { coasterTrack } from "@caysonverse/shared/land/coaster";
 import { PARK_BOUNDS, PARK_PLAZA, PARK_QUEUE_HALL, PARK_SHOPS } from "@caysonverse/shared/village/parkArea";
 import { LIGHTING } from "../game/sceneLighting";
@@ -160,65 +158,6 @@ function CircuitGround({ all, pond }: { all: Texture[]; pond: { x: number; z: nu
   );
 }
 
-// ───────────────────────────────────────── the backdrop: far woods and the treeline (cheap, instanced, never within reach) ─────────────────────────────────────────
-
-/** Far woods behind the circuit and a treeline ring at 330-400 m: one dark blob and one fir per instance. Near trees are the village's (ParkVegetation). */
-function Backdrop({ pond }: { pond: { x: number; z: number } }) {
-  const ground = useMemo(circuitGround, []);
-  const blobs = useRef<InstancedMesh>(null);
-  const firs = useRef<InstancedMesh>(null);
-  const blobGeo = useMemo(() => new IcosahedronGeometry(2.6, 1), []);
-  const firGeo = useMemo(() => new CylinderGeometry(0.01, 2.2, 6.4, 7).translate(0, 3.2, 0).toNonIndexed(), []);
-  const mat = useMemo(() => new MeshStandardMaterial({ color: "#ffffff", roughness: 0.9 }), []);
-  const list = useMemo(() => {
-    const rnd = rngOf(99);
-    const out: { x: number; z: number; s: number; fir: boolean }[] = [];
-    const want = 0; // no cheap trees among the layout: the near ones are the village's (ParkVegetation)
-    let guard = 0;
-    while (out.length < want && guard++ < 20000) {
-      const x = -170 + rnd() * 560;
-      const z = 60 + rnd() * 110; // behind the circuit's far side (the return straight is at z 64)
-      if (taken(x, z, ground, pond)) continue;
-      if (out.some((t) => Math.hypot(t.x - x, t.z - z) < 9)) continue;
-      out.push({ x, z, s: 1.2 + rnd() * 0.8, fir: rnd() < 0.45 });
-    }
-    const ringN = isTouchDevice ? 36 : 110;
-    for (let i = 0; i < ringN; i++) {
-      const a = (i / ringN) * Math.PI * 2 + rnd() * 0.05;
-      const r = 330 + rnd() * 60;
-      out.push({ x: 105 + Math.cos(a) * r * 1.15, z: -60 + Math.sin(a) * r * 0.75, s: 2.2 + rnd() * 1.6, fir: rnd() < 0.5 });
-    }
-    return out;
-  }, [ground, pond]);
-  useEffect(() => {
-    const m = new Matrix4();
-    const q = new Quaternion();
-    const col = new Color();
-    let nb = 0;
-    let nf = 0;
-    for (const t of list) {
-      const ref = t.fir ? firs.current : blobs.current;
-      const k = t.fir ? nf++ : nb++;
-      m.compose(new Vector3(t.x, t.fir ? 0 : 3.6 * t.s, t.z), q.identity(), new Vector3(t.s, t.s, t.s));
-      ref?.setMatrixAt(k, m);
-      col.setHSL(0.26 + ((t.x * 3 + t.z) % 9) / 150, 0.38, 0.16 + (((t.x + t.z * 2) % 8) / 90));
-      ref?.setColorAt(k, col);
-    }
-    for (const [ref, n] of [[blobs.current, nb], [firs.current, nf]] as const) {
-      if (!ref) continue;
-      ref.count = n;
-      ref.instanceMatrix.needsUpdate = true;
-      if (ref.instanceColor) ref.instanceColor.needsUpdate = true;
-    }
-  }, [list]);
-  return (
-    <group>
-      <instancedMesh frustumCulled={false} ref={blobs} args={[blobGeo, mat, list.length]} />
-      <instancedMesh frustumCulled={false} ref={firs} args={[firGeo, mat, list.length]} />
-    </group>
-  );
-}
-
 // ───────────────────────────────────────── the village's distant mountains ─────────────────────────────────────────
 
 /** A pale horizon sky the mountains haze into (a tiny gradient): the village feeds its dome texture here. */
@@ -279,7 +218,6 @@ export function ParkScenery({ all }: { all: Texture[] }) {
   return (
     <group>
       <CircuitGround all={all} pond={pond} />
-      <Backdrop pond={pond} />
     </group>
   );
 }

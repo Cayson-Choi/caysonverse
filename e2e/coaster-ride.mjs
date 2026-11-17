@@ -289,7 +289,7 @@ const fps = await A.page.evaluate(() => {
   const s = [...a].sort((x, y) => x - y);
   const q = (p) => s[Math.min(s.length - 1, Math.floor(p * s.length))];
   const mean = a.reduce((x, y) => x + y, 0) / a.length;
-  return { frames: a.length, fpsMean: Math.round(1000 / mean), p50ms: Math.round(q(0.5) * 10) / 10, p95ms: Math.round(q(0.95) * 10) / 10, p99ms: Math.round(q(0.99) * 10) / 10, maxMs: Math.round(s[s.length - 1]) };
+  return { frames: a.length, over50ms: a.filter((x) => x > 50).length, over100ms: a.filter((x) => x > 100).length, fpsMean: Math.round(1000 / mean), p50ms: Math.round(q(0.5) * 10) / 10, p95ms: Math.round(q(0.95) * 10) / 10, p99ms: Math.round(q(0.99) * 10) / 10, maxMs: Math.round(s[s.length - 1]) };
 });
 console.log("frame times", JSON.stringify(fps));
 const info = await renderInfo(A);

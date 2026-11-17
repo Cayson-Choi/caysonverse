@@ -119,21 +119,37 @@ function buildTrees(): ParkTree[] {
   let seed = 20261117;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const out: ParkTree[] = [];
-  let guard = 0;
-  while (out.length < 40 && guard++ < 20000) {
-    const x = PARK_BOUNDS.minX + 8 + rnd() * (PARK_BOUNDS.maxX - PARK_BOUNDS.minX - 16);
-    const z = PARK_BOUNDS.minZ + 8 + rnd() * (PARK_BOUNDS.maxZ - PARK_BOUNDS.minZ - 18);
-    if (onPath(x, z, 5)) continue;
-    if (PARK_SHOPS.some((s) => Math.abs(x - s.x) < s.d / 2 + 5 && Math.abs(z - s.z) < s.w / 2 + 4)) continue;
+  const ok = (x: number, z: number): boolean => {
+    if (x < PARK_BOUNDS.minX + 6 || x > PARK_BOUNDS.maxX - 6 || z < PARK_BOUNDS.minZ + 6 || z > -7) return false;
+    if (onPath(x, z, 5)) return false;
+    if (PARK_SHOPS.some((s) => Math.abs(x - s.x) < s.d / 2 + 5 && Math.abs(z - s.z) < s.w / 2 + 4)) return false;
     const q = PARK_QUEUE_HALL;
-    if (x > q.minX - 8 && x < q.maxX + 8 && z > q.minZ - 8 && z < q.maxZ + 8) continue;
-    if (Math.hypot(x - PARK_EXIT_PAD.x, z - PARK_EXIT_PAD.z) < 14) continue;
-    if (z > -7) continue; // a clear verge along the coaster's boundary hedge
-    // the ride plots (phase 2b / 3): the carousel's and the wheel's ground stay open
-    if (Math.hypot(x - 110, z + 135) < 30 || Math.hypot(x - 205, z + 135) < 34) continue;
-    // a loose minimum distance between trees
-    if (out.some((t) => Math.hypot(t.x - x, t.z - z) < 9)) continue;
-    out.push({ x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10, s: 0.8 + rnd() * 0.7, kind: (Math.floor(rnd() * 3) % 3) as 0 | 1 | 2 });
+    if (x > q.minX - 8 && x < q.maxX + 8 && z > q.minZ - 8 && z < q.maxZ + 8) return false;
+    if (Math.hypot(x - PARK_EXIT_PAD.x, z - PARK_EXIT_PAD.z) < 14) return false;
+    if (Math.hypot(x - 110, z + 135) < 30 || Math.hypot(x - 205, z + 135) < 34) return false; // the ride plots (the carousel's, the wheel's) stay open
+    return true;
+  };
+  // groves: clusters of trees with open lawn between them (lawns stay open beside the paths, the plaza and the ride plots)
+  const centres: { x: number; z: number }[] = [];
+  let g0 = 0;
+  while (centres.length < 16 && g0++ < 4000) {
+    const x = PARK_BOUNDS.minX + 14 + rnd() * (PARK_BOUNDS.maxX - PARK_BOUNDS.minX - 28);
+    const z = PARK_BOUNDS.minZ + 14 + rnd() * (PARK_BOUNDS.maxZ - PARK_BOUNDS.minZ - 28);
+    if (!ok(x, z) || centres.some((c) => Math.hypot(c.x - x, c.z - z) < 38)) continue;
+    centres.push({ x, z });
+  }
+  for (const c of centres) {
+    let placed = 0;
+    let guard = 0;
+    while (placed < 9 && guard++ < 300) {
+      const a = rnd() * Math.PI * 2;
+      const r = Math.sqrt(rnd()) * 11;
+      const x = Math.round((c.x + Math.cos(a) * r) * 10) / 10;
+      const z = Math.round((c.z + Math.sin(a) * r * 0.9) * 10) / 10;
+      if (!ok(x, z) || out.some((t) => Math.hypot(t.x - x, t.z - z) < 4.6)) continue;
+      out.push({ x, z, s: 0.8 + rnd() * 0.7, kind: (Math.floor(rnd() * 3) % 3) as 0 | 1 | 2 });
+      placed++;
+    }
   }
   return out;
 }

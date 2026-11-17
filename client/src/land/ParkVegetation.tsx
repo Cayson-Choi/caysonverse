@@ -33,24 +33,43 @@ export function parkTreeSpecs(): { trees: TreeSpec[]; bushes: Bush[] } {
   const t = coasterTrack();
   const li = Math.round(((t.marks.loopFrom ?? 0) + (t.marks.loopTo ?? 0)) / 2);
   pond.x = t.pos[3 * li]! + 6;
-  const woods = isTouchDevice ? 10 : 16;
-  const centres: { x: number; z: number }[] = [];
-  // clusters close to the ride: the lift, the drop, the pond, the turns (the riders see these rush by)
-  for (const [cx, cz] of [[60, 14], [100, 22], [135, 16], [190, 20], [255, 30], [290, 24], [320, 40], [240, 56], [160, 52]] as const) centres.push({ x: cx, z: cz });
+  // dense groups along the layout (the ride passes between tree walls) and out beyond it: clusters of 8-16 trees with an understorey of shrubs
+  const perCluster = isTouchDevice ? 7 : 12;
+  const near = isTouchDevice ? 8 : 13; // clusters along the circuit
+  const centres: { x: number; z: number; r: number }[] = [];
+  for (let i = 0; i < near; i++) {
+    const g = ground[Math.floor(((i + 0.5) / near) * ground.length) % ground.length]!;
+    const side = i % 2 === 0 ? 1 : -1;
+    centres.push({ x: g.x + g.px * 17 * side, z: g.z + g.pz * 17 * side, r: 9 });
+  }
+  for (const [cx, cz] of (isTouchDevice ? [[-120, 110], [140, 130], [330, 110]] : [[-150, 100], [-60, 150], [60, 140], [170, 150], [260, 130], [350, 100], [-170, 40], [380, 30]]) as ReadonlyArray<readonly [number, number]>) centres.push({ x: cx, z: cz, r: 12 });
   const woodList: { x: number; z: number }[] = [];
-  let guard = 0;
-  while (woodList.length < woods && guard++ < 20000) {
-    const c = centres[Math.floor(rnd() * centres.length)]!;
-    const a = rnd() * Math.PI * 2;
-    const r = Math.sqrt(rnd()) * 14;
-    const x = c.x + Math.cos(a) * r;
-    const z = c.z + Math.sin(a) * r * 0.8;
-    if (z < 3.2 || taken(x, z, ground, pond)) continue;
-    if (woodList.some((w) => Math.hypot(w.x - x, w.z - z) < 6.5)) continue;
-    woodList.push({ x, z });
+  const understorey: Bush[] = [];
+  for (const c of centres) {
+    let placed = 0;
+    let guard = 0;
+    while (placed < perCluster && guard++ < 400) {
+      const a = rnd() * Math.PI * 2;
+      const r = Math.sqrt(rnd()) * c.r;
+      const x = c.x + Math.cos(a) * r;
+      const z = c.z + Math.sin(a) * r * 0.9;
+      if (z < 3.2 || taken(x, z, ground, pond)) continue;
+      if (woodList.some((w) => Math.hypot(w.x - x, w.z - z) < 4.4)) continue;
+      woodList.push({ x, z });
+      placed++;
+    }
+    for (let k = 0; k < 7; k++) {
+      const a = rnd() * Math.PI * 2;
+      const r = Math.sqrt(rnd()) * (c.r + 3);
+      const x = c.x + Math.cos(a) * r;
+      const z = c.z + Math.sin(a) * r * 0.9;
+      if (z < 3.2 || taken(x, z, ground, pond)) continue;
+      const s = 0.8 + rnd() * 0.8;
+      understorey.push({ x, y: 0, z, h: 0.9 * s, r: 0.75 * s, seed: rnd(), cards: [] });
+    }
   }
   woodList.forEach((w, i) => trees.push({ index: index++, kind: "green", x: w.x, z: w.z, H: 7.5 + rnd() * 3.5, R: 3.2 + rnd() * 1.2, seed: 8000 + i }));
-  const ring = 0; // the treeline ring is cheap instanced backdrop (ParkScenery Backdrop), not village-grade trees
+  const ring = 0;
   for (let i = 0; i < ring; i++) {
     const a = (i / ring) * Math.PI * 2 + rnd() * 0.1;
     const r = 330 + rnd() * 60;
@@ -63,7 +82,7 @@ export function parkTreeSpecs(): { trees: TreeSpec[]; bushes: Bush[] } {
     const s = 0.8 + rnd() * 0.7;
     bushes.push({ x: g.x + g.px * 5.4, y: 0, z: g.z + g.pz * 5.4, h: 0.9 * s, r: 0.7 * s, seed: rnd(), cards: [] });
   });
-  return { trees, bushes };
+  return { trees, bushes: [...bushes, ...understorey] };
 }
 
 export function ParkVegetation() {
