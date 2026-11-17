@@ -41,7 +41,8 @@ export const COASTER_BOARD_REACH_M = 6;
 
 /** The carousel's boarding pad (its entrance gate, south of the platform) and the wheel's (phase 2c). */
 export const CAROUSEL_PAD = Object.freeze({ x: 110, z: -119, radius: 3 });
-export const WHEEL_PAD = Object.freeze({ x: 205, z: -119, radius: 3 });
+/** The wheel's boarding pad: on the grass at the foot of the platform steps (the rider is lifted into the gondola; the avatar never walks on the deck). */
+export const WHEEL_PAD = Object.freeze({ x: 211, z: -130.8, radius: 3 });
 
 /** The village side: the gate lot's door pad and where you stand coming out (world metres, from the gate lot). */
 export function parkGateDoor() {
@@ -234,6 +235,9 @@ function buildSolids(): AABB[] {
   out.push(box(29.5, 33, -190, -183), box(47, 50.5, -190, -183));
   out.push(box(PARK_KIOSK.x - PARK_KIOSK.w / 2, PARK_KIOSK.x + PARK_KIOSK.w / 2, PARK_KIOSK.z - PARK_KIOSK.d / 2, PARK_KIOSK.z + PARK_KIOSK.d / 2));
   out.push(box(110 - 12.8, 110 + 12.8, -135 - 12.8, -135 + 12.8)); // the carousel's platform and its fence (the ride's own pad is outside it)
+  // the wheel: the four feet of its A-frames and the boarding platform's deck
+  for (const sx of [-1, 1]) for (const dz of [-2.75, 4.9]) out.push(box(205 + sx * 11 - 1, 205 + sx * 11 + 1, -140 + dz - 1, -140 + dz + 1));
+  out.push(box(205 + 2.0, 205 + 10.1, -140 + 0.8, -140 + 5.6));
   for (const t of PARK_TROUGHS) out.push(box(t.x0, t.x1, t.z0, t.z1));
   for (const p of PARK_PLANTERS) out.push(box(p.x - p.w / 2, p.x + p.w / 2, p.z - p.d / 2, p.z + p.d / 2));
   for (const b of PARK_BINS) out.push(box(b.x - 0.3, b.x + 0.3, b.z - 0.3, b.z + 0.3));

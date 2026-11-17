@@ -38,7 +38,7 @@ export class VillageCoaster {
 
   register(): void {
     this.host.onMessage(VillageMsg.RideBoard, (client, payload) => this.board(client, payload));
-    this.host.onMessage(VillageMsg.RideLeave, (client) => this.leave(client.sessionId));
+    this.host.onMessage(VillageMsg.RideLeave, (client) => this.tryLeave(client));
   }
 
   private taken(ride: RideDef): Set<number> {
@@ -62,11 +62,14 @@ export class VillageCoaster {
     if (!this.canBoard(p, ride)) return this.notice(client, "busy");
     const taken = this.taken(ride);
     let seat = -1;
-    for (let i = 0; i < ride.seats; i++)
+    const candidates = ride.boardingSeats ? ride.boardingSeats(this.host.wallClock()) : null;
+    for (let n = 0; n < (candidates ? candidates.length : ride.seats); n++) {
+      const i = candidates ? candidates[n]! : n;
       if (!taken.has(i)) {
         seat = i;
         break;
       }
+    }
     if (seat < 0) return this.notice(client, "full");
     p.rideId = ride.id;
     p.rideSeat = seat;
@@ -77,6 +80,16 @@ export class VillageCoaster {
   private canBoard(p: PlayerLike, ride: RideDef): boolean {
     if (p.seatIndex >= 0 || p.busSeat >= 0 || p.fishSpot >= 0 || p.area !== "park") return false;
     return Math.hypot(p.x - ride.pad.x, p.z - ride.pad.z) <= ride.pad.radius + ride.reach;
+  }
+
+  /** A rider's own leave: refused while the ride's seat is aloft (the wheel). */
+  private tryLeave(client: Client): void {
+    const p = this.host.player(client.sessionId);
+    if (p && p.rideSeat >= 0) {
+      const ride = rideById(p.rideId);
+      if (ride?.canLeave && !ride.canLeave(p.rideSeat, this.host.wallClock())) return this.notice(client, "aloft");
+    }
+    this.leave(client.sessionId);
   }
 
   leave(sessionId: string): void {
@@ -99,7 +112,7 @@ export class VillageCoaster {
         continue;
       }
       const ride = rideById(p.rideId);
-      if (!ride || ride.statusAt(wall).cycle > cycle) this.leave(sid);
+      if (!ride || ride.statusAt(wall).cycle >= cycle + (ride.rideCycles ?? 1)) this.leave(sid);
     }
   }
 }

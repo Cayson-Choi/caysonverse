@@ -607,6 +607,13 @@ export class VillageVegetation {
   private bushLayers: Array<[Layer, Layer, Layer]> | null = null;
   private bushDirty = true;
   private readonly frustum = new Frustum();
+  /** 케이슨랜드: while a ride carries the camera (a carousel, the wheel) the levels of detail and the visibility are judged from this FIXED point and in every direction, so the turning and rising view never refills the instance buffers (a frame hitch). */
+  private viewOverride: [number, number, number] | null = null;
+  setViewOverride(p: [number, number, number] | null): void {
+    const had = this.viewOverride !== null;
+    this.viewOverride = p;
+    if (had !== (p !== null)) this.dirtyFlowers = true;
+  }
   private readonly projView = new Matrix4();
   private readonly sphere = new Sphere();
   private readonly statsData: VegStats;
@@ -1666,16 +1673,17 @@ export class VillageVegetation {
     camera.updateMatrixWorld();
     this.projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.projView);
-    const cx = camera.matrixWorld.elements[12]!;
-    const cy = camera.matrixWorld.elements[13]!;
-    const cz = camera.matrixWorld.elements[14]!;
+    const ov = this.viewOverride;
+    const cx = ov ? ov[0] : camera.matrixWorld.elements[12]!;
+    const cy = ov ? ov[1] : camera.matrixWorld.elements[13]!;
+    const cz = ov ? ov[2] : camera.matrixWorld.elements[14]!;
     const fl = this.cfg.flowers;
     for (const c of this.flowerCells) {
       const b = c.cell.bounds;
       const level = chooseLod(c.level, sphereDistance(cx, cy, cz, b), fl);
       this.sphere.center.set(b.x, b.y, b.z);
       this.sphere.radius = b.r;
-      const visible = level < fl.far.length && this.frustum.intersectsSphere(this.sphere);
+      const visible = level < fl.far.length && (ov !== null || this.frustum.intersectsSphere(this.sphere));
       if (level !== c.level || visible !== c.visible) {
         c.level = level;
         c.visible = visible;
@@ -1702,7 +1710,7 @@ export class VillageVegetation {
         t.twig.visible = twigOn;
         changed = true;
       }
-      t.seen = this.frustum.intersectsSphere(s);
+      t.seen = ov !== null || this.frustum.intersectsSphere(s);
     }
     for (const c of this.classes.values()) if (c.dirty) this.refillFar(c);
     const bandsBush = this.cfg.bush;

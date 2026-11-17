@@ -35,6 +35,7 @@ import {
 import { isTouchDevice } from "../device";
 import { CoasterWorld } from "./CoasterWorld";
 import { CarouselWorld } from "./CarouselWorld";
+import { WheelWorld } from "./WheelWorld";
 import { Shops } from "./ParkShops";
 import { ParkMountains, ParkScenery } from "./ParkScenery";
 import { ParkProps } from "./ParkProps";
@@ -460,6 +461,7 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       </Suspense>
       <CoasterWorld all={all} pine={pine!} env={env} />
       <CarouselWorld env={env} all={all} />
+      <WheelWorld env={env} />
     </group>
   );
 }

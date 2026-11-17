@@ -5,7 +5,7 @@
  */
 import { COASTER_SEATS, coasterAt } from "./coaster";
 import { CAROUSEL_SEATS, carouselAt } from "./carousel";
-import { WHEEL_SEATS, wheelAt } from "./wheel";
+import { WHEEL_RIDE_CYCLES, WHEEL_SEATS, boardingSeatsOfWheel, wheelAt, wheelSeatAtPlatform } from "./wheel";
 import { CAROUSEL_PAD, COASTER_BOARD_REACH_M, COASTER_QUEUE_PAD, WHEEL_PAD } from "../village/parkArea";
 
 export const RIDE = { coaster: 1, carousel: 2, wheel: 3 } as const;
@@ -30,12 +30,18 @@ export interface RideDef {
   /** how far past the pad's edge a rider may stand to board (m) */
   reach: number;
   statusAt(nowMs: number): RideStatus;
+  /** how many cycles a ride lasts (default 1: put off when the next cycle begins) */
+  rideCycles?: number;
+  /** the seats a boarding rider may take now (default: any free seat) */
+  boardingSeats?(nowMs: number): readonly number[];
+  /** whether a rider on `seat` may get off now (default: always) */
+  canLeave?(seat: number, nowMs: number): boolean;
 }
 
 export const RIDES: readonly RideDef[] = Object.freeze([
   { id: RIDE.coaster, key: "coaster", name: "별똥별 급행", seats: COASTER_SEATS, pad: COASTER_QUEUE_PAD, reach: COASTER_BOARD_REACH_M, statusAt: (t: number): RideStatus => coasterAt(t) },
   { id: RIDE.carousel, key: "carousel", name: "달빛 회전목마", seats: CAROUSEL_SEATS, pad: CAROUSEL_PAD, reach: 6, statusAt: (t: number): RideStatus => carouselAt(t) },
-  { id: RIDE.wheel, key: "wheel", name: "하늘 등불 바퀴", seats: WHEEL_SEATS, pad: WHEEL_PAD, reach: 6, statusAt: (t: number): RideStatus => wheelAt(t) },
+  { id: RIDE.wheel, key: "wheel", name: "하늘 등불 바퀴", seats: WHEEL_SEATS, pad: WHEEL_PAD, reach: 6, statusAt: (t: number): RideStatus => wheelAt(t), rideCycles: WHEEL_RIDE_CYCLES, boardingSeats: boardingSeatsOfWheel, canLeave: wheelSeatAtPlatform },
 ]);
 
 export function rideByKey(key: unknown): RideDef | null {

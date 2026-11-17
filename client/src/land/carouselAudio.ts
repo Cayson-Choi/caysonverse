@@ -12,18 +12,33 @@ const BASS = [45, 52, 52, 40, 47, 54, 54, 43];
 
 const hz = (m: number): number => 440 * Math.pow(2, (m - 69) / 12);
 
-function note(freq: number, t: number, dur: number, gain: number, type: OscillatorType): void {
-  if (!ctx || !master) return;
-  const o = ctx.createOscillator();
-  const g = ctx.createGain();
-  o.type = type;
-  o.frequency.value = freq;
-  g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(gain, t + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g).connect(master);
-  o.start(t);
-  o.stop(t + dur + 0.05);
+interface Voice {
+  osc: OscillatorNode;
+  gain: GainNode;
+}
+/** Three persistent voices (the comb's tine, its octave, the bass): playing a note only reschedules pitch and envelope, no node is created while riding. */
+let tine: Voice | null = null;
+let octave: Voice | null = null;
+let bass: Voice | null = null;
+
+function makeVoice(c: AudioContext, out: AudioNode, type: OscillatorType): Voice {
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  osc.type = type;
+  gain.gain.value = 0;
+  osc.connect(gain).connect(out);
+  osc.start();
+  return { osc, gain };
+}
+
+function note(v: Voice | null, freq: number, t: number, dur: number, gain: number): void {
+  if (!ctx || !v) return;
+  v.osc.frequency.setValueAtTime(freq, t);
+  const g = v.gain.gain;
+  g.cancelScheduledValues(t);
+  g.setValueAtTime(0, t);
+  g.linearRampToValueAtTime(gain, t + 0.01);
+  g.exponentialRampToValueAtTime(0.0001, t + dur);
 }
 
 export function startCarouselMusic(): void {
@@ -33,6 +48,9 @@ export function startCarouselMusic(): void {
     master = ctx.createGain();
     master.gain.value = 0;
     master.connect(ctx.destination);
+    tine = makeVoice(ctx, master, "triangle");
+    octave = makeVoice(ctx, master, "sine");
+    bass = makeVoice(ctx, master, "sine");
     step = 0;
     timer = window.setInterval(() => {
       if (!ctx || !master) return;
@@ -41,9 +59,9 @@ export function startCarouselMusic(): void {
       master.gain.setTargetAtTime(rideMuted() ? 0 : 0.14 * on, ctx.currentTime, 0.2);
       const t = ctx.currentTime + 0.02;
       const beat = 0.34 / Math.max(0.6, 0.6 + st.omega * 4); // slightly quicker as it speeds up
-      note(hz(MEL[step % MEL.length]!), t, beat * 1.6, 0.5, "triangle"); // the comb's tine
-      note(hz(MEL[step % MEL.length]! + 12), t, beat * 0.9, 0.12, "sine");
-      if (step % 3 === 0) note(hz(BASS[Math.floor(step / 3) % BASS.length]!), t, beat * 2.5, 0.35, "sine");
+      note(tine, hz(MEL[step % MEL.length]!), t, beat * 1.6, 0.5); // the comb's tine
+      note(octave, hz(MEL[step % MEL.length]! + 12), t, beat * 0.9, 0.12);
+      if (step % 3 === 0) note(bass, hz(BASS[Math.floor(step / 3) % BASS.length]!), t, beat * 2.5, 0.35);
       step++;
     }, 340);
   } catch {
@@ -57,6 +75,7 @@ export function stopCarouselMusic(): void {
   const m = master;
   ctx = null;
   master = null;
+  tine = octave = bass = null;
   if (!c || !m) return;
   try {
     m.gain.setTargetAtTime(0, c.currentTime, 0.15);

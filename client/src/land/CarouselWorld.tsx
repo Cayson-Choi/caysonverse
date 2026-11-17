@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { BufferGeometry, CanvasTexture, Color, Euler, Group, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, Quaternion, SphereGeometry, SRGBColorSpace, Texture, Vector3 } from "three";
 import {
@@ -9,16 +9,22 @@ import {
   CAROUSEL_RADIUS,
   CAROUSEL_RINGS,
   carouselAt,
+  type CarouselState,
   carouselSeatPose,
   type CarouselSeatPose,
 } from "@caysonverse/shared/land/carousel";
 import { CAROUSEL_PAD } from "@caysonverse/shared/village/parkArea";
+import { selfRide } from "./coasterRide";
 import { villageClock } from "../village/villageClock";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 import { parkMaterial, pickSet } from "./pbr";
+import { isTouchDevice } from "../device";
 
 export const CAROUSEL_STATIC_URL = "/models/land/carousel_static.glb";
 export const CAROUSEL_HORSE_URL = "/models/land/carousel_horse.glb";
+export const CAROUSEL_HORSE_LOD_URL = "/models/land/carousel_horse_lod.glb";
+/** Horses farther than this from the camera (m) draw as the low-poly horse (a third of the triangles). */
+const HORSE_LOD_M = isTouchDevice ? 12 : 22;
 export const CAROUSEL_CARRIAGE_URL = "/models/land/carousel_carriage.glb";
 
 /** The horse coats (multiplied onto the white paint): white, cream, chestnut, dapple grey, powder blue, rose. */
@@ -37,7 +43,7 @@ interface Part {
 }
 
 /** A GLB's meshes as geometry + a cloned material each (the join gave one mesh with a primitive per material). */
-function partsOf(scene: Group, env: Texture, intensity = 1): Part[] {
+export function partsOf(scene: Group, env: Texture, intensity = 1): Part[] {
   const out: Part[] = [];
   scene.updateMatrixWorld(true);
   scene.traverse((o) => {
@@ -47,6 +53,15 @@ function partsOf(scene: Group, env: Texture, intensity = 1): Part[] {
     material.envMap = env;
     material.envMapIntensity = material.name.endsWith("paint") ? 1.2 * intensity : material.name.includes("mirror") ? 1.6 : 0.9 * intensity;
     // full metal reflects only the dim sky and goes black from inside: keep it brass-coloured
+    if (material.name.includes("glass")) {
+      // cabin glass: nearly clear, with a sheen of the sky
+      material.transparent = true;
+      material.opacity = 0.18;
+      material.depthWrite = false;
+      material.roughness = 0.05;
+      material.envMapIntensity = 1.4;
+    }
+    if (material.name.endsWith("lamp")) material.emissiveIntensity = 2.2;
     if (material.name.includes("mirror")) {
       // a mirror must never read black: a silvery-blue glow under the reflection
       material.emissive = new Color("#8fb4d8");
@@ -69,6 +84,8 @@ const quat = new Quaternion();
 const eul = new Euler(0, 0, 0, "YXZ");
 const pos = new Vector3();
 const one = new Vector3(1, 1, 1);
+const tmpColor = new Color();
+const stScratch: CarouselState = { cycle: 0, phase: 0, status: "boarding", angle: 0, omega: 0, rideT: 0, departsInMs: 0 };
 
 /** Warm bulbs along the band, the canopy's ribs and the column cap (emissive, instanced): their places in the rotating frame. */
 function bulbPlaces(): V3[] {
@@ -177,11 +194,19 @@ function signTexture(): CanvasTexture {
 export function CarouselWorld({ env, all }: { env: Texture; all: Texture[] }) {
   const stat = useGLTF(CAROUSEL_STATIC_URL);
   const horse = useGLTF(CAROUSEL_HORSE_URL);
+  const horseLo = useGLTF(CAROUSEL_HORSE_LOD_URL);
   const carriage = useGLTF(CAROUSEL_CARRIAGE_URL);
   const statParts = useMemo(() => partsOf(stat.scene, env), [stat, env]);
   const horseParts = useMemo(() => partsOf(horse.scene, env), [horse, env]);
+  const loParts = useMemo(() => partsOf(horseLo.scene, env), [horseLo, env]);
+  const loRefs = useRef<(InstancedMesh | null)[]>([]);
+  const slotHi = useRef<number[]>([]);
+  const slotLo = useRef<number[]>([]);
   const carriageParts = useMemo(() => partsOf(carriage.scene, env), [carriage, env]);
   const turning = useRef<Group>(null);
+  const root = useRef<Group>(null);
+  const gl = useThree((s) => s.gl);
+  const cam = useThree((s) => s.camera);
   const horseRefs = useRef<(InstancedMesh | null)[]>([]);
   const carriageRefs = useRef<(InstancedMesh | null)[]>([]);
   const bulbRef = useRef<InstancedMesh>(null);
@@ -202,39 +227,85 @@ export function CarouselWorld({ env, all }: { env: Texture; all: Texture[] }) {
   const HORSES = CAROUSEL_RINGS[0]!.seats + CAROUSEL_RINGS[1]!.seats;
 
   useEffect(() => {
-    // the horses' coats: a colour per horse on the paint's instances
-    const paintIndex = horseParts.findIndex((p) => p.material.name === "horse_paint");
-    const mesh = horseRefs.current[paintIndex];
-    if (mesh) {
-      const c = new Color();
-      for (let i = 0; i < HORSES; i++) {
-        const k = COATS[(i * 5 + (i >> 2)) % COATS.length]!;
-        c.setRGB(k[0], k[1], k[2]);
-        mesh.setColorAt(i, c);
-      }
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }
     const m = new Matrix4();
     bulbs.forEach((p, i) => {
       m.makeTranslation(p[0], p[1], p[2]);
       bulbRef.current?.setMatrixAt(i, m);
     });
     if (bulbRef.current) bulbRef.current.instanceMatrix.needsUpdate = true;
-  }, [horseParts, HORSES, bulbs]);
+  }, [bulbs]);
 
-  useFrame(() => {
+  // compile every horse / carriage program once at arrival (the hi and lo horses, the instance colour on their paint), so the first ride and the
+  // first level-of-detail swap never stall a frame on a shader compile
+  useEffect(() => {
+    for (const [refs, parts] of [[horseRefs.current, horseParts], [loRefs.current, loParts]] as const) {
+      parts.forEach((p, i) => {
+        const mesh = refs[i];
+        if (mesh && p.material.name === "horse_paint" && !mesh.instanceColor) mesh.setColorAt(0, tmpColor.setRGB(1, 1, 1));
+      });
+    }
+    if (root.current) {
+      const t = window.setTimeout(() => {
+        try {
+          if (root.current) gl.compile(root.current, cam);
+        } catch {
+          /* the compile is an optimisation only */
+        }
+      }, 0);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+  }, [gl, cam, horseParts, loParts]);
+
+  useFrame(({ camera }) => {
     const now = villageClock.liveMs();
-    const st = carouselAt(now);
+    const st = carouselAt(now, stScratch);
     if (turning.current) turning.current.rotation.y = -st.angle;
+    // horses: near ones with the full model, far ones with the low-poly model; the two sets are packed (instance k of a set = the k-th horse
+    // assigned to it), so each set's paint instance colour is rewritten when a slot changes hands
+    let nHi = 0;
+    let nLo = 0;
+    const cx = CAROUSEL_CENTER.x;
+    const cz = CAROUSEL_CENTER.z;
+    void cx;
+    void cz;
     for (let s = 0; s < HORSES; s++) {
       carouselSeatPose(s, now, tmpPose);
       pos.set(tmpPose.x, tmpPose.y, tmpPose.z);
       eul.set(-tmpPose.pitch, Math.atan2(tmpPose.fx, tmpPose.fz), 0, "YXZ");
       quat.setFromEuler(eul);
       mat4.compose(pos, quat, one);
-      for (const mesh of horseRefs.current) mesh?.setMatrixAt(s, mat4);
+      const d = Math.hypot(tmpPose.x - camera.position.x, tmpPose.z - camera.position.z);
+      const hi = d < HORSE_LOD_M || (selfRide.slot === s && selfRide.ride === 2);
+      const refs = hi ? horseRefs.current : loRefs.current;
+      const slot = hi ? nHi++ : nLo++;
+      for (const mesh of refs) mesh?.setMatrixAt(slot, mat4);
+      const cache = hi ? slotHi.current : slotLo.current;
+      if (cache[slot] !== s) {
+        cache[slot] = s;
+        const k = COATS[(s * 5 + (s >> 2)) % COATS.length]!;
+        tmpColor.setRGB(k[0], k[1], k[2]);
+        const parts = hi ? horseParts : loParts;
+        parts.forEach((p, i) => {
+          if (p.material.name !== "horse_paint") return;
+          const mesh = refs[i];
+          if (mesh) {
+            mesh.setColorAt(slot, tmpColor);
+            if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+          }
+        });
+      }
     }
-    for (const mesh of horseRefs.current) if (mesh) mesh.instanceMatrix.needsUpdate = true;
+    for (const mesh of horseRefs.current)
+      if (mesh) {
+        mesh.count = nHi;
+        mesh.instanceMatrix.needsUpdate = true;
+      }
+    for (const mesh of loRefs.current)
+      if (mesh) {
+        mesh.count = nLo;
+        mesh.instanceMatrix.needsUpdate = true;
+      }
     for (let c = 0; c < 2; c++) {
       carouselSeatPose(20 + c * 2, now, tmpPose);
       carouselSeatPose(21 + c * 2, now, tmpPose2);
@@ -248,7 +319,7 @@ export function CarouselWorld({ env, all }: { env: Texture; all: Texture[] }) {
   });
   // the platform's own origin is the centre on the ground; its parts are in that frame
   return (
-    <group>
+    <group ref={root}>
       <group ref={turning} position={[CAROUSEL_CENTER.x, 0, CAROUSEL_CENTER.z]}>
         {statParts.map((p, i) => (
           <mesh key={i} geometry={p.geometry} material={p.material} castShadow receiveShadow />
@@ -260,6 +331,9 @@ export function CarouselWorld({ env, all }: { env: Texture; all: Texture[] }) {
       </group>
       {horseParts.map((p, i) => (
         <instancedMesh key={`h${i}`} ref={(r) => { horseRefs.current[i] = r; }} args={[p.geometry, p.material, HORSES]} frustumCulled={false} castShadow receiveShadow />
+      ))}
+      {loParts.map((p, i) => (
+        <instancedMesh key={`l${i}`} ref={(r) => { loRefs.current[i] = r; }} args={[p.geometry, p.material, HORSES]} frustumCulled={false} castShadow receiveShadow />
       ))}
       {carriageParts.map((p, i) => (
         <instancedMesh key={`c${i}`} ref={(r) => { carriageRefs.current[i] = r; }} args={[p.geometry, p.material, 2]} frustumCulled={false} castShadow receiveShadow />

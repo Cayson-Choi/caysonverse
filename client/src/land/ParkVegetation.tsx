@@ -7,6 +7,7 @@ import { PARK_PONDS } from "./ParkScenery";
 import type { Bed } from "../village/veg/flowerPlacement";
 import type { Card } from "../village/veg/vegCards";
 import { isTouchDevice } from "../device";
+import { selfRide } from "./coasterRide";
 import { createVegetation, type VillageVegetation } from "../village/veg/villageVegetation";
 import type { Bush } from "../village/veg/shrubs";
 import type { TreeSpec } from "../village/veg/treeSkeleton";
@@ -119,12 +120,13 @@ export function parkTreeSpecs(): { trees: TreeSpec[]; bushes: Bush[] } {
   });
   // the hedge along the path's left edge and the park's south boundary: a continuous row of the village's clipped shrubs (replaces box hedges)
   const hedge: Bush[] = [];
-  ground.forEach((g) => {
+  ground.forEach((g, gi) => {
     if (g.z < 9 && g.x > -45 && g.x < 35) return;
-    const s = 0.9 + rnd() * 0.5;
+    if (isTouchDevice && gi % 2 === 1) return; // a phone gets every second shrub of the hedge (each a bit wider)
+    const s = (isTouchDevice ? 1.25 : 0.9) + rnd() * 0.5;
     hedge.push({ x: g.x - g.px * 3.5, y: 0, z: g.z - g.pz * 3.5, h: 1.0 * s, r: 1.25 * s, seed: rnd(), cards: [] });
   });
-  for (let x = PARK_BOUNDS.minX + 2; x < PARK_BOUNDS.maxX; x += 3) {
+  for (let x = PARK_BOUNDS.minX + 2; x < PARK_BOUNDS.maxX; x += isTouchDevice ? 6 : 3) {
     if (x > -30 && x < 30) continue;
     const s = 0.9 + rnd() * 0.5;
     hedge.push({ x, y: 0, z: -2.7, h: 1.15 * s, r: 1.45 * s, seed: rnd(), cards: [] });
@@ -144,7 +146,7 @@ export function ParkVegetation() {
     createVegetation(new Group(), "low", "new", () => dead, {
       parkTrees: specs.trees,
       parkBushes: specs.bushes,
-      farThin: isTouchDevice ? 0.22 : 0.4,
+      farThin: isTouchDevice ? 0.12 : 0.4,
       parkBeds: flowerBeds.beds,
       parkCards: flowerBeds.cards,
       makeWorker: () => new Worker(new URL("../village/veg/crownWorker.ts", import.meta.url), { type: "module" }),
@@ -172,6 +174,8 @@ export function ParkVegetation() {
     };
   }, [specs, flowerBeds, getThree]);
   useFrame(({ clock, gl, camera }) => {
+    // a carousel or wheel ride: the vegetation is judged from the ride's foot, not from the turning / rising eye
+    if (veg) veg.setViewOverride(selfRide.slot >= 0 && selfRide.ride === 2 ? [110, 1.7, -119] : selfRide.slot >= 0 && selfRide.ride === 3 ? [211, 1.7, -134.5] : null);
     veg?.update(camera, clock.elapsedTime, gl.domElement.height);
     // the park's crowns draw no shadow of their own (the village's near ones do): every leaf layer twice in the shadow pass is the frame's largest cost
     if (veg && Math.floor(clock.elapsedTime * 2) !== lastSweep.current) {

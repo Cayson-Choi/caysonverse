@@ -252,7 +252,7 @@ export interface KeypadResultPayload {
 
 /** Server → client: a RideBoard was refused. */
 export interface RideNoticePayload {
-  reason: "closed" | "full" | "busy";
+  reason: "closed" | "full" | "busy" | "aloft";
 }
 
 /** Client → server: get on the ride `ride` ("coaster" | "carousel" | "wheel"; absent = the coaster, an older client). */
