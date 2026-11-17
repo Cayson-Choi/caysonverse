@@ -1,0 +1,102 @@
+[
+ {
+  "kind": "lancet",
+  "size_m": [
+   1.0,
+   2.6
+  ],
+  "source": "Met 1987.? / objectID 467933, Stained Glass Panel with the Virgin and Child, 1430-35, CC0",
+  "id": "glass_lancet_virgin",
+  "px": [
+   1024,
+   2662
+  ],
+  "px_per_m": 1024.0,
+  "came_pct": 35.6,
+  "mean_transmit": [
+   0.301,
+   0.212,
+   0.052
+  ]
+ },
+ {
+  "kind": "lancet",
+  "size_m": [
+   1.0,
+   2.6
+  ],
+  "source": "Met objectID 463649 Nativity (15th c.) set in Met objectID 470299 grisaille (ca. 1320-30), both CC0",
+  "id": "glass_lancet_nativity",
+  "px": [
+   1024,
+   2662
+  ],
+  "px_per_m": 1024.0,
+  "came_pct": 53.4,
+  "mean_transmit": [
+   0.232,
+   0.217,
+   0.197
+  ]
+ },
+ {
+  "kind": "lancet",
+  "size_m": [
+   1.0,
+   2.6
+  ],
+  "source": "Met objectID 198995 Assumption of the Virgin (ca. 1505-10) set in Met objectID 470299 grisaille, both CC0",
+  "id": "glass_lancet_assumption",
+  "px": [
+   1024,
+   2662
+  ],
+  "px_per_m": 1024.0,
+  "came_pct": 43.6,
+  "mean_transmit": [
+   0.326,
+   0.299,
+   0.227
+  ]
+ },
+ {
+  "kind": "rose",
+  "size_m": [
+   2.4,
+   2.4
+  ],
+  "source": "Met CC0: 467933 Virgin and Child (centre), 463580 Composite Window of English Stained Glass and 198995 Assumption (petals), ground colours sampled from 467933/463649",
+  "id": "glass_rose",
+  "px": [
+   2048,
+   2048
+  ],
+  "px_per_m": 853.3333333333334,
+  "came_pct": 28.4,
+  "mean_transmit": [
+   0.178,
+   0.135,
+   0.182
+  ]
+ },
+ {
+  "kind": "lancet",
+  "size_m": [
+   1.0,
+   2.6
+  ],
+  "source": "Met objectID 470299 Window with Grisaille Decoration (ca. 1320-30), CC0, desaturated to near-clear + plain amber/blue border",
+  "id": "glass_church_clear",
+  "px": [
+   1024,
+   2662
+  ],
+  "px_per_m": 1024.0,
+  "came_pct": 4.4,
+  "mean_transmit": [
+   0.533,
+   0.513,
+   0.467
+  ]
+ }
+]
