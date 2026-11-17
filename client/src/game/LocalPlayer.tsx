@@ -22,6 +22,8 @@ import {
   type Glide,
 } from "./seatMotion";
 import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
+import { useBenchClipWarmUp } from "./benchClipWarmUp";
+import { vegDressing } from "../village/vegDressing";
 import { stepLean } from "./leanBack";
 import { isFloorSeat, seatClipBase } from "./seatClips";
 import { readIntent, worldDirection } from "./input";
@@ -247,6 +249,8 @@ export function LocalPlayer({
   const look = useMemo(() => lookFromAppearance(appearance), [appearance]);
   const stride = useMemo(() => lookStride(look), [look]);
   const { avatar, animations } = useAvatar(look, { probeId: sessionId });
+  // the bench sitter's shaders made under the village's loading veil (benchClipWarmUp.ts): the first sit never freezes
+  useBenchClipWarmUp(avatar, () => !vegDressing.dressed() && localArea() === "village");
   const model = avatar.root;
 
   // The own tag and bubble are anchored to THIS avatar's top (hair, hat, ...), measured once at assembly.
