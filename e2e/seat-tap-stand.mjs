@@ -27,7 +27,7 @@ mkdirSync(run.evidence, { recursive: true });
 const idsArg = process.argv.find((a) => a.startsWith("--ids="));
 const ONLY = idsArg ? idsArg.slice("--ids=".length).split(",") : null;
 const VILLAGE_IDS = ["plaza_4:0.58", "cafe_terrace_9", "house_2_porch", "lake:bench_2_1", "lake:chair_P02", "lake:picnic_1_w_1:a"];
-const HALL_IDS = ["armchair_0", "sofa_a1", "letter_s1", "bench_w2_s0:front"];
+const HALL_IDS = ["armchair_0", "sofa_a1", "sofa_b0", "bench_w2_s0:front"]; // (release 3.1: the letter table and its chairs are gone)
 
 const seatIndex = async (p) => (await pos(p)).seatIndex;
 const area = (p) => p.page.evaluate(async () => (await window.__imp("/src/village/villageArea.ts")).localArea());
