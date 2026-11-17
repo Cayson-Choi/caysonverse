@@ -1,0 +1,89 @@
+{
+  "lot": "lot_chapel_nave",
+  "format": "ktx2",
+  "note": "Every LM_ material is a shared PBR library set (client/src/village/pbr/pbrLibrary.ts getPbrSet(id, tier, gl) -> createPbrMaterial(set, { repeatMeters: [1, 1] })): the model's UVs are metres, COLOR_0 multiplies the albedo (the tint of the neutral sets), roughness = the ORM's G times roughnessScale. The lot has no maps of its own (letters, clock and numerals are geometry). M_glass is the game's glass; lotnight__ nodes take the game's glow. B2 rooms: M_lightpool (kind lightpool) is the coloured sunlight under the windows; M_fire the candle flames (B1's hook); the sacred props are separate GLBs placed at the lotstatue__ / lotglass__ / lotprop__ empties (asset.extras.sacred).",
+  "materials": {
+    "LM_chapel_brass": {
+      "pbr": "aluminium_brushed",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 0.42,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_chapel_floor": {
+      "pbr": "plaster_painted",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 2.0,
+      "vertexColor": true,
+      "roughnessScale": 0.3,
+      "normalScale": 0.25,
+      "metal": false
+    },
+    "LM_chapel_oak": {
+      "pbr": "wood_oak",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.83,
+      "vertexColor": true,
+      "roughnessScale": 0.8,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_chapel_plaster": {
+      "pbr": "plaster_painted",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 2.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_chapel_stone": {
+      "pbr": "stone_ashlar",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 3.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "M_fire": {
+      "kind": "fire",
+      "note": "HOOK for L5v2: the fire__ nodes' flame cards. Draw additive (blending Additive, depthWrite false, double-sided), unlit; COLOR_0.rgb = emissive colour, COLOR_0.a = soft edge (0 at the rim); TEXCOORD_0.x = across the card (-1..1), TEXCOORD_0.y = height up the flame (0..1): flicker by scrolling a noise texture up y and scaling alpha/brightness with it (time uniform), 0.6–1.2 Hz with a faster 7 Hz jitter. The node fire__<unit>_light marks a warm point light (2200 K, ~180 cd, range 6 m) to flicker in step; L6 bakes its steady part into the hearth and floor."
+    },
+    "M_glass": {
+      "kind": "glass"
+    },
+    "M_lightpool": {
+      "kind": "lightpool",
+      "maps": {
+        "albedo": "lot_chapel_nave_lightpools.ktx2"
+      },
+      "uv": "atlas (TEXCOORD_0 0..1, no repeat)",
+      "colorSpace": "srgb",
+      "note": "HOOK for L5v2 / L6: the sun's coloured light through the stained glass, lying on the floor (the glass's transmission maps from tools/sacred/light projected along the room's sun, sun from the south-south-west, 38 degrees up (light travels -x, +z)). Draw unlit and additive (blending Additive, depthWrite false, polygonOffset -1), colour = map x daylight (about 0.9 at noon, 0 at night); L6 may bake it into the floor's lightmap and drop the node."
+    }
+  },
+  "pbrSets": [
+    "aluminium_brushed",
+    "plaster_painted",
+    "stone_ashlar",
+    "wood_oak"
+  ]
+}

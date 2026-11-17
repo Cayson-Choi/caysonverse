@@ -1,0 +1,12 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8" /><title>B1 school lookdev</title>
+<style>html,body{margin:0;background:#222;overflow:hidden}canvas{display:block}</style></head>
+<body>
+<!-- DEV only (not in the build): B1's school models with the game's KTX2 PBR sets. e2e/school-lookdev.mjs drives it.
+     ?model=...  ?time=day|night  ?tier=2k|1k  ?view=<name> -->
+<script type="module">
+import { runLookdev } from "./schoolLookdev.ts"; void runLookdev("lot_school");
+</script>
+</body>
+</html>

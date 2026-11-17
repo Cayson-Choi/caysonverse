@@ -1,0 +1,120 @@
+{
+  "lot": "lot_chapel",
+  "format": "ktx2",
+  "note": "Every LM_ material is a shared PBR library set (client/src/village/pbr/pbrLibrary.ts getPbrSet(id, tier, gl) -> createPbrMaterial(set, { repeatMeters: [1, 1] })): the model's UVs are metres, COLOR_0 multiplies the albedo (the tint of the neutral sets), roughness = the ORM's G times roughnessScale. The lot has no maps of its own (letters, clock and numerals are geometry). M_glass is the game's glass; lotnight__ nodes take the game's glow.",
+  "materials": {
+    "LM_chapel_copper": {
+      "pbr": "copper_new",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": true
+    },
+    "LM_chapel_granite": {
+      "pbr": "granite_flamed",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_chapel_gravel": {
+      "pbr": "gravel",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.5,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_chapel_green": {
+      "pbr": "grass",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.4,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 0.5,
+      "metal": false
+    },
+    "LM_chapel_iron": {
+      "pbr": "cast_iron",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": true
+    },
+    "LM_chapel_oak": {
+      "pbr": "wood_oak",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.83,
+      "vertexColor": true,
+      "roughnessScale": 0.85,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_chapel_roof": {
+      "pbr": "roof_slate",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 2.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_chapel_stone": {
+      "pbr": "stone_ashlar",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 3.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "M_glass": {
+      "kind": "glass"
+    },
+    "M_screen": {
+      "kind": "screen",
+      "note": "the garden-and-sky view behind interior windows: unlit, COLOR_0 is the colour"
+    }
+  },
+  "pbrSets": [
+    "cast_iron",
+    "copper_new",
+    "granite_flamed",
+    "grass",
+    "gravel",
+    "roof_slate",
+    "stone_ashlar",
+    "wood_oak"
+  ]
+}
