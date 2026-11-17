@@ -113,6 +113,18 @@ function riderInTheWay(camera: Camera, x: number, y: number, z: number, wasHidde
   return dist < 0.05 || wayV.dot(wayD) / dist > (hidden ? 0.35 : 0.5);
 }
 
+/**
+ * Refresh an avatar group's matrices by hand. Step 8 switches the group's automatic update off (far avatars refresh a few frames
+ * apart), and three 0.185 then leaves the group's OWN matrixWorld alone in `updateMatrixWorld` (the flag is checked inside it), so a
+ * standing remote was drawn at the world origin. The world matrix is composed here (parent x local); three does the node tree below.
+ */
+function refreshAvatarMatrices(group: Group): void {
+  group.updateMatrix();
+  if (group.parent) group.matrixWorld.multiplyMatrices(group.parent.matrixWorld, group.matrix);
+  else group.matrixWorld.copy(group.matrix);
+  group.updateMatrixWorld(true);
+}
+
 export function RemotePlayer({
   sessionId,
   blobShadow,
@@ -581,10 +593,7 @@ export function RemotePlayer({
         fadeRef.current = Math.max(0, fadeRef.current - delta);
       }
       // a rider moves with the bus: its node tree every frame (step 8's LOD is for walkers)
-      if (!group.matrixWorldAutoUpdate) {
-        group.updateMatrix();
-        group.updateMatrixWorld(true);
-      }
+      if (!group.matrixWorldAutoUpdate) refreshAvatarMatrices(group);
       return;
     }
     const seat = seatRef.current;
@@ -792,8 +801,7 @@ export function RemotePlayer({
     lodFramesRef.current += 1;
     if (lodFramesRef.current >= avatarTreeCadence(camDist, behind) || transient || fadeRef.current > 0) {
       lodFramesRef.current = 0;
-      group.updateMatrix();
-      group.updateMatrixWorld(true);
+      refreshAvatarMatrices(group);
     }
     const casts = camDist < AVATAR_LOD.shadowM;
     if (casts !== castsRef.current) {
