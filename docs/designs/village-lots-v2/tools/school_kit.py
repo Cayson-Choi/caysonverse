@@ -476,18 +476,22 @@ _flowers()
 def windows(kit):
     F = fronts()
     common = dict(paint=PAINT, stone=GRAN, wall_s=RENDER, room_s=ROOM)
+    # (Colmar pass, L5v2: every street-side window with its shutters, and a deeper cream surround round each: the
+    # ground floor's shutters stand outside a 0.18 m surround, the first floor's outside a 0.12 m one)
+    gf = dict(surround=(0.18, RENDER_TRIM), shutters=(GREEN_PAINT, 0.6), shutter_gap=0.2)
+    ff = dict(surround=(0.12, RENDER_TRIM), shutters=(GREEN_PAINT, 0.6), shutter_gap=0.14, box=(GREEN_PAINT, FLOWERS))
     for u in FRONT_WIN:
-        P.sash_window(kit, F["front"], u, GF_SILL, WIN_W, GF_H, cols=2, rows=3, surround=(0.14, RENDER_TRIM), plant=(ROOF.t(G.hexc("D9825F")), LEAF), **common)
-        P.sash_window(kit, F["front"], u, FF_SILL, WIN_W, FF_H, cols=2, rows=3, shutters=(GREEN_PAINT, 0.62), box=(GREEN_PAINT, FLOWERS), **common)
+        P.sash_window(kit, F["front"], u, GF_SILL, WIN_W, GF_H, cols=2, rows=3, plant=(ROOF.t(G.hexc("D9825F")), LEAF), **gf, **common)
+        P.sash_window(kit, F["front"], u, FF_SILL, WIN_W, FF_H, cols=2, rows=3, **ff, **common)
     # the centre first-floor window over the porch: round-headed, a pair of sashes
-    P.sash_window(kit, F["front"], 0.0, FF_SILL + 0.15, 1.6, FF_H - 0.15, cols=3, rows=3, arch=True, box=(GREEN_PAINT, FLOWERS), **common)
+    P.sash_window(kit, F["front"], 0.0, FF_SILL + 0.15, 1.6, FF_H - 0.15, cols=3, rows=3, arch=True, surround=(0.12, RENDER_TRIM), box=(GREEN_PAINT, FLOWERS), **common)
     for u in BACK_WIN:
         P.sash_window(kit, F["back"], u, GF_SILL, WIN_W, GF_H, cols=2, rows=3, surround=(0.14, RENDER_TRIM), lights=False, **common)
         P.sash_window(kit, F["back"], u, FF_SILL, WIN_W, FF_H, cols=2, rows=3, surround=(0.12, RENDER_TRIM), lights=False, **common)
     for side in ("left", "right"):
         for u in SIDE_WIN:
-            P.sash_window(kit, F[side], u, GF_SILL, WIN_W, GF_H, cols=2, rows=3, surround=(0.14, RENDER_TRIM), lights=False, **common)
-            P.sash_window(kit, F[side], u, FF_SILL, WIN_W, FF_H, cols=2, rows=3, shutters=(GREEN_PAINT, 0.62), box=(GREEN_PAINT, FLOWERS), lights=False, **common)
+            P.sash_window(kit, F[side], u, GF_SILL, WIN_W, GF_H, cols=2, rows=3, lights=False, **gf, **common)
+            P.sash_window(kit, F[side], u, FF_SILL, WIN_W, FF_H, cols=2, rows=3, lights=False, **ff, **common)
 
 
 # ------------------------------------------------------------------------------------------------ yard --

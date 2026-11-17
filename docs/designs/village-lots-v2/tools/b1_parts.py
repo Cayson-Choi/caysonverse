@@ -126,7 +126,7 @@ def arch_spandrels(m, f, uc, w, spring, s, n=10):
 
 def sash_window(kit, f, uc, sill, w, h, paint, stone, wall_s, room_s, cols=2, rows=3, depth=0.22, arch=False, shutters=None,
                 box=None, plant=None, glow="windows", glow_col=WARM, keystone=None, surround=None, room_depth=1.1, sill_out=0.05,
-                lights=True, room=True, fill=None):
+                lights=True, room=True, fill=None, shutter_gap=0.06):
     """A painted timber window in a wall hole (u = uc +- w/2, v = sill .. sill + h; `arch`: a round head, h includes it):
     reveals and soffit in the wall's material, a frame and glazing bars (cols x rows panes), glass set back `depth`, a stone
     sill, an optional stone surround / keystone, a shallow room behind (plaster walls, ceiling, floor) whose back wall glows at
@@ -249,7 +249,7 @@ def sash_window(kit, f, uc, sill, w, h, paint, stone, wall_s, room_s, cols=2, ro
         kit.dayfill.append((p[0], p[1], p[2], 1.0, 25.0))
     if shutters:
         sh_s, sw = shutters
-        for (a0, a1) in ((u0 - 0.06 - sw, u0 - 0.06), (u1 + 0.06, u1 + 0.06 + sw)):
+        for (a0, a1) in ((u0 - shutter_gap - sw, u0 - shutter_gap), (u1 + shutter_gap, u1 + shutter_gap + sw)):
             f.box(D, a0, a1, sill, top, 0.0, 0.035, sh_s.u((0, 1, 0)), skip=("-w",))
             for v in (sill + 0.32, top - 0.32):
                 f.box(D, a0 + 0.04, a1 - 0.04, v - 0.06, v + 0.06, 0.035, 0.055, sh_s, skip=("-w",))
