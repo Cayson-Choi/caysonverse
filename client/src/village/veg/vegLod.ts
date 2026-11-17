@@ -115,6 +115,23 @@ export interface VegTierConfig {
   windFar: boolean;
 }
 
+/**
+ * The houses' own flowers (window boxes, baskets, pots, borders, the porch beds: the houses' file, `flowersOnly`): their own
+ * rule (Colmar 2026-11-17, the owner sees the street first) — not thinned as hard as the village's. Beyond `far[0]` the
+ * plants are the simple ones, and from there each box's merged flower mass (houses/houseFlowerMass.ts, grown in over
+ * `HOUSE_FLOWER_MASS`) keeps it a full mound of colour; the thinned plants past `far[1]` are only its sparkle.
+ */
+export const HOUSE_FLOWER_LOD: Readonly<Record<"high" | "low", VegTierConfig["flowers"]>> = {
+  high: { far: [14, 45, 95], hysteresis: 1.5, thin: 0.5, thinScale: 1.3, mid: 1 },
+  low: { far: [8, 22, 45], hysteresis: 1.5, thin: 0.25, thinScale: 1.45, mid: 0.4 },
+};
+
+/** Where the flower masses grow in (m from the camera): from nothing at `near` to full at `full` (the plants' first LOD step). */
+export const HOUSE_FLOWER_MASS: Readonly<Record<"high" | "low", { near: number; full: number }>> = {
+  high: { near: 10, full: 14 },
+  low: { near: 5.5, full: 8 },
+};
+
 export const VEG_TIERS: Readonly<Record<"high" | "low", VegTierConfig>> = {
   high: {
     flowers: { far: [10, 34, 110], hysteresis: 1.5, thin: 0.34, thinScale: 1.45, mid: 1 },

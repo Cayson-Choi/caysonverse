@@ -1,4 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { houseFlowerBoxBeds } from "./houseFlowerBoxes";
+import { flowerMassMesh } from "./houseFlowerMass";
+import { HOUSE_FLOWER_MASS } from "../veg/vegLod";
 import { useFrame, useThree } from "@react-three/fiber";
 import { RepeatWrapping, SRGBColorSpace, type Material, type Mesh, type Object3D, type Texture } from "three";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
@@ -122,6 +125,18 @@ export function VillageHouses({ villageRoot, tier }: { villageRoot: Object3D; ti
         nodes.root.remove(v.group);
         v.dispose();
       }
+    };
+  }, [nodes, tier]);
+
+  // the window boxes', baskets', pots' and borders' flower masses: full mounds of colour from the street (houseFlowerMass.ts)
+  useEffect(() => {
+    const beds = houseFlowerBoxBeds().filter((b): b is Extract<typeof b, { kind: "box" }> => b.kind === "box");
+    const m = HOUSE_FLOWER_MASS[tier];
+    const mass = flowerMassMesh(beds, m.near, m.full);
+    nodes.root.add(mass.mesh);
+    return () => {
+      nodes.root.remove(mass.mesh);
+      mass.dispose();
     };
   }, [nodes, tier]);
 

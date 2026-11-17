@@ -55,7 +55,7 @@ import { buildSoil, soilTextures } from "./vegSoil";
 import { BARK_STYLE, BARK_SURFACE, barkPhotos, flatNormal, barkLight, barkTexture, drawnBark, simplifyTwig, skeletonBark, skeletonBarkInto, taperSkeleton, twigBark, type BarkPattern } from "./barkGeometry";
 import { setCameraKeepOut } from "../../game/cameraCollision";
 import { bakedBarkIndex } from "./bakedBark";
-import { chooseLod, groupIntoCells, sphereDistance, VEG_TIERS, type Cell, type LodBands, type Vec3, type VegTierConfig } from "./vegLod";
+import { chooseLod, groupIntoCells, sphereDistance, VEG_TIERS, type Cell, type LodBands, type Vec3, type VegTierConfig, HOUSE_FLOWER_LOD } from "./vegLod";
 import { vegMaterial, vegTimeUniform, vegViewHeightUniform, setVegLamps } from "./vegMaterial";
 import { DAY_SUN_DIRECTION } from "../dayNightBlend";
 import type { VegMode } from "./vegMode";
@@ -591,8 +591,10 @@ export class VillageVegetation {
   /** The village clone the vegetation dresses (its bark, for measuring the connection on what is drawn). */
   private root: Object3D | null = null;
 
-  private constructor(tier: VillageTier, mode: Exclude<VegMode, "old">) {
-    this.cfg = forcedLevels(VEG_TIERS[tier]);
+  private constructor(tier: VillageTier, mode: Exclude<VegMode, "old">, houseFlowers = false) {
+    const base = forcedLevels(VEG_TIERS[tier]);
+    // the houses' file (flowersOnly): its window boxes and beds keep their own, gentler LOD (vegLod.ts HOUSE_FLOWER_LOD)
+    this.cfg = houseFlowers ? { ...base, flowers: HOUSE_FLOWER_LOD[tier] } : base;
     this.twigFar = tier === "low" ? 24 : 45;
     this.group.name = "village_vegetation";
     this.group.matrixAutoUpdate = false;
@@ -638,7 +640,7 @@ export class VillageVegetation {
    */
   static async build(root: Object3D, tier: VillageTier, mode: Exclude<VegMode, "old">, cancelled: () => boolean = () => false, options: BuildOptions = {}): Promise<VillageVegetation | null> {
     const { focus, onShow, sliceMs } = options;
-    const v = new VillageVegetation(tier, mode);
+    const v = new VillageVegetation(tier, mode, options.flowersOnly === true);
     v.root = root;
     const steps = v.statsData.steps;
     let work = 0;
