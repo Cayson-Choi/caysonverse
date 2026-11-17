@@ -381,14 +381,15 @@ if (ONLY.includes("pc")) {
   await run.step("pc (1280x800, noon): the six load, the doors swing clear, every room door to door", async () => {
     const p = await openPlayer(browser, run, { tag: "pc", device: DESKTOP });
     await tracePrograms(p);
-    await join_(p, TIMES.day, "", "pc_join");
+    // (CV_PC_TIME=sunset|night: the same PC step at another hour — the lightmap's before/after)
+    await join_(p, TIMES[process.env.CV_PC_TIME ?? "day"], "", "pc_join");
     const l = await lots(p);
     run.check("pc: the six lot buildings loaded, none failed", l && l.stats.lots.length === 6 && l.failed.length === 0, { lots: l?.stats.lots, failed: l?.failed, loadMs: l?.loadMs, textures: l?.textures });
     numbers.pcLots = l;
     const dc = await p.page.evaluate(() => window.__cvLotsDoorCheck?.());
     run.check("pc: every swing door sweeps shut → open (20 steps) without touching anything of its building", dc && dc.checked >= 10 && dc.hits.length === 0, { checked: dc?.checked, hits: dc?.hits?.slice(0, 4), perDoor: dc?.perDoor });
     numbers.doorCheck = dc;
-    await streetShots(p, "pc_day");
+    if (!process.env.CV_NO_STREET) await streetShots(p, "pc_day");
     if (process.env.CV_NO_TOUR) {
       for (const unit of ROOMS) await roomTrip(p, unit, "pc");
       await dumpPrograms(p);
@@ -427,6 +428,12 @@ if (ONLY.includes("phone")) {
     const l = await lots(p);
     run.check("phone: the six loaded at the light tier", l && l.tier === "low" && l.device === "phone" && l.failed.length === 0, { tier: l?.tier, textures: l?.textures });
     numbers.phoneLots = l;
+    if (process.env.CV_NO_TOUR) {
+      // (the rooms only: the lightmaps' before/after on the phone)
+      for (const unit of ["lot_church_nave", "lot_chapel_nave"]) await roomTrip(p, unit, "phone");
+      await p.ctx.close();
+      return;
+    }
     // CV_PROFILE=1: a CPU profile of the walk and the long frames' spans (where a hitch spends its time)
     const cdp = process.env.CV_PROFILE ? await p.ctx.newCDPSession(p.page) : null;
     if (cdp) {
