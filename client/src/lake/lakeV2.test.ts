@@ -172,3 +172,18 @@ describe("the reel-in (owner 2026-11-17: the fish dragged in as the line is pull
     expect(fishingSync({ ...s, phase: "lifting" as const }).fishReel).toBe(0);
   });
 });
+
+describe("the fish's runtime materials (hotfix 2026-11-17: fins too see-through, some vanished)", () => {
+  it("fins: opaque enough, double sided, and they write depth (the water drawn after them can't paint them over)", async () => {
+    const { MeshStandardMaterial, DoubleSide, Vector3: V } = await import("three");
+    const { liveMaterial } = await import("./lakeProps");
+    const fin = liveMaterial(new MeshStandardMaterial({ name: "M_fin" }), { value: new V() }) as InstanceType<typeof MeshStandardMaterial>;
+    expect(fin.side).toBe(DoubleSide);
+    expect(fin.depthWrite).toBe(true);
+    expect(fin.alphaTest).toBeGreaterThanOrEqual(0.2);
+    expect(fin.opacity).toBe(1);
+    const body = liveMaterial(new MeshStandardMaterial({ name: "M_fish" }), { value: new V() }) as InstanceType<typeof MeshStandardMaterial> & { clearcoat: number };
+    expect(body.side).toBe(DoubleSide);
+    expect(body.clearcoat).toBeGreaterThanOrEqual(0.9);
+  });
+});

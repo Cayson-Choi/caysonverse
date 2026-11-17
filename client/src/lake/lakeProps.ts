@@ -19,6 +19,7 @@ import {
   type Material,
   SphereGeometry,
   ConeGeometry,
+  Color,
   type AnimationAction,
   type AnimationClip,
 } from "three";
@@ -270,7 +271,7 @@ export function fishDrawnLen(cm: number): number {
 }
 
 /** The flex uniform of one fish model's materials: x phase, y amplitude, z bend. */
-interface FlexUniform {
+export interface FlexUniform {
   value: { x: number; y: number; z: number; set(x: number, y: number, z: number): unknown };
 }
 
@@ -279,14 +280,20 @@ const FLEX_VERTEX = /* glsl */ `
   float fs = clamp( 0.5 - position.z, 0.0, 1.05 );
   float fw = smoothstep( 0.12, 1.0, fs ) * ( 0.35 + 0.65 * fs );
   float fl = uFlex.y * fw * sin( uFlex.x - 5.2 * fs ) + uFlex.z * fs * fs;
+  // the tail fin bends on its own, a beat behind the body (hotfix 2026-11-17: it swept stiffly with the tail end)
+  float ct = smoothstep( 0.8, 1.02, fs );
+  fl += uFlex.y * 1.7 * ct * ( fs - 0.78 ) * sin( uFlex.x - 5.2 * fs - 1.3 );
   transformed.x += fl;
 `;
 
 /**
- * lake_fish.glb's materials made wet and alive (lake v2): the photo body gets a clear coat (the slime's sheen) over its normal map,
- * the photo median fins are a little see-through, and every one bends with the flex uniform (onBeforeCompile).
+ * lake_fish.glb's materials made wet and alive (lake v2): the photo body gets a clear coat (the slime's sheen) over its normal map
+ * (the photo's detail and the scales), and every one bends with the flex uniform (onBeforeCompile).
+ * The fins (hotfix 2026-11-17, owner: "지느러미가 너무 투명해 … 지느러미가 안보이는 것도 있어"): nearly opaque membranes whose
+ * alpha only fades at the frayed edge, and they WRITE DEPTH — see-through fins that wrote none were painted over by the lake's water
+ * (drawn after them in the transparent pass) and vanished; alphaTest drops the faded fringe from the depth too.
  */
-function liveMaterial(src: Material, flex: FlexUniform): Material {
+export function liveMaterial(src: Material, flex: FlexUniform): Material {
   const s = src as MeshStandardMaterial;
   let m: MeshStandardMaterial;
   if (/^M_fish/.test(s.name)) {
@@ -297,21 +304,31 @@ function liveMaterial(src: Material, flex: FlexUniform): Material {
       normalScale: new Vector2(0.85, 0.85),
       roughness: 0.34,
       metalness: 0,
-      clearcoat: 0.75,
-      clearcoatRoughness: 0.14,
+      clearcoat: 1,
+      clearcoatRoughness: 0.1,
       specularIntensity: 0.8,
       side: DoubleSide,
     });
-  } else if (/^M_fin_photo/.test(s.name)) {
-    m = new MeshStandardMaterial({ name: s.name, map: s.map, roughness: 0.42, metalness: 0, side: DoubleSide, transparent: true, opacity: 0.86, depthWrite: true });
   } else {
-    // the fins (lake v2): thin see-through membranes with rays, soft edges (alpha from the fin texture), a little glossy
-    m = s.clone();
-    m.roughness = 0.38;
-    m.side = DoubleSide;
-    m.transparent = true;
-    m.depthWrite = false;
-    m.alphaTest = 0.02;
+    // the fins: membranes with raised rays (their normal map), wet (a light clear coat), soft only at the very edge
+    m = new MeshPhysicalMaterial({
+      name: s.name,
+      map: s.map,
+      normalMap: s.normalMap,
+      normalScale: new Vector2(1, 1),
+      roughness: 0.4,
+      metalness: 0,
+      clearcoat: 0.6,
+      clearcoatRoughness: 0.18,
+      // a fin is thin: the light comes through it — a little of its own colour glows so a fin turned from the sun never goes black
+      emissive: new Color(1, 1, 1),
+      emissiveMap: s.map,
+      emissiveIntensity: 0.28,
+      side: DoubleSide,
+      transparent: true,
+      depthWrite: true,
+      alphaTest: 0.3,
+    });
   }
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uFlex = flex;
