@@ -1,3 +1,4 @@
+import { selfRide } from "../land/coasterRide";
 import { VILLAGE_LAYOUT, busBoardingDistance, cubbyAnchors, isHouseArea, isLotArea, type AreaId, type CubbyAnchor, type Disc, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
 import { houseOffers } from "@caysonverse/shared/village/houseTargets";
 import { TRANSIT } from "@caysonverse/shared/village/transit";
@@ -96,7 +97,8 @@ export function villageTargets(
   z: number,
   layout: VillageLayout = VILLAGE_LAYOUT,
 ): readonly InteractTarget[] {
-  if (area === "park") return parkTargets(x, z);
+  // seated on a ride (coaster, carousel, wheel): no ride or door prompt at all
+  if (area === "park") return selfRide.slot >= 0 ? NONE : parkTargets(x, z);
   if (area === "village") {
     const gate = parkGateTarget(x, z);
     if (gate) return [gate];
