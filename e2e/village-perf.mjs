@@ -53,8 +53,11 @@ const GATE = {
    * particle quads (high 840, low 268), light maps <= 1024 per side and 400 KB together.
    */
   falls: { bytes: 1.6 * MIB, tex: 1024, trisHigh: 72_000 - 840, trisLow: 30_000 - 268, lmBytes: 400 * 1024, lmSide: 1024 },
-  /** The village scene's two always-drawn models together: the village's 260k plus the bus's 40k. */
-  villageScene: { tris: 300_000 },
+  /**
+   * The village scene's two always-drawn models together: the village's 260k plus the bus's 40k (the phone's ceiling). With the
+   * houses' own GLB (A8) the PC (high tier) ceiling is 310k (owner Q3, 2026-11-16; shared houseExterior.ts VILLAGE_SCENE_TRIANGLE_CAP).
+   */
+  villageScene: { tris: 300_000, pcTris: 310_000 },
   /** The plan's "15 MB", decimal (T10 review I2). */
   firstLoadBytes: 15 * MB,
   /** Main-thread busy ms per frame (T10 review I1): the mean frame time is capped at 16.7 ms headless and cannot fail. */

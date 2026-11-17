@@ -308,7 +308,7 @@ export function buildSoil(plants: readonly Plant[]): Soil {
   for (const bed of PLAZA_BEDS) {
     const ps = onPlaza.get(bed);
     if (!ps || !ps.length) continue;
-    shapes.push({ s: plazaShape(bed, ps), centre: bed.kind === "fountain" ? null : [bed.x, bed.z] });
+    shapes.push({ s: plazaShape(bed, ps), centre: bed.kind === "fountain" || bed.kind === "box" ? null : [bed.x, bed.z] });
   }
   for (const s of clumps(rest)) shapes.push({ s, centre: null });
   // merge the beds' meshes per 16 m area (few draw calls, culled by area)

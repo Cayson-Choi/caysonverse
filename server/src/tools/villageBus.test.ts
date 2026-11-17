@@ -17,6 +17,8 @@ import {
   VILLAGE_BUS_MATERIALS,
   VILLAGE_GROUND_TOP,
   VILLAGE_SCENE_MAX_TRIANGLES,
+  VILLAGE_SCENE_MAX_TRIANGLES_PC,
+  VILLAGE_SCENE_MAX_TRIANGLES_PHONE,
   checkVillageBus,
   checkVillageSceneTriangles,
   countTriangles,
@@ -73,6 +75,21 @@ describe("village_bus.glb (bus review: its budget is checked)", () => {
     expect(VILLAGE_SCENE_MAX_TRIANGLES).toBe(BUDGETS.village.maxTriangles + VILLAGE_BUS_BUDGET.maxTriangles);
     const r = checkVillageSceneTriangles(load("village.glb").gltf, load("village_bus.glb").gltf);
     expect(r.level).toBe("ok");
+  });
+
+  it("with the houses' own GLB (A8): PC 310k with four details, phone 300k with two (owner Q3 2026-11-16)", () => {
+    expect([VILLAGE_SCENE_MAX_TRIANGLES_PC, VILLAGE_SCENE_MAX_TRIANGLES_PHONE]).toEqual([310_000, VILLAGE_SCENE_MAX_TRIANGLES]);
+    const v = load("village.glb").gltf;
+    const b = load("village_bus.glb").gltf;
+    const base = checkVillageSceneTriangles(v, b);
+    const tris = Number(/^(\d+)개/.exec(base.detail)![1]);
+    // room for exactly 2.5k more on the phone with 2 x 0 detail: the shells alone may use what is left under 300k
+    expect(checkVillageSceneTriangles(v, b, [], { shells: VILLAGE_SCENE_MAX_TRIANGLES - tris, maxDetail: 0 }).level).toBe("ok");
+    expect(checkVillageSceneTriangles(v, b, [], { shells: VILLAGE_SCENE_MAX_TRIANGLES - tris + 1, maxDetail: 0 }).level).toBe("fail");
+    // PC: four details may use 10k more than the phone's two
+    expect(checkVillageSceneTriangles(v, b, [], { shells: 0, maxDetail: Math.floor((VILLAGE_SCENE_MAX_TRIANGLES - tris) / 2) }).level).toBe(
+      4 * Math.floor((VILLAGE_SCENE_MAX_TRIANGLES - tris) / 2) + tris <= 310_000 ? "ok" : "fail",
+    );
   });
 
   it("a second mesh node, a missing material, a fat file, a light-mapped material, a sunk ground quad and too many triangles each fail", () => {

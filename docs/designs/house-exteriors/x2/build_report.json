@@ -1,0 +1,213 @@
+{
+  "houses": {
+    "house_1": {
+      "shell": 1790,
+      "detail": 4746,
+      "shellMaterials": [
+        "LM_metal",
+        "LM_render",
+        "LM_roof",
+        "LM_stone",
+        "LM_wood",
+        "M_glass",
+        "M_window"
+      ],
+      "detailMaterials": [
+        "LM_metal",
+        "LM_stone",
+        "LM_wood",
+        "M_lamp",
+        "M_leaf_flora",
+        "M_screen"
+      ]
+    },
+    "house_2": {
+      "shell": 1678,
+      "detail": 5904,
+      "shellMaterials": [
+        "LM_metal",
+        "LM_render",
+        "LM_roof",
+        "LM_stone",
+        "LM_wood",
+        "M_glass",
+        "M_window"
+      ],
+      "detailMaterials": [
+        "LM_metal",
+        "LM_stone",
+        "LM_wood",
+        "M_lamp",
+        "M_leaf_flora",
+        "M_screen"
+      ]
+    },
+    "house_3": {
+      "shell": 1702,
+      "detail": 5036,
+      "shellMaterials": [
+        "LM_metal",
+        "LM_render",
+        "LM_roof",
+        "LM_stone",
+        "LM_wood",
+        "M_glass",
+        "M_window"
+      ],
+      "detailMaterials": [
+        "LM_metal",
+        "LM_stone",
+        "LM_wood",
+        "M_lamp",
+        "M_leaf_flora",
+        "M_screen"
+      ]
+    },
+    "house_4": {
+      "shell": 1800,
+      "detail": 4572,
+      "shellMaterials": [
+        "LM_metal",
+        "LM_render",
+        "LM_stone",
+        "LM_wood",
+        "M_glass",
+        "M_window"
+      ],
+      "detailMaterials": [
+        "LM_metal",
+        "LM_stone",
+        "LM_wood",
+        "M_lamp",
+        "M_leaf_flora",
+        "M_screen"
+      ]
+    },
+    "house_5": {
+      "shell": 1786,
+      "detail": 4746,
+      "shellMaterials": [
+        "LM_metal",
+        "LM_render",
+        "LM_roof",
+        "LM_stone",
+        "LM_wood",
+        "M_glass",
+        "M_window"
+      ],
+      "detailMaterials": [
+        "LM_metal",
+        "LM_stone",
+        "LM_wood",
+        "M_lamp",
+        "M_leaf_flora",
+        "M_screen"
+      ]
+    },
+    "house_6": {
+      "shell": 1798,
+      "detail": 4746,
+      "shellMaterials": [
+        "LM_metal",
+        "LM_render",
+        "LM_roof",
+        "LM_stone",
+        "LM_wood",
+        "M_glass",
+        "M_window"
+      ],
+      "detailMaterials": [
+        "LM_metal",
+        "LM_stone",
+        "LM_wood",
+        "M_lamp",
+        "M_leaf_flora",
+        "M_screen"
+      ]
+    },
+    "house_7": {
+      "shell": 1792,
+      "detail": 4746,
+      "shellMaterials": [
+        "LM_metal",
+        "LM_render",
+        "LM_roof",
+        "LM_stone",
+        "LM_wood",
+        "M_glass",
+        "M_window"
+      ],
+      "detailMaterials": [
+        "LM_metal",
+        "LM_stone",
+        "LM_wood",
+        "M_lamp",
+        "M_leaf_flora",
+        "M_screen"
+      ]
+    },
+    "house_8": {
+      "shell": 1780,
+      "detail": 4662,
+      "shellMaterials": [
+        "LM_metal",
+        "LM_render",
+        "LM_stone",
+        "LM_wood",
+        "M_glass",
+        "M_window"
+      ],
+      "detailMaterials": [
+        "LM_metal",
+        "LM_stone",
+        "LM_wood",
+        "M_lamp",
+        "M_leaf_flora",
+        "M_screen"
+      ]
+    },
+    "house_9": {
+      "shell": 1630,
+      "detail": 5928,
+      "shellMaterials": [
+        "LM_metal",
+        "LM_render",
+        "LM_roof",
+        "LM_stone",
+        "LM_wood",
+        "M_glass",
+        "M_window"
+      ],
+      "detailMaterials": [
+        "LM_metal",
+        "LM_stone",
+        "LM_wood",
+        "M_lamp",
+        "M_leaf_flora",
+        "M_screen"
+      ]
+    },
+    "house_10": {
+      "shell": 1772,
+      "detail": 5904,
+      "shellMaterials": [
+        "LM_metal",
+        "LM_render",
+        "LM_stone",
+        "LM_wood",
+        "M_glass",
+        "M_window"
+      ],
+      "detailMaterials": [
+        "LM_metal",
+        "LM_stone",
+        "LM_wood",
+        "M_lamp",
+        "M_leaf_flora",
+        "M_screen"
+      ]
+    }
+  },
+  "totalTriangles": 68518,
+  "glbBytes": 767908
+}

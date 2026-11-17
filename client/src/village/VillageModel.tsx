@@ -34,6 +34,10 @@ import { fallsModelBuilt } from "./falls/fallsLoader";
 import { StreetFurniture } from "./street/StreetFurniture";
 import type { DrawnGap } from "./veg/drawnGap";
 import { LiveSunShadows } from "./LiveSunShadows";
+import { VillageHouses, housesMode } from "./houses/VillageHouses";
+import { preloadHouses } from "./houses/housesLoader";
+import { LoadBoundary } from "./LoadBoundary";
+import { clearHousesFiles } from "./villageRelease";
 import { ensureShadowPlaceholder, liveSunEnabled } from "./sunShadows";
 
 declare global {
@@ -93,6 +97,9 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   // the distant mountains (B6): their own small files, read beside the model's, never waited for
   const mountains = mountainsMode() === "new";
   if (mountains) preloadMountains();
+  // the houses' own model (집 외관 A8): its files start beside the village's, never waited for
+  const houses = housesMode() === "new";
+  if (houses) preloadHouses();
   const gltf = useGLTF(VILLAGE_MODEL_URL, DRACO_PATH);
   const lightmap = useTexture(VILLAGE_LIGHTMAP_URL);
   const gl = useThree((s) => s.gl);
@@ -246,6 +253,14 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       <primitive object={nodes.root} dispose={null} />
       {/* The lamp posts and banners: the baked ones out of this clone, the new ones drawn in their places (street/). */}
       {streetMode() === "new" && <StreetFurniture root={nodes.root} tier={tier} />}
+      {/* The ten houses (집 외관 A8): drawn when in, the old ones cut out of this clone then; a failure keeps the old ones. */}
+      {houses && (
+        <LoadBoundary fallback={null} onReset={clearHousesFiles} notice="집 모습을 새로 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+          <Suspense fallback={null}>
+            <VillageHouses key={tier} villageRoot={nodes.root} tier={tier} />
+          </Suspense>
+        </LoadBoundary>
+      )}
       {/* The fishing lake takes the old backdrop lake out of this clone once it is drawn (lake/lakeVillagePatch.ts). */}
       <LakeVillagePatch root={nodes.root} />
       {veg && <primitive object={veg.group} dispose={null} />}

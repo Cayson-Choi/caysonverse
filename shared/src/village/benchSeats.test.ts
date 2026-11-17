@@ -23,7 +23,7 @@ import {
   type VillageSeat,
 } from "./benchSeats";
 import { LAKE_FISHING_SPOTS, lakeSeats } from "./lakeLayout";
-import { VILLAGE_SEAT_MARKERS } from "./generated/villageSeatMarkers";
+import { VILLAGE_SEAT_MARKERS } from "./benchSeats";
 import { villageWalkArea } from "./fallsWalk";
 
 const MARKED = new Set(VILLAGE_SEAT_MARKERS.map((m) => m.id));

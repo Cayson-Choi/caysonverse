@@ -28,6 +28,8 @@ interface Footprint {
   minZ: number;
   maxZ: number;
   maxY: number;
+  /** A triangle goes only when its top is above this (m; default 0.1: the paving under a post is never taken). */
+  minTop?: number;
   inside: Inside;
 }
 
@@ -105,10 +107,11 @@ export function trimMesh(mesh: Mesh, feet: readonly Footprint[]): { geometry: Bu
       va.fromBufferAttribute(pos, a).applyMatrix4(m);
       vb.fromBufferAttribute(pos, b).applyMatrix4(m);
       vc.fromBufferAttribute(pos, c).applyMatrix4(m);
-      const upright = Math.max(va.y, vb.y, vc.y) > 0.1;
+      const top = Math.max(va.y, vb.y, vc.y);
       let drop = false;
-      if (upright) {
+      if (top > 0.01) {
         for (const f of near) {
+          if (top <= (f.minTop ?? 0.1)) continue;
           if (f.inside(va.x, va.y, va.z) && f.inside(vb.x, vb.y, vb.z) && f.inside(vc.x, vc.y, vc.z)) {
             drop = true;
             break;

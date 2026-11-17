@@ -9,6 +9,8 @@ import { PLAYER_RADIUS } from "../worldMap";
 import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { guideColliders } from "./guides";
+import { A7_MODEL_HOUSE_BOXES, A8_TREE_MOVES, modelHasA8Houses, stageA8Colliders } from "./a8Staging";
+import { houseFootprintSize } from "./houseExterior";
 import { HOUSE_FLOORS, HOUSE_NUMBERS, houseFloorBounds } from "./houseAreas";
 import { HOUSES_BLOCK, allHouseWalls, houseColliders } from "./housesGeometry";
 import {
@@ -392,7 +394,8 @@ describe("layout values (brief + rulings + owner changes)", () => {
       expect(h.enterable, h.id).toBe(false);
       expect(["n", "s", "e", "w"], h.id).toContain(h.doorSide);
     }
-    for (const h of houses) expect(h.size, h.id).toEqual({ x: 11.2, z: 8.4 });
+    // A8: 11.2 along the front x 10.75 deep; the door-east houses (5, 8, 10) turned so the wide side faces the street
+    for (const h of houses) expect(h.size, h.id).toEqual(h.doorSide === "e" || h.doorSide === "w" ? { x: 10.75, z: 11.2 } : { x: 11.2, z: 10.75 });
     expect(cafes[0].size).toEqual({ x: 20, z: 15 });
     expect(cafes[0].terrace).toBe(6);
     for (const h of houses) expect(h.terrace, h.id).toBe(2.25);
@@ -596,7 +599,7 @@ describe("layout sanity (nothing is built on the water, the road or each other)"
       for (const [pid, pb] of plotBoxes) expect(overlaps(b, pb), `${h.id} / ${pid}`).toBe(false);
       // Its near side closer to the plaza than the plot ring's middle: between the road and the plots.
       expect(distToBox({ x: 0, z: 0 }, b), h.id).toBeLessThan(plot("plot_n").centre.z * -1);
-      expect(h.size, h.id).toEqual(SCENERY_SIZES[h.kind]);
+      expect(h.size, h.id).toEqual(h.kind === "house" ? houseFootprintSize(h.doorSide) : SCENERY_SIZES[h.kind]);
     }
   });
 
@@ -609,7 +612,8 @@ describe("layout sanity (nothing is built on the water, the road or each other)"
   });
 
   it("the originally planned house position (52, 30) was in the old stream; the new layout has no house near the creek", () => {
-    for (const h of L.sceneryHouses) expect(distToBox({ x: h.centre.x, z: WATER_MIN_Z }, boxOf(h)), h.id).toBeGreaterThan(20);
+    // A8 (deeper houses): house 6 reaches z 49.05, 17.95 m short of the creek's southernmost bank line
+    for (const h of L.sceneryHouses) expect(distToBox({ x: h.centre.x, z: WATER_MIN_Z }, boxOf(h)), h.id).toBeGreaterThan(15);
   });
 
   it("memorial footprint sits inside plot_n with the arrival and the door pad", () => {
@@ -709,7 +713,10 @@ describe("village colliders are built from the layout", () => {
     expect(ids).not.toContain("plaza_trunk");
     expect(ids).not.toContain("plaza_deck");
     expect(ids.filter((i) => i.startsWith("memorial_"))).toHaveLength(3);
-    expect(ids.filter((i) => i.startsWith("house_"))).toHaveLength(10);
+    expect(ids.filter((i) => /^house_\d+$/.test(i))).toHaveLength(10);
+    // A8: every house's porch pieces, LPG cage and garden (house 9 has a back deck instead) are layout boxes too
+    expect(ids.filter((i) => /^house_\d+_lpg$/.test(i))).toHaveLength(10);
+    expect(ids.filter((i) => /^garden_house_\d+$/.test(i))).toHaveLength(9);
     expect(ids).toContain("kiosk");
     // One box per creek segment, the gap segment in two.
     expect(ids.filter((i) => i.startsWith("stream_bank_"))).toHaveLength(STREAM.segments.length + 1);
@@ -741,7 +748,7 @@ describe("village colliders are built from the layout", () => {
     // the café's solid box is its footprint minus the walkable terrace on the door (west) side (option 2: 20 x 15, terrace 6 m: the box ends at the façade)
     expect(box("cafe")).toEqual({ minX: 46.6, maxX: 60.6, minZ: -22.6, maxZ: -7.6 });
     expect(box("cafe")).toEqual(solidBox(L.sceneryHouses.find((h) => h.kind === "cafe")!));
-    expect(box("house_3")).toEqual({ minX: 23.4, maxX: 34.6, minZ: 35.65, maxZ: 41.8 });   // the body; the 2.25 m porch in front is walkable
+    expect(box("house_3")).toEqual({ minX: 23.32, maxX: 34.68, minZ: 35.57, maxZ: 44.13 });   // A8: the body + plinth; the 2.25 m porch in front is walkable
   });
 
   it("the creek is walled off over its whole length except the bridge gap: boxes follow the curve, water plus 3 m of bank each side", () => {
@@ -868,21 +875,28 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
     // + the guides (Task 9A) and the parked bus's mirrors (bus review r3)
     expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS, [...guideColliders()], houseColliders()));
     // the model's old parked-bus box (square to the map, over the centre line) is left out: the bus is its slices
-    expect(VILLAGE_MODEL_COLLIDERS).toEqual(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES }));
-    // vrb2: the village rebuild (layout without a `bus` box) no longer writes col__bus; the filter stays for older models
+    // A8 hand-over: the A7 houses' boxes swapped for the contract's until village.glb is rebuilt with the new houses (a8Staging.ts);
+    // vrb2's rebuild (release 4) has no col__bus box any more (the filter stays for older models)
+    expect(VILLAGE_MODEL_COLLIDERS).toEqual(stageA8Colliders(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES }), L.sceneryHouses));
     const legacy = VILLAGE_COLLIDERS.filter((b) => sameBox(b, MODEL_LEGACY_BUS_BOX)).length;
     expect(legacy).toBe(0);
-    expect(VILLAGE_MODEL_COLLIDERS.obstacles).toHaveLength(VILLAGE_COLLIDERS.length - legacy);
-    expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toHaveLength(VILLAGE_CAMERA_BOXES.length - VILLAGE_CAMERA_BOXES.filter((b) => sameBox(b, MODEL_LEGACY_BUS_BOX)).length);
-    for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles.some((o) => sameBox(o, b))).toBe(!sameBox(b, MODEL_LEGACY_BUS_BOX));
-    for (const b of VILLAGE_CAMERA_BOXES) if (!sameBox(b, MODEL_LEGACY_BUS_BOX)) expect(villageGeometry.cameraBoxes).toContainEqual(b);
+    const a7 = (b: AABB) => A7_MODEL_HOUSE_BOXES.some((l) => sameBox(l.box, b));
+    const a7Count = VILLAGE_COLLIDERS.filter(a7).length;
+    expect(a7Count).toBe(A7_MODEL_HOUSE_BOXES.length); // every A7 box is still in the model (vrb2 rebuilt the village with the A7 houses)
+    const added = greyboxColliders(L).filter((c) => /^(house_\d+(_porch_\d+|_lpg)?|garden_house_\d+)$/.test(c.id)).length + A8_TREE_MOVES.length;
+    expect(VILLAGE_MODEL_COLLIDERS.obstacles).toHaveLength(VILLAGE_COLLIDERS.length - legacy - a7Count + added);
+    expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toHaveLength(VILLAGE_CAMERA_BOXES.length - VILLAGE_CAMERA_BOXES.filter((b) => sameBox(b, MODEL_LEGACY_BUS_BOX)).length - VILLAGE_CAMERA_BOXES.filter(a7).length + 10);
+    for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles.some((o) => sameBox(o, b))).toBe(!sameBox(b, MODEL_LEGACY_BUS_BOX) && !a7(b));
+    for (const b of VILLAGE_CAMERA_BOXES) if (!sameBox(b, MODEL_LEGACY_BUS_BOX) && !a7(b)) expect(villageGeometry.cameraBoxes).toContainEqual(b);
     for (const b of busParkedColliders(L)) expect(villageGeometry.cameraBoxes).not.toContainEqual(b);
   });
 
   it("the model holds every layout box at its exact rectangle, a camera box exactly where the layout says camera", () => {
+    // until village.glb is rebuilt with the A8 houses (X4) their boxes come from the hand-over (a8Staging.ts); after it, the model
+    const model = modelHasA8Houses(VILLAGE_COLLIDERS, L.sceneryHouses) ? { obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES } : VILLAGE_MODEL_COLLIDERS;
     for (const c of colliders) {
-      expect(VILLAGE_COLLIDERS.some((b) => sameBox(b, c.box)), c.id).toBe(true);
-      expect(VILLAGE_CAMERA_BOXES.some((b) => sameBox(b, c.box)), c.id).toBe(c.camera);
+      expect(model.obstacles.some((b) => sameBox(b, c.box)), c.id).toBe(true);
+      expect(model.cameraBoxes.some((b) => sameBox(b, c.box)), c.id).toBe(c.camera);
     }
   });
 
@@ -1465,7 +1479,8 @@ describe("export for the Blender scripts", () => {
 
   it("houses and the café export colour, door side, kind and rectangle", () => {
     const pink = out.sceneryHouses.find((h) => h.id === "house_1")!;
-    expect(pink).toMatchObject({ kind: "house", colour: "pink", doorSide: "s", bounds: { minX: 15.4, maxX: 26.6, minZ: -46.2, maxZ: -37.8 } });
+    expect(pink).toMatchObject({ kind: "house", colour: "pink", doorSide: "s", bounds: { minX: 15.4, maxX: 26.6, minZ: -48.55, maxZ: -37.8 } });
+    expect(out.houseExteriors.houses).toHaveLength(10);
     const cafe = out.sceneryHouses.find((h) => h.kind === "cafe")!;
     expect(cafe).toMatchObject({ id: "cafe", doorSide: "w", colour: "wood", size: { x: 20, z: 15 }, terrace: 6, solid: { minX: 46.6, maxX: 60.6, minZ: -22.6, maxZ: -7.6 } });
   });
