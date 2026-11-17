@@ -1,3 +1,4 @@
+import { lotGeometryColliders } from "@caysonverse/shared/village/villageLots";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { cameraWallBoxes } from "@caysonverse/shared/village/fallsWalk";
@@ -36,7 +37,9 @@ describe("the follow camera's arm: the player's distance, shortened only by buil
     const cliff = cameraWallBoxes(VILLAGE_LAYOUT);
     expect(cliff.length).toBeGreaterThan(0);
     for (const w of cliff) expect(armBoxes()).toContainEqual(w);
-    expect(armBoxes().filter((b) => (b.height ?? 0) >= 12).length).toBe(11 + cliff.length);
+    // (lots v2, L5v2: the lot buildings' tall bodies are buildings too)
+    const lotTall = lotGeometryColliders().cameraBoxes.filter((b) => (b.height ?? 0) >= 12 && b.minY === undefined).length;
+    expect(armBoxes().filter((b) => (b.height ?? 0) >= 12).length).toBe(11 + cliff.length + lotTall);
   });
 
   it("the café kiosk is a small building: a camera that would end up inside it is held in front of it (coordinator 2026-11-16)", () => {

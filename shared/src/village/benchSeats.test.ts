@@ -1,3 +1,4 @@
+import { lotRoomOf } from "./villageLots";
 import { standSide } from "./standSpot";
 import { describe, expect, it } from "vitest";
 import { isBlocked, type AABB } from "../collision";
@@ -20,6 +21,7 @@ import {
   VILLAGE_SEATS,
   benchSeatOffsets,
   fishingSeatIndex,
+  isLotSeat,
   fishingSpotOfSeat,
   type VillageBench,
   type VillageSeat,
@@ -170,7 +172,8 @@ describe("village seats (where a sitter goes)", () => {
       const a = VILLAGE_SEATS[i]!;
       if (a.retired) continue; // (a retired seat lies far outside every map on purpose)
       const house = parseHouseFloorArea(a.area);
-      const bounds = a.area === "village" ? villageWalkArea(L) : house ? houseFloorBounds(house.n, house.floor) : L.areas.hall;
+      const room = lotRoomOf(a.area);
+      const bounds = a.area === "village" ? villageWalkArea(L) : house ? houseFloorBounds(house.n, house.floor) : room ? room.bounds : L.areas.hall;
       expect(a.x, a.id).toBeGreaterThan(bounds.minX);
       expect(a.x, a.id).toBeLessThan(bounds.maxX);
       expect(a.z, a.id).toBeGreaterThan(bounds.minZ);
@@ -183,6 +186,9 @@ describe("village seats (where a sitter goes)", () => {
         // (the houses' places are as close as their furniture is — sofa seats 0.72 m apart, dining chairs facing each other across a table —
         // and the contract's own rules govern them: seat width ≥ 0.38 m, `seatMarkerProblems`, houseSeats.test.ts)
         if (isHouseArea(a.area)) continue;
+        // a 대웅전's 방석 rows (lots v2, contract 11: 1.0 m apart, all facing the 수미단) sit one behind another, cross-legged: the
+        // hands' width is across the row, not along it
+        if (a.kind === "floor" && b.kind === "floor" && isLotSeat(a) && Math.abs(a.yaw - b.yaw) < 1e-3 && Math.abs((b.x - a.x) * Math.cos(a.yaw) - (b.z - a.z) * Math.sin(a.yaw)) < 0.05) continue;
         // two sitters facing each other across a café table: their feet meet under it, their bodies (the hips, 0.397 m
         // behind each root) are what must keep apart
         const fa = { x: Math.sin(a.yaw), z: Math.cos(a.yaw) };
@@ -324,7 +330,8 @@ describe("village seats (where a sitter gets up to)", () => {
   it("every dismount spot is clear of every collider of its map (a standing body plus margin) and inside its area", () => {
     for (const s of VILLAGE_SEATS.filter((v) => !v.retired)) {
       const house = parseHouseFloorArea(s.area);
-      const bounds = s.area === "village" ? villageWalkArea(L) : house ? houseFloorBounds(house.n, house.floor) : L.areas.hall;
+      const room = lotRoomOf(s.area);
+      const bounds = s.area === "village" ? villageWalkArea(L) : house ? houseFloorBounds(house.n, house.floor) : room ? room.bounds : L.areas.hall;
       const obstacles = villageGeometry.obstacles;
       expect(isBlocked(s.standX, s.standZ, PLAYER_RADIUS + STAND_CLEARANCE, obstacles, 0), s.id).toBe(false);
       expect(s.standX - PLAYER_RADIUS, s.id).toBeGreaterThan(bounds.minX);
@@ -519,10 +526,13 @@ describe("the fishing lake's seats in the global index (A10, design 5.4 and 12.2
     const deck = VILLAGE_SEATS.filter((s) => s.id.startsWith("zelkova_deck:"));
     expect(deck).toHaveLength(6);
     // release 3 appended the deck, then the house seats the art brought back (LATE_HOUSE_SEATS): no live index moved
-    // (release 4 then the house seats the realism pass added: TAIL_HOUSE_SEATS)
-    const late = VILLAGE_SEATS.slice(-TAIL_HOUSE_SEATS.length);
+    // (release 4 then the house seats the realism pass added: TAIL_HOUSE_SEATS; lots v2 after those, L5v2)
+    const lotFirst = VILLAGE_SEATS.findIndex((s) => isLotSeat(s));
+    const end = lotFirst >= 0 ? lotFirst : VILLAGE_SEATS.length;
+    expect(VILLAGE_SEATS.slice(end).every((s) => isLotSeat(s))).toBe(true);
+    const late = VILLAGE_SEATS.slice(end - TAIL_HOUSE_SEATS.length, end);
     expect(late.map((s) => (LATE_HOUSE_SEATS.includes(s.bench) ? s.bench : s.id))).toEqual([...TAIL_HOUSE_SEATS]);
-    const tail = VILLAGE_SEATS.length - late.length;
+    const tail = end - late.length;
     expect(LAKE_SEAT_BASE).toBe(tail - lakeIdx.length - FALLS_SEATS.length - deck.length);
     expect(VILLAGE_SEATS.slice(tail - deck.length, tail)).toEqual(deck);
     expect(VILLAGE_SEATS.slice(tail - deck.length - FALLS_SEATS.length, tail - deck.length)).toEqual(FALLS_SEATS); // release 2's stones keep their indices
@@ -591,7 +601,8 @@ describe("the plaza zelkova deck (평상, UX 2026-11-16)", () => {
   it("six places, the very last seats (after the lake's and release 2's waterfall stones), so no older index moves", () => {
     expect(deck).toHaveLength(6);
     // (only release 3's restored house seats, LATE_HOUSE_SEATS, follow them)
-    expect(deck.map(({ i }) => i)).toEqual([0, 1, 2, 3, 4, 5].map((k) => VILLAGE_SEATS.length - TAIL_HOUSE_SEATS.length - 6 + k));
+    const end = VILLAGE_SEATS.findIndex((s) => isLotSeat(s)); // (lots v2's seats come after those, L5v2)
+    expect(deck.map(({ i }) => i)).toEqual([0, 1, 2, 3, 4, 5].map((k) => (end >= 0 ? end : VILLAGE_SEATS.length) - TAIL_HOUSE_SEATS.length - 6 + k));
     expect(deck[0]!.i).toBeGreaterThan(LAKE_SEAT_BASE);
   });
 

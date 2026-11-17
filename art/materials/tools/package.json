@@ -1,0 +1,11 @@
+{
+  "name": "caysonverse-material-tools",
+  "private": true,
+  "description": "Build-time tools for scripts/build-materials.mjs (not part of the app bundle). Install with: npm --prefix art/materials/tools ci",
+  "type": "module",
+  "dependencies": {
+    "fflate": "0.8.2",
+    "ktx2-encoder": "0.6.0",
+    "sharp": "0.35.5"
+  }
+}

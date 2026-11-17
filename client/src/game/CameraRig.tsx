@@ -72,6 +72,7 @@ import { cameraProbe } from "./cameraProbe";
 import { activeBounds, activePickBounds, activeSeats, getActiveMap } from "./activeMap";
 import { localGlide } from "./seatMotion";
 import { seatApproachGoal, seatUnderTap, warmSeatApproachGoals } from "./seatTap";
+import { isLotSeat } from "@caysonverse/shared/village/benchSeats";
 import { seatedEyeOffset, stepSeatedWeight } from "./seatedEye";
 import { setPreferredSeat } from "./seatPreference";
 import { getLocalLift } from "./jump";
@@ -85,7 +86,7 @@ import { stepRideAudio, stopRideAudio } from "../land/coasterAudio";
 import { busCamGoal, busCamState, busElevation, busSeatGoal, busSeatPreferred, riderBusPoint, selfBusRide } from "./busRide";
 import { BUS_SEATS, busPlaceOf, cabinFloorAt, seatBodyPoint } from "@caysonverse/shared/village/busCabin";
 import { busSeatUnderRay } from "../village/busSeatPick";
-import { VILLAGE_LAYOUT, cubbyAtPoint, isHouseArea } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, cubbyAtPoint, isHouseArea, isLotArea } from "@caysonverse/shared/village/villageLayout";
 import { localArea } from "../village/villageArea";
 import { armHouseUse, houseTapTarget } from "../village/houseTap";
 import { openCubbyAt } from "../village/cubbyCard";
@@ -458,7 +459,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       // In the hall every collider in the room is furniture (round 9: the floor seen under the letter table's edge, between its
       // chairs, had no free spot within MAX_PUSH and the tap was "unreachable"): floor inside one moves out as for a bench's box.
       // (a house floor is a room like the hall: every collider in it is furniture or the stair)
-      const inRoom = localArea() === "hall" || isHouseArea(localArea());
+      const inRoom = localArea() === "hall" || isHouseArea(localArea()) || isLotArea(localArea());
       let furniture = inRoom ? map.geometry.obstacles : map.furniture;
       // A tap on a house's stair or front door walks to its pad and uses it there (houseTap.ts): the pad is the destination, the use is armed.
       const houseTap = pick && !pick.blocker && isHouseArea(localArea()) ? houseTapTarget(localArea(), pick.x, pick.y, pick.z) : null;
@@ -471,7 +472,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       // walk onto, and a tap whose ray enters a seat (a floor cushion a few cm up, a 보료) is that seat — a tap on a cushion clear of its
       // collider's box walked onto the cushion and did not sit (G round 3). Elsewhere a ground click may have gone between a bench's
       // slats or through its backrest band to the floor beyond (seatThroughFloor, plaza bench hotfix): that seat; else it stays ground.
-      const inHouse = isHouseArea(localArea());
+      const inHouse = isHouseArea(localArea()) || isLotArea(localArea()); // (a lot building's room: a flat floor too)
       const kindNone = !!surface && surfaceKind(surface, map.geometry.obstacles, activeBounds()) === "none";
       if (!seatGoal && !houseTap && surface) {
         const remote = new Set(getRemoteSeatIndices());
@@ -523,7 +524,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         // a seat clicked: sat on once the walk to its approach ends there (the frame loop's seat-on-arrival)
         // (already standing at it, the click is "here": sat on at once)
         const now = performance.now();
-        if (sitOn === null) seatOnArrival.current = null;
+        // a lot building's seat (L5, owner 2026-11-17 "의자를 찍으면 자동 앉기는 빼줘"): the tap walks there and offers it; the 앉기 button sits
+        if (sitOn === null || isLotSeat(activeSeats()[sitOn])) seatOnArrival.current = null;
         else if (plan.ok) seatOnArrival.current = { index: sitOn, x: plan.x, z: plan.z, armed: false, at: now };
         else seatOnArrival.current = plan.reason === "here" ? { index: sitOn, x: from.x, z: from.z, armed: true, at: now } : null;
         return plan;

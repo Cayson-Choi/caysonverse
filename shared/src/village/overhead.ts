@@ -10,6 +10,7 @@
  * roofs and parasols are baked scenery with no collider or volume of their own: they have no headroom to clamp to.
  */
 
+import { lotRoomOf } from "./villageLots";
 import type { AABB } from "../collision";
 import { BUS_SHELTER_ROOF, VILLAGE_LAYOUT, isHouseArea, type AreaId, type VillageLayout } from "./villageLayout";
 import { HOUSE_LOW_CEILINGS, HOUSE_ROOM, parseHouseFloorArea } from "./houseAreas";
@@ -52,6 +53,8 @@ const distanceTo = (b: AABB, x: number, z: number) => Math.hypot(Math.max(b.minX
 /** The height (m) of the lowest roof or ceiling over (x, z) in `area`, with the edge margin; Infinity in the open. */
 export function ceilingAbove(x: number, z: number, area: AreaId, layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): number {
   if (area === "hall") return HALL_DRAWN_CEILING_M;
+  const room = lotRoomOf(area);
+  if (room) return room.ceiling; // a lot building's walk-in room (L5v2)
   if (isHouseArea(area)) {
     // a house floor (집 실내 G): its ceiling, the attic floors under their lowest slope
     const hit = parseHouseFloorArea(area);
@@ -70,7 +73,7 @@ export function ceilingAbove(x: number, z: number, area: AreaId, layout: Pick<Vi
  */
 export function jumpHeadroom(x: number, z: number, area: AreaId, avatarTop: number = AVATAR_TOP_M, layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): number {
   if (area === "hall") return Math.max(0, HALL_DRAWN_CEILING_M - avatarTop - HEAD_CLEARANCE_M);
-  if (isHouseArea(area)) return Math.max(0, ceilingAbove(x, z, area, layout) - avatarTop - HEAD_CLEARANCE_M);
+  if (isHouseArea(area) || lotRoomOf(area)) return Math.max(0, ceilingAbove(x, z, area, layout) - avatarTop - HEAD_CLEARANCE_M);
   let room = Infinity;
   for (const v of villageOverheads(layout)) {
     const d = distanceTo(v.box, x, z);

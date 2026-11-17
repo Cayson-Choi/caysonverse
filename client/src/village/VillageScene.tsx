@@ -24,7 +24,7 @@ import { vegetationPark } from "./veg/villageVegetation";
 import { doorFade } from "./doorFadeModel";
 import { useQualityTier } from "../game/QualityEffects";
 import { SceneWarmUp } from "../game/SceneWarmUp";
-import { VILLAGE_LAYOUT, isHouseArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, isHouseArea, isLotArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { HOUSE_STAIR_TARGET_PREFIX } from "@caysonverse/shared/village/houseTargets";
 import { houseNumberOf } from "@caysonverse/shared/village/houseAreas";
 import { PlotMarkers } from "./PlotMarkers";
@@ -66,6 +66,9 @@ import { CrosswalkHintPill } from "./CrosswalkHintPill";
 import { BusStopHintPill } from "./BusStopHintPill";
 import { SIGNALS_MODEL_URL, TransitRoadSignals } from "./TransitRoadSignals";
 import { PublicAutoDoor } from "./PublicAutoDoor";
+import { VillageLots } from "./lots/VillageLots";
+import { LotRoomArea } from "./lots/LotRoom";
+import { lotDoorNotice, lotDoorPadById, LOT_DOOR_TARGET_PREFIX } from "./lots/lotTargets";
 import { openKeypad, useKeypad } from "./keypadStore";
 import { VillageKeypad } from "./VillageKeypad";
 import { HouseArea } from "./HouseInterior";
@@ -159,6 +162,7 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
   if (area === "village" && coasterEnabled()) return <CoasterSandbox />;
   if (area === "hall") return <HallArea pose={pose} />;
   if (isHouseArea(area)) return <HouseArea area={area} pose={pose} />;
+  if (isLotArea(area)) return <LotRoomArea area={area} pose={pose} />;
   return (
     <>
       {/* A failed download shows a plain ground and tries again, instead of the crash screen (final review m2). */}
@@ -196,6 +200,8 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
       </LoadBoundary>
       <PlotMarkers />
       <PublicAutoDoor area="village" pose={pose} />
+      {/* The six lot buildings (마을 부지 건물, L5): their own loader, never waited for; a failed one is just not there. */}
+      <VillageLots pose={pose} tier={tier} />
     </>
   );
 }
@@ -279,6 +285,11 @@ function VillageDoors({ pose }: { pose: Pose }) {
       if (target.kind === "object" && target.id.startsWith(CUBBY_TARGET_PREFIX)) {
         clearClickTarget(); // stand still in front of the cubby while the card is open
         openCubbyCard(target.id);
+        return;
+      }
+      if (target.kind === "object" && target.id.startsWith(LOT_DOOR_TARGET_PREFIX)) {
+        const pad = lotDoorPadById(target.id);
+        if (pad) showTransitNotice(lotDoorNotice(pad));
         return;
       }
       if (target.kind === "object" && target.id.startsWith(KEYPAD_TARGET_PREFIX)) {

@@ -3,6 +3,8 @@ import { doorFade, FADE_IN_MS, FADE_OUT_MS } from "./doorFadeModel";
 import { subscribeLocalArea } from "./villageArea";
 
 const covered = () => doorFade.covered();
+/** Frames drawn in the new place before the curtain opens (the mount, its first heavy frame, one clean one). */
+export const ARRIVE_FRAMES = 3;
 
 /**
  * The curtain of the village's door (doorFade.ts): a black layer over the whole screen that closes quickly when
@@ -13,10 +15,23 @@ const covered = () => doorFade.covered();
 export function DoorFade() {
   const on = useSyncExternalStore(doorFade.subscribe, covered, covered);
 
-  // We were moved through the door: the curtain may open.
+  // We were moved through the door: the curtain may open, once the other side has drawn. The place we arrive in
+  // mounts on the area change (the village's whole tree on the way out of a room: its first frame there took
+  // 1.3–1.6 s on a PC, L5v2 release-4 run), so the curtain waits out ARRIVE_FRAMES frames: that long frame is
+  // spent behind the black, not on a half-open view that stops dead.
   useEffect(() => {
-    const off = subscribeLocalArea(() => doorFade.arrived());
+    let raf = 0;
+    const off = subscribeLocalArea(() => {
+      cancelAnimationFrame(raf);
+      let left = ARRIVE_FRAMES;
+      const step = () => {
+        if (--left <= 0) doorFade.arrived();
+        else raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    });
     return () => {
+      cancelAnimationFrame(raf);
       off();
       doorFade.reset();
     };

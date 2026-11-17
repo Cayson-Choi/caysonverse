@@ -115,9 +115,9 @@ function riderInTheWay(camera: Camera, x: number, y: number, z: number, wasHidde
 }
 
 /**
- * Refresh an avatar group's matrices by hand. The group's automatic update is switched off (step 8: far avatars refresh a few frames
- * apart), and three >= 0.18x then leaves the group's OWN matrixWorld alone in `updateMatrixWorld` (the flag is checked inside it), so
- * the world matrix is composed here from the parent's and the local one, and only the node tree below is left to three.
+ * Refresh an avatar group's matrices by hand. Step 8 switches the group's automatic update off (far avatars refresh a few frames
+ * apart), and three 0.185 then leaves the group's OWN matrixWorld alone in `updateMatrixWorld` (the flag is checked inside it), so a
+ * standing remote was drawn at the world origin. The world matrix is composed here (parent x local); three does the node tree below.
  */
 function refreshAvatarMatrices(group: Group): void {
   group.updateMatrix();

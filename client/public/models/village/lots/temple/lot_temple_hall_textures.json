@@ -1,0 +1,55 @@
+{
+  "lot": "lot_temple_hall",
+  "format": "ktx2",
+  "note": "Every LM_ material is a shared PBR library set (client/src/village/pbr/pbrLibrary.ts getPbrSet(id, tier, gl) -> createPbrMaterial(set, { repeatMeters: [1, 1] })): the model's UVs are metres, COLOR_0 multiplies the albedo (the tint of the neutral sets), roughness = the ORM's G times roughnessScale. The lot has no maps of its own (letters, clock and numerals are geometry). M_glass is the game's glass; lotnight__ nodes take the game's glow.",
+  "materials": {
+    "LM_temple_dancheong": {
+      "pbr": "dancheong_wood",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_temple_fabric": {
+      "pbr": "fabric_upholstery",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 0.5,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_temple_pine": {
+      "pbr": "wood_pine_natural",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.89,
+      "vertexColor": true,
+      "roughnessScale": 0.7,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "M_glass": {
+      "kind": "glass"
+    },
+    "M_screen": {
+      "kind": "screen",
+      "note": "the garden-and-sky view behind interior windows: unlit, COLOR_0 is the colour"
+    }
+  },
+  "pbrSets": [
+    "dancheong_wood",
+    "fabric_upholstery",
+    "wood_pine_natural"
+  ]
+}

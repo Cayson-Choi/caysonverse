@@ -19,6 +19,7 @@
  * neighbour — the least crowded place, never a collider or a door pad.
  */
 
+import { lotRoomOf } from "./villageLots";
 import { isBlocked, type AABB } from "../collision";
 import type { Bounds } from "../school/geometry";
 import { PLAYER_RADIUS } from "../worldMap";
@@ -77,6 +78,18 @@ const L = VILLAGE_LAYOUT;
 const VILLAGE_AREA = makeArrivalArea(L.areas.village, villageGeometry.obstacles, [L.memorial.exterior.doorPad]);
 const HALL_AREA = makeArrivalArea(L.areas.hall, villageGeometry.obstacles, [L.memorial.interior.doorPad]);
 const HOUSE_AREAS = new Map<string, ArrivalArea>();
+const LOT_ROOM_AREAS = new Map<string, ArrivalArea>();
+
+/** A lot building's walk-in room (L5v2): its floor and the colliders near it (no pad listed: the arrival stands 0.8 m in from the way out, as a house's stair arrival). */
+function lotRoomArrivalArea(area: string): ArrivalArea | null {
+  const r = lotRoomOf(area);
+  if (!r) return null;
+  const cached = LOT_ROOM_AREAS.get(area);
+  if (cached) return cached;
+  const made = makeArrivalArea(r.bounds, villageGeometry.obstacles, []);
+  LOT_ROOM_AREAS.set(area, made);
+  return made;
+}
 
 /**
  * One floor of a house (집 실내 G): its room rectangle, the village geometry's colliders near it (the walls and the model's furniture)
@@ -101,6 +114,8 @@ function houseFloorArea(area: string): ArrivalArea | null {
 /** The arrival geometry of a 케이슨 마을 area: the village, the memorial hall, or one floor of a house. */
 export function arrivalArea(area: string): ArrivalArea {
   if (area === "hall") return HALL_AREA;
+  const room = lotRoomArrivalArea(area);
+  if (room) return room;
   const house = houseFloorArea(area);
   if (house) return house;
   return VILLAGE_AREA;

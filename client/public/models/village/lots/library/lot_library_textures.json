@@ -1,0 +1,129 @@
+{
+  "lot": "lot_library",
+  "format": "ktx2",
+  "note": "Every LM_ material is a shared PBR library set (client/src/village/pbr/pbrLibrary.ts getPbrSet(id, tier, gl) -> createPbrMaterial(set, { repeatMeters: [1, 1] })): the model's UVs are metres, COLOR_0 multiplies the albedo (the tint of the neutral sets), roughness = the ORM's G times roughnessScale. The lot has no maps of its own (letters, clock and numerals are geometry). M_glass is the game's glass; lotnight__ nodes take the game's glow.",
+  "materials": {
+    "LM_library_brick": {
+      "pbr": "brick_red",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_library_fabric": {
+      "pbr": "fabric_upholstery",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 0.5,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_library_floor": {
+      "pbr": "floor_wood",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.7,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_library_granite": {
+      "pbr": "granite_flamed",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_library_oak": {
+      "pbr": "wood_oak",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.83,
+      "vertexColor": true,
+      "roughnessScale": 0.9,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_library_paint": {
+      "pbr": "wood_painted",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.8,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 0.6,
+      "metal": false
+    },
+    "LM_library_plaster": {
+      "pbr": "plaster_painted",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 2.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_library_roof": {
+      "pbr": "roof_clay_tile",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 2.9,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_library_stone": {
+      "pbr": "stone_ashlar",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 3.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "M_glass": {
+      "kind": "glass"
+    }
+  },
+  "pbrSets": [
+    "brick_red",
+    "fabric_upholstery",
+    "floor_wood",
+    "granite_flamed",
+    "plaster_painted",
+    "roof_clay_tile",
+    "stone_ashlar",
+    "wood_oak",
+    "wood_painted"
+  ]
+}

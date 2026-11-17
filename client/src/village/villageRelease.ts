@@ -3,7 +3,7 @@ import { useGLTF } from "@react-three/drei";
 import { FileLoader, TextureLoader, type Texture } from "three";
 import type { GLTF } from "three-stdlib";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
-import { isHouseArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
+import { isIndoorArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import type { QualityTier } from "../game/quality";
 import { type CachedFile, releaseCachedFile } from "./loaderRelease";
 import { forgetVillagePreload } from "./villagePreload";
@@ -126,7 +126,7 @@ export const NIGHT_LIGHTMAP_CACHE: CachedFile = {
 
 /** Whether the village scene holds the files in `area` on `tier` (the light tier lets go in the hall: final I2). */
 export function holdsVillageFiles(tier: QualityTier, area: AreaId): boolean {
-  return !(tier === "low" && (area === "hall" || isHouseArea(area)));
+  return !(tier === "low" && isIndoorArea(area));
 }
 
 function cancel(): void {

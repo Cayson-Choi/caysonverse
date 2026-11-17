@@ -34,3 +34,12 @@
 - **Jua** — Copyright 2018 The Jua Project Authors (google/fonts). License: **SIL Open Font License 1.1** — 전문은 `../fonts/OFL-Jua.txt`.
 - 조립실 고정 문구에 쓰인 글자만 남긴 부분집합(WOFF)입니다. `scripts/subset-builder-font.mjs`가 원본 `Jua-Regular.ttf`에서 만듭니다. 이름은 OFL의 예약 글꼴 이름이 없어 그대로 둡니다.
 - 외부 글꼴 서버(Google Fonts 등)를 쓰지 않고 이 저장소에서 직접 보냅니다.
+
+## 마을 성당·교회·대웅전 성물 — `village/lots/sacred/`
+
+자세한 기록은 `village/lots/sacred/LICENSE.md`와 `docs/designs/village-lots-v2/tools/sacred/SOURCES.md`에 있어요.
+
+- **출처 표시(공공누리 제1유형, 발주자 승인 2026-11-17 "출처 밝히고 써")**: 이 저작물은 국가유산청에서 공공누리 제1유형으로 개방한 '국가유산 3D 프린팅 데이터(국보 제200호 금동보살입상)'을 이용하였으며, 해당 저작물은 공공데이터포털(www.data.go.kr)에서 무료로 내려받을 수 있습니다.
+- 덴마크 국립미술관(SMK) 석고 주조 스캔 KAS225·KAS1959·KAS82 — 퍼블릭 도메인. The Metropolitan Museum of Art, Cleveland Museum of Art 공개 자료 — CC0.
+- 본존불 3D: "Gilt bronze statuette of Sakyamuni Buddha" by dluo — **CC BY 4.0** (https://zenodo.org/records/10225206)
+- 십자고상 3D: "Crucified Christ" from St. Jadwiga's hospital, WirtualneMuzeaMalopolski — CC0 (https://zenodo.org/records/21567941)

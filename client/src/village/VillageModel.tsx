@@ -29,6 +29,7 @@ const COVERED_SLICE_MS = 160;
 import { VillageMountains, mountainsMode, preloadMountains } from "./VillageMountains";
 import { LakeVillagePatch } from "../lake/PatchVillage";
 import { FallsModel } from "./falls/FallsModel";
+import { LotsVillagePatch } from "./lots/LotsVillagePatch";
 import { fallsMode, fallsRuntimeFor } from "./falls/fallsConfig";
 import { fallsModelBuilt } from "./falls/fallsLoader";
 import { StreetFurniture } from "./street/StreetFurniture";
@@ -269,6 +270,8 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       )}
       {/* The fishing lake takes the old backdrop lake out of this clone once it is drawn (lake/lakeVillagePatch.ts). */}
       <LakeVillagePatch root={nodes.root} />
+      {/* The lot buildings (L5) take the old plot signs and posts out of this clone once they are drawn (lots/LotsVillagePatch.tsx). */}
+      <LotsVillagePatch root={nodes.root} />
       {veg && <primitive object={veg.group} dispose={null} />}
       {mountains && (
         <Suspense fallback={null}>

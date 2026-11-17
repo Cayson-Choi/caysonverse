@@ -243,6 +243,16 @@ const VILLAGE_SPOTS: ReadonlyArray<[TreeKind, number, number, number, number]> =
 
 export const VILLAGE_TREE_SPECS: readonly TreeSpec[] = VILLAGE_SPOTS.map(([kind, x, z, H, R], i) => ({ index: 100 + i, kind, x, z, H, R, seed: 300 + i }));
 
+/**
+ * The lot buildings' own trees (lots v2, L5v2): grown by the village's vegetation like the others, not drawn in the lot files. Their
+ * spots are the models' `asset.extras.vegetation` (world x / z, H, R, seed; client/src/village/lots/lots.test.ts reads the files and
+ * checks them): the schoolyard's two broadleaf trees (B1), their trunks the school's `tree_1` / `tree_2` colliders.
+ */
+export const LOT_TREE_SPECS: readonly TreeSpec[] = [
+  { index: 600, kind: "green", x: 51.9, z: 24.6, H: 5, R: 1.3, seed: 910 },
+  { index: 601, kind: "green", x: 49.9, z: 9.4, H: 4.6, R: 1.2, seed: 911 },
+];
+
 /** The creek willows on the banks: tree(F, x, z, "willow", 8.5, 3.6, 400 + i). */
 export const WILLOW_SPECS: readonly TreeSpec[] = [
   [-60.0, 66.6],

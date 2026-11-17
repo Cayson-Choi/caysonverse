@@ -23,6 +23,7 @@ import { PlayerRoom, baseTracking, spawnInDisk, type Tracking } from "./PlayerRo
 import { validateJoinOptions } from "./joinValidation";
 import { RateWindow } from "./rateLimit";
 import { DOOR_RATE, useDoor, useHouseExit, useStair } from "./villageDoor";
+import { useLotDoor } from "@caysonverse/shared/village/villageLots";
 import { candleCubby } from "./villageCandle";
 import { memorial } from "../memorial/service";
 import { MemorialServerMsg } from "@caysonverse/shared/memorial/messages";
@@ -792,7 +793,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
     // the village's memorial door and the hall's way out (useDoor), or a house's way out to its porch (useHouseExit)
     const loadFailed = payload !== null && typeof payload === "object" && (payload as { loadFailed?: unknown }).loadFailed === true;
-    const arrival = useDoor(player.area, player.x, player.z) ?? useHouseExit(player.area, player.x, player.z, loadFailed);
+    // …or a lot building's door and its room's way out (L5v2, villageLots.ts useLotDoor: the same reach and in-front rules)
+    const arrival = useDoor(player.area, player.x, player.z) ?? useHouseExit(player.area, player.x, player.z, loadFailed) ?? useLotDoor(player.area, player.x, player.z);
     if (arrival === null) return; // no door within reach → silent drop
 
     const now = this.now();

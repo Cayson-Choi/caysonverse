@@ -91,9 +91,11 @@ export const GUIDES: readonly Guide[] = deepFreeze([
         id: "plaza_guide_2",
       },
       {
-        question: "하늘색 테두리가 있는 빈 땅은 뭐예요?",
-        answer: "앞으로 새 건물이 들어설 자리예요. 도서관 같은 건물이 하나씩 지어질 거예요.",
-        id: "plaza_guide_3",
+        // lots v2 (L5v2, 2026-11-17): the empty plots are built — the old "하늘색 테두리 빈 땅" question went with them. Text only
+        // (a new id: a voice recorded for plaza_guide_3 never plays over these words).
+        question: "새로 생긴 건물들은 뭐예요?",
+        answer: "학교, 도서관, 성당, 교회, 절이 새로 생겼어요. 문 앞에 가면 안으로 들어가 둘러보고 의자나 방석에 앉아 볼 수 있어요. 남쪽 둑의 케이슨랜드 정문은 곧 열려요.",
+        id: "plaza_guide_lots",
       },
       {
         question: "여기도 밤이 오나요?",

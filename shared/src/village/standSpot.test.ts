@@ -1,3 +1,4 @@
+import { lotRoomOf } from "./villageLots";
 import { describe, expect, it } from "vitest";
 import { VILLAGE_SEATS, standsClear, type VillageSeat } from "./benchSeats";
 import { VILLAGE_LAYOUT } from "./villageLayout";
@@ -15,7 +16,8 @@ const backed = (s: VillageSeat) => s.kind === "backed" || (s.lean ?? 0) > 0;
 const BACKED = VILLAGE_SEATS.filter((s) => backed(s) && !s.retired); // (release 3.1: retired seats keep their indices far away)
 const boundsOf = (s: VillageSeat): Bounds => {
   const h = parseHouseFloorArea(s.area);
-  return h ? houseFloorBounds(h.n, h.floor) : VILLAGE_LAYOUT.areas[s.area as "village" | "hall"];
+  const room = lotRoomOf(s.area); // (a lot building's walk-in room, lots v2 L5v2)
+  return h ? houseFloorBounds(h.n, h.floor) : room ? room.bounds : VILLAGE_LAYOUT.areas[s.area as "village" | "hall"];
 };
 
 /**
@@ -28,6 +30,12 @@ const BESIDE_ONLY: Record<string, readonly string[]> = {
   cafe: ["cafe_terrace_1", "cafe_terrace_2", "cafe_terrace_3", "cafe_terrace_4", "cafe_terrace_5", "cafe_terrace_6", "cafe_terrace_7", "cafe_terrace_8"],
   // the houses (realism pass 2026-11-17): every backed seat has room in front now (chairs pulled out; houseSeatFront.test.ts)
   houses: [],
+  // the lot buildings' rooms (lots v2, L5v2): the classroom chairs at their desks and the reading-room chairs at their tables —
+  // stood up from beside (the aisle between the rows), never behind; the pews, the nooks and the rest stand up in front
+  lots: [
+    ...[2, 3, 5, 6, 8, 9, 11, 12].map((k) => `lotin:lot_school_chair_${k}:1`),
+    ...[1, 2, 3, 4, 5, 6, 7, 8].map((k) => `lotin:lot_library_chair_${k}:1`),
+  ],
   lake: [
     "P01", "P02", "P03", "P04", "P05", "P06", "P07", "P08", "P09", "P10", "P11", "P12", "P13", "P14", "P15", "P16",
     "A1", "A2", "A3", "A4", "B1", "B2", "B3", "B4", "N1", "N2", "N3", "S1", "S2", "S3",
@@ -67,8 +75,8 @@ describe("standSide / standCandidates: in front, beside, never behind the backre
 
 describe("the sweep: every backed seat of the game is stood up from in front of it (owner 2026-11-17)", () => {
   it(`covers them all: ${BACKED.length} backed seats — plaza, shelter, café, porches, houses, the hall, the lake`, () => {
-    const areas = new Set(BACKED.map((s) => (parseHouseFloorArea(s.area) ? "house" : s.area)));
-    expect([...areas].sort()).toEqual(["hall", "house", "village"]);
+    const areas = new Set(BACKED.map((s) => (parseHouseFloorArea(s.area) ? "house" : lotRoomOf(s.area) ? "lot" : s.area)));
+    expect([...areas].sort()).toEqual(["hall", "house", "lot", "village"]);
     expect(BACKED.length).toBeGreaterThan(130);
   });
 

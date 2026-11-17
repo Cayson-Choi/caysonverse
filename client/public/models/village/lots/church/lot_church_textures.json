@@ -1,0 +1,129 @@
+{
+  "lot": "lot_church",
+  "format": "ktx2",
+  "note": "Every LM_ material is a shared PBR library set (client/src/village/pbr/pbrLibrary.ts getPbrSet(id, tier, gl) -> createPbrMaterial(set, { repeatMeters: [1, 1] })): the model's UVs are metres, COLOR_0 multiplies the albedo (the tint of the neutral sets), roughness = the ORM's G times roughnessScale. The lot has no maps of its own (letters, clock and numerals are geometry). M_glass is the game's glass; lotnight__ nodes take the game's glow.",
+  "materials": {
+    "LM_church_copper": {
+      "pbr": "copper_new",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": true
+    },
+    "LM_church_granite": {
+      "pbr": "granite_flamed",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_church_green": {
+      "pbr": "grass",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.4,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 0.5,
+      "metal": false
+    },
+    "LM_church_iron": {
+      "pbr": "cast_iron",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": true
+    },
+    "LM_church_metal": {
+      "pbr": "metal_roof_seam",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 2.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": true
+    },
+    "LM_church_oak": {
+      "pbr": "wood_oak",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.83,
+      "vertexColor": true,
+      "roughnessScale": 0.85,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_church_paint": {
+      "pbr": "wood_painted",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.8,
+      "vertexColor": true,
+      "roughnessScale": 0.9,
+      "normalScale": 0.6,
+      "metal": false
+    },
+    "LM_church_roof": {
+      "pbr": "roof_shingle",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 8.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_church_siding": {
+      "pbr": "wood_siding",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 2.0,
+      "vertexColor": true,
+      "roughnessScale": 0.85,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "M_glass": {
+      "kind": "glass"
+    }
+  },
+  "pbrSets": [
+    "cast_iron",
+    "copper_new",
+    "granite_flamed",
+    "grass",
+    "metal_roof_seam",
+    "roof_shingle",
+    "wood_oak",
+    "wood_painted",
+    "wood_siding"
+  ]
+}

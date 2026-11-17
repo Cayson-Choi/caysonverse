@@ -47,6 +47,7 @@ import { fallsWalkable, villageWalkArea } from "./fallsWalk";
 import { VILLAGE_SEAT_MARKERS as MODEL_SEAT_MARKERS } from "./generated/villageSeatMarkers";
 import { stageA8SeatMarkers } from "./a8Staging";
 import { lakeSeats, type LakeSeatKind } from "./lakeLayout";
+import { LOTS_WITH_MODEL, LOT_ROOMS, VILLAGE_LOTS, lotLocalToWorld, lotRoomPoint, lotSeatMarkers, type LotInteriorSeat } from "./villageLots";
 
 
 /**
@@ -854,7 +855,194 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   // release 4: the house seats the realism pass (2026-11-17) added or turned round (ADDED_HOUSE_SEATS order; any later one after them)
   const addedAt = (s: VillageSeat) => (ADDED_HOUSE_SEATS.includes(s.id) ? ADDED_HOUSE_SEATS.indexOf(s.id) : ADDED_HOUSE_SEATS.length);
   seats.push(...houseNew.map((s, i) => ({ s, i })).sort((a, b) => addedAt(a.s) - addedAt(b.s) || a.i - b.i).map(({ s }) => s));
+  // the lot buildings' seats (village-lots contract 4, L5 2026-11-17) after every seat main has (release 4's added house
+  // seats last, ADDED_HOUSE_SEATS): no earlier index moves (never renumber).
+  seats.push(...lotVillageSeats());
+  // the lot buildings' walk-in rooms (L5v2, contract 11): every chair, pew, nook and 방석 inside, after every seat above (never renumber)
+  seats.push(...lotInteriorSeats());
   return seats;
+}
+
+/**
+ * Move a backed room seat's stand spot in front of the seat (ahead of its centre along the facing) when it came out behind: the clear
+ * spot nearest the seat's centre in the half-plane before it, from which this seat is clearly the nearest (a 앉기 there sits on it).
+ */
+function frontStand(seat: VillageSeat, m: MarkerSource, peers: readonly MarkerSource[], bounds: Bounds): void {
+  const fx = Math.sin(seat.yaw);
+  const fz = Math.cos(seat.yaw);
+  const aheadOf = (x: number, z: number) => (x - m.x) * fx + (z - m.z) * fz;
+  if (aheadOf(seat.standX, seat.standZ) > 0.02) return;
+  let best: Point2 | null = null;
+  // first a spot this seat is clearly the nearest from; failing that (a pew's end place by the organ) any clear one in front — a tap on
+  // the seat walks there and makes it the preferred seat, so the 앉기 button still sits on it
+  for (const ownFirst of [true, false]) {
+    let bestD = Infinity;
+    for (let dx = -1.4; dx <= 1.4 + 1e-9; dx += 0.05)
+      for (let dz = -1.4; dz <= 1.4 + 1e-9; dz += 0.05) {
+        const x = Math.round((m.x + dx) * 1000) / 1000;
+        const z = Math.round((m.z + dz) * 1000) / 1000;
+        if (aheadOf(x, z) < 0.05) continue;
+        const d = Math.hypot(x - m.x, z - m.z);
+        if (d >= bestD || d > 1.4) continue;
+        if (ownFirst && peers.some((o) => o.id !== m.id && Math.hypot(x - o.x, z - o.z) <= d + 0.05)) continue;
+        if (!standsClear(x, z, bounds)) continue;
+        best = { x, z };
+        bestD = d;
+      }
+    if (best) break;
+  }
+  const found = best as Point2 | null;
+  if (found) {
+    seat.standX = found.x;
+    seat.standZ = found.z;
+  }
+}
+
+/** A room seat's facing as a game yaw (`atan2(dirX, dirZ)`): the room frame is the world's, "in" = +z. */
+const ROOM_FACING_YAW: Readonly<Record<LotInteriorSeat["faces"], number>> = { in: 0, out: Math.PI, right: Math.PI / 2, left: -Math.PI / 2 };
+
+/**
+ * The walk-in rooms' seats (`LOT_INTERIOR_SEAT_ORDER`: school chairs 12 → library chairs 8 + nooks 2 → chapel pews 10 → church pews 8 →
+ * 대웅전 방석 12), one marker per place: a pew's three places and a nook's two spread evenly along it. A chair at a desk (`furn` chair:
+ * also sat on from its sides, up to its backrest), a pew from its front only (P6: backed — sit and stand in front, the 0.6 m strip the
+ * contract keeps clear), a nook cushion from the room, a 방석 cross-legged from any side. Ids `lotin:<seat id>:<place>`.
+ */
+function lotInteriorSeats(): VillageSeat[] {
+  const out: VillageSeat[] = [];
+  for (const r of LOT_ROOMS) {
+    const markers: MarkerSource[] = r.spec.seats.flatMap((s) => {
+      const yaw = ROOM_FACING_YAW[s.faces];
+      // along the seat: the facing turned a quarter right
+      const ax = Math.cos(yaw);
+      const az = -Math.sin(yaw);
+      // the contract's places spread along the seat, never closer than two sitters' hands allow (a 2.6 m church pew: three at 1.12 m)
+      const step = s.places > 1 ? Math.max(s.length / s.places, LOT_PLACE_SPACING) : s.length;
+      return Array.from({ length: s.places }, (_, k): MarkerSource => {
+        const along = (k - (s.places - 1) / 2) * step;
+        const c = lotRoomPoint(r, s.x + ax * along, s.z + az * along);
+        const floor = s.kind === "floor";
+        return {
+          id: `lotin:${s.id}:${k + 1}`,
+          furn: floor ? "cushion" : s.places === 1 && s.kind === "backed" ? "chair" : s.kind === "backed" ? "pew" : "nook",
+          kind: s.kind,
+          x: Math.round(c.x * 1000) / 1000,
+          z: Math.round(c.z * 1000) / 1000,
+          y: s.seatTop,
+          yaw,
+          edge: s.frontEdge,
+          // the backrest's face: its board is ~5 cm of the seat's back depth
+          back: s.kind === "backed" ? Math.max(0.05, Math.round((s.backDepth - 0.05) * 1000) / 1000) : 0,
+          width: Math.min(s.length / s.places, s.length),
+          group: `lotin:${s.id}:${k + 1}`,
+          both: false,
+          exitTurn: 0,
+          lean: s.kind === "backed" ? 0.12 : 0,
+          pose: floor ? "floor" : undefined,
+        };
+      });
+    });
+    const place: MarkerPlace = { area: r.area, bounds: r.bounds, geometry: villageGeometry, peers: markers, lenient: true };
+    for (const m of markers) {
+      // a pew's end place by a hymn board or the organ has no clear spot straight ahead: it is stood up from as a chair is (the nearest
+      // clear spot it is offered from, frontStand below keeps that in front)
+      let made = markerSeats(m, place);
+      if (made.length === 0 && m.kind === "backed") made = markerSeats({ ...m, furn: "chair" }, place).map((q) => ({ ...q, sidePlane: undefined, sideHalf: undefined, sideFar: undefined, reachBonus: undefined, aheadMax: undefined }));
+      for (const seat of made) {
+        // P6 (backed: sit and stand in FRONT): a chair hemmed in by its desk ahead and the next one behind came out with its stand spot
+        // behind its back (the house rule for a chair in a row) — here the nearest clear spot in front of it, nearer it than any other
+        if (m.kind === "backed") frontStand(seat, m, markers, r.bounds);
+        // a window nook's cushion has nothing round it: its sitter gets up a short step into the room, not on the spot
+        if (m.kind === "backless" && Math.hypot(seat.standX - seat.x, seat.standZ - seat.z) < 0.1) {
+          for (let d = 0.3; d <= 0.8 + 1e-9; d += 0.05) {
+            const p = offset(seat.x, seat.z, seat.yaw, 0, d);
+            if (standsClear(p.x, p.z, r.bounds)) {
+              seat.standX = Math.round(p.x * 1000) / 1000;
+              seat.standZ = Math.round(p.z * 1000) / 1000;
+              break;
+            }
+          }
+        }
+        out.push({ ...seat, bench: `lotin:${m.id.split(":")[1]}` });
+      }
+    }
+  }
+  return out;
+}
+
+/** A two-place lot bench is seated as if this long (m): its places ±0.56 apart (two seated avatars' hands need 1.107 m). */
+const LOT_BENCH_MIN_LENGTH = 1.82;
+/** Sitters side by side on a pew or a nook keep at least this far apart (m): their hands do not meet (benchSeats.test.ts). */
+const LOT_PLACE_SPACING = 1.12;
+
+/** How far beside a lot's plastic chair (m, along the chair's local x, away from the table's side) its sitter steps in and gets up. */
+const LOT_CHAIR_STEP_ASIDE = 0.62;
+
+/**
+ * The lot buildings' seats (villageLots.ts `LOT_SEAT_ORDER`, rule P6), lot by lot: a backed bench (shops, hall, post) or chair (the
+ * mart's) as a marked village seat (front only; a chair stepped into from beside it), a backless bench sat on from either long side
+ * (the market's and the gate's: two facings per place, one group), a 평상 edge (its `_in` / `_out` seats are already its two sides)
+ * from its own side only. Ids `lot:<seat id>…`; only the lots whose model is in (`LOTS_WITH_MODEL`).
+ */
+function lotVillageSeats(): VillageSeat[] {
+  const bounds = VILLAGE_LAYOUT.areas.village;
+  const out: VillageSeat[] = [];
+  for (const lot of VILLAGE_LOTS) {
+    if (!LOTS_WITH_MODEL.includes(lot.id)) continue;
+    for (const m of lotSeatMarkers(lot)) {
+      if (m.kind === "backed") {
+        const spec = lot.seats.find((s) => s.id === m.id)!;
+        const stand = m.approach === "side" ? lotLocalToWorld(lot, spec.lx - LOT_CHAIR_STEP_ASIDE, spec.lz) : null;
+        const marker: VillageSeatMarker = {
+          id: m.id,
+          x: m.x,
+          z: m.z,
+          facing: m.facing,
+          seatTop: m.seatTop,
+          approach: m.approach,
+          frontEdge: m.frontEdge,
+          places: m.places,
+          // two sitters side by side keep their hands apart (1.107 m, benchSeats.test.ts): a 1.8 m lot bench seats them ±0.56
+          ...(m.places > 1 ? { length: Math.max(m.length, LOT_BENCH_MIN_LENGTH) } : {}),
+          ...(stand ? { standX: stand.x, standZ: stand.z } : {}),
+        };
+        out.push(...villageMarkerSeats([marker]).map((s) => ({ ...s, id: `lot:${s.id}`, bench: `lot:${m.id}` })));
+        continue;
+      }
+      const yaw0 = FACING_YAW[m.facing];
+      const turns = /_(in|out)$/.test(m.id) ? [0] : [0, Math.PI];
+      for (const along of benchSeatOffsets(Math.max(m.length, LOT_BENCH_MIN_LENGTH))) {
+        for (const turn of turns) {
+          const yaw = wrapYaw(yaw0 + turn);
+          const p = offset(m.x, m.z, yaw, turn === 0 ? along : -along, m.frontEdge + SIT_ROOT_AHEAD);
+          const root = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
+          const place = `lot:${m.id}:${along}`;
+          const stand = dismountAhead(root, yaw, bounds, place);
+          out.push({
+            id: turns.length > 1 ? `${place}:${turn === 0 ? "front" : "back"}` : place,
+            x: root.x,
+            z: root.z,
+            yaw,
+            standX: stand.x,
+            standZ: stand.z,
+            seatY: m.seatTop,
+            frontEdge: SIT_ROOT_AHEAD,
+            bench: `lot:${m.id}`,
+            area: "village",
+            kind: "backless",
+            lean: 0,
+            group: turns.length > 1 ? place : undefined,
+          });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** Whether a seat of `VILLAGE_SEATS` is a lot building's (its tap walks there; sitting is the 앉기 button's, owner 2026-11-17). */
+export function isLotSeat(seat: object | undefined): boolean {
+  const id = (seat as { id?: unknown } | undefined)?.id;
+  return typeof id === "string" && (id.startsWith("lot:") || id.startsWith("lotin:"));
 }
 
 /**
