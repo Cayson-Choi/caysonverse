@@ -10,7 +10,9 @@
 #   "height_m": 1.35,              # final height (metres) after the crop
 #   "tri_pc": 14000, "tri_phone": 5000,
 #   "tex": {"normal": 2048, "albedo": 1024, "orm": 1024},
-#   "surface": "marble" | "gilt" | "bronze" | "painted_wood",
+#   "surface": "marble" | "gilt" | "bronze" | "painted_wood" | "photo" | "scan" (keep the scan's own textured
+#              materials: bake its colour; roughness/metal from the colour, gold leaf -> metal; "scan_rough", "scan_gold")
+#   "src" may be .stl, .glb/.gltf or .obj; "keep_largest" (default true for STL only) drops loose pieces
 #   "hair_above": 0.86,            # gilt only: fraction of height above which the head hair is painted lapis (Korean 나발)
 #   "hair_radius": 0.16,           #   ... within this radius (fraction of height) of the head axis
 #   "smooth": 0                    # Laplacian smoothing iterations on the high-poly (weathered stone -> freshly carved)
@@ -35,10 +37,26 @@ for o in list(bpy.data.objects):
 sc = bpy.context.scene
 
 # ---------------- import + clean ----------------
-bpy.ops.wm.stl_import(filepath=os.path.abspath(job["src"]))
-hi = bpy.context.selected_objects[0]
+SRC = os.path.abspath(job["src"]); ext = os.path.splitext(SRC)[1].lower()
+if ext == ".stl":
+    bpy.ops.wm.stl_import(filepath=SRC)
+elif ext in (".glb", ".gltf"):
+    bpy.ops.import_scene.gltf(filepath=SRC)        # textured photogrammetry (Sketchfab CC0 downloads)
+elif ext == ".obj":
+    bpy.ops.wm.obj_import(filepath=SRC)
+else:
+    raise SystemExit(f"unsupported source {ext}")
+meshes = [o for o in sc.objects if o.type == "MESH"]
+for o in sc.objects: o.select_set(o in meshes)
+bpy.context.view_layer.objects.active = meshes[0]
+# bake every imported transform (glTF nodes carry scale/rotation) and join into one high-poly
+bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+if len(meshes) > 1: bpy.ops.object.join()
+hi = bpy.context.view_layer.objects.active
+for o in [o for o in sc.objects if o.type != "MESH"]: bpy.data.objects.remove(o, do_unlink=True)
+hi.parent = None
 hi.name = "high"
-bpy.context.view_layer.objects.active = hi
+rep["src_materials"] = [m.name for m in hi.data.materials if m]
 rx, ry, rz = [math.radians(a) for a in job.get("rot_deg", [0, 0, 0])]
 hi.rotation_euler = (rx, ry, rz)
 bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
@@ -47,21 +65,22 @@ me = hi.data
 bm = bmesh.new(); bm.from_mesh(me)
 size0 = max((Vector(v.co) for v in bm.verts), key=lambda c: c.length).length
 bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=size0 * 1e-6)
-# keep the largest connected piece (drops engraved title plates, scan debris)
-bm.verts.ensure_lookup_table()
-seen = set(); best = None
-for v in bm.verts:
-    if v.index in seen: continue
-    comp = []; stack = [v]; seen.add(v.index)
-    while stack:
-        x = stack.pop(); comp.append(x)
-        for e in x.link_edges:
-            y = e.other_vert(x)
-            if y.index not in seen:
-                seen.add(y.index); stack.append(y)
-    if best is None or len(comp) > len(best): best = comp
-keep = set(x.index for x in best)
-bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.index not in keep], context="VERTS")
+# keep the largest connected piece (drops engraved title plates, scan debris); textured scans may opt out
+if job.get("keep_largest", ext == ".stl"):
+    bm.verts.ensure_lookup_table()
+    seen = set(); best = None
+    for v in bm.verts:
+        if v.index in seen: continue
+        comp = []; stack = [v]; seen.add(v.index)
+        while stack:
+            x = stack.pop(); comp.append(x)
+            for e in x.link_edges:
+                y = e.other_vert(x)
+                if y.index not in seen:
+                    seen.add(y.index); stack.append(y)
+        if best is None or len(comp) > len(best): best = comp
+    keep = set(x.index for x in best)
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.index not in keep], context="VERTS")
 # crop by height fraction
 zs = [v.co.z for v in bm.verts]; zmin, zmax = min(zs), max(zs)
 c0, c1 = job.get("crop_z", [0.0, 1.0])
@@ -254,7 +273,16 @@ if surf in ("gilt", "bronze") and job.get("hair_above") and surf == "gilt":
     L.new(metal_out, bsdf.inputs["Metallic"])
 else:
     bsdf.inputs["Metallic"].default_value = metal_val
-hi.data.materials.clear(); hi.data.materials.append(hm)
+if surf != "scan":  # "scan": keep the photogrammetry's own textured materials and bake their colour
+    hi.data.materials.clear(); hi.data.materials.append(hm)
+else:
+    # the DIFFUSE colour pass is base colour x (1 - metallic): make the scan's materials dielectric for the bake
+    for m in hi.data.materials:
+        if not (m and m.node_tree): continue
+        for n in m.node_tree.nodes:
+            if n.type == "BSDF_PRINCIPLED":
+                for l in list(n.inputs["Metallic"].links): m.node_tree.links.remove(l)
+                n.inputs["Metallic"].default_value = 0.0
 
 # separate maps baked into 3 images on the low poly
 lm = bpy.data.materials.new(NAME + "_mat"); lm.use_nodes = True; lnt = lm.node_tree
@@ -299,17 +327,18 @@ bake("ao", "AO")
 sc.cycles.samples = 8
 bk.use_pass_direct = False; bk.use_pass_indirect = False; bk.use_pass_color = True
 bake("albedo", "DIFFUSE", pass_filter={"COLOR"})
-bake("rough", "ROUGHNESS")
-# metallic: route the metal value through emission for a bake
-em = nt.nodes.new("ShaderNodeEmission"); mo = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL")
-old = mo.inputs["Surface"].links[0].from_socket
-if surf == "gilt" and job.get("hair_above"):
-    L.new(metal_out, em.inputs["Color"])
-else:
-    em.inputs["Color"].default_value = (metal_val,) * 3 + (1,)
-L.new(em.outputs[0], mo.inputs["Surface"])
-bake("metal", "EMIT")
-L.new(old, mo.inputs["Surface"])
+if surf != "scan":
+    bake("rough", "ROUGHNESS")
+    # metallic: route the metal value through emission for a bake
+    em = nt.nodes.new("ShaderNodeEmission"); mo = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL")
+    old = mo.inputs["Surface"].links[0].from_socket
+    if surf == "gilt" and job.get("hair_above"):
+        L.new(metal_out, em.inputs["Color"])
+    else:
+        em.inputs["Color"].default_value = (metal_val,) * 3 + (1,)
+    L.new(em.outputs[0], mo.inputs["Surface"])
+    bake("metal", "EMIT")
+    L.new(old, mo.inputs["Surface"])
 
 # pack ORM (R = AO, G = roughness, B = metallic)
 import numpy as np
@@ -320,7 +349,23 @@ def px(im):
     a = np.empty(im.size[0] * im.size[1] * 4, np.float32); im.pixels.foreach_get(a); return a.reshape(-1, 4)
 
 
-ao, ro, mt = px(imgs["ao"][0]), px(imgs["rough"][0]), px(imgs["metal"][0])
+ao = px(imgs["ao"][0])
+if surf == "scan":
+    # roughness / metal from the scan's own colour: gold leaf (warm, saturated, bright) reads as metal, the rest as
+    # painted wood / stone. Albedo is sampled down to the ORM size.
+    A = px(imgs["albedo"][0]); asz = tex["albedo"]; k = max(1, asz // size)
+    A = A.reshape(asz, asz, 4)[::k, ::k].reshape(-1, 4)
+    r_, g_, b_ = A[:, 0], A[:, 1], A[:, 2]
+    mx_ = np.maximum(np.maximum(r_, g_), b_); mn_ = np.minimum(np.minimum(r_, g_), b_)
+    sat = (mx_ - mn_) / np.maximum(mx_, 1e-4)
+    warm = (r_ >= g_) & (g_ >= b_) & ((g_ - b_) / np.maximum(r_ - b_, 1e-4) > 0.3)
+    gold = np.clip((sat - 0.30) / 0.2, 0, 1) * np.clip((mx_ - 0.12) / 0.15, 0, 1) * warm * job.get("scan_gold", 1.0)
+    base_r = job.get("scan_rough", 0.6)
+    ro = np.repeat((base_r * (1 - gold) + 0.36 * gold)[:, None], 4, 1)
+    mt = np.repeat((job.get("scan_gold_metal", 0.75) * gold)[:, None], 4, 1)
+    rep["gold_pct"] = round(100 * float((gold > 0.5).mean()), 1)
+else:
+    ro, mt = px(imgs["rough"][0]), px(imgs["metal"][0])
 orm = bpy.data.images.new(f"{NAME}_orm", size, size, alpha=False); orm.colorspace_settings.name = "Non-Color"
 o4 = np.ones((size * size, 4), np.float32)
 o4[:, 0] = np.clip(0.25 + 0.75 * ao[:, 0], 0, 1)   # keep crevices from going black under the game's own AO/lightmap
