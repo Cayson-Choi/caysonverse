@@ -300,8 +300,10 @@ export function buildCar(detail: TrackDetail = "full"): BufferGeometry {
     livery,
   );
   // livery: a gold stripe down the hood and deck, a gold swoosh and a white pinstripe along each flank
-  b.box([0, 1.026, 0.88], X, Y, 0.07, 0.008, 0.26, COLORS.carTrim);
-  b.box([0, 0.5, -0.3], X, Y, 0.07, 0.006, 1.0, COLORS.carTrim);
+  // the footwell: a ribbed black rubber mat between the seats' toes and the dash, with a painted kick strip across its front
+  b.box([0, 0.485, 0.15], X, Y, 0.8, 0.012, 0.62, COLORS.pad);
+  for (let z = -0.4; z <= 0.7; z += 0.1) b.box([0, 0.5, z], X, Y, 0.78, 0.004, 0.012, [0.09, 0.09, 0.11]);
+  b.box([0, 0.52, 0.76], X, Y, 0.8, 0.03, 0.03, COLORS.carBody2);
   for (const sx of [-1, 1]) {
     b.box([sx * 1.003, 0.34, -0.1], X, Y, 0.006, 0.035, 1.05, COLORS.carTrim);
     b.box([sx * 1.003, 0.27, -0.1], X, Y, 0.006, 0.012, 1.1, COLORS.carWhite);
@@ -317,7 +319,8 @@ export function buildCar(detail: TrackDetail = "full"): BufferGeometry {
     for (const z of [-1.0, -0.3, 0.4]) b.cylinder([sx * 0.95, 0.4, z], [sx * 0.95, 0.6, z], 0.025, 0.025, 5, COLORS.bar);
   }
   // seats: a padded cushion, a padded back and a headrest (lofts centred on x = 0, moved to the seat), and the lap bar
-  const padded = (yc0: number, hh: number, z0: number, z1: number, ww: number, col: V3): void =>
+  const mix = (a: V3, c: V3, t: number): V3 => [a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t, a[2] + (c[2] - a[2]) * t];
+  const padded = (yc0: number, hh: number, z0: number, z1: number, ww: number, col: V3 | ((y: number) => V3)): void =>
     b.loft(
       [
         { z: z0, w: ww * 0.8, h: hh * 0.7, yc: yc0 },
@@ -325,17 +328,25 @@ export function buildCar(detail: TrackDetail = "full"): BufferGeometry {
         { z: z1 - (z1 - z0) * 0.15, w: ww, h: hh, yc: yc0 },
         { z: z1, w: ww * 0.8, h: hh * 0.7, yc: yc0 },
       ],
-      14,
+      16,
       3.6,
-      () => col,
+      (_a, _z, _x, y) => (typeof col === "function" ? col(y) : col),
     );
   for (const side of [-1, 1]) {
     const x = side * SEAT_HALF_GAP;
     const start = b.vertices;
     padded(SEAT_TOP - 0.07, 0.07, -0.64, 0.14, 0.34, COLORS.seat); // the cushion: its top is at SEAT_TOP
-    padded(SEAT_TOP + 0.4, 0.42, -0.74, -0.56, 0.32, COLORS.seat); // the back
+    // the back: cream vinyl, shading into the dark headrest cover at its top (no hard line), with bolstered sides
+    padded(SEAT_TOP + 0.4, 0.42, -0.74, -0.56, 0.32, (y) => mix(COLORS.seat, COLORS.seatDark, Math.min(1, Math.max(0, (y - (SEAT_TOP + 0.62)) / 0.32))));
     padded(SEAT_TOP + 0.95, 0.13, -0.76, -0.54, 0.25, COLORS.seatDark); // the headrest
     for (let v = start; v < b.vertices; v++) b.pos[3 * v] = b.pos[3 * v]! + x;
+    // upholstery: stitched panels on both faces of the back (vertical seams, a horizontal seam, piping round the edge) and a cushion seam
+    for (const zf of [-0.748, -0.552]) {
+      for (const dx of [-0.11, 0.11]) b.box([x + dx, SEAT_TOP + 0.38, zf], X, Y, 0.004, 0.3, 0.003, COLORS.seatDark);
+      b.box([x, SEAT_TOP + 0.38, zf], X, Y, 0.24, 0.004, 0.003, COLORS.seatDark);
+    }
+    b.box([x, SEAT_TOP + 0.002, -0.25], X, Y, 0.3, 0.004, 0.006, COLORS.seatDark);
+    b.box([x, SEAT_TOP + 0.002, -0.05], X, Y, 0.3, 0.004, 0.006, COLORS.seatDark);
     const y0 = SEAT_TOP + 0.26;
     const path: V3[] = [
       [x - 0.3, 0.44, 0.02],
@@ -350,7 +361,7 @@ export function buildCar(detail: TrackDetail = "full"): BufferGeometry {
     ];
     b.tube(path, 0.028, 8, COLORS.bar);
     b.tube(path.slice(2, 7), 0.085, 12, COLORS.pad); // the padded section over the thighs
-    for (const sg of [-1, 1]) b.cylinder([x + sg * 0.3, y0, 0.3], [x + sg * 0.25, y0 + 0.3, 0.5], 0.04, 0.034, 10, COLORS.grip, true);
+    for (const sg of [-1, 1]) b.cylinder([x + sg * 0.3, y0, 0.3], [x + sg * 0.27, y0 + 0.2, 0.42], 0.026, 0.022, 8, [0.3, 0.3, 0.34], true);
   }
   // the grab bar across the hood
   b.tube([[-0.8, 0.95, 0.92], [-0.8, 1.06, 0.94], [0, 1.09, 0.97], [0.8, 1.06, 0.94], [0.8, 0.95, 0.92]], 0.024, 8, COLORS.bar);

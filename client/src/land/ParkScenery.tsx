@@ -21,23 +21,22 @@ import {
   ClampToEdgeWrapping,
   LinearMipmapLinearFilter,
 } from "three";
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { isTouchDevice } from "../device";
 import { coasterTrack } from "@caysonverse/shared/land/coaster";
 import { PARK_BOUNDS, PARK_PLAZA, PARK_QUEUE_HALL, PARK_SHOPS } from "@caysonverse/shared/village/parkArea";
-import { isTouchDevice } from "../device";
 import { LIGHTING } from "../game/sceneLighting";
 import { dayNight } from "../village/dayNightDriver";
 import { MOUNTAINS_GRID_URL, MOUNTAINS_TEXTURE_URL, applyMountains, buildMountainGeometry, createMountainMaterial, parseMountains } from "../village/mountains";
 import { FLAT_SKY_MAPPING } from "../village/villageWater";
 import { GeoBuilder, cross, type V3 } from "./geoBuilder";
-import { parkMaterial, pickSet } from "./pbr";
+import { featherTexture, parkMaterial, pickSet } from "./pbr";
 
 const rngOf = (seed: number) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 const X: V3 = [1, 0, 0];
 const Y: V3 = [0, 1, 0];
 
 /** The ground points of the track's circuit every ~4 m, with the horizontal direction across it. */
-function circuitGround(): { x: number; z: number; px: number; pz: number; y: number }[] {
+export function circuitGround(): { x: number; z: number; px: number; pz: number; y: number }[] {
   const t = coasterTrack();
   const out: { x: number; z: number; px: number; pz: number; y: number }[] = [];
   for (let i = 0; i < t.n; i += 8) {
@@ -53,7 +52,7 @@ function circuitGround(): { x: number; z: number; px: number; pz: number; y: num
 }
 
 /** Whether the lawn at (x, z) is taken: a path, the plaza, a building, the station, the pond, the circuit's own ground. */
-function taken(x: number, z: number, ground: ReturnType<typeof circuitGround>, pond: { x: number; z: number }): boolean {
+export function taken(x: number, z: number, ground: ReturnType<typeof circuitGround>, pond: { x: number; z: number }): boolean {
   if (Math.hypot(x - PARK_PLAZA.x, z - PARK_PLAZA.z) < PARK_PLAZA.radius + 5) return true;
   if (x > 26 && x < 54 && z < -132) return true;
   if (z > -120 && z < -104 && x > -25 && x < 348) return true;
@@ -97,7 +96,7 @@ function CircuitGround({ all, pond }: { all: Texture[]; pond: { x: number; z: nu
     // the seam between the last sample and the first spans the closing distance: keep its UV continuous enough
     return g;
   }, [ground]);
-  const gravel = useMemo(() => parkMaterial(pickSet(all, "Gravel023"), 1, { color: new Color("#e2d6c0"), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }), [all]);
+  const gravel = useMemo(() => parkMaterial(pickSet(all, "Gravel023"), 1, { color: new Color("#e2d6c0"), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4, transparent: true, alphaMap: featherTexture(), depthWrite: false }), [all]);
   // a low picket fence on the path's right edge, and a hedge on its left (instanced posts + merged rails)
   const fence = useMemo(() => {
     const b = new GeoBuilder();
@@ -148,27 +147,6 @@ function CircuitGround({ all, pond }: { all: Texture[]; pond: { x: number; z: nu
     }
     if (rocks.current) rocks.current.instanceMatrix.needsUpdate = true;
   }, [pond]);
-  const shrubs = useRef<InstancedMesh>(null);
-  const shrubGeo = useMemo(() => new IcosahedronGeometry(0.9, 1), []);
-  const shrubMat = useMemo(() => new MeshStandardMaterial({ color: "#ffffff", roughness: 0.9 }), []);
-  const shrubList = useMemo(() => ground.filter((g, i) => i % 3 === 1 && !(g.z < 9 && g.x > -45 && g.x < 35)), [ground]);
-  useEffect(() => {
-    const m = new Matrix4();
-    const q = new Quaternion();
-    const col = new Color();
-    const rnd = rngOf(5);
-    shrubList.forEach((g, i) => {
-      const s = 0.8 + rnd() * 0.9;
-      m.compose(new Vector3(g.x + g.px * 5.2, 0.6 * s, g.z + g.pz * 5.2), q.identity(), new Vector3(s * 1.2, s * 0.8, s * 1.2));
-      shrubs.current?.setMatrixAt(i, m);
-      col.setHSL(0.27 + rnd() * 0.06, 0.45, 0.28 + rnd() * 0.1);
-      shrubs.current?.setColorAt(i, col);
-    });
-    if (shrubs.current) {
-      shrubs.current.instanceMatrix.needsUpdate = true;
-      if (shrubs.current.instanceColor) shrubs.current.instanceColor.needsUpdate = true;
-    }
-  }, [shrubList]);
   return (
     <group>
       <mesh geometry={pathGeo} material={gravel} receiveShadow />
@@ -178,47 +156,37 @@ function CircuitGround({ all, pond }: { all: Texture[]; pond: { x: number; z: nu
         <circleGeometry args={[1, 40]} />
       </mesh>
       <instancedMesh frustumCulled={false} ref={rocks} args={[rockGeo, rockMat, 34]} castShadow receiveShadow />
-      <instancedMesh frustumCulled={false} ref={shrubs} args={[shrubGeo, shrubMat, shrubList.length]} castShadow />
     </group>
   );
 }
 
-// ───────────────────────────────────────── trees: groups among the layout, and a treeline round the park ─────────────────────────────────────────
+// ───────────────────────────────────────── the backdrop: far woods and the treeline (cheap, instanced, never within reach) ─────────────────────────────────────────
 
-function Woods({ pond }: { pond: { x: number; z: number } }) {
-  const trunk = useRef<InstancedMesh>(null);
+/** Far woods behind the circuit and a treeline ring at 330-400 m: one dark blob and one fir per instance. Near trees are the village's (ParkVegetation). */
+function Backdrop({ pond }: { pond: { x: number; z: number } }) {
+  const ground = useMemo(circuitGround, []);
   const blobs = useRef<InstancedMesh>(null);
   const firs = useRef<InstancedMesh>(null);
-  const ground = useMemo(circuitGround, []);
-  const trunkGeo = useMemo(() => new CylinderGeometry(0.2, 0.34, 3, 5), []);
-  const blobGeo = useMemo(() => (isTouchDevice ? new IcosahedronGeometry(2.3, 1) : mergeGeometries([new IcosahedronGeometry(2.1, 1).translate(0, 0, 0), new IcosahedronGeometry(1.5, 1).translate(1.4, -0.6, 0.5)])!), []);
-  const firGeo = useMemo(() => (isTouchDevice ? new CylinderGeometry(0.01, 2.0, 5.4, 7).translate(0, 2.7, 0).toNonIndexed() : mergeGeometries([new CylinderGeometry(0.01, 2.1, 3.2, 8).translate(0, 2.0, 0).toNonIndexed(), new CylinderGeometry(0.01, 1.5, 2.8, 8).translate(0, 4.0, 0).toNonIndexed()])!), []);
-  const trunkMat = useMemo(() => new MeshStandardMaterial({ color: "#5a4030", roughness: 0.95 }), []);
-  const leafMat = useMemo(() => new MeshStandardMaterial({ color: "#ffffff", roughness: 0.85 }), []);
+  const blobGeo = useMemo(() => new IcosahedronGeometry(2.6, 1), []);
+  const firGeo = useMemo(() => new CylinderGeometry(0.01, 2.2, 6.4, 7).translate(0, 3.2, 0).toNonIndexed(), []);
+  const mat = useMemo(() => new MeshStandardMaterial({ color: "#ffffff", roughness: 0.9 }), []);
   const list = useMemo(() => {
-    const rnd = rngOf(424242);
+    const rnd = rngOf(99);
     const out: { x: number; z: number; s: number; fir: boolean }[] = [];
-    const want = isTouchDevice ? 110 : 440;
+    const want = 0; // no cheap trees among the layout: the near ones are the village's (ParkVegetation)
     let guard = 0;
-    // groups: a few cluster centres, trees round them; over the south of the circuit (z > 4) and out into a treeline ring
-    const centres: { x: number; z: number }[] = [];
-    for (let i = 0; i < 26; i++) centres.push({ x: -140 + rnd() * 500, z: 6 + rnd() * 140 });
     while (out.length < want && guard++ < 20000) {
-      const c = centres[Math.floor(rnd() * centres.length)]!;
-      const a = rnd() * Math.PI * 2;
-      const r = Math.sqrt(rnd()) * 26;
-      const x = c.x + Math.cos(a) * r;
-      const z = c.z + Math.sin(a) * r * 0.8;
-      if (z < 3.2 || taken(x, z, ground, pond)) continue;
-      if (out.some((t) => Math.hypot(t.x - x, t.z - z) < 4.2)) continue;
-      out.push({ x, z, s: 0.8 + rnd() * 0.9, fir: rnd() < 0.4 });
+      const x = -170 + rnd() * 560;
+      const z = 60 + rnd() * 110; // behind the circuit's far side (the return straight is at z 64)
+      if (taken(x, z, ground, pond)) continue;
+      if (out.some((t) => Math.hypot(t.x - x, t.z - z) < 9)) continue;
+      out.push({ x, z, s: 1.2 + rnd() * 0.8, fir: rnd() < 0.45 });
     }
-    // the treeline ring, 300-380 m from the park's middle, thick and dark
-    const ringN = isTouchDevice ? 50 : 170;
+    const ringN = isTouchDevice ? 36 : 110;
     for (let i = 0; i < ringN; i++) {
       const a = (i / ringN) * Math.PI * 2 + rnd() * 0.05;
       const r = 330 + rnd() * 60;
-      out.push({ x: 105 + Math.cos(a) * r * 1.15, z: -60 + Math.sin(a) * r * 0.75, s: 1.8 + rnd() * 1.4, fir: rnd() < 0.5 });
+      out.push({ x: 105 + Math.cos(a) * r * 1.15, z: -60 + Math.sin(a) * r * 0.75, s: 2.2 + rnd() * 1.6, fir: rnd() < 0.5 });
     }
     return out;
   }, [ground, pond]);
@@ -228,17 +196,14 @@ function Woods({ pond }: { pond: { x: number; z: number } }) {
     const col = new Color();
     let nb = 0;
     let nf = 0;
-    list.forEach((t, i) => {
-      m.compose(new Vector3(t.x, 1.5 * t.s, t.z), q.identity(), new Vector3(t.s, t.s, t.s));
-      trunk.current?.setMatrixAt(i, m);
+    for (const t of list) {
       const ref = t.fir ? firs.current : blobs.current;
       const k = t.fir ? nf++ : nb++;
-      m.compose(new Vector3(t.x, t.fir ? 1.2 * t.s : 4.1 * t.s, t.z), q.identity(), new Vector3(t.s, t.s, t.s));
+      m.compose(new Vector3(t.x, t.fir ? 0 : 3.6 * t.s, t.z), q.identity(), new Vector3(t.s, t.s, t.s));
       ref?.setMatrixAt(k, m);
-      col.setHSL(0.24 + ((t.x * 3 + t.z) % 9) / 140, 0.42, 0.2 + (((t.x + t.z * 2) % 8) / 60));
+      col.setHSL(0.26 + ((t.x * 3 + t.z) % 9) / 150, 0.38, 0.16 + (((t.x + t.z * 2) % 8) / 90));
       ref?.setColorAt(k, col);
-    });
-    if (trunk.current) trunk.current.instanceMatrix.needsUpdate = true;
+    }
     for (const [ref, n] of [[blobs.current, nb], [firs.current, nf]] as const) {
       if (!ref) continue;
       ref.count = n;
@@ -248,9 +213,8 @@ function Woods({ pond }: { pond: { x: number; z: number } }) {
   }, [list]);
   return (
     <group>
-      <instancedMesh frustumCulled={false} ref={trunk} args={[trunkGeo, trunkMat, list.length]} castShadow />
-      <instancedMesh frustumCulled={false} ref={blobs} args={[blobGeo, leafMat, list.length]} castShadow />
-      <instancedMesh frustumCulled={false} ref={firs} args={[firGeo, leafMat, list.length]} castShadow />
+      <instancedMesh frustumCulled={false} ref={blobs} args={[blobGeo, mat, list.length]} />
+      <instancedMesh frustumCulled={false} ref={firs} args={[firGeo, mat, list.length]} />
     </group>
   );
 }
@@ -315,7 +279,7 @@ export function ParkScenery({ all }: { all: Texture[] }) {
   return (
     <group>
       <CircuitGround all={all} pond={pond} />
-      <Woods pond={pond} />
+      <Backdrop pond={pond} />
     </group>
   );
 }

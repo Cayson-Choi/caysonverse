@@ -162,7 +162,7 @@ function ParkArea({ tier }: { tier: VillageTier }) {
   return (
     <LoadBoundary fallback={null} onReset={() => undefined} onFail={uncoverVillage} notice="케이슨랜드를 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
       <Suspense fallback={null}>
-        <ParkWorld tier={tier === "high" ? "high" : "low"} />
+        <ParkWorld tier={tier} />
       </Suspense>
     </LoadBoundary>
   );

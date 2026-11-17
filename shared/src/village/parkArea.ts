@@ -120,7 +120,7 @@ function buildTrees(): ParkTree[] {
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const out: ParkTree[] = [];
   let guard = 0;
-  while (out.length < 190 && guard++ < 20000) {
+  while (out.length < 40 && guard++ < 20000) {
     const x = PARK_BOUNDS.minX + 8 + rnd() * (PARK_BOUNDS.maxX - PARK_BOUNDS.minX - 16);
     const z = PARK_BOUNDS.minZ + 8 + rnd() * (PARK_BOUNDS.maxZ - PARK_BOUNDS.minZ - 18);
     if (onPath(x, z, 5)) continue;
@@ -132,7 +132,7 @@ function buildTrees(): ParkTree[] {
     // the ride plots (phase 2b / 3): the carousel's and the wheel's ground stay open
     if (Math.hypot(x - 110, z + 135) < 30 || Math.hypot(x - 205, z + 135) < 34) continue;
     // a loose minimum distance between trees
-    if (out.some((t) => Math.hypot(t.x - x, t.z - z) < 6)) continue;
+    if (out.some((t) => Math.hypot(t.x - x, t.z - z) < 9)) continue;
     out.push({ x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10, s: 0.8 + rnd() * 0.7, kind: (Math.floor(rnd() * 3) % 3) as 0 | 1 | 2 });
   }
   return out;

@@ -1,8 +1,8 @@
-import { MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Texture, Vector2, type MeshStandardMaterialParameters } from "three";
+import { CanvasTexture, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Texture, Vector2, type MeshStandardMaterialParameters } from "three";
 import { isTouchDevice } from "../device";
 
 /** The CC0 ambientCG sets (client/public/textures/park, LICENSE.md): colour, OpenGL normal and roughness maps, 1K. */
-export const PARK_SETS = ["Grass001", "PavingStones070", "Gravel023", "PaintedMetal013", "RoofingTiles013A", "Concrete034", "Plaster003", "PaintedPlaster017"] as const;
+export const PARK_SETS = ["Grass001", "PavingStones070", "Gravel023", "PaintedMetal013", "RoofingTiles013A", "Concrete034", "Plaster003", "PaintedPlaster017", "LeafyGrass"] as const;
 export type ParkSet = (typeof PARK_SETS)[number];
 
 export const parkTextureUrls = (set: ParkSet): [string, string, string] => [`/textures/park/${set}_c.webp`, `/textures/park/${set}_n.webp`, `/textures/park/${set}_r.webp`];
@@ -48,4 +48,24 @@ export function parkMaterial(maps: PbrMaps, repeat: number | [number, number], p
     metalness: 0,
     ...rest,
   });
+}
+
+/** A soft-edged strip for an alpha map (u across the path): opaque in the middle, fading to nothing at both edges, so a gravel path melts into the lawn. */
+let featherTex: Texture | null = null;
+export function featherTexture(): Texture {
+  if (featherTex) return featherTex;
+  const c = document.createElement("canvas");
+  c.width = 64;
+  c.height = 4;
+  const ctx = c.getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 64, 0);
+  g.addColorStop(0, "#000");
+  g.addColorStop(0.22, "#fff");
+  g.addColorStop(0.78, "#fff");
+  g.addColorStop(1, "#000");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 4);
+  featherTex = new CanvasTexture(c);
+  featherTex.wrapS = featherTex.wrapT = RepeatWrapping;
+  return featherTex;
 }

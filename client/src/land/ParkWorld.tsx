@@ -1,7 +1,6 @@
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import {
   BackSide,
   CanvasTexture,
@@ -10,7 +9,6 @@ import {
   CylinderGeometry,
   ExtrudeGeometry,
   Float32BufferAttribute,
-  IcosahedronGeometry,
   InstancedMesh,
   Matrix4,
   Mesh,
@@ -18,15 +16,12 @@ import {
   MeshStandardMaterial,
   PMREMGenerator,
   Scene,
-  Quaternion,
   RepeatWrapping,
   RingGeometry,
   Shape,
   SphereGeometry,
   SRGBColorSpace,
   Texture,
-  Vector3,
-  type BufferGeometry,
 } from "three";
 import {
   COASTER_QUEUE_PAD,
@@ -35,16 +30,17 @@ import {
   PARK_PLATFORM,
   PARK_PLAZA,
   PARK_QUEUE_HALL,
-  PARK_TREES,
 } from "@caysonverse/shared/village/parkArea";
 import { isTouchDevice } from "../device";
 import { CoasterWorld } from "./CoasterWorld";
 import { Shops } from "./ParkShops";
 import { ParkMountains, ParkScenery } from "./ParkScenery";
 import { ParkProps } from "./ParkProps";
+import { ParkVegetation } from "./ParkVegetation";
+import type { VillageTier } from "../village/villageModelPrep";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 import { gateSignTexture } from "./canvasTextures";
-import { ALL_PARK_URLS, parkMaterial, pickSet } from "./pbr";
+import { ALL_PARK_URLS, featherTexture, parkMaterial, pickSet } from "./pbr";
 
 const PINE_URL = (isTouchDevice ? "/textures/houses/lo/" : "/textures/houses/hi/") + "T_h_wood_pine.webp";
 const X: V3 = [1, 0, 0];
@@ -112,14 +108,12 @@ function ParkSky() {
 
 function Ground({ all }: { all: Texture[] }) {
   const grass = useMemo(() => {
-    const m = parkMaterial(pickSet(all, "Grass001"), 1, { color: new Color("#d4e2bc"), normalScale: 0.9 });
-    setRepeat(m, 700 / 3.5, 620 / 3.5);
-    // the CC0 grass albedo is dark: lift it with a little of its own colour as emission
-    m.emissiveMap = m.map;
-    m.emissive = new Color(0.42, 0.46, 0.36);
+    // the village lawn's own set (Poly Haven leafy_grass), graded green-gold like the village lawn (GROUND_GRADE LM_grass: sunny, lime; the raw albedo is dry straw)
+    const m = parkMaterial(pickSet(all, "LeafyGrass"), 1, { color: new Color(0.52, 1.1, 0.36), normalScale: 0.9 });
+    setRepeat(m, 700 / 5, 620 / 5);
     // broad light and dark patches (a mown-and-wild mottle) so the lawn is not one flat green at a distance
     m.lightMap = macroTexture();
-    m.lightMapIntensity = 1.6;
+    m.lightMapIntensity = 0.9;
     return m;
   }, [all]);
   const plazaGeo = useMemo(() => new CircleGeometry(PARK_PLAZA.radius, 64), []);
@@ -141,7 +135,13 @@ function Ground({ all }: { all: Texture[] }) {
   const rectMats = useMemo(
     () =>
       pads.map(([, , w, d, k]) =>
-        parkMaterial(k === "p" ? setsPave : setsGravel, [w / 3, d / 3], { color: new Color(k === "p" ? "#e9dfd2" : "#d9cdb8"), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
+        parkMaterial(k === "p" ? setsPave : setsGravel, [w / 3, d / 3], {
+          color: new Color(k === "p" ? "#e9dfd2" : "#d9cdb8"),
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -4,
+          ...(k === "p" ? {} : { transparent: true, alphaMap: featherTexture(), depthWrite: false }),
+        }),
       ),
     [pads, setsPave, setsGravel],
   );
@@ -315,67 +315,6 @@ function Fountain({ all }: { all: Texture[] }) {
 
 // ───────────────────────────────────────── trees, lamps, flowers, benches ─────────────────────────────────────────
 
-function Trees() {
-  const trunk = useRef<InstancedMesh>(null);
-  const canopies = [useRef<InstancedMesh>(null), useRef<InstancedMesh>(null), useRef<InstancedMesh>(null)];
-  const trunkGeo = useMemo(() => new CylinderGeometry(0.16, 0.3, 3.2, 7), []);
-  const geos = useMemo<BufferGeometry[]>(() => {
-    const blob = (r: number, x: number, y: number, z: number): BufferGeometry => {
-      const g = new IcosahedronGeometry(r, 1);
-      g.translate(x, y, z);
-      return g;
-    };
-    if (isTouchDevice) {
-      // phones: one blob or one cone a tree
-      return [blob(2.1, 0, 0, 0), new CylinderGeometry(0.01, 1.9, 5.2, 7).translate(0, 0.9, 0).toNonIndexed(), blob(1.7, 0, 0, 0)];
-    }
-    const round = mergeGeometries([blob(1.7, 0, 0, 0), blob(1.3, 1.2, -0.5, 0.4), blob(1.35, -1.1, -0.4, -0.5), blob(1.1, 0.2, 1.1, -0.2), blob(1.0, -0.3, -0.7, 1.2)])!;
-    const fir = mergeGeometries([new CylinderGeometry(0.01, 1.9, 2.4, 9).translate(0, 1.9, 0), new CylinderGeometry(0.01, 1.5, 2.2, 9).translate(0, 3.3, 0), new CylinderGeometry(0.01, 1.1, 2.0, 9).translate(0, 4.6, 0)].map((g) => g.toNonIndexed()))!;
-    const bushy = mergeGeometries([blob(1.5, 0, 0, 0), blob(1.2, 1.0, 0.2, 0.3), blob(1.2, -0.9, 0.1, -0.4)])!;
-    return [round, fir, bushy];
-  }, []);
-  const trunkMat = useMemo(() => new MeshStandardMaterial({ color: "#5a4030", roughness: 0.95 }), []);
-  const leafMat = useMemo(() => new MeshStandardMaterial({ color: "#ffffff", roughness: 0.8 }), []);
-  useEffect(() => {
-    const m = new Matrix4();
-    const q = new Quaternion();
-    const counts = [0, 0, 0];
-    const col = new Color();
-    PARK_TREES.forEach((t, i) => {
-      m.compose(new Vector3(t.x, 1.6 * t.s, t.z), q.identity(), new Vector3(t.s, t.s, t.s));
-      trunk.current?.setMatrixAt(i, m);
-      const k = t.kind;
-      const y = k === 1 ? 0.6 * t.s : k === 0 ? 4.4 * t.s : 3.6 * t.s;
-      m.compose(new Vector3(t.x, y, t.z), q.identity(), new Vector3(t.s, k === 0 ? t.s * 0.9 : t.s, t.s));
-      const ref = canopies[k]!.current;
-      if (ref) {
-        ref.setMatrixAt(counts[k]!, m);
-        col.setHSL(0.24 + ((t.x * 7 + t.z * 3) % 10) / 120, 0.4 + (k === 1 ? 0.1 : 0), 0.3 + (((t.x + t.z) % 7) / 70));
-        ref.setColorAt(counts[k]!, col);
-        counts[k]!++;
-      }
-    });
-    for (let k = 0; k < 3; k++) {
-      const ref = canopies[k]!.current;
-      if (ref) {
-        ref.count = counts[k]!;
-        ref.instanceMatrix.needsUpdate = true;
-        if (ref.instanceColor) ref.instanceColor.needsUpdate = true;
-      }
-    }
-    if (trunk.current) trunk.current.instanceMatrix.needsUpdate = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  return (
-    <group>
-      <instancedMesh frustumCulled={false} ref={trunk} args={[trunkGeo, trunkMat, PARK_TREES.length]} castShadow />
-      {geos.map((g, k) => (
-        <instancedMesh frustumCulled={false} key={k} ref={canopies[k]} args={[g, leafMat, PARK_TREES.length]} castShadow receiveShadow />
-      ))}
-    </group>
-  );
-}
-
 function Lamps() {
   const post = useRef<InstancedMesh>(null);
   const bulb = useRef<InstancedMesh>(null);
@@ -507,7 +446,7 @@ function useSkyEnv(): Texture {
 }
 
 /** Everything of 케이슨랜드 that stands in the park area (park-local metres). */
-export function ParkWorld({ tier = "high" }: { tier?: "high" | "low" }) {
+export function ParkWorld({ tier }: { tier: VillageTier }) {
   const all = useTexture(ALL_PARK_URLS) as Texture[];
   const [pine] = useTexture([PINE_URL]) as Texture[];
   const env = useSkyEnv();
@@ -519,13 +458,13 @@ export function ParkWorld({ tier = "high" }: { tier?: "high" | "low" }) {
       <GateArch all={all} />
       <QueueHall all={all} pine={pine!} />
       <Fountain all={all} />
-      <Trees />
+      <ParkVegetation />
       <Lamps />
       <Beds pine={pine!} />
       <ParkProps all={all} />
       <ParkScenery all={all} />
       <Suspense fallback={null}>
-        <ParkMountains tier={tier} />
+        <ParkMountains tier={tier === "high" ? "high" : "low"} />
       </Suspense>
       <CoasterWorld all={all} pine={pine!} env={env} />
     </group>
