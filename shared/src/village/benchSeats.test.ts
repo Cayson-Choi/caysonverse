@@ -62,7 +62,7 @@ function inBenchFrame(b: VillageBench, x: number, z: number): { along: number; a
 const benchOf = (id: string) => VILLAGE_BENCHES.find((b) => b.id === id)!;
 const seatsOf = (furniture: string): VillageSeat[] => VILLAGE_SEATS.filter((s) => s.bench === furniture);
 const indexOf = (id: string): number => VILLAGE_SEATS.findIndex((s) => s.id === id);
-const hallSeats = VILLAGE_SEATS.filter((s) => s.area === "hall");
+const hallSeats = VILLAGE_SEATS.filter((s) => s.area === "hall" && !s.retired);
 const fwd = (s: { yaw: number }) => ({ x: Math.sin(s.yaw), z: Math.cos(s.yaw) });
 
 describe("village benches (the models sitting needs)", () => {
@@ -105,10 +105,13 @@ describe("village benches (the models sitting needs)", () => {
 
 describe("village seats (where a sitter goes)", () => {
   it("one global list: plaza places (backed, one facing), the forecourt's (backless, two facings in one group), the hall's, the houses'", () => {
-    // 8 plaza benches x 2 places, the forecourt 2 places x 2 facings, the hall's markers (20..50), the houses' (집 실내 G: from 51,
+    // 8 plaza benches x 2 places, the forecourt 2 places x 2 facings, the hall's markers (20..50: 25 seats and, since release 3.1, 6 retired chairs keeping their indices), the houses' (집 실내 G: from 51,
     // every finished floor's), the bus shelter's two, then the art's marked seats
     expect(VILLAGE_SEATS.slice(16, 20).every((s) => s.bench === "memorial_forecourt")).toBe(true);
     expect(VILLAGE_SEATS.slice(20, 51).every((s) => s.area === "hall")).toBe(true);
+    // the six chairs taken out in release 3.1 keep their indices as retired seats, out of every map's reach
+    expect(VILLAGE_SEATS.slice(20, 51).filter((s) => s.retired).map((s) => s.id)).toEqual(["consult_0", "consult_1", "letter_n0", "letter_n1", "letter_s0", "letter_s1"]);
+    for (const s of VILLAGE_SEATS.filter((v) => v.retired)) expect(nearestFreeSeat(s.x, s.z, () => false, SEAT_REACH, VILLAGE_SEATS.filter((v) => !v.retired))).toBeNull();
     const housesEnd = VILLAGE_SEATS.findIndex((s, i) => i >= 51 && !isHouseArea(s.area));
     expect(housesEnd).toBeGreaterThan(51 + 100); // the ten houses' 110-odd seats
     expect(VILLAGE_SEATS.slice(51, housesEnd).every((s) => isHouseArea(s.area))).toBe(true);
@@ -163,6 +166,7 @@ describe("village seats (where a sitter goes)", () => {
   it("every seat point is in its own area and clear of the other seats of its area (one group is one place)", () => {
     for (let i = 0; i < VILLAGE_SEATS.length; i++) {
       const a = VILLAGE_SEATS[i]!;
+      if (a.retired) continue; // (a retired seat lies far outside every map on purpose)
       const house = parseHouseFloorArea(a.area);
       const bounds = a.area === "village" ? villageWalkArea(L) : house ? houseFloorBounds(house.n, house.floor) : L.areas.hall;
       expect(a.x, a.id).toBeGreaterThan(bounds.minX);
@@ -192,11 +196,11 @@ describe("village seats (where a sitter goes)", () => {
 });
 
 describe("the memorial hall's seats (generated from the model's seat__ markers)", () => {
-  it("every sofa, armchair, chair and bench of the hall is a seat: 21 places, 31 seats", () => {
-    expect(MEMORIAL_SEAT_MARKERS).toHaveLength(21);
+  it("every sofa, armchair and bench of the hall is a seat: 15 places, 25 seats (no desk or letter chairs since 2026-11-17)", () => {
+    expect(MEMORIAL_SEAT_MARKERS).toHaveLength(15);
     const by = (furn: string) => MEMORIAL_SEAT_MARKERS.filter((m) => m.furn === furn).length;
-    expect({ sofa: by("sofa"), armchair: by("armchair"), chair: by("chair"), bench: by("bench") }).toEqual({ sofa: 3, armchair: 2, chair: 6, bench: 10 });
-    expect(hallSeats).toHaveLength(31);
+    expect({ sofa: by("sofa"), armchair: by("armchair"), chair: by("chair"), bench: by("bench") }).toEqual({ sofa: 3, armchair: 2, chair: 0, bench: 10 });
+    expect(hallSeats).toHaveLength(25);
     for (const m of MEMORIAL_SEAT_MARKERS) expect(seatsOf(m.id).length, m.id).toBe(m.kind === "backless" && m.both ? 2 : 1);
   });
 
@@ -245,65 +249,6 @@ describe("the memorial hall's seats (generated from the model's seat__ markers)"
     expect(approachesSeat(sofa, justBehind.x, justBehind.z)).toBe(false);
     expect(approachesSeat(sofa, justBehind.x, justBehind.z, SEAT_APPROACH_SLACK)).toBe(true);
     expect(approachesSeat(sofa, sofa.x - f.x * 1.2, sofa.z - f.z * 1.2, SEAT_APPROACH_SLACK)).toBe(false);
-  });
-
-  it("a chair at a table is sat on from its sides too (its front is the table), never through its backrest", () => {
-    for (const id of ["letter_s0", "letter_n1", "consult_0", "consult_1"]) {
-      const chair = VILLAGE_SEATS[indexOf(id)]!;
-      const f = fwd(chair);
-      const side = { x: f.z, z: -f.x }; // a quarter turn from the facing
-      expect(chair.sidePlane, id).toBeGreaterThan(0.2);
-      expect(approachesSeat(chair, chair.x + side.x * 0.6, chair.z + side.z * 0.6), `${id} from its side`).toBe(true);
-      expect(approachesSeat(chair, chair.x - side.x * 0.6, chair.z - side.z * 0.6), `${id} from its other side`).toBe(true);
-      // from behind the backrest: refused by the client, and by the server even with its slack
-      expect(approachesSeat(chair, chair.x - f.x * 1.1, chair.z - f.z * 1.1), `${id} from behind`).toBe(false);
-      expect(approachesSeat(chair, chair.x - f.x * 1.1, chair.z - f.z * 1.1, SEAT_APPROACH_SLACK), `${id} from behind (server)`).toBe(false);
-    }
-    expect(VILLAGE_SEATS[indexOf("armchair_0")]!.sidePlane).toBeUndefined();
-    expect(VILLAGE_SEATS[indexOf("armchair_0")]!.sideHalf).toBeUndefined();
-    expect(VILLAGE_SEATS[indexOf("sofa_a1")]!.sidePlane).toBeUndefined();
-  });
-
-  it("round 8 review: behind one letter chair, or across the table, the chair opposite or the next one is never offered", () => {
-    const hall = (i: number) => VILLAGE_SEATS[i]!.area !== "hall";
-    const at = (x: number, z: number) => {
-      const i = nearestFreeSeat(x, z, hall, SEAT_REACH, VILLAGE_SEATS);
-      return i === null ? null : VILLAGE_SEATS[i]!.id;
-    };
-    // behind letter_n1's backrest (it sat the visitor on letter_s1 across the table), and diagonally behind letter_s0
-    expect(at(295.38, -4.39)).toBeNull();
-    expect(at(294.06, -1.34)).toBeNull();
-    // in the gap behind the two north chairs, nearer letter_n0: letter_n0 (the chair beside), never s0 / s1 across the table
-    expect(at(294.28, -4.48)).toBe("letter_n0");
-    // each chair's own approach still offers that chair
-    for (const id of ["letter_n0", "letter_n1", "letter_s0", "letter_s1", "consult_0", "consult_1"]) {
-      const c = VILLAGE_SEATS[indexOf(id)]!;
-      expect(at(c.standX, c.standZ), id).toBe(id);
-      expect(c.aheadMax, id).toBeCloseTo(0.6, 3);
-    }
-  });
-
-  it("beside a chair a little behind its backrest's plane is still beside it; straight behind the backrest never is", () => {
-    for (const id of ["letter_s0", "letter_n1", "consult_0", "consult_1"]) {
-      const chair = VILLAGE_SEATS[indexOf(id)]!;
-      const f = fwd(chair);
-      const side = { x: f.z, z: -f.x };
-      const plane = chair.sidePlane!;
-      expect(chair.sideHalf, id).toBeCloseTo(0.23, 2);
-      // 0.3 m behind the backrest's plane, 0.8 m out to the side (the gap between the consultation chairs; between the letter
-      // chairs, 1.3 m apart, up to half the way to the next chair: round 8): beside
-      const out = Math.min(0.8, chair.sideHalf! + (chair.sideFar ?? 0.9) - 0.05);
-      const besideBehind = { x: chair.x - f.x * (plane + 0.3) + side.x * out, z: chair.z - f.z * (plane + 0.3) + side.z * out };
-      expect(approachesSeat(chair, besideBehind.x, besideBehind.z), `${id} beside, a little behind`).toBe(true);
-      // the same depth, right behind the backrest (no side offset, or within the chair's width): refused, server too
-      for (const off of [0, 0.2, -0.3]) {
-        const behind = { x: chair.x - f.x * (plane + 0.3) + side.x * off, z: chair.z - f.z * (plane + 0.3) + side.z * off };
-        expect(approachesSeat(chair, behind.x, behind.z, SEAT_APPROACH_SLACK), `${id} behind ${off}`).toBe(false);
-      }
-      // beside but far behind: refused
-      const farBehind = { x: chair.x - f.x * (plane + 1.1) + side.x * 0.8, z: chair.z - f.z * (plane + 1.1) + side.z * 0.8 };
-      expect(approachesSeat(chair, farBehind.x, farBehind.z, SEAT_APPROACH_SLACK), `${id} far behind`).toBe(false);
-    }
   });
 
   it("a backless bench outdoors: the two facings of one place sit at the same spot, back to back, and are one group", () => {
@@ -364,9 +309,9 @@ describe("nobody is trapped in the hall: every seat can be left and the whole fl
     for (const s of hallSeats) expect(hasNear(reach, { x: s.standX, z: s.standZ }, 0.1), s.id).toBe(true);
   });
 
-  it("the places a visitor goes are on that floor: the door pad, bank C's front, the desk, the kiosk, the flower stand, the letter table, the lounge", () => {
+  it("the places a visitor goes are on that floor: the door pad, bank C's front, the open floor where the desk and the letter table stood, the lounge", () => {
     const places: Array<[string, number, number]> = [
-      ["the door", 300, 5.2], ["bank C's front", 299.87, -4.5], ["the desk", 303.0, 4.1], ["the kiosk", 303.4, 3.4],
+      ["the door", 300, 5.2], ["bank C's front", 299.87, -4.5], ["where the desk stood", 303.0, 4.1], ["where the kiosk stood", 303.4, 3.4],
       ["the flowers", 302.8, 4.8], ["the mailbox", 297.2, -3.4], ["the lounge", 294.6, 3.0], ["east cubbies", 306.0, 0.0], ["bank A", 295.0, -4.9],
     ];
     for (const [name, x, z] of places) expect(hasNear(reach, { x, z }, 0.15), name).toBe(true);
@@ -375,7 +320,7 @@ describe("nobody is trapped in the hall: every seat can be left and the whole fl
 
 describe("village seats (where a sitter gets up to)", () => {
   it("every dismount spot is clear of every collider of its map (a standing body plus margin) and inside its area", () => {
-    for (const s of VILLAGE_SEATS) {
+    for (const s of VILLAGE_SEATS.filter((v) => !v.retired)) {
       const house = parseHouseFloorArea(s.area);
       const bounds = s.area === "village" ? villageWalkArea(L) : house ? houseFloorBounds(house.n, house.floor) : L.areas.hall;
       const obstacles = villageGeometry.obstacles;
@@ -561,21 +506,6 @@ describe("the bus stop shelter's bench", () => {
   });
 });
 
-describe("chairs side by side: each one's dismount spot offers that chair, never its neighbour (review 2026-11-15 round 5)", () => {
-  const hall = VILLAGE_SEATS.map((s) => (s.area === "hall" ? s : { ...s, x: 1e6, z: 1e6 }));
-  for (const [own, other] of [["consult_0", "consult_1"], ["consult_1", "consult_0"], ["letter_n0", "letter_n1"], ["letter_s1", "letter_s0"]] as const) {
-    it(`${own}: from its spot and a step short of it all round`, () => {
-      const i = VILLAGE_SEATS.findIndex((s) => s.id === own);
-      const j = VILLAGE_SEATS.findIndex((s) => s.id === other);
-      const s = VILLAGE_SEATS[i]!;
-      expect(nearestFreeSeat(s.standX, s.standZ, () => false, SEAT_REACH, hall)).toBe(i);
-      for (let k = 0; k < 8; k++) {
-        const a = (k * Math.PI) / 4;
-        expect(nearestFreeSeat(s.standX + Math.cos(a) * 0.35, s.standZ + Math.sin(a) * 0.35, () => false, SEAT_REACH, hall), `${own} k${k}`).not.toBe(j);
-      }
-    });
-  }
-
 describe("the fishing lake's seats in the global index (A10, design 5.4 and 12.2)", () => {
   const lake = lakeSeats();
   const lakeIdx = VILLAGE_SEATS.map((s, i) => (s.lake ? i : -1)).filter((i) => i >= 0);
@@ -646,7 +576,6 @@ describe("the fishing lake's seats in the global index (A10, design 5.4 and 12.2
       expect(isBlocked(s.standX, s.standZ, PLAYER_RADIUS, villageGeometry.obstacles, 0), `${s.id} ${s.standX},${s.standZ}`).toBe(false);
     }
   });
-});
 });
 
 describe("the plaza zelkova deck (평상, UX 2026-11-16)", () => {

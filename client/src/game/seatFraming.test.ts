@@ -47,10 +47,10 @@ describe("own avatar in view in the memorial hall (review 2026-11-15 round 5: it
     }
   });
 
-  it("every seat in the hall (sofas, armchairs, consult chairs, letter chairs, benches) is first framed with the camera 3.2 m+ from the head", () => {
+  it("every seat in the hall (sofas, armchairs, benches) is first framed with the camera 3.2 m+ from the head", () => {
     const kinds = new Set(HALL_SEATS.map((s) => s.id.replace(/_.*$/, "")));
     expect(HALL_SEATS.length).toBeGreaterThanOrEqual(21);
-    expect([...kinds].sort()).toEqual(expect.arrayContaining(["armchair", "bench", "consult", "letter", "sofa"]));
+    expect([...kinds].sort()).toEqual(expect.arrayContaining(["armchair", "bench", "sofa"]));
     for (const s of HALL_SEATS) {
       for (const aspect of [PC, PHONE, PHONE_LAND]) {
         for (const distance of [CAMERA.distance, 4, 12]) {
@@ -138,29 +138,6 @@ describe("a seat's first framing never puts the camera inside or above solid thi
     }
   });
 
-  it("letter_s0 as the reviewer met it (the low framings from the lounge side see the body blocked): without the spot test the camera ends up in the louvres, with it never", () => {
-    const s = HALL_SEATS.find((x) => x.id === "letter_s0")!;
-    expect(s).toBeTruthy();
-    // in the hall the chairs and the sofa block the low lines from the lounge side; the high one slips through the slats
-    const offSight = setSeatSightBlocker((_fx, fy, fz) => fz > s.z + 1 && fy < 3.5);
-    try {
-      const f = indoorSeatFrame(s.x, s.z, s.yaw, 6, PC);
-      const spot = settled(s.x, s.z, f, PC);
-      expect(inLouvres(spot.x, spot.y, spot.z), JSON.stringify(spot)).toBe(true);
-      const offSpot = setSeatSpotBlocker(inLouvres);
-      try {
-        const g = indoorSeatFrame(s.x, s.z, s.yaw, 6, PC);
-        const at = settled(s.x, s.z, g, PC);
-        expect(inLouvres(at.x, at.y, at.z), JSON.stringify(at)).toBe(false);
-        expect(g.dist).toBeGreaterThanOrEqual(INDOOR_SEAT_MIN_DIST - 1e-9);
-      } finally {
-        offSpot();
-      }
-    } finally {
-      offSight();
-    }
-  });
-
   it("the search is done once per seat, zoom and screen: a second ask is answered from the cache (no rays)", () => {
     let rays = 0;
     const off = setSeatSightBlocker(() => {
@@ -168,7 +145,7 @@ describe("a seat's first framing never puts the camera inside or above solid thi
       return false;
     });
     try {
-      const s = HALL_SEATS.find((x) => x.id === "letter_s1")!;
+      const s = HALL_SEATS.find((x) => x.id === "sofa_a0")!;
       const a = indoorSeatFrame(s.x, s.z, s.yaw, 6, PC);
       const first = rays;
       expect(first).toBeGreaterThan(0);

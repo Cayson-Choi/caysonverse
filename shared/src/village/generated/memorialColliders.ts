@@ -12,15 +12,9 @@ export const MEMORIAL_COLLIDERS: readonly AABB[] = [
   { minX: 292.7, maxX: 293.54, minZ: 3.1, maxZ: 5.11 }, // col__sofa_short
   { minX: 292.7, maxX: 296.55, minZ: 5.09, maxZ: 5.95 }, // col__sofa_long
   { minX: 292.73, maxX: 293.17, minZ: 2.18, maxZ: 2.62 }, // col__plant_w
-  { minX: 293.4, maxX: 295.4, minZ: -3.35, maxZ: -2.55 }, // col__letter_table
-  { minX: 293.52, maxX: 293.98, minZ: -3.98, maxZ: -3.52 }, // col__letter_n0
-  { minX: 293.52, maxX: 293.98, minZ: -2.38, maxZ: -1.92 }, // col__letter_s0
   { minX: 293.58, maxX: 294.42, minZ: 1.6, maxZ: 2.38 }, // col__armchair_0
-  { minX: 294.82, maxX: 295.28, minZ: -3.98, maxZ: -3.52 }, // col__letter_n1
-  { minX: 294.82, maxX: 295.28, minZ: -2.38, maxZ: -1.92 }, // col__letter_s1
   { minX: 294.88, maxX: 295.52, minZ: 3.43, maxZ: 4.07 }, // col__coffee_table
   { minX: 295.78, maxX: 296.62, minZ: 1.6, maxZ: 2.38 }, // col__armchair_1
-  { minX: 296.7, maxX: 298.5, minZ: 5.38, maxZ: 5.97 }, // col__tea_counter
   { minX: 296.93, maxX: 297.27, minZ: 3.43, maxZ: 3.77 }, // col__lamp
   { minX: 297.02, maxX: 299.22, minZ: -2.91, maxZ: -2.49 }, // col__bench_w1
   { minX: 297.02, maxX: 299.22, minZ: -0.81, maxZ: -0.39 }, // col__bench_w2
@@ -28,13 +22,7 @@ export const MEMORIAL_COLLIDERS: readonly AABB[] = [
   { minX: 300.52, maxX: 302.72, minZ: -2.91, maxZ: -2.49 }, // col__bench_e1
   { minX: 300.52, maxX: 302.72, minZ: -0.81, maxZ: -0.39 }, // col__bench_e2
   { minX: 301.14, maxX: 307.5, minZ: -6, maxZ: -5.61 }, // col__cubby_b
-  { minX: 301.9, maxX: 303.7, minZ: 5.4, maxZ: 5.97 }, // col__flower_stand
-  { minX: 303.1, maxX: 303.7, minZ: 2.57, maxZ: 2.95 }, // col__kiosk
-  { minX: 303.97, maxX: 304.43, minZ: 3.07, maxZ: 3.53 }, // col__consult_0
-  { minX: 303.97, maxX: 304.43, minZ: 4.72, maxZ: 5.18 }, // col__consult_1
   { minX: 304.64, maxX: 305.06, minZ: -2.9, maxZ: -0.7 }, // col__bench_east
-  { minX: 304.88, maxX: 305.48, minZ: 2.26, maxZ: 5.44 }, // col__desk_front
-  { minX: 305.4, maxX: 307.4, minZ: 2.26, maxZ: 2.84 }, // col__desk_return
   { minX: 305.68, maxX: 306.12, minZ: 1.08, maxZ: 1.52 }, // col__plant_e
   { minX: 307.11, maxX: 307.5, minZ: -5.61, maxZ: 2.07 }, // col__cubby_e
   { minX: 307.5, maxX: 308, minZ: -6.5, maxZ: 6.5 }, // col__hall_wall_e

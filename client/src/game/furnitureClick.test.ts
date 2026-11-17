@@ -24,17 +24,9 @@ const cushion = (id: string, up = 0.05, back = 0.2): V => {
   const b = (s.frontEdge ?? 0) + back;
   return { x: s.x - Math.sin(s.yaw) * b, y: (s.seatY ?? 0.45) + up, z: s.z - Math.cos(s.yaw) * b };
 };
-/** The letter table's top (y 0.76): where `r` meets it, if it does. */
-const LETTER_TABLE = { minX: 293.4, maxX: 295.4, minZ: -3.35, maxZ: -2.55, top: 0.76 };
-const tableTopHit = (r: ClickRay) => {
-  const t = (LETTER_TABLE.top - r.o.y) / r.d.y;
-  const p = at(r, t);
-  return t > 0 && p.x > LETTER_TABLE.minX && p.x < LETTER_TABLE.maxX && p.z > LETTER_TABLE.minZ && p.z < LETTER_TABLE.maxZ ? p : null;
-};
-
 describe("a click on furniture (round 8 review: a tap on the sofa did nothing; round 9: by the click's ray)", () => {
   it("a click on a seat's cushion or backrest walks to that seat's approach, where that very seat is offered", () => {
-    for (const id of ["sofa_a0", "sofa_a1", "sofa_b0", "armchair_0", "armchair_1", "letter_n0", "letter_s1", "consult_0"]) {
+    for (const id of ["sofa_a0", "sofa_a1", "sofa_b0", "armchair_0", "armchair_1"]) {
       const s = seat(id);
       // a camera 2.5 m in front of the seat and 1.6 m up, looking at the cushion's front, its middle, and the backrest
       const cam = { x: s.x + Math.sin(s.yaw) * 2.5, y: 1.9, z: s.z + Math.cos(s.yaw) * 2.5 };
@@ -48,31 +40,6 @@ describe("a click on furniture (round 8 review: a tap on the sofa did nothing; r
         expect(offeredAt(s.standX, s.standZ), id).toBe(id);
       }
     }
-  });
-
-  it("a letter chair half hidden behind the table, tapped from the aisle, is that chair (round 9: the tap hit the table top)", () => {
-    let hidden = 0;
-    for (const id of ["letter_n0", "letter_n1", "letter_s0", "letter_s1"]) {
-      // the aisle and the hall's middle, a third-person camera's height (PC 1.9-2.4 m, phone 2.6 m)
-      for (const cam of [
-        { x: 299.0, y: 1.9, z: -0.5 },
-        { x: 300.0, y: 2.4, z: 1.5 },
-        { x: 298.0, y: 2.6, z: -4.6 },
-        { x: 297.5, y: 2.1, z: 0.8 },
-      ]) {
-        const target = cushion(id, 0.1);
-        const r = rayTo(cam, target);
-        // another chair in front of this one on the screen is what the tap is on (its volume is entered first)
-        const first = VILLAGE_SEATS.map((_, i) => i).filter((i) => VILLAGE_SEATS[i]!.area === "hall").sort((a, b) => seatRayEntry(r, VILLAGE_SEATS, a) - seatRayEntry(r, VILLAGE_SEATS, b))[0]!;
-        if (idOf(first) !== id) continue;
-        const top = tableTopHit(r);
-        const pick = top ?? at(r, Math.hypot(target.x - cam.x, target.y - cam.y, target.z - cam.z));
-        if (top) hidden++;
-        const fc = furnitureClick(pick, r, VILLAGE_SEATS, "hall", free, { x: cam.x, z: cam.z }, 0, true)!;
-        expect(idOf(fc.seatIndex), `${id} from ${JSON.stringify(cam)} ${top ? "(table top first)" : ""}`).toBe(id);
-      }
-    }
-    expect(hidden).toBeGreaterThanOrEqual(4); // the reviewer's case (the table top met first) is in the sweep
   });
 
   it("a backless bench is sat on from the side the player comes from", () => {

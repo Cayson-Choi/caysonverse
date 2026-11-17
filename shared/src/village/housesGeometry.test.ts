@@ -205,7 +205,7 @@ describe("the house seats in the one global list", () => {
 
   it("come in one run after every village bench and hall seat (main's later seats after them), in house, floor, marker order", () => {
     const firstHouse = VILLAGE_SEATS.findIndex((s) => isHouseArea(s.area));
-    expect(firstHouse).toBe(51); // after the 20 village bench places and the hall's 31
+    expect(firstHouse).toBe(51); // after the 20 village bench places and the hall's 31 (25 places since release 3.1, the 6 removed chairs retired in place)
     // seat ids are append-only: the seats a later release restored (LATE_HOUSE_SEATS) are at the very end of the list instead
     const inRun = houseSeats.filter((s) => !LATE_HOUSE_SEATS.includes(s.bench));
     const end = firstHouse + inRun.length;

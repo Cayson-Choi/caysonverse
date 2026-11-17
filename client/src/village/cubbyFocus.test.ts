@@ -170,15 +170,14 @@ describe("cubbyFocusPose — every row of every bank, PC and phone (review 2026-
     }
   });
 
-  it("the east bench and the letter table no longer hold the phone camera (E r0-r1 c6-c11, A c2-c6 at a 0.6 sheet)", () => {
+  it("the east bench no longer holds the phone camera (the letter table is gone, 2026-11-17) (E r0-r1 c6-c11, A c2-c6 at a 0.6 sheet)", () => {
     const bench = MEMORIAL_COLLIDERS.find((b) => b.minX === 304.64 && b.minZ === -2.9)!;
     expect(bench.minX).toBeCloseTo(304.64, 2); // col__bench_east
     for (const a of anchors.filter((x) => (x.bank === "E" && x.row <= 1 && x.col >= 6 && x.col <= 11) || (x.bank === "A" && x.col >= 2 && x.col <= 6))) {
       for (const frac of [0.45, 0.6]) {
         const p = cubbyFocusPose(a, 390 / 844, 50, { side: "bottom", frac });
         const inBench = p.ex > bench.minX && p.ex < bench.maxX && p.ez > bench.minZ && p.ez < bench.maxZ;
-        const inTable = p.ex > 293.4 && p.ex < 295.4 && p.ez > -3.35 && p.ez < -2.55;
-        expect(inBench || inTable, a.id).toBe(false);
+        expect(inBench, a.id).toBe(false);
       }
     }
   });

@@ -386,6 +386,8 @@ export interface VillageSeat extends Seat {
   lake?: LakeSeatKind;
   /** A fishing chair: the id of its spot in `LAKE_FISHING_SPOTS`. */
   spot?: string;
+  /** A seat whose furniture was taken out (release 3.1): it keeps its index, far away and never offered (`retiredSeat`). */
+  retired?: boolean;
 }
 
 /** Wrap an angle into (-pi, pi]. */
@@ -705,17 +707,47 @@ function fallsStoneSeats(): VillageSeat[] {
   return out;
 }
 
+/**
+ * The memorial hall's seat markers in the order their seats took in release 3 (Player.seatIndex 20..50): seat ids are append-only.
+ * Release 3.1 (mem-b, owner "안내데스크도 다 없애고 심플하게") took out the consult chairs and the letter table's four chairs; their
+ * indices stay, held by retired seats nobody can reach.
+ */
+export const HALL_SEAT_ORDER: readonly string[] = [
+  "armchair_0", "armchair_1", "bench_e1_s0", "bench_e1_s1", "bench_e2_s0", "bench_e2_s1", "bench_east_s0", "bench_east_s1",
+  "bench_w1_s0", "bench_w1_s1", "bench_w2_s0", "bench_w2_s1", "consult_0", "consult_1", "letter_n0", "letter_n1", "letter_s0",
+  "letter_s1", "sofa_a0", "sofa_a1", "sofa_b0",
+];
+
+/** Far outside every map (m): a retired seat's spot, so no player is ever within SEAT_REACH of it (client prompt, server Sit). */
+const RETIRED_AT = -100000;
+
+/**
+ * A seat index whose furniture is gone (`retired`): kept so later indices do not move. It lies far outside every map, so neither the
+ * client's prompt (nearestFreeSeat) nor the server's Sit (validateSit's reach gate) can ever pick it.
+ */
+function retiredSeat(id: string, area: AreaId): VillageSeat {
+  return { id, bench: id, area, x: RETIRED_AT, z: RETIRED_AT, yaw: 0, standX: RETIRED_AT, standZ: RETIRED_AT, seatY: 0.45, frontEdge: SIT_ROOT_AHEAD, kind: "backed", lean: 0, retired: true };
+}
+
 function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   const seats: VillageSeat[] = [];
+  const late: VillageSeat[] = [];
   // the open village's benches first, the shelter's held back (main's later seats come after the hall's and the houses')
   for (const b of benches) if (b !== SHELTER_BENCH) seats.push(...benchSeats(b));
   const hall = { area: "hall" as AreaId, bounds: VILLAGE_LAYOUT.areas.hall, geometry: villageGeometry, peers: MEMORIAL_SEAT_MARKERS as readonly MarkerSource[] };
-  for (const m of MEMORIAL_SEAT_MARKERS) seats.push(...markerSeats(m, hall));
+  // The hall's seats in their live order (HALL_SEAT_ORDER): a marker the hall no longer has keeps its index as a retired seat
+  // (retiredSeat), so no later index moves; a marker the hall adds later goes after all of them (none so far).
+  const hallMarkers = new Map(MEMORIAL_SEAT_MARKERS.map((m) => [m.id, m] as const));
+  for (const id of HALL_SEAT_ORDER) {
+    const m = hallMarkers.get(id);
+    if (m) seats.push(...markerSeats(m, hall));
+    else seats.push(retiredSeat(id, "hall")); // (each removed marker was a one-facing chair: one seat)
+  }
+  for (const m of MEMORIAL_SEAT_MARKERS) if (!HALL_SEAT_ORDER.includes(m.id)) late.push(...markerSeats(m, hall));
   // The houses (집 실내 G; design 6.4): house 1 floor 1, floor 2, house 2 … in marker order (compareHouseSeats), from each finished house's
   // seat markers (generated/houses). A house without a model has no seats.
   // Seat ids are append-only (Player.seatIndex is the index): a seat a later release brings back (LATE_HOUSE_SEATS) is left out here
   // and appended at the very end of the list instead, so no live index moves.
-  const late: VillageSeat[] = [];
   for (const n of HOUSE_NUMBERS) {
     const house = GENERATED_HOUSES[n];
     if (!house) continue;

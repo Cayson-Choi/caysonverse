@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { interactInputAt, pickInteraction } from "../game/interact";
+import { pickInteraction } from "../game/interact";
 import { HALL_ACTIVE_MAP } from "../game/activeMap";
 import { readFileSync } from "node:fs";
 import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
@@ -314,30 +314,13 @@ describe("villageBusTarget — the board button gives the shelter's bench the ke
   });
 });
 
-describe("the hall desk and its visitor chairs (review 2026-11-15: '문의하기' at the chair's side)", () => {
-  const pick = (x: number, z: number) => {
-    const input = interactInputAt(x, z, -1, () => false, undefined, { seats: HALL_ACTIVE_MAP.seats ?? [], area: "hall" });
-    return pickInteraction({ ...input, targets: villageAndHallTargets("hall", x, z) });
-  };
-  it("standing at the side of consult chair 0 offers 앉기; well away from both chairs the desk is asked", () => {
-    expect(pick(304.15, 2.5)).toMatchObject({ kind: "sit" });
-    expect(pick(304.48, 2.82)).toMatchObject({ kind: "sit" });
-    const away = pick(303.0, 4.0);
-    expect(away?.kind === "target" && away.target.id.startsWith("guide:")).toBe(false);
-  });
-  it("from the gap between the two chairs, where a tap-walk stops (x 303.83), each chair is offered: the nearer one", () => {
-    const seats = (HALL_ACTIVE_MAP.seats ?? []) as readonly { id?: string }[];
-    const idAt = (x: number, z: number) => {
-      const p = pick(x, z);
-      return p?.kind === "sit" ? seats[p.seatIndex]!.id : p?.kind === "target" ? p.target.id : null;
-    };
-    expect(idAt(303.83, 4.0)).toBe("consult_0");
-    expect(idAt(303.83, 4.3)).toBe("consult_1");
-    expect(idAt(304.3, 4.12)).toMatch(/^consult_/);
-    // round 5: a step short of the second chair's own spot (303.54, 4.5) offers that chair (its seat point is under the desk)
-    expect(idAt(303.29, 4.27)).toBe("consult_1");
-    // a step back from the chairs: no guide to ask any more (owner 2026-11-17)
-    expect(String(idAt(303.0, 3.9))).not.toMatch(/^guide:/);
+describe("where the hall desk stood (removed with its chairs, owner 2026-11-17: \"안내데스크도 다 없애고 심플하게\")", () => {
+  it("open floor: no seat, no guide, no desk to ask", () => {
+    for (const [x, z] of [[303.0, 4.0], [304.15, 2.5], [305.0, 4.6]] as const) {
+      const t = villageAndHallTargets("hall", x, z);
+      expect(t.some((v) => v.id.startsWith("guide:"))).toBe(false);
+      expect(((HALL_ACTIVE_MAP.seats ?? []) as readonly { id?: string }[]).some((st) => /^consult_/.test(st.id ?? ""))).toBe(false);
+    }
   });
 });
 
