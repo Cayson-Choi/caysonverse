@@ -21,10 +21,11 @@ export function compileSafely(
   return new Promise((resolve) => {
     const check = () => {
       for (const m of materials) {
-        const program = (gl.properties.get(m) as { currentProgram?: { isReady(): boolean | null } }).currentProgram;
+        const program = (gl.properties.get(m) as { currentProgram?: { isReady(): boolean | null; program?: unknown } }).currentProgram;
         let ready = true;
         try {
-          ready = !program || program.isReady() !== false;
+          // (a program released meanwhile — its material freed, three's destroy() clears `program` — is never asked: a deleted object)
+          ready = !program || program.program === undefined || program.isReady() !== false;
         } catch {
           ready = true; // a lost context, a freed program: nothing left to wait for
         }

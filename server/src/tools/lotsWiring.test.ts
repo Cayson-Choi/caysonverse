@@ -17,6 +17,7 @@ import { spreadArrival } from "@caysonverse/shared/village/arrivalSpot";
 import {
   LOTS_WITH_MODEL,
   LOT_INTERIORS,
+  LOT_PEW_KNEE,
   LOT_INTERIOR_SEAT_ORDER,
   LOT_REPLACED_MODEL_BOXES,
   LOT_ROOF_SLABS,
@@ -210,7 +211,7 @@ describe("seats: outside 12, inside 52, after every seat main has", () => {
     const r = LOT_ROOMS.find((x) => x.unit.id === "lot_chapel_nave")!;
     const pew = lotRoomSolids(r).find((s) => s.name === "pew_l1")!;
     const walk = lotRoomColliders().obstacles.find((b) => b.minX === pew.minX && b.minZ === pew.minZ && b.maxX === pew.maxX)!;
-    expect(walk.maxZ).toBeCloseTo(pew.maxZ - 0.1, 6);
+    expect(walk.maxZ).toBeCloseTo(pew.maxZ - LOT_PEW_KNEE, 6);
     expect(LOT_INTERIORS.find((i) => i.unit === "lot_chapel_nave")!.seats.length).toBe(10);
   });
 });

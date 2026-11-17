@@ -1,9 +1,10 @@
-import { VILLAGE_LAYOUT, busBoardingDistance, cubbyAnchors, isHouseArea, type AreaId, type CubbyAnchor, type Disc, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, busBoardingDistance, cubbyAnchors, isHouseArea, isLotArea, type AreaId, type CubbyAnchor, type Disc, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
 import { houseOffers } from "@caysonverse/shared/village/houseTargets";
 import { TRANSIT } from "@caysonverse/shared/village/transit";
 import { HOUSE_KEYPAD_REACH_M, keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import { GUIDE_ASK_LABEL, nearestGuide } from "@caysonverse/shared/village/guides";
 import type { InteractTarget } from "../game/interact";
+import { lotDoorTarget, lotExitTarget } from "./lots/lotTargets";
 import { BUS_SEATS, busPlaceOf, busSeatNumber, inExitZone, nearestFreeSpot, seatApproachOk } from "@caysonverse/shared/village/busCabin";
 
 /**
@@ -69,6 +70,11 @@ export function villageTargets(
     if (offers.length === 0) return NONE;
     return offers.map((o): InteractTarget => ({ kind: "door", id: o.id, dist: o.dist, icon: o.icon, label: o.label, short: o.short }));
   }
+  // a lot building's room (lots v2): its way out
+  if (isLotArea(area)) {
+    const exit = lotExitTarget(area, x, z);
+    return exit ? [exit] : NONE;
+  }
   const pad = doorPadFor(area, layout);
   const dist = Math.hypot(x - pad.centre.x, z - pad.centre.z);
   // on the pad itself always; past its edge (the reach) inside a building only straight in front of the door, on the room's
@@ -81,6 +87,9 @@ export function villageTargets(
     return [{ kind: "door", id: MEMORIAL_DOOR_ID, dist, icon: "🚪", label, short }];
   }
   if (area !== "village") return NONE;
+  // a lot building's door (lots v2: its room; 케이슨랜드's gate says it opens soon)
+  const lot = lotDoorTarget(x, z);
+  if (lot) return [lot];
   const keypad = keypadEntries(layout)
     .map((entry) => ({ ...entry, dist: Math.hypot(x - entry.pad.x, z - entry.pad.z) }))
     .filter((entry) => entry.dist <= HOUSE_KEYPAD_REACH_M)

@@ -9,6 +9,7 @@
  */
 import { VILLAGE_LAYOUT, type Point2, type SceneryHouse } from "@caysonverse/shared/village/villageLayout";
 import { LAKE_RENTAL_PAD } from "@caysonverse/shared/village/lakeLayout";
+import { VILLAGE_LOTS, lotDoorPoint, type LotId } from "@caysonverse/shared/village/villageLots";
 
 export interface MapPlace {
   id: string;
@@ -83,6 +84,27 @@ function waterfallPlace(): MapPlace[] {
   return [{ id: "waterfall", icon: "💧", name: "폭포", label: w, route: [w] }];
 }
 
+/**
+ * The lot buildings (lots v2): the label on the building, the way to just outside its door (the door's arrival spot, where the way out
+ * puts a visitor: the button and E are there). 케이슨랜드's gate: to the plaza in front of it.
+ */
+const LOT_PLACES: ReadonlyArray<{ lot: LotId; icon: string; name: string; way: readonly Point2[] }> = [
+  { lot: "lot_school", icon: "🏫", name: "학교", way: [p(16, 12), p(30, 1.2), p(44, 4), p(50, 15)] },
+  { lot: "lot_chapel", icon: "⛪", name: "성당", way: [p(10, -20), p(25, -30), p(33, -37)] },
+  { lot: "lot_library", icon: "📚", name: "도서관", way: [p(-20, 8), p(-35, 6), p(-44, 12)] },
+  { lot: "lot_temple", icon: "🪷", name: "절", way: [p(-10, -20), p(-25, -30), p(-36, -36), p(-48, -34.6)] }, // (round the 석등 on the door's axis)
+  { lot: "lot_church", icon: "🔔", name: "교회", way: [p(0, 30), p(0, 44)] },
+  { lot: "lot_gate", icon: "🎡", name: "케이슨랜드", way: [p(-14, 20), p(-20, 40), p(-24, 70)] },
+];
+
+function lotPlaces(): MapPlace[] {
+  return LOT_PLACES.map(({ lot, icon, name, way }) => {
+    const l = VILLAGE_LOTS.find((x) => x.id === lot)!;
+    const a = lotDoorPoint(l, l.doors[0]!).arrival;
+    return { id: lot, icon, name, label: l.centre, route: [...way, p(a.x, a.z)] };
+  });
+}
+
 /** In the order a crowded map keeps their names (MapPlaces.tsx): the places one goes to first, the plaza (where one usually is), the houses. */
 export const MAP_PLACES: readonly MapPlace[] = Object.freeze([
   {
@@ -104,6 +126,7 @@ export const MAP_PLACES: readonly MapPlace[] = Object.freeze([
     route: [...BUS_LANE, p(52, 0.2), p(66, -6), p(80, -9), p(95.5, -10), p(LAKE_RENTAL_PAD.x, LAKE_RENTAL_PAD.z + 2.2)],
   },
   { id: "plaza", icon: "⛲", name: "광장", label: p(0, -7), route: [PLAZA_HUB] },
+  ...lotPlaces(),
   ...waterfallPlace(),
   ...houses(),
 ]);

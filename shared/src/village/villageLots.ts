@@ -1356,7 +1356,7 @@ export function lotRoomSolids(r: LotRoom): Array<AABB & { name: string; height: 
 }
 
 /** How much of a pew's seat (m, from its front edge) a standing body's knees may reach over (`lotRoomColliders`). */
-export const LOT_PEW_KNEE = 0.1;
+export const LOT_PEW_KNEE = 0.2;
 
 /**
  * The rooms' fixed furniture as obstacles; the tall ones (≥ 1.6 m) and each room's ceiling as camera boxes (the camera stays under the
@@ -1375,6 +1375,17 @@ export function lotRoomColliders(): { obstacles: AABB[]; cameraBoxes: CameraBox[
     }
     const o = lotRoomOuter(r);
     cameraBoxes.push({ ...o, minY: R6(r.ceiling - 0.1), height: R6(r.ceiling + 0.1) });
+    // the walls as tall boxes too (the map's walls carry no height): the follow camera's last check keeps the lens out of a tall box's
+    // inside (followRig insideTallBox) — the church's 7 m nave let an over-the-shoulder spot into its side wall at 3.9 m (lots2-walk)
+    const t = LOT_ROOM_WALL;
+    const b = r.bounds;
+    const h = R6(r.ceiling + 0.3);
+    cameraBoxes.push(
+      { minX: b.minX - t, maxX: b.maxX + t, minZ: b.minZ - t, maxZ: b.minZ, height: h },
+      { minX: b.minX - t, maxX: b.maxX + t, minZ: b.maxZ, maxZ: b.maxZ + t, height: h },
+      { minX: b.minX - t, maxX: b.minX, minZ: b.minZ, maxZ: b.maxZ, height: h },
+      { minX: b.maxX, maxX: b.maxX + t, minZ: b.minZ, maxZ: b.maxZ, height: h },
+    );
   }
   return { obstacles, cameraBoxes };
 }

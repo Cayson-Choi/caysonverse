@@ -33,6 +33,7 @@ import {
   SHRUB_VARIANT,
   VARIANT_SPECS,
   VILLAGE_TREE_SPECS,
+  LOT_TREE_SPECS,
   WILLOW_SPECS,
   YOUNG_SPECS,
   treeSkeleton,
@@ -768,7 +769,8 @@ export class VillageVegetation {
     // ── the trees' skeletons, replayed from the art script (the very limbs and cards of the file) ──
     const zelkova = zelkovaSkeleton();
     const plaza = PLAZA_CHERRY_SPECS.map(treeSkeleton);
-    const village = VILLAGE_TREE_SPECS.map(treeSkeleton);
+    // (the lot buildings' trees with them: the schoolyard's, from the lot models' extras)
+    const village = [...VILLAGE_TREE_SPECS, ...LOT_TREE_SPECS].map(treeSkeleton);
     const willows = WILLOW_SPECS.map(treeSkeleton);
     const young = YOUNG_SPECS.map(treeSkeleton);
     const variant = {
