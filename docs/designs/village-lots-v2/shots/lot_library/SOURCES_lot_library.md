@@ -1,0 +1,13 @@
+# 케이슨 마을 도서관 (lot_library) — 참고 사진 출처 (B1, 2026-11-17)
+
+위키미디어 공용에서 공개 API로 1024 px 미리보기를 받아 비교 시트(`compare_*.jpg`)에만 썼어요(저장소에는 비교 시트 안의 축소본만). 파일마다 라이선스를 공용의 파일 페이지 값으로 다시 확인했어요. CC BY-SA 사진은 비교 시트에 작가·라이선스를 함께 적었어요.
+
+사장님 스타일 기준(2026-11-17): 콜마르 쁘띠 베니스(알자스) 사진 — "이런 동화 같은 집의 느낌" → 반목조(하프팀버), 주황 기와 지붕, 덧창, 제라늄 창 화분, 철 랜턴. 사진 자체는 사장님 자료(`art/village/refs/owner/`)라 비교 시트에 넣지 않았어요.
+
+| 키 | 파일 | 작가 | 라이선스 | 본 것 → 만든 것 |
+| --- | --- | --- | --- | --- |
+| li_fulbourn | [Fulbourn Village Library - geograph.org.uk - 923617.jpg](https://commons.wikimedia.org/wiki/File:Fulbourn_Village_Library_-_geograph.org.uk_-_923617.jpg) | Keith Edkins | CC BY-SA 2.0 | 붉은 벽돌 + 큰 둥근 아치 창(흰 창살) 줄, 점토 기와 → 정원 쪽 아치 창 3, 벽돌·창살 |
+| li_walwyn | [Humphry Walwyn library - geograph.org.uk - 1054312.jpg](https://commons.wikimedia.org/wiki/File:Humphry_Walwyn_library_-_geograph.org.uk_-_1054312.jpg) | Pauline Eccles | CC BY-SA 2.0 | 벽돌 도서관, 원형 창, 낮은 단층 → 박공 원창, 단층 비례 |
+| li_carnegie | [Old Carnegie, Centre College, Walnut Street, Danville, KY.jpg](https://commons.wikimedia.org/wiki/File:Old_Carnegie,_Centre_College,_Walnut_Street,_Danville,_KY.jpg) | w_lemay | CC BY-SA 2.0 | 벽돌 + 밝은 돌 장식(띠·모서리돌·문틀), 가운데 현관 → 석회암 문틀·프리즈·페디먼트, 모서리돌 |
+| li_wisteria | [Wisteria bush and bench, Hampstead Pergola NW3 - geograph.org.uk - 3542315.jpg](https://commons.wikimedia.org/wiki/File:Wisteria_bush_and_bench,_Hampstead_Pergola_NW3_-_geograph.org.uk_-_3542315.jpg) | Robin Sones | CC BY-SA 2.0 | 등나무 퍼걸러 + 나무 벤치 → 퍼걸러 독서 정원, 늘어진 등꽃, 벤치 |
+| li_reading | [Reading room (Unsplash).jpg](https://commons.wikimedia.org/wiki/File:Reading_room_(Unsplash).jpg) | Samuel Zeller samuelzeller | CC0 | 나무 책장 벽 + 따뜻한 스탠드 → 창 너머 책장 벽, 창가 자리 스탠드 |

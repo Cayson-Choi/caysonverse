@@ -28,9 +28,9 @@
 
 ## 3. 충돌 상자 (`lotColliders`) — id 순서 고정, 모델 `col__<id>`와 0.01 m까지 같게
 몸체 `col__<lot>`(카메라 상자, 높이 = `cameraHeight`) 다음 순서대로:
-- 학교: `_porch_post_1/2`, `_bench_1/2`, `_swings`, `_climber`, `_seesaw`, `_notice`, `_fence_n`, `_fence_s`, `_fence_fl`, `_fence_fr`(정면 입구 5.2 m).
+- 학교: `_porch_post_1/2`, `_bench_1/2`, `_swings`, `_climber`, `_seesaw`, `_notice`, `_fence_n`, `_fence_s`, `_fence_fl`, `_fence_fr`(정면 입구 5.2 m), `_tree_1/2`(B1이 덧붙임: 운동장 보리수 두 그루 줄기).
 - 성당: `_apse`, `_fountain`, `_bench_1/2`, `_arbor_1/2`, `_lamp_1/2`.
-- 도서관: `_bay_l/r`(창가 독서 자리 베이 창), `_bench_1/2`, `_pergola_1..4`, `_book_return`, `_lamp_1/2`.
+- 도서관: `_bay_l/r`(창가 독서 자리 베이 창), `_bench_1/2`, `_pergola_1..4`, `_book_return`, `_lamp_1/2`, `_topiary_1/2`(B1이 덧붙임: 문 양옆 화분 토피어리).
 - 절: `_iljumun_l/r`, `_wall_fl/fr/l/r/b`(돌담), `_lantern`, `_pagoda`, `_pond`, `_bell_pavilion`, `_pine_1..4`.
 - 교회: `_porch_post_1/2`, `_bench_1/2`, `_lamp_1/2`, `_notice`.
 - 정문: 75ab7df 그대로(21개).

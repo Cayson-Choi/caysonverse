@@ -323,6 +323,9 @@ const SCHOOL: VillageLot = {
     { suffix: "fence_s", rect: rect(10.88, 11, -1.5, 10), cameraHeight: 0 },
     { suffix: "fence_fl", rect: rect(-11, -2.6, 9.88, 10), cameraHeight: 0 }, // the front fence, a 5.2 m gate opening on the lane
     { suffix: "fence_fr", rect: rect(2.6, 11, 9.88, 10), cameraHeight: 0 },
+    // B1 (2026-11-17), appended: two young lime trees in the yard (trunk boxes; their crowns are high and inside the footprint)
+    { suffix: "tree_1", rect: rect(9.4, 9.8, 6.4, 6.8), cameraHeight: 0 },
+    { suffix: "tree_2", rect: rect(-5.8, -5.4, 8.4, 8.8), cameraHeight: 0 },
   ],
   seats: [
     seat("lot_school_bench_1", -5, -1.725, "out", "backed", 1.8),
@@ -442,6 +445,9 @@ const LIBRARY: VillageLot = {
     { suffix: "book_return", rect: rect(-9.5, -8.9, 4.8, 5.3), cameraHeight: 0 },
     { suffix: "lamp_1", rect: rect(-5.65, -5.35, 6.6, 6.9), cameraHeight: 0 },
     { suffix: "lamp_2", rect: rect(-0.65, -0.35, 6.6, 6.9), cameraHeight: 0 },
+    // B1 (2026-11-17), appended: clipped bay-tree topiaries in planters either side of the door
+    { suffix: "topiary_1", rect: rect(-4.95, -4.45, 3.55, 4.05), cameraHeight: 0 },
+    { suffix: "topiary_2", rect: rect(-1.55, -1.05, 3.55, 4.05), cameraHeight: 0 },
   ],
   seats: [
     seat("lot_library_bench_1", 7, -2.6, "out", "backed", 1.8),
@@ -909,7 +915,8 @@ export const LOT_SURFACE_RULES = Object.freeze({
   families: Object.freeze({
     lot_school: Object.freeze(["stucco_white", "roof_clay_tile", "granite_flamed", "wood_painted", "wood_oak", "cast_iron", "play_rubber", "sand", "grass"]),
     lot_chapel: Object.freeze(["stone_ashlar", "roof_slate", "granite_flamed", "wood_oak", "cast_iron", "gravel", "copper_new"]),
-    lot_library: Object.freeze(["brick_red", "stone_ashlar", "roof_slate", "wood_painted", "wood_oak", "floor_wood", "plaster_painted", "fabric_upholstery", "granite_flamed"]),
+    // B1 2026-11-17: orange clay tiles, not slate (owner's Colmar reference "이런 동화 같은 집의 느낌"); roof_slate stays in the library for the chapel
+    lot_library: Object.freeze(["brick_red", "stone_ashlar", "roof_clay_tile", "wood_painted", "wood_oak", "floor_wood", "plaster_painted", "fabric_upholstery", "granite_flamed"]),
     lot_temple: Object.freeze(["roof_giwa", "dancheong_wood", "wood_pine_natural", "granite_flamed", "stone_wall_korean", "rock", "dirt_path"]),
     lot_church: Object.freeze(["wood_siding", "roof_shingle", "wood_painted", "granite_flamed", "wood_oak", "cast_iron", "metal_roof_seam"]),
     lot_gate: Object.freeze(["stone_cladding", "wrought_iron", "render", "granite", "concrete_paving", "metal_painted"]),
