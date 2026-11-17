@@ -164,6 +164,7 @@ export function lotSurfaceMaterial(source: MeshStandardMaterial, spec: LotMatSpe
     roughness: spec?.roughnessScale ?? LOT_LOOK.roughness,
     side: source.side,
   });
+  if (spec?.albedoGain) m.color.setRGB(spec.albedoGain[0], spec.albedoGain[1], spec.albedoGain[2]);
   if (spec?.pbr) {
     m.map = FLAT_ORM; // replaced by the bank's albedo before the first draw (applyLotTextures)
     m.normalMap = FLAT_NORMAL;

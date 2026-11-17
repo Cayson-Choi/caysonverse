@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { BoxGeometry, CompressedTexture, BufferGeometry, Float32BufferAttribute, Group, Mesh, Uint8BufferAttribute, Vector3 } from "three";
+import { BoxGeometry, CompressedTexture, MeshStandardMaterial, BufferGeometry, Float32BufferAttribute, Group, Mesh, Uint8BufferAttribute, Vector3 } from "three";
 import { LOT_DETAIL_LOD, LOT_INTERIORS, LOT_ROOMS, VILLAGE_LOTS, lotFootprint, lotRoomDoor, type LotId } from "@caysonverse/shared/village/villageLots";
 import { pbrSetInfo } from "../pbr/pbrLibrary";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { LOT_TREE_SPECS } from "../veg/treeSkeleton";
-import { PHONE_GOODS_REACH, innerHingePivot, mergeReady, pickLotLevels, setLotDoor, type LotLevel } from "./lotsPrep";
+import { PHONE_GOODS_REACH, innerHingePivot, lotSurfaceMaterial, mergeReady, pickLotLevels, setLotDoor, type LotLevel } from "./lotsPrep";
 import { LOT_DOOR_PADS, LOT_SLOT_HOOKS, lotDoorNotice, lotDoorTarget, lotExitTarget, lotSlotHandlers, onLotSlot } from "./lotTargets";
 import { lotTrimFootprints } from "./LotsVillagePatch";
 import { manifestPaths } from "./lotTextures";
@@ -230,5 +230,17 @@ describe("sacred pieces' maps: capped by dropping mips (L5v2 budget pass)", () =
     const one = new CompressedTexture([{ width: 2048, height: 2048, data: new Uint8Array(1) }] as never, 2048, 2048);
     capMips(one, 256);
     expect(one.mipmaps![0]!.width).toBe(2048);
+  });
+});
+
+describe("the chapel's cream limestone (albedoGain on the set's albedo)", () => {
+  it("a spec's albedoGain becomes the material colour; without one it stays white", () => {
+    const m = lotSurfaceMaterial(new MeshStandardMaterial({ name: "LM_chapel_stone" }), { pbr: "stone_ashlar", albedoGain: [2, 2.15, 2.6] }, false);
+    expect(m.color.toArray()).toEqual([2, 2.15, 2.6]);
+    expect(lotSurfaceMaterial(new MeshStandardMaterial({ name: "LM_x" }), { pbr: "stone_ashlar" }, false).color.toArray()).toEqual([1, 1, 1]);
+  });
+  it("the chapel's manifest carries it on its stone", () => {
+    const j = JSON.parse(readFileSync(resolve(__dirname, "../../../public/models/village/lots/chapel/lot_chapel_textures.json"), "utf8"));
+    expect(j.materials.LM_chapel_stone.albedoGain).toHaveLength(3);
   });
 });
