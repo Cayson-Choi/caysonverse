@@ -96,6 +96,9 @@
 **B1이 덧붙인 것 (2026-11-17)**: 실내 `solids` 끝에 학교 `shelf_back`(뒤 창 아래 낮은 장: 책·화분·어항), 도서관 `armchair_w/e`(벽난로 안락의자, 자리 `armchair_nook`),
 `ladder`(동쪽 책장 굴림 사다리), `book_cart`(책 수레), `catalogue`(목록함). 검토 뒤(같은 날) 더함: 도서관 `side_table_w/e`(안락의자 옆 협탁·스탠드), `globe`(바닥 지구본), `plant_1/2`(큰 화분), 학교 `reading_shelf`·`easel`·`globe_stand`·`plant_tall`(읽기 모퉁이).
 학교 운동장 나무 두 그루는 lot 파일에 그리지 않고 마을 식생 시스템(`client/src/village/veg`, `createVegetation`의 `green` 종)이 키워요: 자리는 `lot_school.glb`의 `asset.extras.vegetation`(세계 x·z, H, R, seed), 줄기 충돌은 `tree_1/2` — L5v2·vrb2가 식생 목록에 넣어요.
+**열람실 그림·불 (B1, L5v2 연결 고리)**: `M_painting`은 lot 자기 맵(퍼블릭 도메인 풍경화 아틀라스 `lots/library/lot_library_reading_paintings.ktx2`, 1024², ETC1S sRGB, GPU 약 1.4 MB, UV는 아틀라스 그대로).
+불은 노드 `fire__lot_library_reading_hearth`(재질 `M_fire`: 더하기 섞기·빛 안 받음·양면, COLOR_0.rgb = 빛 색, COLOR_0.a = 부드러운 가장자리, TEXCOORD_0.y = 불꽃 높이 0..1 — 노이즈를 y로 흘려 깜빡이게)와
+`fire__lot_library_reading_light`(따뜻한 점광 2200 K 위치, 같이 깜빡임; L6는 고정 부분을 바닥·벽난로 바닥에 구움). 텍스처 목록의 `M_fire` 메모에 같은 내용.
 **PBR GPU 예산 메모(L5v2·설계자)**: `LOT_SURFACE_RULES.families`대로면 학교 외관만 9세트(PC 2K 약 72 MB / 폰 1K 약 30 MB), B1 네 모델 합 15세트로 `pbrSets`(다섯 채 12세트·PC 60 / 폰 24 MB)를 넘어요. 설계자가 맞출 예정. 실내 GLB `lot_school_class.glb`·`lot_library_reading.glb`는 노드 `lotroom__<unit>` 아래
 `_shell`·`_furniture`·`_goods` 메시와 `lotinst__<unit>_<kind>`, 창밖 풍경은 `M_screen`(빛 받지 않는 정점색), 재질은 lot과 같은 PBR 세트(`lots/<dir>/<unit>_textures.json`).
 

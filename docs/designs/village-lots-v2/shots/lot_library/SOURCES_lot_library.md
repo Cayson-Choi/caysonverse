@@ -24,3 +24,13 @@
 | li_ladder | [Library Ladder, Biltmore House, Biltmore Estate, Asheville, NC (46728130021).jpg](https://commons.wikimedia.org/wiki/File:Library_Ladder,_Biltmore_House,_Biltmore_Estate,_Asheville,_NC_(46728130021).jpg) | Warren LeMay from Cincinnati, OH, United States | CC0 | 굴림 사다리 → 놋쇠 레일 사다리 |
 | li_books | [Admont Abbey Library books.jpg](https://commons.wikimedia.org/wiki/File:Admont_Abbey_Library_books.jpg) | Marco Almbauer | CC BY-SA 4.0 | 가죽·양피지 책 줄 → 책 색·높이 다양화, 기댄 책 |
 | li_fireplace | [Reading Room fireplace.JPG](https://commons.wikimedia.org/wiki/File:Reading_Room_fireplace.JPG) | C.S. Imming | CC BY-SA 3.0 | 나무 오버맨틀 벽난로, 초록 독서등, 노란 벽 → 석회암 벽난로·오버맨틀, 독서등 |
+
+열람실에 건 그림(2026-11-17 검토 반영): 위키미디어 공용의 퍼블릭 도메인 그림 사진(PD-Art: 저작권이 끝난 19세기·17세기 유럽 풍경화의 충실한 복제)을 1024 px 아틀라스로 잘라 KTX2(`client/public/models/village/lots/library/lot_library_reading_paintings.ktx2`, 만드는 법 `tools/b1_paintings.mjs`)로 넣었어요.
+
+| 키 | 파일 | 화가 | 라이선스 | 쓴 곳 |
+| --- | --- | --- | --- | --- |
+| pd_haywain | [John Constable - The Hay Wain (1821).jpg](https://commons.wikimedia.org/wiki/File:John_Constable_-_The_Hay_Wain_(1821).jpg) | John Constable | Public domain (PD-Art) | 벽난로 위 큰 유화(금박 깊은 액자) |
+| pd_wivenhoe | [John Constable - Wivenhoe Park, Essex - Google Art Project.jpg](https://commons.wikimedia.org/wiki/File:John_Constable_-_Wivenhoe_Park,_Essex_-_Google_Art_Project.jpg) | John Constable | Public domain (PD-Art) | 문 벽 위 작은 풍경화 |
+| pd_hobbema | [Meindert Hobbema - The Alley at Middelharnis - WGA11427.jpg](https://commons.wikimedia.org/wiki/File:Meindert_Hobbema_-_The_Alley_at_Middelharnis_-_WGA11427.jpg) | Meindert Hobbema | Public domain (PD-Art) | 문 벽 위 작은 풍경화 |
+| pd_corot | [Souvenir de Mortefontaine (Camille Corot).jpg](https://commons.wikimedia.org/wiki/File:Souvenir_de_Mortefontaine_(Camille_Corot).jpg) | Jean-Baptiste Camille Corot | Public domain (PD-Art) | 문 벽 위 작은 풍경화 |
+| pd_ruisdael | [De molen bij Wijk bij Duurstede Rijksmuseum SK-C-211.jpeg](https://commons.wikimedia.org/wiki/File:De_molen_bij_Wijk_bij_Duurstede_Rijksmuseum_SK-C-211.jpeg) | Jacob Isaacksz. van Ruisdael | Public domain (PD-Art) | 문 벽 위 작은 풍경화 |

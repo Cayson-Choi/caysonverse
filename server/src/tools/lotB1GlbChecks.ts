@@ -246,11 +246,25 @@ export function describeRoomGlb(unitId: string, dir: string): void {
       for (const name of g.materials!.map((m) => m.name!)) {
         const m = man.materials[name];
         expect(m, name).toBeDefined();
-        if (m!.kind === "glass" || m!.kind === "screen") continue;
+        if (m!.kind === "glass" || m!.kind === "screen" || m!.kind === "fire") continue;
+        if (m!.kind === "own") {
+          // a lot's own map (KTX2 only), next to the manifest
+          const own = (m as unknown as { maps: { albedo: string } }).maps.albedo;
+          expect(own.endsWith(".ktx2"), own).toBe(true);
+          expect(fs.existsSync(path.join(LOTS, dir, own)), own).toBe(true);
+          continue;
+        }
         expect(ids.has(m!.pbr!), name).toBe(true);
         expect(fs.existsSync(path.join(PBR, "1k", `${m!.pbr}_albedo.ktx2`))).toBe(true);
       }
       for (const n of g.nodes!.map((q) => q.name ?? "")) expect(n).not.toMatch(MONEY);
+      // a fire (library): its own node with the M_fire hook material and the light marker
+      if (g.materials!.some((m) => m.name === "M_fire")) {
+        const names = g.nodes!.map((q) => q.name ?? "");
+        expect(names).toContain(`fire__${unitId}_hearth`);
+        expect(names).toContain(`fire__${unitId}_light`);
+        expect(man.materials["M_fire"]?.kind).toBe("fire");
+      }
     });
   });
 }

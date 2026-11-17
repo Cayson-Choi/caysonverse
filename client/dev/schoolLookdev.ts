@@ -7,7 +7,9 @@
  *   ?view=<name>   a camera preset (VIEWS below; local lot frame for the outsides, the room frame inside)
  */
 import {
+  AdditiveBlending,
   AmbientLight,
+  DoubleSide,
   Color,
   DirectionalLight,
   HemisphereLight,
@@ -28,7 +30,7 @@ import {
 } from "three";
 import { DRACOLoader, GLTFLoader } from "three-stdlib";
 import { DAY_LOOK, NIGHT_LOOK, NIGHT_MOON, directionFrom } from "../src/village/dayNightBlend";
-import { createPbrMaterial, getPbrSet, type PbrTier } from "../src/village/pbr/pbrLibrary";
+import { createPbrMaterial, getPbrKtx2Loader, getPbrSet, type PbrTier } from "../src/village/pbr/pbrLibrary";
 import { lotLocalToWorld, villageLot, LOT_INTERIORS, type LotId } from "@caysonverse/shared/village/villageLots";
 
 type View = [x: number, y: number, z: number, tx: number, ty: number, tz: number, fov: number];
@@ -57,7 +59,7 @@ export const VIEWS: Record<string, Record<string, View>> = {
   },
 };
 
-interface Manifest { materials: Record<string, { pbr?: string; kind?: string; roughnessScale?: number; normalScale?: number; metal?: boolean }> }
+interface Manifest { materials: Record<string, { pbr?: string; kind?: string; roughnessScale?: number; normalScale?: number; metal?: boolean; maps?: { albedo: string } }> }
 
 const W = window as unknown as { __ready: boolean; __info: unknown };
 
@@ -124,6 +126,18 @@ export async function runLookdev(defaultModel: string): Promise<void> {
     }
     if (m.kind === "screen") {
       mats.set(name, new MeshBasicMaterial({ vertexColors: true, toneMapped: true }));
+      continue;
+    }
+    if (m.kind === "fire") {
+      // the M_fire hook as L5v2 would draw it (static here): additive, unlit, vertex RGBA
+      mats.set(name, new MeshBasicMaterial({ vertexColors: true, transparent: true, blending: AdditiveBlending, depthWrite: false, side: DoubleSide, toneMapped: false }));
+      continue;
+    }
+    if (m.kind === "own") {
+      const tex = await getPbrKtx2Loader(renderer).loadAsync(`/models/village/lots/${dir}/${(m as unknown as { maps: { albedo: string } }).maps.albedo}`);
+      tex.colorSpace = SRGBColorSpace;
+      tex.flipY = false;
+      mats.set(name, new MeshStandardMaterial({ map: tex, roughness: 0.5 }));
       continue;
     }
     const set = await getPbrSet(m.pbr!, tier, renderer);

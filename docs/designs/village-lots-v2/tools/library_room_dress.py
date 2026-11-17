@@ -37,6 +37,10 @@ VELVET = S("LM_library_fabric", G.hexc("3F6B4E"))
 IRON = S("LM_library_paint", G.hexc("2B2B2B"))
 PAPER = S("LM_library_plaster", G.hexc("FFFBF0"))
 FIRE = S("M_screen")
+FLAME = S("M_fire")
+PAINT_ATLAS = S("M_painting")
+# the paintings atlas (b1_paintings.mjs): pixel cells (x, y, w, h), top-left origin, 1024 x 1024
+PAINTING_CELLS = [(0, 0, 1024, 706), (0, 716, 256, 192), (256, 716, 256, 192), (512, 716, 256, 192), (768, 716, 256, 192)]
 LEAF = S("LM_library_plaster", G.hexc("6E9E4A"))
 LEAF_DK = S("LM_library_plaster", G.hexc("4C7A36"))
 POT = S("LM_library_plaster", G.hexc("D98E62"))
@@ -353,51 +357,10 @@ def fireplace(kit):
         D.member((x, 0.2, bz + 0.16), (x, 0.2, bz - 0.12), G.prof_box(0.018, 0.018), IRON)
     D.member((cx - 0.36, 0.2, bz + 0.16), (cx + 0.36, 0.2, bz + 0.16), G.prof_box(0.02, 0.02), IRON)
     # ember bed and logs
-    emb = Mesh("embers")
-    emb.lathe([(0.34, 0.0), (0.3, 0.03), (0.15, 0.06), (0.0, 0.065)], 10, FIRE, 0.0, 0.0, 0.0, sx=1.0, sz=0.4)
-    for q in emb.polys:
-        q.col = [((0.9 + 0.1 * math.sin(pt[0] * 31)), 0.25 + 0.15 * math.cos(pt[2] * 47), 0.04, 1.0) for pt in q.pts]
-    Gd.extend(G.moved(emb, cx, 0.21, bz))
     for (a, b) in (((cx - 0.4, 0.27, bz + 0.05), (cx + 0.38, 0.29, bz - 0.04)), ((cx - 0.3, 0.33, bz - 0.08), (cx + 0.32, 0.31, bz + 0.07)), ((cx - 0.15, 0.39, bz + 0.02), (cx + 0.2, 0.4, bz - 0.02))):
         Gd.member(a, b, G.prof_round(0.06, 8), OAK_DK.t(G.hexc("5A3A26")))
-    # flames: five tongues, each three crossed cards (0, 60, 120 deg), a smooth teardrop outline with a hot core
-    rg = G.rng(8)
-    for k, (dx, fh, fw) in enumerate(((-0.3, 0.26, 0.06), (-0.22, 0.4, 0.07), (-0.13, 0.52, 0.08), (-0.05, 0.66, 0.08), (0.03, 0.58, 0.09), (0.1, 0.7, 0.07), (0.18, 0.46, 0.08), (0.26, 0.34, 0.06), (0.32, 0.22, 0.05))):
-        fx, fy, fz = cx + dx, 0.3, bz + rg.uniform(-0.04, 0.04)
-        n = 14
-        outline = []
-        for i in range(n + 1):
-            t = i / n  # 0 at the base right, round the tip, back to the base left
-            ang = math.pi * t
-            # teardrop: wide at the base, a curling tip
-            rr = math.sin(ang)
-            yy = (1 - math.cos(ang)) / 2
-            outline.append((fw * (1 - 2 * t) * (0.25 + 0.75 * (1 - yy) ** 0.6) * (1 if t < 1 else 1), yy))
-        outline = [(fw * (1 - 2 * i / n) * (1 - (i / n - 0.5) ** 2 * 0.0), 0.0) for i in (0, n)]  # base points (replaced below)
-        pts = []
-        for i in range(n + 1):
-            t = i / n
-            yy = t
-            half = fw * math.sin(math.pi * (1 - t) ** 0.85) ** 0.9 * (1 - 0.3 * t)
-            pts.append((half, yy * fh))
-        ring = pts + [(-p[0], p[1]) for p in reversed(pts[:-1])]
-        curl = rg.uniform(-0.04, 0.04)
-        for j in range(3):
-            a = math.pi * j / 3 + 0.3 * k
-            ca, sa = math.cos(a), math.sin(a)
-            verts = [(fx + (u + curl * (v / fh) ** 2) * ca, fy + v, fz + (u + curl * (v / fh) ** 2) * sa) for u, v in ring]
-            cols = []
-            for (u, v) in ring:
-                tv = v / fh
-                core = 1.0 - min(1.0, abs(u) / max(1e-3, fw) * 1.3)
-                r_ = 1.0
-                g_ = max(0.18, 0.95 - 0.7 * tv) * (0.75 + 0.25 * core)
-                b_ = max(0.02, 0.55 * core * (1 - tv) ** 2)
-                edge = 1.0 - core
-                cols.append((max(0.25, (1.15 - 0.45 * tv) * (1 - 0.45 * edge * tv)), g_ * (1 - 0.5 * edge), b_, 1.0))
-            Gd.poly(verts, FIRE, cols=cols)
-            Gd.poly(list(reversed([(x + 0.003 * ca, y, z + 0.003 * sa) for x, y, z in verts])), FIRE, cols=list(reversed(cols)))
-    kit.lights.append(("point", cx, 0.6, bz - 0.2, (1.0, 0.55, 0.22), 260.0))
+    soft_fire(kit, cx, 0.26, bz)
+    kit.lights.append(("point", cx, 0.55, bz - 0.35, (1.0, 0.55, 0.22), 70.0))
     kit.lights.append(("point", cx, 0.4, zf - 1.2, (1.0, 0.6, 0.3), 90.0))
     kit.dayfill.append((cx, 0.8, zf - 0.8, 0.8, 30.0))
     # brass fender
@@ -410,11 +373,7 @@ def fireplace(kit):
     f = P.F((cx, 0.0, zf + 0.12), (1, 0, 0), (0, 0, -1))  # facing -z, but U must be the viewer's right: viewer looks +z
     f = P.F((cx, 0.0, zf + 0.12), (-1, 0, 0), (0, 0, -1))
     panelling(D, f, -1.3, 1.3, 1.72, H - 0.42)
-    px0, px1, py0, py1 = -0.95, 0.95, 2.35, 3.75
-    # gilt frame with a moulded profile (two steps) and the canvas
-    f.box(D, px0 - 0.12, px1 + 0.12, py0 - 0.12, py1 + 0.12, 0.04, 0.09, GILT, skip=("-w",))
-    f.box(D, px0 - 0.05, px1 + 0.05, py0 - 0.05, py1 + 0.05, 0.09, 0.11, BRASS_DK, skip=("-w",))
-    canvas(D, f, px0, px1, py0, py1, 0.112)
+    painting(D, f, -0.98, 0.98, 2.38, 3.73, 0, frame=0.16)
     kit.lights.append(("spot", cx, 4.1, zf - 0.4, (1.0, 0.86, 0.66), 60.0))
     # on the mantel
     for x in (x0 + 0.1, x1 - 0.1):
@@ -642,3 +601,115 @@ def ladder(kit, sol):
         p = G.lerp((foot_x, 0.08, zc), (top_x, top_y, zc), t)
         D.box(p[0] - 0.09, p[0] + 0.07, p[1] - 0.02, p[1], zc - 0.22, zc + 0.22, OAK_LT)
         D.box(p[0] - 0.1, p[0] - 0.085, p[1] - 0.022, p[1] + 0.003, zc - 0.22, zc + 0.22, BRASS)
+
+
+def painting(m, f, u0, u1, v0, v1, cell, frame=0.12):
+    """A real painting (a cell of the public-domain atlas) in a deep carved gilt frame: an outer bead, a broad cove, a
+    raised ogee, a sight edge stepping down to the canvas (each a mitred ring of members, 3–9 cm proud of the wall)."""
+    x, y, w, h = PAINTING_CELLS[cell]
+    a0, a1 = x / 1024, (x + w) / 1024
+    b1, b0 = 1 - y / 1024, 1 - (y + h) / 1024
+    depth0 = 0.05
+    pts = [f.p(u0, v0, depth0), f.p(u1, v0, depth0), f.p(u1, v1, depth0), f.p(u0, v1, depth0)]
+    m.poly(pts, PAINT_ATLAS, uv=[(a0, b0), (a1, b0), (a1, b1), (a0, b1)])
+    # stepped gilt profile: (inset from the canvas edge outward, depth) rings
+    steps = [(0.0, 0.065, GILT), (frame * 0.18, 0.085, BRASS_DK), (frame * 0.45, 0.1, GILT), (frame * 0.75, 0.08, GILT), (frame, 0.06, BRASS_DK)]
+    for k in range(len(steps) - 1):
+        (e0, d0, s0), (e1, d1, _) = steps[k], steps[k + 1]
+        ring0 = [(u0 - e0, v0 - e0), (u1 + e0, v0 - e0), (u1 + e0, v1 + e0), (u0 - e0, v1 + e0)]
+        ring1 = [(u0 - e1, v0 - e1), (u1 + e1, v0 - e1), (u1 + e1, v1 + e1), (u0 - e1, v1 + e1)]
+        for i in range(4):
+            j = (i + 1) % 4
+            q = [f.p(*ring1[i], d1), f.p(*ring1[j], d1), f.p(*ring0[j], d0), f.p(*ring0[i], d0)]
+            if G.dot(G.poly_normal(q), f.W) < 0:
+                q.reverse()
+            m.poly(q, s0)
+    # the sight edge down to the canvas and the outer side down to the wall
+    e = 0.0
+    ring = [(u0, v0), (u1, v0), (u1, v1), (u0, v1)]
+    for i in range(4):
+        j = (i + 1) % 4
+        q = [f.p(*ring[i], depth0), f.p(*ring[j], depth0), f.p(*ring[j], 0.065), f.p(*ring[i], 0.065)]
+        m.poly(q, BRASS_DK)
+    ringo = [(u0 - frame, v0 - frame), (u1 + frame, v0 - frame), (u1 + frame, v1 + frame), (u0 - frame, v1 + frame)]
+    for i in range(4):
+        j = (i + 1) % 4
+        q = [f.p(*ringo[i], 0.0), f.p(*ringo[j], 0.0), f.p(*ringo[j], 0.06), f.p(*ringo[i], 0.06)]
+        m.poly(q, GILT)
+    # carved corner rosettes
+    for (cu, cv) in ((u0 - frame * 0.45, v0 - frame * 0.45), (u1 + frame * 0.45, v0 - frame * 0.45), (u1 + frame * 0.45, v1 + frame * 0.45), (u0 - frame * 0.45, v1 + frame * 0.45)):
+        c = f.p(cu, cv, 0.1)
+        m.sphere(c[0], c[1], c[2], frame * 0.22, GILT, n=8, rings=4, sy=0.7)
+
+
+def flame_card(m, base, ang, hgt, wid, lean, seed):
+    """One soft flame card: a spine of points up the middle (alpha high, white-gold at the root) and a rim on each side
+    (alpha 0) — so the card has no hard silhouette; it tapers and curls to a tip that fades to deep red. UV: x across
+    (-1..1), y up (0..1) for the flicker shader."""
+    import random
+    rg = random.Random(seed)
+    n = 9
+    ca, sa = math.cos(ang), math.sin(ang)
+    spine, left, right = [], [], []
+    for i in range(n + 1):
+        t = i / n
+        y = hgt * t
+        curl = lean * t * t + 0.02 * math.sin(t * 5.0 + seed)
+        half = wid * (math.sin(math.pi * min(1.0, t * 1.15 + 0.08)) ** 0.8) * (1.0 - 0.55 * t)
+        cx = curl
+        spine.append((base[0] + cx * ca, base[1] + y, base[2] + cx * sa))
+        left.append((base[0] + (cx - half) * ca, base[1] + y, base[2] + (cx - half) * sa))
+        right.append((base[0] + (cx + half) * ca, base[1] + y, base[2] + (cx + half) * sa))
+
+    def col(t, a):
+        r = 1.0
+        g = max(0.12, 0.92 - 0.85 * t)
+        b = max(0.0, 0.55 - 1.4 * t)
+        return (r * (1.2 - 0.5 * t), g, b, a)
+    for i in range(n):
+        t0, t1 = i / n, (i + 1) / n
+        a0 = 0.9 * (1 - t0 ** 1.6)
+        a1 = 0.9 * (1 - t1 ** 1.6)
+        for side, sgn in ((left, -1), (right, 1)):
+            q = [spine[i], side[i], side[i + 1], spine[i + 1]]
+            cols = [col(t0, a0), col(t0, 0.0), col(t1, 0.0), col(t1, a1)]
+            uv = [(0.0, t0), (sgn * 1.0, t0), (sgn * 1.0, t1), (0.0, t1)]
+            m.poly(q, FLAME, uv=uv, cols=cols)
+            m.poly(list(reversed(q)), FLAME, uv=list(reversed(uv)), cols=list(reversed(cols)))
+
+
+def soft_fire(kit, cx, by, bz):
+    """The fire as soft layered cards (owner review: no cut-out silhouette): 14 cards at varied angles, heights and leans
+    over the logs, an ember glow under and along the logs, and a warm glow pool on the hearth and the floor in front.
+    Its own node `fire__<unit>_hearth` (material M_fire: the flicker hook for L5v2) and `fire__<unit>_light`."""
+    fm = Mesh("fire")
+    rg = G.rng(19)
+    for k in range(14):
+        dx = -0.3 + 0.6 * (k / 13) + rg.uniform(-0.04, 0.04)
+        hgt = 0.62 * (1.0 - (abs(dx) / 0.36) ** 2) * rg.uniform(0.7, 1.05) + 0.12
+        fx = cx + dx
+        flame_card(fm, (fx, by, bz + rg.uniform(-0.06, 0.06)), rg.uniform(0, math.pi), hgt, rg.uniform(0.06, 0.1), rg.uniform(-0.06, 0.06), k * 7 + 3)
+    # ember glow along the logs' undersides and in the bed (soft, low)
+    for k in range(18):
+        ex = cx - 0.34 + 0.68 * k / 17
+        ez = bz + rg.uniform(-0.1, 0.1)
+        r = rg.uniform(0.04, 0.08)
+        ring = [(ex + r * math.cos(2 * math.pi * i / 8), by - 0.02 + rg.uniform(0, 0.03), ez + r * 0.6 * math.sin(2 * math.pi * i / 8)) for i in range(8)]
+        c = (ex, by + 0.0, ez)
+        for i in range(8):
+            j = (i + 1) % 8
+            fm.poly([c, ring[j], ring[i]], FLAME, uv=[(0, 0), (1, 0), (1, 0)], cols=[(1.0, 0.42, 0.08, 0.95), (0.9, 0.18, 0.03, 0.0), (0.9, 0.18, 0.03, 0.0)])
+            fm.poly([c, ring[i], ring[j]], FLAME, uv=[(0, 0), (1, 0), (1, 0)], cols=[(1.0, 0.42, 0.08, 0.95), (0.9, 0.18, 0.03, 0.0), (0.9, 0.18, 0.03, 0.0)])
+    # the warm pool on the hearth and floor: a soft radial glow lying on them
+    for (y0, r0, rz, a) in ((0.106, 1.0, 0.75, 0.32), (0.006, 1.9, 1.5, 0.18)):
+        gc = (cx, y0, bz - 0.55 - (0.0 if y0 > 0.05 else 0.7))
+        n = 20
+        ring = [(gc[0] + r0 * math.cos(2 * math.pi * i / n), y0, gc[2] + rz * math.sin(2 * math.pi * i / n)) for i in range(n)]
+        for i in range(n):
+            j = (i + 1) % n
+            q = [gc, ring[j], ring[i]]
+            if G.poly_normal(q)[1] < 0:
+                q = [gc, ring[i], ring[j]]
+            fm.poly(q, FLAME, uv=[(0, 0), (1, 0), (1, 0)], cols=[(1.0, 0.55, 0.22, a), (1.0, 0.45, 0.15, 0.0), (1.0, 0.45, 0.15, 0.0)])
+    kit.fire = {"hearth": fm}
+    kit.fire_lights = {"light": (cx, by + 0.35, bz - 0.15)}

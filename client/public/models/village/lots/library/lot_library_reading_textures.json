@@ -99,8 +99,21 @@
       "normalScale": 1.0,
       "metal": false
     },
+    "M_fire": {
+      "kind": "fire",
+      "note": "HOOK for L5v2: the fire__ nodes' flame cards. Draw additive (blending Additive, depthWrite false, double-sided), unlit; COLOR_0.rgb = emissive colour, COLOR_0.a = soft edge (0 at the rim); TEXCOORD_0.x = across the card (-1..1), TEXCOORD_0.y = height up the flame (0..1): flicker by scrolling a noise texture up y and scaling alpha/brightness with it (time uniform), 0.6–1.2 Hz with a faster 7 Hz jitter. The node fire__<unit>_light marks a warm point light (2200 K, ~180 cd, range 6 m) to flicker in step; L6 bakes its steady part into the hearth and floor."
+    },
     "M_glass": {
       "kind": "glass"
+    },
+    "M_painting": {
+      "kind": "own",
+      "maps": {
+        "albedo": "lot_library_reading_paintings.ktx2"
+      },
+      "uv": "atlas (TEXCOORD_0 0..1, no repeat)",
+      "colorSpace": "srgb",
+      "note": "public-domain landscapes (Constable, Hobbema, Corot, Ruisdael): SOURCES_lot_library.md"
     },
     "M_screen": {
       "kind": "screen",

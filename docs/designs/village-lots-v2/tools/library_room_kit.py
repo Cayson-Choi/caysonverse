@@ -54,6 +54,8 @@ MATS = {
     "LM_library_brass": {"set": "aluminium_brushed", "metal": True, "rough": 0.7},
     "M_glass": {"glass": True},
     "M_screen": {"screen": True},
+    "M_painting": {"own": "lot_library_reading_paintings", "note": "public-domain landscapes (Constable, Hobbema, Corot, Ruisdael): SOURCES_lot_library.md"},
+    "M_fire": {"fire": True},
 }
 
 X, Z, H = 13.4, 10.4, 5.2
@@ -542,13 +544,6 @@ def armchairs(kit, sol):
 
 
 def pictures(kit, W):
-    """Framed botanical prints between the door and the bays and on the west wall's corridor stretch (flat on the walls)."""
-    Gd = kit.G
-    f = W["door"]
-    for (u, v) in ((4.6, 4.05), (8.7, 4.05), (0.65, 4.05), (12.75, 4.05)):
-        f.box(Gd, u - 0.28, u + 0.28, v - 0.36, v + 0.36, 0.0, 0.035, OAK_DK, skip=("-w",))
-        f.box(Gd, u - 0.22, u + 0.22, v - 0.3, v + 0.3, 0.035, 0.038, PAPER, skip=("-w",))
-        for k in range(3):
-            a = 2 * math.pi * k / 3 + 0.3
-            f.poly(Gd, [(u + 0.04 * math.cos(a) + 0.06 * math.cos(2 * math.pi * j / 8), v + 0.08 + 0.04 * math.sin(a) + 0.06 * math.sin(2 * math.pi * j / 8), 0.04) for j in range(8)], S("LM_library_plaster", G.hexc(("E7A3B8", "A9C27A", "E9C46A")[k])))
-        f.box(Gd, u - 0.004, u + 0.004, v - 0.22, v + 0.05, 0.04, 0.041, LEAF_DK, skip=("-w",))
+    """Four small public-domain landscapes (Constable, Hobbema, Corot, Ruisdael) in deep gilt frames on the upper walls."""
+    for (f, u, cell) in ((W["door"], 4.6, 1), (W["door"], 8.7, 2), (W["door"], 0.65, 3), (W["door"], 12.75, 4)):
+        DR.painting(kit.D, f, u - 0.42, u + 0.42, 3.78, 4.41, cell, frame=0.09)

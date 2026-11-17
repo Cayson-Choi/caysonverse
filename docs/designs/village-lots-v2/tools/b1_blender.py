@@ -94,6 +94,36 @@ def make_materials(matdefs):
         b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
         vc = nt.nodes.new("ShaderNodeVertexColor")
         vc.layer_name = "Col"
+        if d.get("own"):
+            # a lot's own map (KTX2 in the game; its PNG twin for the render): atlas UVs, no metre repeat
+            t = nt.nodes.new("ShaderNodeTexImage")
+            t.image = bpy.data.images.load(os.path.join(PNG, d["own"] + ".png"), check_existing=True)
+            t.interpolation = "Cubic"
+            nt.links.new(t.outputs["Color"], b.inputs["Base Color"])
+            b.inputs["Roughness"].default_value = 0.45
+            mats[name] = m
+            continue
+        if d.get("fire"):
+            # soft flame cards: vertex RGB = the emissive colour, vertex alpha = the soft edge
+            for n in list(nt.nodes):
+                if n.name != vc.name:
+                    nt.nodes.remove(n)
+            outn = nt.nodes.new("ShaderNodeOutputMaterial")
+            em = nt.nodes.new("ShaderNodeEmission")
+            em.inputs["Strength"].default_value = 7.0
+            tr = nt.nodes.new("ShaderNodeBsdfTransparent")
+            mix = nt.nodes.new("ShaderNodeMixShader")
+            nt.links.new(vc.outputs["Color"], em.inputs["Color"])
+            nt.links.new(vc.outputs["Alpha"], mix.inputs["Fac"])
+            nt.links.new(tr.outputs["BSDF"], mix.inputs[1])
+            nt.links.new(em.outputs["Emission"], mix.inputs[2])
+            nt.links.new(mix.outputs["Shader"], outn.inputs["Surface"])
+            try:
+                m.surface_render_method = "BLENDED"
+            except Exception:
+                pass
+            mats[name] = m
+            continue
         if d.get("screen"):
             b.inputs["Base Color"].default_value = (0, 0, 0, 1)
             nt.links.new(vc.outputs["Color"], b.inputs["Emission Color"])
@@ -198,7 +228,7 @@ def mesh_data(name, mesh, mats, xf):
         f.smooth = p.smooth
         for lp, uv, c in zip(f.loops, p.uv, p.col):
             lp[uvl].uv = uv
-            lp[cl] = (c[0], c[1], c[2], 1.0)
+            lp[cl] = (c[0], c[1], c[2], c[3] if len(c) > 3 else 1.0)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
     bmesh.ops.triangulate(bm, faces=bm.faces)
     bm.to_mesh(me)
@@ -487,6 +517,14 @@ def patch_glb(path, extras):
         for k in ("normalTexture", "occlusionTexture", "emissiveTexture"):
             m.pop(k, None)
         m.pop("extensions", None)
+        if m["name"] == "M_fire":
+            m["alphaMode"] = "BLEND"
+            pbr["baseColorFactor"] = [0, 0, 0, 1]
+            pbr["metallicFactor"] = 0.0
+            pbr["roughnessFactor"] = 1.0
+            m["emissiveFactor"] = [1.0, 1.0, 1.0]
+            m["doubleSided"] = True
+            continue
         if m["name"] == "M_screen":
             m.pop("alphaMode", None)
             pbr["baseColorFactor"] = [0, 0, 0, 1]
@@ -539,6 +577,17 @@ def write_manifest(kit, lot, path):
         if d.get("screen"):
             mats[name] = {"kind": "screen", "note": "the garden-and-sky view behind interior windows: unlit, COLOR_0 is the colour"}
             continue
+        if d.get("own"):
+            mats[name] = {"kind": "own", "maps": {"albedo": d["own"] + ".ktx2"}, "uv": "atlas (TEXCOORD_0 0..1, no repeat)", "colorSpace": "srgb",
+                          "note": d.get("note", "")}
+            continue
+        if d.get("fire"):
+            mats[name] = {"kind": "fire", "note": "HOOK for L5v2: the fire__ nodes' flame cards. Draw additive (blending Additive, depthWrite "
+                          "false, double-sided), unlit; COLOR_0.rgb = emissive colour, COLOR_0.a = soft edge (0 at the rim); TEXCOORD_0.x = across "
+                          "the card (-1..1), TEXCOORD_0.y = height up the flame (0..1): flicker by scrolling a noise texture up y and scaling "
+                          "alpha/brightness with it (time uniform), 0.6–1.2 Hz with a faster 7 Hz jitter. The node fire__<unit>_light marks "
+                          "a warm point light (2200 K, ~180 cd, range 6 m) to flicker in step; L6 bakes its steady part into the hearth and floor."}
+            continue
         mats[name] = {"pbr": d["set"], "repeatMeters": [1, 1], "tileMeters": tiles[d["set"]], "vertexColor": True,
                       "roughnessScale": d.get("rough", 1.0), "normalScale": d.get("normal", 1.0), "metal": bool(d.get("metal"))}
     js = {
@@ -549,7 +598,7 @@ def write_manifest(kit, lot, path):
                 "(the tint of the neutral sets), roughness = the ORM's G times roughnessScale. The lot has no maps of its own "
                 "(letters, clock and numerals are geometry). M_glass is the game's glass; lotnight__ nodes take the game's glow.",
         "materials": mats,
-        "pbrSets": sorted({d["set"] for n, d in kit.mats.items() if not d.get("glass") and not d.get("screen") and not n.startswith("PV_")}),
+        "pbrSets": sorted({d["set"] for n, d in kit.mats.items() if "set" in d and not n.startswith("PV_")}),
     }
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as f:
@@ -851,6 +900,10 @@ def run_room(unit_id, kit_mod, viewdef, prefix, tex_dir):
         inst_tris += kit.kinds[kind].tris() * len(places)
     for part, g in sorted(kit.night.items()):
         objs.append(world_obj("lotnight__%s_%s" % (unit_id, part), g, mats))
+    for part, g in sorted(getattr(kit, "fire", {}).items()):
+        objs.append(world_obj("fire__%s_%s" % (unit_id, part), g, mats, root))
+    for part, p in sorted(getattr(kit, "fire_lights", {}).items()):
+        objs.append(empty("fire__%s_%s" % (unit_id, part), l2b(p)))
     yaw_of = {"in": 0.0, "out": math.pi, "left": -math.pi / 2, "right": math.pi / 2}
     for s in spec["seats"]:
         objs.append(empty("seat__" + s["id"], (CX + s["x"], -(CZ + s["z"]), s["seatTop"]), yaw_of[s["faces"]]))
@@ -867,9 +920,10 @@ def run_room(unit_id, kit_mod, viewdef, prefix, tex_dir):
         o.display_type = "WIRE"
         objs.append(o)
     allm = set()
-    for m in [kit.S, kit.D, kit.G] + list(kit.kinds.values()):
+    fire_meshes = list(getattr(kit, "fire", {}).values())
+    for m in [kit.S, kit.D, kit.G] + list(kit.kinds.values()) + fire_meshes:
         allm |= {p.mat for p in m.polys}
-    report = {"unit": unit_id, "triangles": kit.S.tris() + kit.D.tris() + kit.G.tris() + inst_tris,
+    report = {"unit": unit_id, "triangles": kit.S.tris() + kit.D.tris() + kit.G.tris() + inst_tris + sum(m.tris() for m in fire_meshes),
               "shell": kit.S.tris(), "furniture": kit.D.tris(), "goods": kit.G.tris(), "instanced": inst_tris,
               "instancedKinds": {k: {"count": len(v), "triangles": kit.kinds[k].tris()} for k, v in sorted(kit.inst.items())},
               "materials": sorted(allm), "draws": sum(len({p.mat for p in m.polys}) for m in [kit.S, kit.D, kit.G]) + sum(len({p.mat for p in kit.kinds[k].polys}) for k in kit.inst),
