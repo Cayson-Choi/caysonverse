@@ -23,7 +23,7 @@ export const FAIL_SAFE_MS = 12000;
  * However the build progresses, the cover lifts this long (ms) after it began (perf/no-hitch 2026-11-17: a slow phone
  * grows the trees for 17-28 s; lifted by the 12 s fail-safe, the rest grew on screen in 300-700 ms steps).
  */
-export const HARD_CAP_MS = 45000;
+export const HARD_CAP_MS = 20000;
 
 export interface VegDressing {
   dressed(): boolean;
