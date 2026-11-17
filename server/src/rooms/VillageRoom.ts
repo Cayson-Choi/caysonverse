@@ -108,8 +108,17 @@ interface VillageTracking extends Tracking {
  *
  * Rejection policy is the base's: an invalid player message is DROPPED silently, never partially applied.
  */
+/**
+ * Players per village room: VILLAGE_MAX_CLIENTS, or `CV_VILLAGE_MAX_CLIENTS` (a positive integer up to 200) for a load test
+ * (scripts/loadtest-bots.mjs --max-clients). Read when a room is made.
+ */
+export function villageMaxClients(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env.CV_VILLAGE_MAX_CLIENTS);
+  return Number.isInteger(n) && n > 0 && n <= 200 ? n : VILLAGE_MAX_CLIENTS;
+}
+
 export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
-  maxClients = VILLAGE_MAX_CLIENTS;
+  maxClients = villageMaxClients();
   patchRate = PATCH_RATE_MS;
   autoDispose = true;
   // WorldState (players + the announcement banner): the client's Banner reads the same fields in every
