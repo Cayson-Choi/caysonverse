@@ -382,6 +382,47 @@ def run_room(unit_id, kit_mod, viewdef, prefix, tex_dir):
     for p in report["overlap"]["problems"][:150]:
         B.log(p)
     B.log("room problems:", len(report["overlap"]["problems"]))
+    # L6: the room's light baked into a lightmap atlas (bake_lots.py), by day and by night, before the export
+    lightmap = None
+    lm_dir = B.arg("--lightmap")
+    if lm_dir:
+        import bake_lots
+        room_lights(kit)
+        for i, (x, y, z, fsize, w) in enumerate(getattr(kit, "nightfill", [])):
+            ld = bpy.data.lights.new("nightfill_%d" % i, "AREA")
+            ld.size = fsize
+            ld.energy = w
+            ld.color = (1.0, 0.8, 0.58)
+            B.obj(ld.name, ld).location = B.l2b((x, y, z))
+        for o in bpy.data.objects:
+            if o.name.startswith("roomlight_"):
+                o["e0"] = o.data.energy
+        B.WORLD = getattr(kit, "world_strength", 0.22)
+        B.SUN_DIR = getattr(kit, "sun_dir", None)
+        B.SUN_ELEV = getattr(kit, "sun_elev", 38)
+
+        def day_night(day):
+            B.setup_world(day)
+            sun = bpy.data.objects.get("Sun")
+            if sun is not None and day and getattr(kit, "sun_energy", None):
+                sun.data.energy = kit.sun_energy
+            for o in bpy.data.objects:
+                if o.name.startswith("roomlight_"):
+                    o.data.energy = o.get("e0", o.data.energy) * (1.0 if day else getattr(kit, "night_lamp_scale", 2.2))
+                if o.name.startswith("nightfill_"):
+                    o.hide_render = day
+                if o.name.startswith("lotlight__"):
+                    o.hide_render = True   # the coloured sun pools are the game's own additive layer
+        fid = unit_id + ("_phone" if phone else "")   # (the phone's file: its own atlas, 512 px)
+        lm = bake_lots.bake_room(kit, objs, unit_id, lm_dir, day_night, int(B.arg("--lm-size", "512" if phone else "1024")), int(B.arg("--lm-samples", "96")), fid)
+        if lm:
+            lightmap = {"day": "lots/%s/%s_lm_day.ktx2" % (tex_dir, fid), "night": "lots/%s/%s_lm_night.ktx2" % (tex_dir, fid),
+                        "scale": lm["scale"], "channel": 1, "size": lm["size"],
+                        "note": "irradiance = (texel in linear) * scale on TEXCOORD_1 of the lotroom__ shell (bake_lots.py)"}
+            for t in ("day", "night"):
+                for o in bpy.data.objects:
+                    if o.name.startswith(("roomlight_", "nightfill_")):
+                        o.hide_render = True
     out = B.arg("--out", os.path.join(B.LOTS, unit_id + ("_phone" if phone else "") + ".glb"))
     if "--no-export" not in B.argv:
         manifest = os.path.join(B.LOTS, tex_dir, "%s_textures.json" % unit_id)
@@ -389,7 +430,7 @@ def run_room(unit_id, kit_mod, viewdef, prefix, tex_dir):
         B.export(out, objs, {"caysonverse": "%s (lots v2 B2 room kit%s)" % (unit_id, ", phone LOD" if phone else ""), "lod": "phone" if phone else "pc", "textures": "lots/%s/%s_textures.json" % (tex_dir, unit_id),
                              "origin": org, "size": size, "sacred": sacred_extras, "phone": phone_skip,
                              "triangles": {"room": room_tris, "sacredPc": sacred_tris["pc"], "sacredPhone": sacred_tris["phone"],
-                                           "phone": report["phoneTriangles"]}})
+                                           "phone": report["phoneTriangles"]}, **({"lightmap": lightmap} if lightmap else {})})
         report["glb"] = B.glb_stats(out)
         B.log("wrote", out, report["glb"])
     if B.REPORT:

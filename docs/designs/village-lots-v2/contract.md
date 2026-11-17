@@ -195,3 +195,22 @@
 - **L6 굽기 계획** (안 함): `tools/bake_lots.py` — 방 GLB마다 UV2(라이트맵 펼침), Cycles CPU(`CV_CPU=1`)로 낮·밤 간접광+AO를 1K로 굽고 KTX2(UASTC)로,
   매니페스트 `lightmap: {day, night}`; 게임은 `LotRoom`에서 `lightMap`(channel 1)을 낮/밤 섞기(uniform 하나, 프로그램 그대로), 지금의 `roomLamps` 항은
   움직이는 불꽃 몫만. 성상 AO는 스캔의 ORM에 이미 있음. 바깥은 부지마다 같은 방식(껍데기 + 자세히, 1K). 방 하나에 Blender 굽기 20–40분 × 5 + 바깥 6.
+
+### 12.3 L6 굽기 — 실내 라이트맵 (2026-11-18)
+- **도구**: `tools/bake_lots.py` — 방 키트(`parts_lot_<unit>.py`)를 `--lightmap <폴더> [--lm-size 1024] [--lm-samples 128]`로 돌리면
+  내보내기 직전에 방 껍데기(`lotroom__<unit>_shell`: 벽·바닥·천장·고정 구조)에 두 번째 UV `lm`을 한 장으로 펼치고, Cycles CPU(`CV_CPU=1`)로
+  낮(하늘·창으로 든 해·방 등)과 밤(등·촛불·채움 빛, 밤 세기) 확산 조도(직접+간접, 색 없음)를 굽고, 8-bit sRGB PNG(공통 `scale`)로 써요.
+  `png2ktx2.mjs`로 ETC1S KTX2. GLB extras `lightmap {day, night, scale, channel: 1}`. 가구·인스턴스 장의자는 굽는 장면에 그대로 있어
+  바닥에 그 접촉 그림자가 들어가요(가구 자체는 라이트맵 없음, 실시간 빛). 폰 파일(`--phone`)은 512 px, `<unit>_phone_lm_*`.
+  방 하나 4–5분(1024 px, 128 샘플). 다시 구운 GLB는 노드·삼각형이 이전과 같고 TEXCOORD_1만 늘어요.
+- **게임** (`LotRoom.tsx`): 낮 지도는 `lightMap`(channel 1), 밤 지도는 라이트맵 청크 안에서 uniform 하나(`uLmMix`)로 섞어요 — 낮밤이 바뀌어도
+  프로그램 그대로. `LIGHTMAP_GAIN` 0.8, 방 앰비언트 30 %, 구운 방 안의 실시간 하늘 50 %·햇빛 60 %(`roomBaked`, DayNight).
+  두 지도는 입장 커튼 아래에서 미리 올리고(`gl.initTexture`), 커튼은 `compileSafely`가 끝난 뒤(최대 2.5 s) 열려요.
+- **예산 (PC / 폰, MB)**: 구운 방에서는 회벽(plaster_painted)이 PC에서도 알베도만(벽 음영은 라이트맵이): 교실 23.8 · 열람실 29.4 · 성당 26.8 ·
+  예배당 26.3 · 대웅전 20.3 / 폰 성당 7.8.
+- **입장 프레임 (PC, 최대 ms, 낮·밤)**: 교실 117/33 · 열람실 33/17 · 성당 33/17 (시험 때 183–250) · 예배당 17/83 · 대웅전 133/50.
+- **시트**: `shots/l5v2/lm_before_after_rooms_day.jpg`, `lm_before_after_rooms_night.jpg`, `lm_before_after_phone_chapel.jpg`, `lm_before_after_chapel.jpg`.
+- **아직**: 바깥 부지별 라이트맵(껍데기 + 자세히), 폰 예배당 파일.
+- **폰 둘러보기 재측정 (2026-11-18 새벽, Caysonland 합친 뒤)**: 100 ms 넘는 프레임 — 이 브랜치 5 · 11 · 16 · 0 · 16, main d3b0706(라이트맵 없음)과
+  번갈아 5 · 4. 같은 브랜치가 0과 16(최대 1.2 s)을 오가요: 다른 에이전트 e2e(동시 1개)와 GPU를 나눠 쓰는 잡음이 커서 이 PC로는 판정 불가.
+  라이트맵 변경은 방 안에서만 작동(DayNight 조건부, 둘러보기는 방에 들어가지 않음).

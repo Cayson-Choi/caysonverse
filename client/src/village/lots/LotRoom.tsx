@@ -33,7 +33,8 @@ import { dayNight } from "../dayNightDriver";
 import { versionedUrl } from "../modelUrl";
 import { lotGltfLoader, loadManifestMaps, disposeLoadedLots } from "./lotsLoader";
 import { applyLotTextures, drawnTris, lotSurfaceMaterial } from "./lotsPrep";
-import { LotTextureBank, fetchLotManifest, manifestPaths, type LotMatSpec } from "./lotTextures";
+import { roomBaked } from "./roomBaked";
+import { LotTextureBank, fetchLotManifest, loadLotOwnMap, manifestPaths, type LotMatSpec } from "./lotTextures";
 
 /**
  * A lot building's walk-in room (lots v2, contract 11; L5v2): `models/village/lots/<unit>.glb` (the phone's `<unit>_phone.glb` where
@@ -54,12 +55,14 @@ import { LotTextureBank, fetchLotManifest, manifestPaths, type LotMatSpec } from
  * 대웅전 48 on a PC; the phone's 8 / 10 / 8 / 8 / 14): on a PC every set in full at 1K except the listed small parts (their albedo
  * only: a 1.4 MB map instead of 4.2 MB); on a phone every set as its albedo only (0.7 MB) except the floor (and the 대웅전's 마루)
  * that fills the view. `LotRoom` reports the total (`__cvLotRoom().textures`, the sacred pieces' own maps included).
+ * With the baked light (L6) the painted plaster is albedo-only on a PC too: the lightmap carries the walls' shading, and
+ * its two 1K maps (2.8 MB) fit the same budgets.
  */
 export const ROOM_TEXTURES: Readonly<Record<string, { pcAlbedoOnly: readonly string[]; phoneFull: readonly string[] }>> = {
-  lot_school_class: { pcAlbedoOnly: ["grass", "cast_iron"], phoneFull: ["floor_wood"] },
-  lot_library_reading: { pcAlbedoOnly: ["aluminium_brushed", "wood_painted"], phoneFull: ["floor_wood"] },
-  lot_chapel_nave: { pcAlbedoOnly: ["aluminium_brushed"], phoneFull: [] }, // (the phone's chapel: its statues' own maps take the rest of the 8 MB)
-  lot_church_nave: { pcAlbedoOnly: [], phoneFull: ["floor_wood"] },
+  lot_school_class: { pcAlbedoOnly: ["grass", "cast_iron", "plaster_painted"], phoneFull: ["floor_wood"] },
+  lot_library_reading: { pcAlbedoOnly: ["aluminium_brushed", "wood_painted", "plaster_painted"], phoneFull: ["floor_wood"] },
+  lot_chapel_nave: { pcAlbedoOnly: ["aluminium_brushed", "plaster_painted"], phoneFull: [] }, // (the phone's chapel: its statues' own maps take the rest of the 8 MB)
+  lot_church_nave: { pcAlbedoOnly: ["plaster_painted"], phoneFull: ["floor_wood"] },
   lot_temple_hall: { pcAlbedoOnly: [], phoneFull: ["wood_pine_natural"] },
 };
 
@@ -76,9 +79,10 @@ function ownTextureBytes(root: Object3D, mobile: boolean): number {
   root.traverse((o) => {
     if (!isMesh(o) || !o.visible) return;
     for (const m of matsOf(o))
-      for (const k of ["map", "normalMap", "aoMap", "roughnessMap", "metalnessMap", "emissiveMap"] as const) {
-        const t = (m as MeshStandardMaterial)[k];
-        if (!t || seen.has(t) || (m as MeshStandardMaterial).userData.lotSet) continue;
+      for (const k of ["map", "normalMap", "aoMap", "roughnessMap", "metalnessMap", "emissiveMap", "lightMap", "lmNight"] as const) {
+        // (the baked light, L6: the day map on lightMap, the night one beside it — counted for every material, a set's too)
+        const t = k === "lmNight" ? ((m as MeshStandardMaterial).userData.lmNight as Texture | undefined) : (m as MeshStandardMaterial)[k];
+        if (!t || seen.has(t) || ((m as MeshStandardMaterial).userData.lotSet && k !== "lightMap" && k !== "lmNight")) continue;
         seen.add(t);
         const img = (t as Texture & { mipmaps?: Array<{ width: number; height: number }> }).mipmaps?.[0] ?? (t.image as { width?: number; height?: number } | null);
         if (!img?.width || !img.height) continue;
@@ -318,6 +322,51 @@ function patchRoomLamps(m: MeshStandardMaterial, lamps: RoomLamps): void {
   m.needsUpdate = true;
 }
 
+/** A room's baked light (L6, bake_lots.py): GLB extras `lightmap`, irradiance = (texel, linear) x `scale` on TEXCOORD_1. */
+export interface RoomLightmapSpec {
+  day: string;
+  night: string;
+  scale: number;
+  channel?: number;
+}
+/**
+ * How much of the baked irradiance a lit surface takes (the bake's units are Cycles' diffuse irradiance; the game's
+ * lights stay on top of it: the sun's key through the windows, the lamps' and the fire's moving part).
+ */
+export const LIGHTMAP_GAIN = 0.8;
+/** The longest the entry cover waits for the room's programs (ms): a slow phone still gets in. */
+export const ROOM_COMPILE_WAIT_MS = 2500;
+/** The room's ambient fill with a lightmap in (the bake carries the bounce): this share of the unbaked fill. */
+export const LIGHTMAP_AMBIENT = 0.3;
+
+/**
+ * The day map on `lightMap` (channel 1) and the night map mixed in by one uniform (`mix`: 0 day .. 1 night), in the
+ * lightmap chunk itself: one program for day and night, nothing recompiles as the light changes.
+ */
+export function patchLightmapMix(m: MeshStandardMaterial, night: Texture, mix: { value: number }): void {
+  if (m.userData.lightmapMix) return;
+  m.userData.lightmapMix = true;
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = (shader, r) => {
+    prev?.call(m, shader, r);
+    shader.uniforms.uLmNight = { value: night };
+    shader.uniforms.uLmMix = mix;
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", "uniform sampler2D uLmNight;\nuniform float uLmMix;\nvoid main() {")
+      .replace(
+        "#include <lights_fragment_maps>",
+        `#if defined( RE_IndirectDiffuse ) && defined( USE_LIGHTMAP )
+  irradiance += mix( texture2D( lightMap, vLightMapUv ).rgb, texture2D( uLmNight, vLightMapUv ).rgb, uLmMix ) * lightMapIntensity;
+#endif
+#undef USE_LIGHTMAP
+#include <lights_fragment_maps>`,
+      );
+  };
+  const key = m.customProgramCacheKey.bind(m);
+  m.customProgramCacheKey = () => `${key()}|lmmix`;
+  m.needsUpdate = true;
+}
+
 export interface LoadedRoom {
   unit: string;
   root: Group;
@@ -332,6 +381,8 @@ export interface LoadedRoom {
   fire: ShaderMaterial | null;
   fireLight: Vector3 | null;
   lamps: RoomLamps;
+  /** The baked light's day/night mix (null: the room has no lightmap, or the phone's file). */
+  lightmap: { mix: { value: number } } | null;
   solid: SolidIndex;
   stats: { triangles: number; draws: number; sacred: number; sacredTriangles: number; file: string; phone: boolean };
 }
@@ -351,11 +402,26 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
   const bank = new LotTextureBank(gl, "1k", false);
   try {
     const gltf = await loader.loadAsync(versionedUrl(`/models/village/lots/${file}.glb`));
-    const extras = (gltf.parser.json as { asset?: { extras?: { textures?: unknown; sacred?: SacredEntry[] } } }).asset?.extras ?? {};
+    const extras = (gltf.parser.json as { asset?: { extras?: { textures?: unknown; sacred?: SacredEntry[]; lightmap?: RoomLightmapSpec } } }).asset?.extras ?? {};
     const manifests = await Promise.all(manifestPaths(extras.textures).map((p) => fetchLotManifest(p)));
     const { specs, own, textures } = await loadManifestMaps(manifests, gl, bank, (set) => roomSetFull(unit, set, phone));
     const scene = gltf.scene;
     scene.updateMatrixWorld(true);
+    // the baked light (L6): both maps or none
+    let lm: { day: Texture; night: Texture; scale: number; mix: { value: number } } | null = null;
+    if (extras.lightmap) {
+      const spec = extras.lightmap;
+      const maps = await Promise.allSettled([spec.day, spec.night].map((p) => loadLotOwnMap(gl, `/models/village/${p}`)));
+      if (maps[0]!.status === "fulfilled" && maps[1]!.status === "fulfilled") {
+        const [day, night] = [maps[0].value, maps[1].value];
+        for (const t of [day, night]) {
+          t.channel = spec.channel ?? 1;
+          t.anisotropy = 1;
+          textures.push(t);
+        }
+        lm = { day, night, scale: spec.scale, mix: { value: 0 } };
+      } else console.error("[lots] lightmap", unit, maps);
+    }
 
     // the sacred props, read alongside (each its own GLB with its own KTX2 maps)
     const sacred = (extras.sacred ?? []).flatMap((s) => {
@@ -385,8 +451,8 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
     materials.push(glow);
     let fire: ShaderMaterial | null = null;
     const made = new Map<string, Material>();
-    const dressed = (src: Material, colours: boolean): Material => {
-      const key = `${src.name}|${colours ? "c" : "-"}`;
+    const dressed = (src: Material, colours: boolean, baked = false): Material => {
+      const key = `${src.name}|${colours ? "c" : "-"}|${baked ? "lm" : "-"}`;
       const hit = made.get(key);
       if (hit) return hit;
       const s = src as MeshStandardMaterial;
@@ -396,6 +462,12 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
         const sm = lotSurfaceMaterial(s, spec, false);
         sm.vertexColors = colours;
         applyLotTextures(sm, bank);
+        if (baked && lm) {
+          sm.lightMap = lm.day;
+          sm.lightMapIntensity = lm.scale * LIGHTMAP_GAIN;
+          sm.userData.lmNight = lm.night;
+          patchLightmapMix(sm, lm.night, lm.mix);
+        }
         surfaces.push(sm);
         m = sm;
       } else if (spec?.kind === "glass" || src.name === "M_glass") {
@@ -446,7 +518,8 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
         o.raycast = () => {};
       } else {
         const colours = !!o.geometry.getAttribute("color");
-        const ms = matsOf(o).map((m) => dressed(m, colours));
+        const baked = !!lm && !!o.geometry.getAttribute("uv1");
+        const ms = matsOf(o).map((m) => dressed(m, colours, baked));
         o.material = ms.length > 1 ? ms : ms[0]!;
         if (o.name.startsWith("fire__") || matsOf(o).some((m) => (m as Material).blending === AdditiveBlending)) o.raycast = () => {};
       }
@@ -520,8 +593,9 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
     scene.traverse((o) => {
       if (!isMesh(o) || !o.visible) return;
       for (const m of matsOf(o))
-        for (const k of ["map", "normalMap", "aoMap", "roughnessMap", "metalnessMap", "emissiveMap"] as const) {
-          const t = (m as MeshStandardMaterial)[k];
+        for (const k of ["map", "normalMap", "aoMap", "roughnessMap", "metalnessMap", "emissiveMap", "lightMap", "lmNight"] as const) {
+          // (the baked light's two maps too, L6: their first draw was a 100-170 ms upload on the way in)
+          const t = k === "lmNight" ? ((m as MeshStandardMaterial).userData.lmNight as Texture | undefined) : (m as MeshStandardMaterial)[k];
           if (t && !seen.has(t)) {
             seen.add(t);
             try {
@@ -548,6 +622,7 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
       root,
       bank,
       own: textures,
+      lightmap: lm ? { mix: lm.mix } : null,
       materials,
       surfaces,
       lightpools,
@@ -712,14 +787,19 @@ export function LotRoomArea({ area, pose }: { area: string; pose: Pose }) {
   // drawn: the cover may lift, the camera keeps to the room's solids, it glides to look into the room, the materials are compiled
   useEffect(() => {
     if (!loaded || !room) return;
-    houseEntryReady();
+    // the cover lifts once the room's programs are compiled (the lightmapped variants are new ones: compiled behind the
+    // curtain, not on the first frame inside), or after ROOM_COMPILE_WAIT_MS at most
+    let live = true;
+    void Promise.race([compileSafely(gl, loaded.root, camera, scene), new Promise((r) => setTimeout(r, ROOM_COMPILE_WAIT_MS))]).then(() => {
+      if (live) houseEntryReady();
+    });
     const solid = loaded.solid;
     const offSight = setSeatSightBlocker((fx, fy, fz, tx, ty, tz) => solid.segmentBlocked(fx, fy, fz, tx, ty, tz, 0.35));
     const offSpot = setSeatSpotBlocker((x, y, z) => solid.underHung(x, y, z, 2.6, 1.0, 0.25) || solid.nearSolid(x, y, z, 0.3));
     const offCamera = setCameraSolids(solid);
     viewState.orbitGoal = { yaw: arrivalYaw(solid, pose.x, pose.z, pose.yaw, CAMERA.distance), pitch: 0.55 };
-    void compileSafely(gl, loaded.root, camera, scene);
     return () => {
+      live = false;
       offSight();
       offSpot();
       offCamera();
@@ -774,13 +854,19 @@ export function LotRoomArea({ area, pose }: { area: string; pose: Pose }) {
     loaded.glow.opacity = Math.max(0.25, o.lights);
     // the room's lamps: brighter at night (they carry the room then), the fill lower
     const L = ROOM_LIGHTS[loaded.unit];
-    if (L && lights.ambient) lights.ambient.intensity = L.ambient[2] + (L.ambient[1] - L.ambient[2]) * day;
+    if (L && lights.ambient) lights.ambient.intensity = (L.ambient[2] + (L.ambient[1] - L.ambient[2]) * day) * (loaded.lightmap ? LIGHTMAP_AMBIENT : 1);
+    // the baked light: the day map by day, the night map by night (one uniform)
+    if (loaded.lightmap) loaded.lightmap.mix.value = 1 - day;
+    roomBaked.on = !!loaded.lightmap;
     const lamps = loaded.lamps;
     for (let i = 0; i < lamps.base.length; i++) {
       const k = lamps.fire === i ? FIRE_INTENSITY * (0.82 + 0.12 * Math.sin(t * 5.65) + 0.06 * Math.sin(t * 44.0)) : lamps.base[i]! * (1 + 0.6 * (1 - day));
       lamps.col.value[i]!.set(lamps.colour[i]!.r * k, lamps.colour[i]!.g * k, lamps.colour[i]!.b * k);
     }
   });
+
+  // (leaving the room: the outdoor light is the village's own again)
+  useEffect(() => () => void (roomBaked.on = false), []);
 
   if (!room) return null;
   return (
