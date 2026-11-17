@@ -459,7 +459,7 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
         <ParkMountains tier={tier === "high" ? "high" : "low"} />
       </Suspense>
       <CoasterWorld all={all} pine={pine!} env={env} />
-      <CarouselWorld env={env} />
+      <CarouselWorld env={env} all={all} />
     </group>
   );
 }

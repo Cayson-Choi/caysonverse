@@ -54,6 +54,7 @@ class Builder:
         self.scene = new_scene()
         self.M = {k: mat(k, *v) if isinstance(v, tuple) else v for k, v in mats.items()}
         self.parts = []
+        self.lean = False
 
     def _finish(self, obj, mname, bevel=0.0, segs=3):
         obj.data.materials.append(self.M[mname])
@@ -96,6 +97,8 @@ class Builder:
         return self._finish(obj, mname, bevel, segs)
 
     def ellipsoid(self, name, center, radii, mname, rot_x=0.0, rot_y=0.0, seg=16, rings=10):
+        if self.lean:
+            seg, rings = min(seg, 10), min(rings, 7)
         bm = bmesh.new()
         bmesh.ops.create_uvsphere(bm, u_segments=seg, v_segments=rings, radius=1.0)
         for v in bm.verts:
@@ -106,11 +109,13 @@ class Builder:
         obj.rotation_euler = (math.radians(rot_x), 0, math.radians(-rot_y))
         return self._finish(obj, mname)
 
-    def cyl(self, name, p0, p1, r0, r1, mname, sides=12, bevel=0.0, cap=True):
+    def cyl(self, name, p0, p1, r0, r1, mname, sides=12, bevel=0.0, cap=True, flip=False):
         a, b = B(*p0), B(*p1)
         d = b - a
         bm = bmesh.new()
         bmesh.ops.create_cone(bm, cap_ends=cap, segments=sides, radius1=r0, radius2=r1, depth=d.length)
+        if flip:
+            bmesh.ops.reverse_faces(bm, faces=bm.faces[:])
         obj = self._link(name, bm)
         obj.location = (a + b) / 2
         obj.rotation_mode = "QUATERNION"
@@ -121,10 +126,13 @@ class Builder:
         cu = bpy.data.curves.new(name, "CURVE")
         cu.dimensions = "3D"
         cu.bevel_depth = r
-        cu.bevel_resolution = max(2, sides // 4)
+        cu.bevel_resolution = 0 if r <= 0.03 else (1 if r <= 0.07 else 2)
         cu.use_fill_caps = True
-        sp = cu.splines.new("POLY")
+        sp = cu.splines.new("NURBS")
         sp.points.add(len(pts) - 1)
+        sp.order_u = min(4, len(pts))
+        sp.use_endpoint_u = True
+        sp.resolution_u = 1 if len(pts) > 20 else 3
         for i, p in enumerate(pts):
             w = B(*p)
             sp.points[i].co = (w.x, w.y, w.z, 1.0)
@@ -139,10 +147,20 @@ class Builder:
         obj.select_set(False)
         return self._finish(obj, mname)
 
-    def disc(self, name, y0, y1, r, mname, sides=48, bevel=0.0):
-        return self.cyl(name, (0, y0, 0), (0, y1, 0), r, r, mname, sides, bevel)
+    def disc(self, name, y0, y1, r, mname, sides=48, bevel=0.0, cap=True, flip=False):
+        return self.cyl(name, (0, y0, 0), (0, y1, 0), r, r, mname, sides, bevel, cap, flip)
+
+    def ring(self, name, y, r, tube, mname, n=72):
+        pts = [(math.sin(i / n * math.tau) * r, y, -math.cos(i / n * math.tau) * r) for i in range(n + 1)]
+        return self.tube(name, pts, tube, mname, 6)
 
     def export(self, filename, smooth_angle=40.0):
+        if os.environ.get("CR_COUNT"):
+            for o in sorted(self.parts, key=lambda o: -len(o.data.polygons))[:30]:
+                try:
+                    print("  part", o.name, len(o.data.polygons))
+                except ReferenceError:
+                    pass
         bpy.ops.object.select_all(action="DESELECT")
         for o in self.parts:
             o.select_set(True)
@@ -168,10 +186,14 @@ GOLD = (0.95, 0.66, 0.16)
 S = Builder({
     "cr_stone": ((0.62, 0.6, 0.56), 0.0, 0.8),
     "cr_wood": ((0.52, 0.33, 0.18), 0.0, 0.55, 0.4, 0.2),
+    "cr_varnish": ((0.45, 0.27, 0.13), 0.0, 0.35, 0.8, 0.1),
     "cr_gold": (GOLD, 0.85, 0.3, 0.5, 0.1),
     "cr_cream": ((0.95, 0.91, 0.82), 0.0, 0.4, 0.8, 0.1),
     "cr_indigo": ((0.08, 0.1, 0.48), 0.1, 0.35, 0.9, 0.06),
-    "cr_mirror": ((0.92, 0.95, 1.0), 1.0, 0.04),
+    "cr_mirror": ((0.8, 0.88, 0.97), 0.45, 0.05),
+    "cr_sky": ((0.45, 0.68, 0.9), 0.0, 0.5, 0.5, 0.1),
+    "cr_rose": ((0.78, 0.2, 0.3), 0.0, 0.5, 0.4, 0.1),
+    "cr_green": ((0.2, 0.5, 0.3), 0.0, 0.55),
     "cr_brass": ((0.9, 0.7, 0.28), 1.0, 0.22),
     "cr_red": ((0.55, 0.06, 0.1), 0.0, 0.6),
     "cr_dark": ((0.07, 0.06, 0.07), 0.0, 0.6),
@@ -182,10 +204,10 @@ APEX = 12.9
 # steps and the platform
 S.disc("step", 0.0, 0.3, 13.7, "cr_stone", 64, 0.06)
 S.disc("deck", 0.3, DECK, 12.5, "cr_wood", 64, 0.05)
-S.disc("deck_rim", DECK - 0.02, DECK + 0.12, 12.55, "cr_gold", 64, 0.03)
-for r, mn in ((11.4, "cr_gold"), (7.9, "cr_cream"), (5.2, "cr_gold")):
-    S.disc(f"deck_inlay_{r}", DECK - 0.005, DECK + 0.012, r, mn, 64)
-    S.disc(f"deck_inlay_in_{r}", DECK - 0.002, DECK + 0.016, r - 0.12, "cr_wood", 64)
+S.disc("deck_rim", DECK - 0.02, DECK + 0.12, 12.55, "cr_gold", 64, 0.03, cap=False)
+S.ring("deck_rim_top", DECK + 0.12, 12.5, 0.05, "cr_gold")
+for r, mn in ((11.4, "cr_gold"), (7.9, "cr_brass"), (5.2, "cr_gold")):
+    S.ring(f"deck_inlay_{r}", DECK + 0.012, r, 0.03, mn)
 # the central column: a drum with mirror panels between gilded pilasters, a gilded cap
 S.disc("column", DECK, CANOPY, 1.7, "cr_cream", 24, 0.04)
 S.disc("column_base", DECK, DECK + 0.7, 2.1, "cr_gold", 24, 0.05)
@@ -198,9 +220,11 @@ for k in range(12):
     a2 = k / 12 * math.tau
     S.cyl(f"pilaster_{k}", (math.sin(a2) * 1.75, DECK + 0.7, -math.cos(a2) * 1.75), (math.sin(a2) * 1.75, CANOPY - 0.9, -math.cos(a2) * 1.75), 0.1, 0.1, "cr_gold", 10)
 # the rounding board: a band under the canopy rim, painted panels in gilded frames
-S.disc("band", CANOPY - 1.25, CANOPY, 13.15, "cr_indigo", 64, 0.02)
-S.disc("band_trim_top", CANOPY - 0.07, CANOPY + 0.1, 13.28, "cr_gold", 64, 0.03)
-S.disc("band_trim_bottom", CANOPY - 1.3, CANOPY - 1.18, 13.25, "cr_gold", 64, 0.03)
+S.disc("band", CANOPY - 1.25, CANOPY, 13.15, "cr_indigo", 64, 0.02, cap=False)
+S.disc("band_in", CANOPY - 1.25, CANOPY, 13.1, "cr_indigo", 64, 0.0, cap=False, flip=True)
+S.disc("band_trim_top", CANOPY - 0.07, CANOPY + 0.1, 13.28, "cr_gold", 64, 0.03, cap=False)
+S.disc("band_trim_bottom", CANOPY - 1.3, CANOPY - 1.18, 13.25, "cr_gold", 64, 0.03, cap=False)
+S.disc("band_trim_bottom_in", CANOPY - 1.3, CANOPY - 1.18, 13.2, "cr_gold", 64, 0.0, cap=False, flip=True)
 for k in range(24):
     a = (k + 0.5) / 24 * math.tau
     x, z = math.sin(a) * 13.2, -math.cos(a) * 13.2
@@ -208,6 +232,38 @@ for k in range(24):
     S.box(f"panel_frame_{k}", (1.84, 0.92, 0.04), (x * 0.998, CANOPY - 0.62, z * 0.998), "cr_gold", 0.02, 2, rot_y=-math.degrees(a))
     # a scalloped flap hanging below the band
     S.ellipsoid(f"scallop_{k}", (math.sin(a) * 13.15, CANOPY - 1.4, -math.cos(a) * 13.15), (0.74, 0.34, 0.14), "cr_gold" if k % 2 else "cr_cream", seg=10, rings=6, rot_y=-math.degrees(a))
+for k in range(24):
+    a = (k + 0.5) / 24 * math.tau
+    x, z = math.sin(a) * 13.04, -math.cos(a) * 13.04
+    S.box(f"inner_mirror_{k}", (1.5, 0.62, 0.03), (x, CANOPY - 0.62, z), "cr_mirror", 0.01, 2, rot_y=-math.degrees(a))
+    S.box(f"inner_frame_{k}", (1.66, 0.78, 0.03), (x * 1.002, CANOPY - 0.62, z * 1.002), "cr_gold", 0.02, 2, rot_y=-math.degrees(a))
+# the painted ceiling under the canopy: 24 radial wedges in three rows (sky, cream, rose), gilded rafters, a rosette in each panel
+APEX_IN = APEX - 0.55
+
+
+def ceil_y(r):
+    return APEX_IN - (r / 13.0) * (APEX_IN - (CANOPY + 0.02))
+
+
+ROWS = ((2.5, 5.6), (5.75, 9.1), (9.25, 12.95))
+for k in range(24):
+    a0 = k / 24 * math.tau + 0.012
+    a1 = (k + 1) / 24 * math.tau - 0.012
+    for row, (r0, r1) in enumerate(ROWS):
+        bm = bmesh.new()
+        q = [bm.verts.new(B(math.sin(a) * r, ceil_y(r) - 0.02, -math.cos(a) * r)) for (a, r) in ((a0, r0), (a1, r0), (a1, r1), (a0, r1))]
+        bm.faces.new(q[::-1])  # faces down
+        obj = S._link(f"ceil_{k}_{row}", bm)
+        S._finish(obj, "cr_sky" if (k + row) % 2 == 0 else "cr_cream")
+        am = (a0 + a1) / 2
+        rm = (r0 + r1) / 2
+        cx, cz = math.sin(am) * rm, -math.cos(am) * rm
+        yy = ceil_y(rm) - 0.05
+        S.cyl(f"rosette_{k}_{row}", (cx, yy - 0.03, cz), (cx, yy, cz), 0.5 + 0.05 * row, 0.5 + 0.05 * row, "cr_gold", 14)
+        S.cyl(f"rosette_in_{k}_{row}", (cx, yy - 0.05, cz), (cx, yy - 0.03, cz), 0.36 + 0.04 * row, 0.36 + 0.04 * row, "cr_rose" if (k + row) % 2 else "cr_green", 14)
+    # a gilded rafter on the seam
+    ra = k / 24 * math.tau
+    S.cyl(f"rafter_{k}", (math.sin(ra) * 2.5, ceil_y(2.5) - 0.05, -math.cos(ra) * 2.5), (math.sin(ra) * 13.0, ceil_y(13.0) - 0.05, -math.cos(ra) * 13.0), 0.06, 0.06, "cr_gold", 8)
 # the canopy: 24 wedges, alternating indigo and cream, rising from the rim to the apex
 for k in range(24):
     a0 = k / 24 * math.tau
@@ -241,78 +297,157 @@ for k in range(24):
 S.ellipsoid("finial_ball", (0, APEX + 0.45, 0), (0.55, 0.55, 0.55), "cr_gold", seg=16, rings=10)
 S.cyl("finial_spire", (0, APEX + 0.6, 0), (0, APEX + 2.2, 0), 0.16, 0.02, "cr_gold", 10)
 S.ellipsoid("finial_moon", (0.0, APEX + 1.7, 0), (0.0, 0.0, 0.0), "cr_gold", seg=6, rings=4) if False else None
-# the poles: brass, from the deck to the canopy, at every seat position
+# the poles: thin brass (4.5 cm) with a twisted gilded wire, from the deck to the canopy, at every seat position
 RINGS = ((9.6, 12, 0.0), (6.6, 8, 0.0), (3.8, 2, math.pi / 2))
 for r, n, off in RINGS:
     for i in range(n):
         a = i / n * math.tau + off if r != 3.8 else i * math.pi
-        S.cyl(f"pole_{r}_{i}", (math.sin(a) * r, DECK, -math.cos(a) * r), (math.sin(a) * r, CANOPY - 0.2, -math.cos(a) * r), 0.045, 0.045, "cr_brass", 10)
-        S.disc(f"pole_foot_{r}_{i}", DECK, DECK + 0.08, 0.1, "cr_gold", 12) if False else None
+        px, pz = math.sin(a) * r, -math.cos(a) * r
+        S.cyl(f"pole_{r}_{i}", (px, DECK, pz), (px, CANOPY - 0.2, pz), 0.022, 0.022, "cr_brass", 8)
+        pts = []
+        for j in range(61):
+            t = j / 60
+            ang = t * 9 * math.tau
+            pts.append((px + math.cos(ang) * 0.03, DECK + 0.1 + t * (CANOPY - DECK - 0.5), pz + math.sin(ang) * 0.03))
+        S.tube(f"pole_wire_{r}_{i}", pts, 0.007, "cr_gold", 4)
 S.export("carousel_static.glb")
 
 # ═════════════════════════════ a horse ═════════════════════════════
 H = Builder({
-    "horse_paint": ((0.92, 0.9, 0.86), 0.0, 0.35, 0.9, 0.08),
+    "horse_paint": ((0.92, 0.9, 0.86), 0.0, 0.32, 1.0, 0.05),
     "horse_gold": (GOLD, 0.85, 0.3, 0.5, 0.1),
-    "horse_red": ((0.5, 0.05, 0.09), 0.0, 0.55, 0.3),
+    "horse_red": ((0.5, 0.05, 0.09), 0.0, 0.5, 0.5, 0.2),
     "horse_indigo": ((0.08, 0.1, 0.5), 0.0, 0.5, 0.4),
-    "horse_dark": ((0.06, 0.05, 0.05), 0.0, 0.45),
-    "horse_mane": ((0.97, 0.93, 0.82), 0.0, 0.55, 0.3),
+    "horse_dark": ((0.06, 0.05, 0.05), 0.0, 0.4, 0.3),
+    "horse_mane": ((0.97, 0.93, 0.82), 0.0, 0.5, 0.3),
+    "horse_rose": ((0.86, 0.2, 0.3), 0.0, 0.45, 0.4),
+    "horse_leaf": ((0.18, 0.5, 0.25), 0.0, 0.5),
+    "horse_jewel": ((0.1, 0.45, 0.95), 0.0, 0.08, 1.0, 0.02),
+    "horse_mouth": ((0.42, 0.08, 0.1), 0.0, 0.5),
+    "horse_tooth": ((0.98, 0.96, 0.9), 0.0, 0.4),
 })
-# the body: torso, chest, rump (the saddle point is the origin)
-H.ellipsoid("torso", (0, -0.2, 0), (0.3, 0.36, 0.78), "horse_paint", seg=18, rings=12)
-H.ellipsoid("chest", (0, -0.12, 0.52), (0.29, 0.38, 0.4), "horse_paint", seg=16, rings=10)
-H.ellipsoid("rump", (0, -0.14, -0.52), (0.31, 0.36, 0.4), "horse_paint", seg=16, rings=10)
-H.ellipsoid("belly", (0, -0.38, 0.0), (0.26, 0.22, 0.6), "horse_paint", seg=14, rings=8)
-# the arched neck and the head
-H.cyl("neck_low", (0, 0.05, 0.62), (0, 0.38, 0.8), 0.2, 0.16, "horse_paint", 14)
-H.cyl("neck_high", (0, 0.38, 0.8), (0, 0.62, 0.95), 0.16, 0.12, "horse_paint", 14)
-H.ellipsoid("head", (0, 0.66, 1.1), (0.13, 0.15, 0.3), "horse_paint", rot_x=38.0, seg=16, rings=10)
-H.ellipsoid("muzzle", (0, 0.5, 1.34), (0.1, 0.1, 0.14), "horse_paint", rot_x=38.0, seg=12, rings=8)
-H.ellipsoid("nostril_l", (0.05, 0.47, 1.45), (0.025, 0.02, 0.025), "horse_dark", seg=6, rings=4)
-H.ellipsoid("nostril_r", (-0.05, 0.47, 1.45), (0.025, 0.02, 0.025), "horse_dark", seg=6, rings=4)
+
+
+H.lean = True
+
+
+def skin_body(name, verts, edges, mname, sub=2):
+    """One smooth organic body from a skeleton: Skin modifier (a radius per joint) then Subdivision Surface. verts: (x, y, z, rx, ry) in game coords."""
+    me = bpy.data.meshes.new(name)
+    me.from_pydata([tuple(B(*v[:3])) for v in verts], edges, [])
+    obj = bpy.data.objects.new(name, me)
+    H.scene.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    md = obj.modifiers.new("skin", "SKIN")
+    md.use_smooth_shade = True
+    bpy.ops.object.skin_root_mark() if False else None
+    for i, v in enumerate(verts):
+        sv = me.skin_vertices[0].data[i]
+        sv.radius = (v[3], v[4])
+        if i == 0:
+            sv.use_root = True
+    sd = obj.modifiers.new("sub", "SUBSURF")
+    sd.levels = sub
+    sd.render_levels = sub
+    bpy.ops.object.modifier_apply(modifier="skin")
+    bpy.ops.object.modifier_apply(modifier="sub")
+    dm = obj.modifiers.new("dec", "DECIMATE")
+    dm.ratio = 0.42
+    bpy.ops.object.modifier_apply(modifier="dec")
+    obj.select_set(False)
+    obj.data.materials.append(H.M[mname])
+    H.parts.append(obj)
+    return obj
+
+
+# the body is one smooth carved volume (Skin + Subdivision): trunk with a deep chest, an arched neck, a long head, four jointed legs
+V = [
+    (0, 0.0, -0.72, 0.1, 0.12),  # 0 tail root
+    (0, -0.06, -0.48, 0.27, 0.3),  # 1 rump
+    (0, -0.2, -0.02, 0.25, 0.29),  # 2 barrel
+    (0, -0.1, 0.42, 0.26, 0.32),  # 3 chest
+    (0, 0.14, 0.62, 0.19, 0.23),  # 4 neck base / withers
+    (0, 0.4, 0.78, 0.13, 0.17),  # 5 neck middle (arched)
+    (0, 0.62, 0.95, 0.105, 0.13),  # 6 poll
+    (0, 0.55, 1.13, 0.1, 0.15),  # 7 cheek (head turns down)
+    (0, 0.4, 1.36, 0.072, 0.085),  # 8 muzzle
+]
+E = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8)]
 for sx in (-1, 1):
-    H.cyl(f"ear_{sx}", (sx * 0.07, 0.8, 0.98), (sx * 0.085, 0.99, 0.95), 0.045, 0.01, "horse_paint", 8)
-    H.ellipsoid(f"eye_{sx}", (sx * 0.125, 0.7, 1.15), (0.03, 0.035, 0.035), "horse_dark", seg=8, rings=6)
-    H.ellipsoid(f"eye_gold_{sx}", (sx * 0.118, 0.7, 1.15), (0.045, 0.05, 0.05), "horse_gold", seg=8, rings=6)
-# four legs: thigh, knee, cannon, a gold hoof; the forelegs raised and bent, the hind legs set back
+    n = len(V)
+    x = sx * 0.15
+    V += [
+        (x, -0.28, 0.46, 0.1, 0.1), (x, -0.6, 0.78, 0.07, 0.07), (x, -0.93, 0.7, 0.045, 0.045),  # foreleg: shoulder, knee (raised), fetlock
+        (x * 1.05, -0.3, -0.48, 0.12, 0.12), (x, -0.66, -0.7, 0.07, 0.07), (x, -0.99, -0.5, 0.045, 0.045),  # hind: haunch, hock, fetlock
+    ]
+    E += [(3, n), (n, n + 1), (n + 1, n + 2), (1, n + 3), (n + 3, n + 4), (n + 4, n + 5)]
+skin_body("horse_body", V, E, "horse_paint", 2)
 for sx in (-1, 1):
-    x = sx * 0.17
-    H.cyl(f"fore_up_{sx}", (x, -0.3, 0.52), (x, -0.62, 0.8), 0.12, 0.075, "horse_paint", 12)
-    H.cyl(f"fore_low_{sx}", (x, -0.62, 0.8), (x, -0.98, 0.7), 0.065, 0.05, "horse_paint", 10)
-    H.cyl(f"fore_hoof_{sx}", (x, -0.98, 0.7), (x, -1.08, 0.7), 0.065, 0.075, "horse_gold", 10)
-    H.cyl(f"hind_up_{sx}", (x, -0.3, -0.52), (x, -0.68, -0.68), 0.14, 0.08, "horse_paint", 12)
-    H.cyl(f"hind_low_{sx}", (x, -0.68, -0.68), (x, -1.03, -0.5), 0.07, 0.05, "horse_paint", 10)
-    H.cyl(f"hind_hoof_{sx}", (x, -1.03, -0.5), (x, -1.13, -0.5), 0.065, 0.078, "horse_gold", 10)
-# the mane (a ribbon of cream along the crest, with curls) and the tail
-H.tube("mane", [(0, 0.1, 0.64), (0, 0.42, 0.78), (0, 0.67, 0.95), (0, 0.8, 1.1)], 0.065, "horse_mane", 10, taper_end=0.5)
-for k, (y, z) in enumerate(((0.3, 0.7), (0.5, 0.86), (0.66, 1.0))):
-    H.ellipsoid(f"mane_curl_{k}", (0.07, y, z - 0.02), (0.07, 0.1, 0.09), "horse_mane", seg=8, rings=6)
-    H.ellipsoid(f"mane_curl_l_{k}", (-0.07, y, z - 0.02), (0.07, 0.1, 0.09), "horse_mane", seg=8, rings=6)
-H.tube("forelock", [(0, 0.82, 1.1), (0, 0.78, 1.22), (0, 0.66, 1.26)], 0.04, "horse_mane", 8, taper_end=0.4)
-H.tube("tail", [(0, -0.02, -0.82), (0, -0.1, -1.05), (0, -0.36, -1.22), (0, -0.72, -1.2)], 0.1, "horse_mane", 10, taper_end=0.35)
-# tack: a blanket, the saddle with a high cantle and pommel (gilded), a girth strap, a breast collar and a bridle
-H.box("blanket", (0.62, 0.05, 0.62), (0, 0.095, 0.0), "horse_indigo", 0.02, 2)
-H.box("saddle_seat", (0.4, 0.07, 0.46), (0, 0.15, -0.02), "horse_red", 0.03, 3)
-H.box("saddle_cantle", (0.4, 0.2, 0.07), (0, 0.24, -0.28), "horse_red", 0.035, 3)
-H.box("saddle_pommel", (0.12, 0.14, 0.1), (0, 0.24, 0.24), "horse_gold", 0.035, 3)
-H.box("saddle_trim", (0.42, 0.012, 0.48), (0, 0.186, -0.02), "horse_gold", 0.004, 1)
+    H.cyl(f"fore_hoof_{sx}", (sx * 0.15, -0.93, 0.7), (sx * 0.15, -1.07, 0.7), 0.055, 0.075, "horse_gold", 14)
+    H.cyl(f"hind_hoof_{sx}", (sx * 0.15, -0.99, -0.5), (sx * 0.15, -1.13, -0.5), 0.055, 0.075, "horse_gold", 14)
+    # ears (pricked), eyes with a gold lid, nostril
+    H.ellipsoid(f"ear_{sx}", (sx * 0.065, 0.83, 0.97), (0.035, 0.1, 0.03), "horse_paint", rot_x=-12.0, seg=10, rings=8)
+    H.ellipsoid(f"ear_in_{sx}", (sx * 0.065, 0.83, 0.985), (0.02, 0.07, 0.015), "horse_red", rot_x=-12.0, seg=8, rings=6)
+    H.ellipsoid(f"eye_{sx}", (sx * 0.1, 0.64, 1.1), (0.028, 0.034, 0.034), "horse_dark", seg=10, rings=8)
+    H.ellipsoid(f"eye_lid_{sx}", (sx * 0.097, 0.665, 1.1), (0.04, 0.012, 0.045), "horse_gold", seg=10, rings=6)
+    H.ellipsoid(f"nostril_{sx}", (sx * 0.045, 0.46, 1.4), (0.025, 0.02, 0.025), "horse_dark", seg=8, rings=6)
+# the open mouth: a dark red gap with a lower jaw and teeth
+H.ellipsoid("mouth", (0, 0.34, 1.36), (0.05, 0.03, 0.06), "horse_mouth", seg=10, rings=6)
+H.ellipsoid("jaw", (0, 0.335, 1.31), (0.06, 0.04, 0.085), "horse_paint", rot_x=-10.0, seg=12, rings=8)
+for k in range(5):
+    H.ellipsoid(f"tooth_{k}", (-0.04 + k * 0.02, 0.366, 1.405), (0.009, 0.014, 0.008), "horse_tooth", seg=5, rings=4)
+# the carved mane: flowing locks that run down the crest, curling to one side at the ends
+for k in range(6):
+    f = k / 5
+    y0, z0 = 0.62 - f * 0.22, 0.95 - f * 0.3
+    side = 0.06 + 0.02 * (k % 2)
+    pts = [(0.0, y0 + 0.12, z0 + 0.04), (side * 0.5, y0 + 0.07, z0 - 0.05), (side, y0 - 0.06, z0 - 0.14), (side * 1.6, y0 - 0.16, z0 - 0.15), (side * 1.4, y0 - 0.2, z0 - 0.1)]
+    H.tube(f"mane_{k}", pts, 0.05 - 0.01 * f, "horse_mane", 10, taper_end=0.35)
+H.tube("forelock", [(0, 0.8, 1.08), (0, 0.84, 1.17), (0, 0.76, 1.24), (0.03, 0.64, 1.25)], 0.04, "horse_mane", 8, taper_end=0.3)
+# the tail: several flowing locks swept back and down
+for k in range(4):
+    sx = (k - 1.5) * 0.06
+    H.tube(f"tail_{k}", [(0, 0.0, -0.72), (sx * 0.5, 0.0, -0.95), (sx * 1.4, -0.2, -1.18), (sx * 2.0, -0.55, -1.25), (sx * 2.4, -0.86, -1.16)], 0.07 - abs(k - 1.5) * 0.012, "horse_mane", 10, taper_end=0.25)
+# tack: indigo blanket with gold braid, a deep red saddle with high cantle and pommel, gold, roses and jewels
+H.ellipsoid("blanket", (0, 0.04, 0.0), (0.33, 0.06, 0.4), "horse_indigo", seg=16, rings=8)
+H.tube("blanket_braid", [(-0.3, 0.0, -0.3), (-0.34, -0.02, 0.0), (-0.3, 0.0, 0.3)], 0.014, "horse_gold", 6)
+H.tube("blanket_braid_r", [(0.3, 0.0, -0.3), (0.34, -0.02, 0.0), (0.3, 0.0, 0.3)], 0.014, "horse_gold", 6)
+H.ellipsoid("saddle_seat", (0, 0.12, -0.02), (0.22, 0.07, 0.3), "horse_red", seg=16, rings=10)
+H.ellipsoid("saddle_cantle", (0, 0.2, -0.27), (0.2, 0.12, 0.07), "horse_red", seg=14, rings=8)
+H.ellipsoid("saddle_pommel", (0, 0.22, 0.22), (0.07, 0.11, 0.07), "horse_gold", seg=12, rings=8)
 for sx in (-1, 1):
-    H.cyl(f"stirrup_strap_{sx}", (sx * 0.27, 0.1, 0.0), (sx * 0.31, -0.38, 0.02), 0.014, 0.014, "horse_red", 6)
-    H.box(f"stirrup_{sx}", (0.03, 0.02, 0.1), (sx * 0.31, -0.4, 0.02), "horse_gold", 0.006, 2)
-H.tube("girth", [(-0.32, 0.04, 0.0), (-0.34, -0.3, 0.0), (0, -0.52, 0.0), (0.34, -0.3, 0.0), (0.32, 0.04, 0.0)], 0.03, "horse_red", 8)
-H.tube("breast_collar", [(-0.3, 0.05, 0.62), (-0.32, -0.28, 0.72), (0, -0.46, 0.78), (0.32, -0.28, 0.72), (0.3, 0.05, 0.62)], 0.035, "horse_gold", 8)
-for k, x in enumerate((-0.2, 0.2)):
-    H.ellipsoid(f"collar_boss_{k}", (x, -0.1, 0.8), (0.05, 0.05, 0.05), "horse_gold", seg=8, rings=6)
-H.tube("bridle_brow", [(-0.125, 0.82, 1.06), (0, 0.85, 1.1), (0.125, 0.82, 1.06)], 0.014, "horse_gold", 6)
-H.tube("bridle_nose", [(-0.115, 0.6, 1.27), (0, 0.58, 1.34), (0.115, 0.6, 1.27)], 0.016, "horse_gold", 6)
-H.tube("bridle_cheek_l", [(0.125, 0.82, 1.06), (0.135, 0.66, 1.14), (0.115, 0.6, 1.27)], 0.012, "horse_gold", 6)
-H.tube("bridle_cheek_r", [(-0.125, 0.82, 1.06), (-0.135, 0.66, 1.14), (-0.115, 0.6, 1.27)], 0.012, "horse_gold", 6)
-H.tube("reins", [(0.1, 0.55, 1.28), (0.16, 0.45, 0.9), (0.12, 0.25, 0.35), (0.1, 0.2, 0.2)], 0.012, "horse_red", 6)
-H.tube("reins_r", [(-0.1, 0.55, 1.28), (-0.16, 0.45, 0.9), (-0.12, 0.25, 0.35), (-0.1, 0.2, 0.2)], 0.012, "horse_red", 6)
-# the pole sleeve (gilded), where the brass pole passes through the body
-H.cyl("pole_sleeve", (0, 0.5, 0.3), (0, -0.55, 0.3), 0.07, 0.07, "horse_gold", 10)
-H.export("carousel_horse.glb", 55.0)
+    H.cyl(f"stirrup_strap_{sx}", (sx * 0.26, 0.08, 0.0), (sx * 0.3, -0.4, 0.02), 0.014, 0.014, "horse_red", 6)
+    H.box(f"stirrup_{sx}", (0.03, 0.02, 0.1), (sx * 0.3, -0.43, 0.02), "horse_gold", 0.006, 2)
+H.tube("girth", [(-0.3, 0.02, 0.0), (-0.33, -0.3, 0.0), (0, -0.5, 0.0), (0.33, -0.3, 0.0), (0.3, 0.02, 0.0)], 0.03, "horse_red", 8)
+H.tube("breast_collar", [(-0.24, 0.08, 0.58), (-0.27, -0.2, 0.62), (0, -0.34, 0.72), (0.27, -0.2, 0.62), (0.24, 0.08, 0.58)], 0.035, "horse_gold", 8)
+H.ellipsoid("collar_jewel", (0, -0.28, 0.745), (0.05, 0.05, 0.04), "horse_jewel", seg=10, rings=8)
+
+
+def rose(name, c, r=0.045):
+    H.ellipsoid(name + "_c", c, (r, r, r), "horse_rose", seg=8, rings=6)
+    for j in range(4):
+        a = j / 4 * math.tau
+        H.ellipsoid(f"{name}_p{j}", (c[0] + math.cos(a) * r * 0.9, c[1] + 0.012, c[2] + math.sin(a) * r * 0.9), (r * 0.6, r * 0.5, r * 0.6), "horse_rose", seg=6, rings=4)
+
+
+for sx in (-1, 1):
+    rose(f"rose_blanket_{sx}", (sx * 0.31, 0.06, -0.2))
+    rose(f"rose_blanket_f_{sx}", (sx * 0.3, 0.06, 0.2))
+    H.ellipsoid(f"leaf_{sx}", (sx * 0.35, 0.05, -0.12), (0.05, 0.015, 0.025), "horse_leaf", seg=6, rings=4)
+    H.ellipsoid(f"leaf_f_{sx}", (sx * 0.34, 0.05, 0.12), (0.05, 0.015, 0.025), "horse_leaf", seg=6, rings=4)
+rose("rose_cantle", (0, 0.3, -0.3), 0.04)
+# the bridle: gold straps with a jewelled brow band, cheek straps, a noseband, reins
+H.tube("bridle_brow", [(-0.108, 0.71, 1.04), (0, 0.745, 1.08), (0.108, 0.71, 1.04)], 0.014, "horse_gold", 6)
+H.ellipsoid("brow_jewel", (0, 0.745, 1.095), (0.03, 0.03, 0.02), "horse_jewel", seg=8, rings=6)
+H.tube("bridle_nose", [(-0.08, 0.47, 1.31), (0, 0.45, 1.39), (0.08, 0.47, 1.31)], 0.016, "horse_gold", 6)
+H.tube("bridle_cheek_l", [(0.108, 0.71, 1.04), (0.125, 0.56, 1.12), (0.08, 0.47, 1.31)], 0.012, "horse_gold", 6)
+H.tube("bridle_cheek_r", [(-0.108, 0.71, 1.04), (-0.125, 0.56, 1.12), (-0.08, 0.47, 1.31)], 0.012, "horse_gold", 6)
+H.tube("reins", [(0.09, 0.38, 1.3), (0.15, 0.4, 0.95), (0.12, 0.22, 0.4), (0.1, 0.2, 0.22)], 0.012, "horse_red", 6)
+H.tube("reins_r", [(-0.09, 0.38, 1.3), (-0.15, 0.4, 0.95), (-0.12, 0.22, 0.4), (-0.1, 0.2, 0.22)], 0.012, "horse_red", 6)
+# the pole sleeve (gilded), where the thin brass pole passes through the body
+H.cyl("pole_sleeve", (0, 0.5, 0.3), (0, -0.55, 0.3), 0.032, 0.032, "horse_gold", 10)
+H.export("carousel_horse.glb", 85.0)
 
 # ═════════════════════════════ a carriage ═════════════════════════════
 C = Builder({

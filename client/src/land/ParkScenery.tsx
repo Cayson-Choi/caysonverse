@@ -5,6 +5,7 @@ import {
   BufferGeometry,
   CanvasTexture,
   Color,
+  DoubleSide,
   FileLoader,
   Float32BufferAttribute,
   IcosahedronGeometry,
@@ -21,13 +22,13 @@ import {
   LinearMipmapLinearFilter,
 } from "three";
 import { coasterTrack } from "@caysonverse/shared/land/coaster";
-import { PARK_BOUNDS, PARK_PLAZA, PARK_QUEUE_HALL, PARK_SHOPS } from "@caysonverse/shared/village/parkArea";
+import { PARK_PLAZA, PARK_QUEUE_HALL, PARK_SHOPS } from "@caysonverse/shared/village/parkArea";
 import { LIGHTING } from "../game/sceneLighting";
 import { dayNight } from "../village/dayNightDriver";
 import { MOUNTAINS_GRID_URL, MOUNTAINS_TEXTURE_URL, applyMountains, buildMountainGeometry, createMountainMaterial, parseMountains } from "../village/mountains";
 import { FLAT_SKY_MAPPING } from "../village/villageWater";
 import { GeoBuilder, cross, type V3 } from "./geoBuilder";
-import { featherTexture, parkMaterial, pickSet } from "./pbr";
+import { parkMaterial, pickSet } from "./pbr";
 
 const rngOf = (seed: number) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 const X: V3 = [1, 0, 0];
@@ -106,7 +107,7 @@ function CircuitGround({ all }: { all: Texture[] }) {
     // the seam between the last sample and the first spans the closing distance: keep its UV continuous enough
     return g;
   }, [ground]);
-  const gravel = useMemo(() => parkMaterial(pickSet(all, "Gravel023"), 1, { color: new Color("#e2d6c0"), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4, transparent: true, alphaMap: featherTexture(), depthWrite: false }), [all]);
+  const gravel = useMemo(() => parkMaterial(pickSet(all, "Gravel023"), 1, { color: new Color("#e2d6c0"), side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }), [all]);
   // a low picket fence on the path's right edge, and a hedge on its left (instanced posts + merged rails)
   const fence = useMemo(() => {
     const b = new GeoBuilder();
@@ -126,20 +127,6 @@ function CircuitGround({ all }: { all: Texture[] }) {
     return b.build();
   }, [ground]);
   const fenceMat = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.6 }), []);
-  const hedge = useMemo(() => {
-    const b = new GeoBuilder();
-    // the boundary hedge along the park's south edge, and a hedge beside the circuit path
-    for (let x = PARK_BOUNDS.minX; x < PARK_BOUNDS.maxX; x += 6) {
-      if (x > -30 && x < 30) continue; // the station's own frontage
-      b.box([x + 3, 0.65, -2.7], X, Y, 3.05, 0.65, 0.55, [0.18, 0.4, 0.2]);
-    }
-    ground.forEach((g, i) => {
-      if (i % 3 !== 0 || (g.z < 9 && g.x > -45 && g.x < 35)) return;
-      b.box([g.x - g.px * 3.4, 0.45, g.z - g.pz * 3.4], [g.pz, 0, -g.px], Y, 2.8, 0.45, 0.5, [0.2, 0.44, 0.22]);
-    });
-    return b.build();
-  }, [ground]);
-  const hedgeMat = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), []);
   const waterMat = useMemo(() => new MeshStandardMaterial({ color: "#4d9bb8", roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.88 }), []);
   const rocks = useRef<InstancedMesh>(null);
   const rockGeo = useMemo(() => new IcosahedronGeometry(0.9, 0), []);
@@ -167,7 +154,6 @@ function CircuitGround({ all }: { all: Texture[] }) {
     <group>
       <mesh geometry={pathGeo} material={gravel} receiveShadow />
       <mesh geometry={fence} material={fenceMat} castShadow />
-      <mesh geometry={hedge} material={hedgeMat} castShadow receiveShadow />
       {PARK_PONDS.map((pond, i) => (
         <mesh key={i} position={[pond.x, 0.08, pond.z]} rotation-x={-Math.PI / 2} scale={[pond.rx, pond.rz, 1]} material={waterMat}>
           <circleGeometry args={[1, 40]} />

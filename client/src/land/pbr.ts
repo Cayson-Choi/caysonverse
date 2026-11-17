@@ -2,7 +2,7 @@ import { CanvasTexture, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Te
 import { isTouchDevice } from "../device";
 
 /** The CC0 ambientCG sets (client/public/textures/park, LICENSE.md): colour, OpenGL normal and roughness maps, 1K. */
-export const PARK_SETS = ["Grass001", "PavingStones070", "Gravel023", "PaintedMetal013", "RoofingTiles013A", "Concrete034", "Plaster003", "PaintedPlaster017", "LeafyGrass"] as const;
+export const PARK_SETS = ["Grass001", "PavingStones070", "Gravel023", "PaintedMetal013", "RoofingTiles013A", "Concrete034", "Plaster003", "PaintedPlaster017", "LeafyGrass", "WoodFloor051"] as const;
 export type ParkSet = (typeof PARK_SETS)[number];
 
 export const parkTextureUrls = (set: ParkSet): [string, string, string] => [`/textures/park/${set}_c.webp`, `/textures/park/${set}_n.webp`, `/textures/park/${set}_r.webp`];

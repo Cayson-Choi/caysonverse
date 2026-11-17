@@ -168,7 +168,8 @@ function buildLamps(): { x: number; z: number }[] {
     out.push({ x: PARK_PLAZA.x + Math.cos(a) * (PARK_PLAZA.radius - 2.5), z: PARK_PLAZA.z + Math.sin(a) * (PARK_PLAZA.radius - 2.5) });
   }
   for (let x = -10; x >= -20; x -= 10) out.push({ x, z: -119 });
-  for (let x = 70; x <= 330; x += 20) out.push({ x, z: -119 }, { x, z: -105 });
+  // (none at x = 110: the carousel's entrance sign and its boarding pad sit on that axis)
+  for (let x = 70; x <= 330; x += 20) if (x !== 110) out.push({ x, z: -119 }, { x, z: -105 });
   for (let z = -100; z <= -52; z += 16) out.push({ x: -24, z }, { x: -10, z });
   return out;
 }

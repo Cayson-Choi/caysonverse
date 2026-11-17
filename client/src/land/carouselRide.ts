@@ -9,7 +9,7 @@ import { villageClock } from "../village/villageClock";
 import { rideComfort, selfRide } from "./coasterRide";
 
 const P: CarouselSeatPose = { x: 0, y: 0, z: 0, fx: 0, fz: 1, pitch: 0, theta: 0, ring: 0 };
-const EYE_UP = 0.86;
+const EYE_UP = 1.02;
 let yawSm = 0;
 let init = false;
 
@@ -37,8 +37,8 @@ export function stepCarouselCamera(camera: PerspectiveCamera, dt: number, lookYa
   }
   const sway = Math.sin(st.rideT * 1.7) * 0.004 * k * (st.omega / CAROUSEL_OMEGA_MAX);
   // the rider leans a little back from the pole and to the outside of it, so the brass pole stands beside the view, not across it
-  const ox = -P.fx * 0.32 + Math.sin(P.theta) * 0.14;
-  const oz = -P.fz * 0.32 - Math.cos(P.theta) * 0.14;
+  const ox = -P.fx * 0.42 + Math.sin(P.theta) * 0.24;
+  const oz = -P.fz * 0.42 - Math.cos(P.theta) * 0.24;
   camera.position.set(P.x + ox, P.y + EYE_UP, P.z + oz);
   camera.rotation.order = "YXZ";
   camera.rotation.set(-lookPitch + P.pitch * 0.6 * k, yawSm + Math.max(-1.9, Math.min(1.9, lookYaw)), sway);

@@ -32,6 +32,47 @@ function shopSignTexture(name: string, wall: V3): CanvasTexture {
   return t;
 }
 
+
+/**
+ * The unseen faces of a shop (the back and the two gable ends): the riders and the walkers behind the row see them, so they get the same
+ * half-timbering, windows with shutters and flower boxes (and a service door on the back), only plainer than the street front.
+ */
+function addPlainFace(wall: GeoBuilder, s: ParkShop, F: V3, dist: number, latHalf: number, shut: V3, door: boolean): void {
+  const wallH = 4.4;
+  const beam = s.beam;
+  // lateral axis: horizontal, perpendicular to F (boxes are symmetric, so its sign does not matter)
+  const L: V3 = [-F[2], 0, F[0]];
+  const at = (f: number, y: number, l: number): V3 => [s.x + F[0] * (dist + f) + L[0] * l, y, s.z + F[2] * (dist + f) + L[2] * l];
+  const white: V3 = [0.95, 0.94, 0.9];
+  // posts, rails, braces
+  for (const l of [-latHalf + 0.25, 0, latHalf - 0.25]) wall.box(at(0.06, wallH / 2 + 0.5, l), F, Y, 0.1, wallH / 2 - 0.5, 0.15, beam);
+  for (const y of [1.2, 2.75, wallH - 0.12]) wall.box(at(0.07, y, 0), F, Y, 0.11, 0.14, latHalf + 0.05, beam);
+  const winsAt = door ? [-latHalf * 0.55, latHalf * 0.55] : [0];
+  for (const l of winsAt) {
+    wall.box(at(0.05, 2.15, l), F, Y, 0.15, 0.7, 0.8, [0.2, 0.2, 0.22]);
+    wall.box(at(0.12, 2.15, l), F, Y, 0.05, 0.6, 0.68, [0.66, 0.82, 0.95]);
+    for (const e of [-1, 1]) wall.box(at(0.15, 2.15, l + e * 0.72), F, Y, 0.09, 0.72, 0.07, white);
+    for (const e of [-1, 1]) wall.box(at(0.15, 2.15 + e * 0.67, l), F, Y, 0.09, 0.07, 0.8, white);
+    wall.box(at(0.16, 2.15, l), F, Y, 0.05, 0.6, 0.025, white);
+    wall.box(at(0.16, 2.15, l), F, Y, 0.05, 0.025, 0.68, white);
+    wall.box(at(0.25, 1.42, l), F, Y, 0.22, 0.05, 0.94, [0.82, 0.8, 0.76]);
+    for (const e of [-1, 1]) {
+      wall.box(at(0.19, 2.15, l + e * 1.2), F, Y, 0.04, 0.72, 0.38, shut);
+      for (let sl = -3; sl <= 3; sl++) wall.box(at(0.235, 2.15 + sl * 0.2, l + e * 1.2), F, Y, 0.012, 0.022, 0.32, [shut[0] * 0.7, shut[1] * 0.7, shut[2] * 0.7]);
+    }
+    wall.box(at(0.38, 1.26, l), F, Y, 0.18, 0.12, 0.86, [0.4, 0.26, 0.16]);
+    for (let f = 0; f < 5; f++) wall.box(at(0.38, 1.47, l - 0.6 + f * 0.3), F, Y, 0.13, 0.12, 0.12, f % 2 ? [0.96, 0.5, 0.62] : [0.98, 0.82, 0.3]);
+  }
+  if (door) {
+    wall.box(at(0.04, 1.3, 0), F, Y, 0.17, 1.3, 0.75, [0.14, 0.09, 0.06]);
+    wall.box(at(0.11, 1.3, 0), F, Y, 0.06, 1.18, 0.54, [0.33, 0.2, 0.11]);
+    for (const e of [-1, 1]) wall.box(at(0.15, 1.3, e * 0.72), F, Y, 0.12, 1.35, 0.09, beam);
+    wall.box(at(0.16, 2.7, 0), F, Y, 0.13, 0.11, 0.9, beam);
+    wall.box(at(0.4, 0.1, 0), F, Y, 0.4, 0.1, 0.9, [0.62, 0.6, 0.56]);
+    wall.box(at(0.2, 2.35, 1.0), F, Y, 0.09, 0.15, 0.09, [0.98, 0.86, 0.5]);
+  }
+}
+
 function addShop(wall: GeoBuilder, roof: GeoBuilder, cloth: GeoBuilder, s: ParkShop, shut: V3): void {
   const F: V3 = [s.faces, 0, 0];
   const wallH = 4.4;
@@ -100,6 +141,10 @@ function addShop(wall: GeoBuilder, roof: GeoBuilder, cloth: GeoBuilder, s: ParkS
   wall.box(chim, X, Y, 0.5, 1.15, 0.5, [0.72, 0.45, 0.38], 1);
   wall.box([chim[0], chim[1] + 1.25, chim[2]], X, Y, 0.38, 0.14, 0.38, [0.4, 0.3, 0.28]);
   wall.cylinder([chim[0], chim[1] + 1.4, chim[2]], [chim[0], chim[1] + 1.9, chim[2]], 0.22, 0.2, 8, [0.7, 0.4, 0.3]);
+  // the back (service door, windows) and the two gable ends
+  addPlainFace(wall, s, [-s.faces, 0, 0], half, s.w / 2, shut, true);
+  addPlainFace(wall, s, [0, 0, 1], s.w / 2, half, shut, false);
+  addPlainFace(wall, s, [0, 0, -1], s.w / 2, half, shut, false);
   // the iron bracket of the hanging signboard, beside the door
   wall.box(c(half + 0.9, 3.75, dz + 1.7), F, Y, 0.9, 0.04, 0.05, [0.12, 0.12, 0.14]);
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Group } from "three";
 import { coasterTrack } from "@caysonverse/shared/land/coaster";
-import { PARK_PLANTERS, PARK_TREES, PARK_TROUGHS } from "@caysonverse/shared/village/parkArea";
+import { PARK_BOUNDS, PARK_PLANTERS, PARK_TREES, PARK_TROUGHS } from "@caysonverse/shared/village/parkArea";
 import { PARK_PONDS } from "./ParkScenery";
 import type { Bed } from "../village/veg/flowerPlacement";
 import type { Card } from "../village/veg/vegCards";
@@ -117,7 +117,19 @@ export function parkTreeSpecs(): { trees: TreeSpec[]; bushes: Bush[] } {
     const s = 0.8 + rnd() * 0.7;
     bushes.push({ x: g.x + g.px * 5.4, y: 0, z: g.z + g.pz * 5.4, h: 0.9 * s, r: 0.7 * s, seed: rnd(), cards: [] });
   });
-  return { trees, bushes: [...bushes, ...understorey] };
+  // the hedge along the path's left edge and the park's south boundary: a continuous row of the village's clipped shrubs (replaces box hedges)
+  const hedge: Bush[] = [];
+  ground.forEach((g) => {
+    if (g.z < 9 && g.x > -45 && g.x < 35) return;
+    const s = 0.9 + rnd() * 0.5;
+    hedge.push({ x: g.x - g.px * 3.5, y: 0, z: g.z - g.pz * 3.5, h: 1.0 * s, r: 1.25 * s, seed: rnd(), cards: [] });
+  });
+  for (let x = PARK_BOUNDS.minX + 2; x < PARK_BOUNDS.maxX; x += 3) {
+    if (x > -30 && x < 30) continue;
+    const s = 0.9 + rnd() * 0.5;
+    hedge.push({ x, y: 0, z: -2.7, h: 1.15 * s, r: 1.45 * s, seed: rnd(), cards: [] });
+  }
+  return { trees, bushes: [...bushes, ...hedge, ...understorey] };
 }
 
 export function ParkVegetation() {

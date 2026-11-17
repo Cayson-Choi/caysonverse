@@ -15,6 +15,7 @@ import {
 import { CAROUSEL_PAD } from "@caysonverse/shared/village/parkArea";
 import { villageClock } from "../village/villageClock";
 import { GeoBuilder, type V3 } from "./geoBuilder";
+import { parkMaterial, pickSet } from "./pbr";
 
 export const CAROUSEL_STATIC_URL = "/models/land/carousel_static.glb";
 export const CAROUSEL_HORSE_URL = "/models/land/carousel_horse.glb";
@@ -46,6 +47,11 @@ function partsOf(scene: Group, env: Texture, intensity = 1): Part[] {
     material.envMap = env;
     material.envMapIntensity = material.name.endsWith("paint") ? 1.2 * intensity : material.name.includes("mirror") ? 1.6 : 0.9 * intensity;
     // full metal reflects only the dim sky and goes black from inside: keep it brass-coloured
+    if (material.name.includes("mirror")) {
+      // a mirror must never read black: a silvery-blue glow under the reflection
+      material.emissive = new Color("#8fb4d8");
+      material.emissiveIntensity = 0.32;
+    }
     if (material.metalness > 0.6) {
       material.metalness = 0.6;
       material.envMapIntensity *= 1.5;
@@ -77,6 +83,13 @@ function bulbPlaces(): V3[] {
     for (let j = 1; j <= 6; j++) {
       const f = j / 7;
       out.push([Math.sin(a) * (R + 0.35) * (1 - f * 0.78), CAROUSEL_CANOPY_Y + 0.28 + f * 3.9, -Math.cos(a) * (R + 0.35) * (1 - f * 0.78)]);
+    }
+  }
+  // rows of bulbs along the rafters of the painted ceiling (its height: see ceil_y in tools/land/make_carousel.py)
+  for (const r of [4.4, 7.4, 10.4, 12.5]) {
+    for (let k = 0; k < 24; k++) {
+      const a = (k / 24) * Math.PI * 2;
+      out.push([Math.sin(a) * r, 12.35 - (r / 13) * (12.35 - 8.62) - 0.16, -Math.cos(a) * r]);
     }
   }
   for (let k = 0; k < 24; k++) {
@@ -120,7 +133,7 @@ function entranceGeometry(): BufferGeometry {
     b.cylinder([cx + sx * 2.6, 4.4, gz], [cx + sx * 2.6, 4.9, gz], 0.2, 0.0, 10, [0.08, 0.1, 0.48]);
     b.box([cx + sx * 2.6, 3.85, gz - 0.3], X, Y, 0.18, 0.28, 0.18, [1, 0.88, 0.5]);
   }
-  b.box([cx, 4.15, gz], X, Y, 2.8, 0.2, 0.2, [0.08, 0.1, 0.48]);
+  b.box([cx, 3.3, gz], X, Y, 2.8, 0.2, 0.2, [0.08, 0.1, 0.48]); // below the sign: the sign board hangs clear above it
   // the ticket kiosk beside the entrance
   const kx = cx + 7.5;
   const kz = CAROUSEL_PAD.z + 1.5;
@@ -161,7 +174,7 @@ function signTexture(): CanvasTexture {
 }
 
 /** The carousel: the static GLB turning with the shared clock, 20 horses and 2 carriages on their poles (instanced, bobbing), bulbs, the entrance. */
-export function CarouselWorld({ env }: { env: Texture }) {
+export function CarouselWorld({ env, all }: { env: Texture; all: Texture[] }) {
   const stat = useGLTF(CAROUSEL_STATIC_URL);
   const horse = useGLTF(CAROUSEL_HORSE_URL);
   const carriage = useGLTF(CAROUSEL_CARRIAGE_URL);
@@ -175,6 +188,13 @@ export function CarouselWorld({ env }: { env: Texture }) {
   const bulbs = useMemo(bulbPlaces, []);
   const bulbGeo = useMemo(() => new SphereGeometry(0.11, 6, 4), []);
   const bulbMat = useMemo(() => new MeshStandardMaterial({ color: "#fff1c8", emissive: new Color("#ffcf7a"), emissiveIntensity: 2.4, roughness: 0.3 }), []);
+  // the platform floor: real planked oak under a varnish (ambientCG WoodFloor051), over the GLB's plain deck
+  const floorMat = useMemo(() => {
+    const m = parkMaterial(pickSet(all, "WoodFloor051"), [9, 9], { color: new Color("#cfa878"), roughness: 0.42, metalness: 0.0, normalScale: 0.8 });
+    m.envMap = env;
+    m.envMapIntensity = 0.55;
+    return m;
+  }, [all, env]);
   const entrance = useMemo(entranceGeometry, []);
   const entranceMat = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.25 }), []);
   const sign = useMemo(signTexture, []);
@@ -233,6 +253,9 @@ export function CarouselWorld({ env }: { env: Texture }) {
         {statParts.map((p, i) => (
           <mesh key={i} geometry={p.geometry} material={p.material} castShadow receiveShadow />
         ))}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, CAROUSEL_DECK_Y + 0.004, 0]} material={floorMat} receiveShadow>
+          <circleGeometry args={[12.4, 72]} />
+        </mesh>
         <instancedMesh frustumCulled={false} ref={bulbRef} args={[bulbGeo, bulbMat, bulbs.length]} />
       </group>
       {horseParts.map((p, i) => (
@@ -242,7 +265,7 @@ export function CarouselWorld({ env }: { env: Texture }) {
         <instancedMesh key={`c${i}`} ref={(r) => { carriageRefs.current[i] = r; }} args={[p.geometry, p.material, 2]} frustumCulled={false} castShadow receiveShadow />
       ))}
       <mesh geometry={entrance} material={entranceMat} castShadow receiveShadow />
-      <mesh position={[CAROUSEL_CENTER.x, 4.15, CAROUSEL_CENTER.z + CAROUSEL_RADIUS + 0.75]} material={signMat}>
+      <mesh position={[CAROUSEL_CENTER.x, 4.15, CAROUSEL_CENTER.z + CAROUSEL_RADIUS + 0.9]} material={signMat}>
         <planeGeometry args={[5.4, 1.15]} />
       </mesh>
     </group>

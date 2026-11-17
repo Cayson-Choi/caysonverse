@@ -112,10 +112,22 @@ await run.step("board", async () => {
   run.check("the carousel opens for boarding", st.status === "boarding", { status: st.status });
   await A.page.evaluate(() => {
     window.__fpsSamples = [];
+    window.__ri = { calls: 0, triangles: 0, n: 0, sumCalls: 0, sumTris: 0 };
+    const gl = window.__cvThree?.().gl;
+    if (gl) gl.info.autoReset = false;
     let last = performance.now();
     const tick = (t) => {
       window.__fpsSamples.push(t - last);
       last = t;
+      if (gl) {
+        const r = gl.info.render;
+        window.__ri.calls = Math.max(window.__ri.calls, r.calls);
+        window.__ri.triangles = Math.max(window.__ri.triangles, r.triangles);
+        window.__ri.n++;
+        window.__ri.sumCalls += r.calls;
+        window.__ri.sumTris += r.triangles;
+        gl.info.reset();
+      }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -150,8 +162,14 @@ await run.step("ride", async () => {
           }
           await run.shot(A, `${name}.png`);
           if (name === "c06-full-speed") {
-            const a = (await remotes(B)).find((r) => r.nickname === A.nick);
-            await B.page.evaluate(([x, z]) => { window.__cvShot = { x: x + 5, y: 3, z: z + 6, tx: x, ty: 1.4, tz: z, fov: 55 }; }, [a?.x ?? 110, a?.z ?? -135]);
+            await B.page.evaluate(async () => {
+              const c = await window.__imp("/land/carousel.ts");
+              const clock = await window.__imp("/src/village/villageClock.ts");
+              const rs = await window.__imp("/src/game/remoteStore.ts");
+              const me = rs.getRemotes().find((r) => r.rideSeat >= 0);
+              const p = c.carouselSeatPose(me ? me.rideSeat : 0, clock.villageClock.liveMs());
+              window.__cvShot = { x: p.x + 4.2, y: p.y + 1.6, z: p.z + 5.5, tx: p.x, ty: p.y + 0.3, tz: p.z, fov: 55 };
+            });
             await sleep(500);
             await run.shot(B, "c09-B-watches-A.png");
           }
@@ -183,8 +201,10 @@ const fps = await A.page.evaluate(() => {
   const mean = a.reduce((x, y) => x + y, 0) / a.length;
   return { frames: a.length, over50ms: a.filter((x) => x > 50).length, over100ms: a.filter((x) => x > 100).length, fpsMean: Math.round(1000 / mean), p95ms: Math.round(q(0.95) * 10) / 10, maxMs: Math.round(s[s.length - 1]) };
 });
+const info = await A.page.evaluate(() => (window.__ri ? { maxCalls: window.__ri.calls, maxTriangles: window.__ri.triangles, meanCalls: Math.round(window.__ri.sumCalls / Math.max(1, window.__ri.n)), meanTriangles: Math.round(window.__ri.sumTris / Math.max(1, window.__ri.n)) } : null));
 console.log("frame times", JSON.stringify(fps));
-writeFileSync(join(run.evidence, "ride-log.json"), JSON.stringify({ fps, log }, null, 1));
+console.log("render info", JSON.stringify(info));
+writeFileSync(join(run.evidence, "ride-log.json"), JSON.stringify({ fps, info, log }, null, 1));
 const code = run.finish({ fps });
 await b.close();
 process.exit(code);

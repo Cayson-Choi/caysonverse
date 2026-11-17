@@ -15,3 +15,4 @@ ambientCG의 CC0 1.0(퍼블릭 도메인) 실사 PBR 세트를 1K로 내려받�
 | `PaintedPlaster017_*` | ambientCG `PaintedPlaster017` | 상점 칠한 회벽(얼룩) |
 | `LeafyGrass_*` | Poly Haven `leafy_grass` (https://polyhaven.com/a/leafy_grass), CC0 1.0 — 마을 잔디(`T_grass`)와 같은 세트 | 공원 잔디 (마을 잔디와 같은 색 보정 `GROUND_GRADE` 적용) |
 
+| `WoodFloor051_*` | ambientCG `WoodFloor051` | carousel platform floor (planks) |
