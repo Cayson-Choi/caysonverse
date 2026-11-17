@@ -183,6 +183,12 @@ export function installProgramGate(
   let rafId = 0;
   const perFrame = () => {
     geometryBudget = perFrameBytes;
+    // the queued work goes on every display frame, drawn or not (under the loading veil the scene is drawn a few times a
+    // second only, and its compiles would crawl: VeilFrameThrottle)
+    if (!flushQueued && (queue.size > 0 || uploads.size > 0)) {
+      flushQueued = true;
+      setTimeout(flush, 0);
+    }
     rafId = requestAnimationFrame(perFrame);
   };
   if (typeof requestAnimationFrame === "function") rafId = requestAnimationFrame(perFrame);
