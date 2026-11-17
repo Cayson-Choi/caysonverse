@@ -412,7 +412,7 @@ def bunting(kit):
             p, q = pts[t], pts[t + 1]
             m = G.lerp(p, q, 0.5)
             Gd.poly([p, q, (m[0], m[1] - 0.2, m[2])], cols[t % 6])
-            Gd.poly([q, p, (m[0], m[1] - 0.2, m[2])], cols[t % 6])
+            Gd.poly([G.add(q, (0.004, 0, 0.004)), G.add(p, (0.004, 0, 0.004)), (m[0] + 0.004, m[1] - 0.2, m[2] + 0.004)], cols[t % 6])
 
 
 def plants(kit):

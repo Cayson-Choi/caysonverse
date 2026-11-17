@@ -81,7 +81,7 @@ BOOK_COLS = ["7A2E2E", "2F4B6E", "3E6B4A", "8C6A2E", "5A3A62", "B5502F", "2B5C5E
 # foliage and petals on the (light) plaster set: its fine relief reads as leaf mass; fabric is for cloth only
 LEAF = S("LM_library_plaster", G.hexc("8FBF63"))
 LEAF_DK = S("LM_library_plaster", G.hexc("6FA24E"))
-WIST = S("LM_library_plaster", G.hexc("E6D6FA"))
+WIST = S("LM_library_plaster", G.hexc("FFFFFF"))
 LAV = S("LM_library_plaster", G.hexc("A28CE0"))
 
 
@@ -492,7 +492,7 @@ def bays(kit):
         for (bx, col) in ((B[0] + 0.12, "6E8FAE"), (C[0] - 0.12, "6E8FAE")):
             D.member((bx, 0.65, FZ + 0.02), (bx, 0.65, zf - 0.18), G.prof_round(0.1, 8), S("LM_library_plaster", G.hexc("A9C6E4")), caps=True)
         for k, (cx, col) in enumerate(((xc - 0.35, "C96F5B"), (xc + 0.25, "E2B95A"))):
-            D.cbox(cx - 0.2, cx + 0.2, 0.55, 0.92, zf - 0.32, zf - 0.17, S("LM_library_plaster", G.hexc(col)), c=0.06)
+            P.pillow(D, cx, 0.74, zf - 0.26, 0.42, 0.4, 0.14, S("LM_library_plaster", G.hexc(col)), tilt=-0.25)
         D.cbox(xc + 0.35, xc + 0.85, 0.55, 0.62, FZ + 0.05, FZ + 0.45, FAB.t(G.hexc("7E9C7A")), c=0.02)
         for k in range(4):
             Gd.box(xc - 0.75 + 0.01 * k, xc - 0.45 + 0.012 * k, 0.55 + k * 0.04, 0.59 + k * 0.04, FZ + 0.12, FZ + 0.34, S("LM_library_paint", G.hexc(BOOK_COLS[(k + i * 3) % 12])))
@@ -557,10 +557,14 @@ def pergola(kit):
             continue
         kit.S.sphere(cx, 3.2, cz, rg.uniform(0.5, 0.7), LEAF if k % 2 else LEAF_DK, n=6, rings=3, sy=0.38)  # shell: plaster set, reads from afar
     rac = Mesh("raceme")
-    rac.lathe([(0.0, 0.0), (0.06, 0.07), (0.08, 0.2), (0.05, 0.36), (0.0, 0.46)], 5, WIST)
-    rac = rac.transformed(lambda p: (p[0], -p[1], p[2]))
+    rac.lathe([(0.0, 0.0), (0.05, 0.03), (0.075, 0.12), (0.07, 0.24), (0.05, 0.36), (0.025, 0.46), (0.0, 0.52)], 7, WIST)
+    rac = rac.transformed(lambda p: (p[0] + 0.04 * (p[1] / 0.52) ** 2, -p[1], p[2]))
     rac.polys = [type(q)(list(reversed(q.pts)), list(reversed(q.uv)), q.col, q.mat, q.smooth) for q in rac.polys]
-    for k in range(56):
+    top, tip = G.hexc("C9A8F0"), G.hexc("FBF6FF")
+    for q in rac.polys:  # lilac at the stem, paling to the tip (vertex colours), smooth-shaded
+        q.col = [(*G.lerp(top, tip, min(1.0, -pt[1] / 0.52)), 1.0) for pt in q.pts]
+        q.smooth = True
+    for k in range(24):
         cx = rg.uniform(4.9, 9.3)
         cz = rg.uniform(-5.5, 3.0)
         kit.place("raceme", rac, cx, 2.96, cz, rg.uniform(0, 6.28))

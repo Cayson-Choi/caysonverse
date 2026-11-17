@@ -208,7 +208,7 @@ def bay(kit, f, a, b):
         Gd.member((x, 0.6, -0.5), (x, 0.6, 0.45), G.prof_round(0.11, 10), s, caps=True)
     for k, (dx, s) in enumerate(((-0.45, CUSH_3), (0.05, VELVET_R), (0.5, CUSH_3))):
         cx = (a + b) / 2 + dx
-        Gd.cbox(cx - 0.22, cx + 0.22, 0.48, 0.9, zb + 0.12, zb + 0.32, s, c=0.07)
+        P.pillow(Gd, cx, 0.7, zb + 0.24, 0.46, 0.42, 0.15, s, tilt=-0.22)
     Gd.cbox(b - 0.85, b - 0.35, 0.48, 0.55, 0.15, 0.5, VELVET_G, c=0.02)
     Gd.cbox(b - 0.83, b - 0.37, 0.55, 0.58, 0.17, 0.48, VELVET_G.t(G.hexc("6E9A80")), c=0.01)
     rg = G.rng(int(a * 10))
@@ -317,11 +317,12 @@ def fireplace(kit):
     # logs and fire
     for (a, b, y) in (((6.2, 0.22, Z - 0.3), (7.2, 0.22, Z - 0.25), 0), ((6.3, 0.34, Z - 0.22), (7.1, 0.3, Z - 0.32), 1)):
         Gd.member(a, b, G.prof_round(0.07, 7), OAK_DK, caps=True)
-    for k, (fx, fh) in enumerate(((6.45, 0.45), (6.7, 0.6), (6.95, 0.42))):
-        pts = [(fx - 0.14, 0.25), (fx + 0.14, 0.25), (fx + 0.05, 0.25 + fh * 0.6), (fx, 0.25 + fh), (fx - 0.06, 0.25 + fh * 0.55)]
+    for k, (fx, fh) in enumerate(((6.38, 0.32), (6.52, 0.46), (6.7, 0.62), (6.86, 0.44), (7.02, 0.3))):
+        pts = [(fx - 0.1, 0.25), (fx + 0.1, 0.25), (fx + 0.07, 0.25 + fh * 0.35), (fx + 0.03, 0.25 + fh * 0.7), (fx + 0.012 * (k - 2), 0.25 + fh), (fx - 0.04, 0.25 + fh * 0.62), (fx - 0.075, 0.25 + fh * 0.3)]
         for dz in (0.0, 0.03):
-            Gd.poly([(u, v, Z - 0.28 + dz) for u, v in pts], FIRE, cols=[(1.0, 0.45, 0.1, 1.0)] * 2 + [(1.0, 0.75, 0.25, 1.0), (1.0, 0.9, 0.5, 1.0), (1.0, 0.75, 0.25, 1.0)])
-            Gd.poly([(u, v, Z - 0.28 + dz) for u, v in reversed(pts)], FIRE, cols=[(1.0, 0.75, 0.25, 1.0), (1.0, 0.9, 0.5, 1.0), (1.0, 0.75, 0.25, 1.0)] + [(1.0, 0.45, 0.1, 1.0)] * 2)
+            cols = [(1.0, 0.42, 0.08, 1.0)] * 2 + [(1.0, 0.62, 0.18, 1.0), (1.0, 0.82, 0.38, 1.0), (1.0, 0.95, 0.62, 1.0), (1.0, 0.82, 0.38, 1.0), (1.0, 0.62, 0.18, 1.0)]
+            Gd.poly([(u, v, Z - 0.28 + dz - 0.01 * k) for u, v in pts], FIRE, cols=cols)
+            Gd.poly([(u, v, Z - 0.284 + dz - 0.01 * k) for u, v in reversed(pts)], FIRE, cols=list(reversed(cols)))
     kit.lights.append(("point", 6.7, 0.6, Z - 0.6, (1.0, 0.55, 0.2), 120.0))
     D.member((x0 + 0.45, 0.25, zf - 0.18), (x1 - 0.45, 0.25, zf - 0.18), G.prof_round(0.02, 6), BRASS)
     for x in (x0 + 0.45, x1 - 0.45):

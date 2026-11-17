@@ -577,12 +577,12 @@ def setup_world(day):
     except Exception:
         pass
     nt.links.new(sky.outputs["Color"], bg.inputs["Color"])
-    bg.inputs["Strength"].default_value = 0.22 if day else 0.02
+    bg.inputs["Strength"].default_value = 0.22 if day else 0.06
     nt.links.new(bg.outputs["Background"], out.inputs["Surface"])
     sun = bpy.data.objects.get("Sun")
     if sun is None:
         sun = obj("Sun", bpy.data.lights.new("Sun", "SUN"))
-    sun.data.energy = 4.2 if day else 0.04
+    sun.data.energy = 4.2 if day else 0.25
     sun.data.color = (1.0, 0.95, 0.86) if day else (0.55, 0.65, 1.0)
     sun.data.angle = math.radians(0.8)
     # a mid-morning sun from the south-south-west of the front, 38 degrees up (local: front = +z)

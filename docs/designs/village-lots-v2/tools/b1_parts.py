@@ -495,3 +495,24 @@ def gable_timber(m, f, uc, half, v0, apex, s, collar, width=0.17, skip=None):
         timber(m, f, (pu + sx * 0.08, collar - width), (uc + sx * at(collar) * 0.95, collar - width - 0.02), width * 0.7, s)
         if skip is None:
             timber(m, f, (uc + sx * 0.12, v0 + 0.1), (pu - sx * 0.12, collar - width / 2), width * 0.8, s)
+
+
+def pillow(m, cx, cy, cz, w, h, d, s, tilt=0.0, yaw=0.0):
+    """A plump scatter cushion: a squashed sphere with puffed corners (w x h x d), tilted back by `tilt` (radians)."""
+    k = Mesh("pillow")
+    k.lathe([(0.0, -0.5), (0.3, -0.44), (0.45, -0.25), (0.5, 0.0), (0.45, 0.25), (0.3, 0.44), (0.0, 0.5)], 12, s, 0.0, 0.0, 0.0, phase=math.pi / 12)
+
+    def f(p):
+        # squarer outline (a stuffed square cushion, not a disc): push each ring point out toward the square's corners
+        px, pz = p[0], p[2]
+        r = math.hypot(px, pz)
+        if r > 1e-9:
+            k4 = (px ** 4 + pz ** 4) ** 0.25
+            g = (r / k4) ** 0.8
+            px, pz = px * g, pz * g
+        x, y, z = px * w, pz * h, p[1] * d  # the lathe axis becomes the cushion's thickness
+        # tilt about x, then yaw
+        c, sn = math.cos(tilt), math.sin(tilt)
+        y, z = y * c - z * sn, y * sn + z * c
+        return G.rot_y((x, y, z), yaw, cx, cy, cz)
+    m.extend(k.transformed(f))
