@@ -17,6 +17,9 @@ export function ProgramGate(): null {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   useEffect(() => {
+    // the avatars carry their bench-clip planes from the start (benchClip.ts): local clipping on from the start too, so
+    // the first sit does not switch every avatar material to another shader
+    gl.localClippingEnabled = true;
     // DEV: `?gate=off` leaves it out (to compare)
     if (import.meta.env.DEV && typeof location !== "undefined" && new URLSearchParams(location.search).get("gate") === "off") return;
     const gate = installProgramGate(gl);

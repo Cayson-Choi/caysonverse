@@ -14,6 +14,7 @@ import { useEffect, useLayoutEffect, useMemo } from "react";
 import { useGLTF } from "@react-three/drei";
 import type { AnimationClip, Object3D } from "three";
 import { assembleAvatar, releaseAvatarSoon, retainAvatar, type BuiltAvatar } from "./characterAvatar";
+import { clipAvatar } from "./benchClip";
 import { lookKey, type AvatarLook } from "./characterLook";
 import { CHARACTER_GLB_HASH } from "@caysonverse/shared/characterManifest";
 
@@ -78,7 +79,12 @@ export function useAvatar(
 
   // 렌더 단계: 조립만 하고 잡지 않는다(머리말).
   const avatar = useMemo(
-    () => assembleAvatar({ scene, extra }, look, decorate),
+    () => {
+      const a = assembleAvatar({ scene, extra }, look, decorate);
+      // the bench clip's shader variant from the start (benchClip.ts NO_CLIP): sitting down never recompiles
+      clipAvatar(a, null);
+      return a;
+    },
     // look은 key(lookKey)가 대신한다 — 호출한 쪽이 렌더마다 새 look 객체를 만들어도 같은 외형이면 다시 조립하지
     // 않는다. decorate는 다시 조립할 때의 값을 쓴다(매 렌더 새 함수여도 무시). extra(NPC 부품 장면)는 로더 캐시의 것이다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
