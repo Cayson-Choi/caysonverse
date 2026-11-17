@@ -184,32 +184,32 @@ describe("VillageCoaster (server rules)", () => {
     const a = r.add("a");
     const pa = r.players.get("a")!;
     pa.x = 211;
-    pa.z = -134.5;
-    r.setNow(WHEEL_T0 + 8000);
+    pa.z = -130.8;
+    r.setNow(WHEEL_T0 + 5000);
     r.send("a", VillageMsg.RideBoard, { ride: "wheel" });
     expect(pa.rideId).toBe(3);
-    expect(boardingSeatsOfWheel(WHEEL_T0 + 8000)).toContain(pa.rideSeat);
+    expect(boardingSeatsOfWheel(WHEEL_T0 + 5000)).toContain(pa.rideSeat);
     // four riders fill the gondola, the fifth gets "full" (the next gondola is not at the platform)
     for (const sid of ["b", "c", "d", "e"]) {
       r.add(sid);
       const p = r.players.get(sid)!;
       p.x = 211;
-      p.z = -134.5;
+      p.z = -130.8;
       r.send(sid, VillageMsg.RideBoard, { ride: "wheel" });
     }
     const seated = [...r.players.values()].filter((p) => p.rideSeat >= 0);
     expect(seated.length).toBe(WHEEL_SEATS_PER);
     expect(new Set(seated.map((p) => Math.floor(p.rideSeat / WHEEL_SEATS_PER))).size).toBe(1);
     // aloft: the leave is refused with a notice
-    r.setNow(WHEEL_T0 + 25_000);
+    r.setNow(WHEEL_T0 + 14_000);
     r.send("a", VillageMsg.RideLeave);
     expect(pa.rideSeat).toBeGreaterThanOrEqual(0);
     expect(r.sent.some((m) => m.sid === "a" && (m.msg as { reason?: string }).reason === "aloft")).toBe(true);
     // not put off by the next step, but by the same gondola's return
-    r.setNow(WHEEL_T0 + WHEEL_STEP_MS * 3 + 5000);
+    r.setNow(WHEEL_T0 + WHEEL_STEP_MS * 3 + 4000);
     r.coaster.tick();
     expect(pa.rideSeat).toBeGreaterThanOrEqual(0);
-    r.setNow(WHEEL_T0 + WHEEL_STEP_MS * WHEEL_N + 1000);
+    r.setNow(WHEEL_T0 + WHEEL_STEP_MS * WHEEL_N + 500);
     r.coaster.tick();
     expect(pa.rideSeat).toBe(-1);
     void a;

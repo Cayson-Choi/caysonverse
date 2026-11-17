@@ -15,20 +15,45 @@ let beat = 0;
 const BELLS = [76, 79, 81, 84, 88]; // an airy pentatonic
 const hz = (m: number): number => 440 * Math.pow(2, (m - 69) / 12);
 
-function bell(freq: number, t: number, dur: number, gain: number): void {
-  if (!ctx || !master) return;
-  for (const [mul, g] of [[1, 1], [2.76, 0.35], [5.4, 0.12]] as const) {
-    const o = ctx.createOscillator();
-    const e = ctx.createGain();
-    o.type = "sine";
-    o.frequency.value = freq * mul;
-    e.gain.setValueAtTime(0, t);
-    e.gain.linearRampToValueAtTime(gain * g, t + 0.005);
-    e.gain.exponentialRampToValueAtTime(0.0001, t + dur / mul ** 0.3);
-    o.connect(e).connect(master);
-    o.start(t);
-    o.stop(t + dur + 0.05);
+interface BellVoice {
+  osc: OscillatorNode[];
+  gain: GainNode[];
+}
+/** A pool of three bell voices, built once: each is three sine partials with a gain each; ringing a bell only reschedules their pitch and envelope (no node is created while riding). */
+let voices: BellVoice[] = [];
+let nextVoice = 0;
+const PARTIALS: readonly (readonly [number, number])[] = [[1, 1], [2.76, 0.35], [5.4, 0.12]];
+
+function makeVoices(c: AudioContext, out: AudioNode): BellVoice[] {
+  const list: BellVoice[] = [];
+  for (let v = 0; v < 3; v++) {
+    const voice: BellVoice = { osc: [], gain: [] };
+    for (let k = 0; k < PARTIALS.length; k++) {
+      const o = c.createOscillator();
+      const g = c.createGain();
+      o.type = "sine";
+      g.gain.value = 0;
+      o.connect(g).connect(out);
+      o.start();
+      voice.osc.push(o);
+      voice.gain.push(g);
+    }
+    list.push(voice);
   }
+  return list;
+}
+
+function bell(freq: number, t: number, dur: number, gain: number): void {
+  if (!ctx || voices.length === 0) return;
+  const v = voices[nextVoice++ % voices.length]!;
+  PARTIALS.forEach(([mul, g], k) => {
+    v.osc[k]!.frequency.setValueAtTime(freq * mul, t);
+    const gp = v.gain[k]!.gain;
+    gp.cancelScheduledValues(t);
+    gp.setValueAtTime(0, t);
+    gp.linearRampToValueAtTime(gain * g, t + 0.005);
+    gp.exponentialRampToValueAtTime(0.0001, t + dur / mul ** 0.3);
+  });
 }
 
 export function startWheelAudio(): void {
@@ -61,6 +86,7 @@ export function startWheelAudio(): void {
     hum.gain.value = 0;
     h.connect(hf).connect(hum).connect(master);
     h.start();
+    voices = makeVoices(ctx, master);
     beat = 0;
     timer = window.setInterval(() => {
       if (!ctx || !master || !hum || !wind || !windFilter) return;
@@ -86,6 +112,7 @@ export function stopWheelAudio(): void {
   const m = master;
   ctx = null;
   master = null;
+  voices = [];
   if (!c || !m) return;
   try {
     m.gain.setTargetAtTime(0, c.currentTime, 0.2);

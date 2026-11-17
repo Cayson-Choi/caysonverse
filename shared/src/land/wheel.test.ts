@@ -19,16 +19,16 @@ import {
 const T0 = 1_900_000_000_000 - (1_900_000_000_000 % (WHEEL_STEP_MS * WHEEL_N));
 
 describe("sky lantern wheel", () => {
-  it("has 40 seats and a step of 36 degrees", () => {
-    expect(WHEEL_SEATS).toBe(40);
-    expect(WHEEL_STEP).toBeCloseTo(Math.PI / 5, 9);
+  it("has 32 seats and a step of 45 degrees", () => {
+    expect(WHEEL_SEATS).toBe(32);
+    expect(WHEEL_STEP).toBeCloseTo(Math.PI / 4, 9);
   });
   it("loads, gates, turns one step and stands again", () => {
     expect(wheelAt(T0 + 1000).status).toBe("unloading");
-    expect(wheelAt(T0 + 10_000).status).toBe("boarding");
-    expect(wheelAt(T0 + 19_000).status).toBe("gate");
-    expect(wheelAt(T0 + 26_000).status).toBe("riding");
-    expect(wheelAt(T0 + 26_000).omega).toBeGreaterThan(0.05);
+    expect(wheelAt(T0 + 5000).status).toBe("boarding");
+    expect(wheelAt(T0 + 9000).status).toBe("gate");
+    expect(wheelAt(T0 + 14_000).status).toBe("riding");
+    expect(wheelAt(T0 + 14_000).omega).toBeGreaterThan(0.05);
     expect(wheelAt(T0 + WHEEL_STEP_MS + 100).angle).toBeCloseTo(WHEEL_STEP, 6);
     expect(wheelAt(T0 + WHEEL_STEP_MS * WHEEL_N + 100).angle % (Math.PI * 2)).toBeCloseTo(0, 6);
   });
@@ -55,7 +55,7 @@ describe("sky lantern wheel", () => {
     const seats = boardingSeatsOfWheel(T0 + 5000);
     expect(seats.length).toBe(4);
     expect(wheelSeatAtPlatform(seats[0]!, T0 + 5000)).toBe(true);
-    expect(wheelSeatAtPlatform(seats[0]!, T0 + 26_000)).toBe(false);
+    expect(wheelSeatAtPlatform(seats[0]!, T0 + 14_000)).toBe(false);
     expect(wheelSeatAtPlatform((seats[0]! + 4) % WHEEL_SEATS, T0 + 5000)).toBe(false);
     expect(WHEEL_BOARD_END_MS).toBeLessThan(WHEEL_STEP_MS);
   });
@@ -63,8 +63,9 @@ describe("sky lantern wheel", () => {
     const low = wheelSeatPose(boardingSeatsOfWheel(T0 + 5000)[0]!, T0 + 5000);
     expect(low.y).toBeGreaterThan(0.9);
     expect(low.y).toBeLessThan(2.2);
-    expect(Math.abs(low.fx)).toBe(1);
-    const top = wheelSeatPose(boardingSeatsOfWheel(T0 + 5000)[0]!, T0 + 5000 + 5 * WHEEL_STEP_MS);
+    expect(low.fz).toBe(1);
+    expect(low.z).toBeGreaterThan(WHEEL_SITE.z + 2);
+    const top = wheelSeatPose(boardingSeatsOfWheel(T0 + 5000)[0]!, T0 + 5000 + 4 * WHEEL_STEP_MS);
     expect(top.y).toBeGreaterThan(WHEEL_HUB_Y + WHEEL_R - 4);
   });
 });

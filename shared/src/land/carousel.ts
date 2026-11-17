@@ -139,8 +139,10 @@ const SADDLE_Y = 1.05; // a horse's saddle over the deck (m)
 const CARRIAGE_SEAT_Y = 0.62;
 
 /** The seat's pose at wall-clock `nowMs`. */
+const SCRATCH_ST: CarouselState = { cycle: 0, phase: 0, status: "boarding", angle: 0, omega: 0, rideT: 0, departsInMs: 0 };
+
 export function carouselSeatPose(seat: number, nowMs: number, out: CarouselSeatPose = { x: 0, y: 0, z: 0, fx: 0, fz: 1, pitch: 0, theta: 0, ring: 0 }): CarouselSeatPose {
-  const st = carouselAt(nowMs);
+  const st = carouselAt(nowMs, SCRATCH_ST);
   const { ring, i } = carouselSeatRing(seat);
   const r = CAROUSEL_RINGS[ring]!;
   // carriages: two of two seats; a carriage's centre is at its ring angle, its two seats side by side across it

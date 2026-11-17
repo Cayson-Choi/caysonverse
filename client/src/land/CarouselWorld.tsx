@@ -9,6 +9,7 @@ import {
   CAROUSEL_RADIUS,
   CAROUSEL_RINGS,
   carouselAt,
+  type CarouselState,
   carouselSeatPose,
   type CarouselSeatPose,
 } from "@caysonverse/shared/land/carousel";
@@ -84,6 +85,7 @@ const eul = new Euler(0, 0, 0, "YXZ");
 const pos = new Vector3();
 const one = new Vector3(1, 1, 1);
 const tmpColor = new Color();
+const stScratch: CarouselState = { cycle: 0, phase: 0, status: "boarding", angle: 0, omega: 0, rideT: 0, departsInMs: 0 };
 
 /** Warm bulbs along the band, the canopy's ribs and the column cap (emissive, instanced): their places in the rotating frame. */
 function bulbPlaces(): V3[] {
@@ -257,7 +259,7 @@ export function CarouselWorld({ env, all }: { env: Texture; all: Texture[] }) {
 
   useFrame(({ camera }) => {
     const now = villageClock.liveMs();
-    const st = carouselAt(now);
+    const st = carouselAt(now, stScratch);
     if (turning.current) turning.current.rotation.y = -st.angle;
     // horses: near ones with the full model, far ones with the low-poly model; the two sets are packed (instance k of a set = the k-th horse
     // assigned to it), so each set's paint instance colour is rewritten when a slot changes hands

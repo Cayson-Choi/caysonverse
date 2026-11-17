@@ -43,6 +43,7 @@ const quat = new Quaternion();
 const eul = new Euler(0, 0, 0, "XYZ");
 const pos = new Vector3();
 const one = new Vector3(1, 1, 1);
+const piv = { x: 0, y: 0, z: 0 };
 const st: WheelState = { cycle: 0, phase: 0, status: "boarding", angle: 0, omega: 0, alpha: 0, departsInMs: 0 };
 
 /** Warm bulbs along both rims (rotor frame, instanced). */
@@ -109,10 +110,9 @@ export function WheelWorld({ env }: { env: Texture }) {
     // the rotor turns clockwise seen from the south: a negative turn about +z
     if (rotorRef.current) rotorRef.current.rotation.z = -st.angle;
     // the gondolas hang from their pivots (upright, swinging with the acceleration)
-    const p = { x: 0, y: 0, z: 0 };
     for (let g = 0; g < WHEEL_N; g++) {
-      wheelPivot(g, st.angle, p);
-      pos.set(p.x, p.y, p.z);
+      wheelPivot(g, st.angle, piv);
+      pos.set(piv.x, piv.y, piv.z);
       eul.set(0, 0, wheelSway(g, st));
       quat.setFromEuler(eul);
       mat4.compose(pos, quat, one);
@@ -137,17 +137,14 @@ export function WheelWorld({ env }: { env: Texture }) {
       {gondolaParts.map((p, i) => (
         <instancedMesh key={`g${i}`} ref={(r) => { gondolaRefs.current[i] = r; }} args={[p.geometry, p.material, WHEEL_N]} frustumCulled={false} dispose={null} castShadow={!p.material.transparent} renderOrder={p.material.transparent ? 2 : 0} />
       ))}
-      <mesh position={[WHEEL_SITE.x + 9.2, 2.1, WHEEL_SITE.z + 6.3]} material={signMat}>
+      <mesh position={[WHEEL_SITE.x + 1.0, 2.1, WHEEL_SITE.z + 10.4]} material={signMat}>
         <planeGeometry args={[4.2, 1.05]} />
       </mesh>
       {[-1, 1].map((s) => (
-        <mesh key={s} position={[WHEEL_SITE.x + 9.2 + s * 2.0, 0.95, WHEEL_SITE.z + 6.25]} material={postMat}>
+        <mesh key={s} position={[WHEEL_SITE.x + 1.0 + s * 2.0, 0.95, WHEEL_SITE.z + 10.35]} material={postMat}>
           <cylinderGeometry args={[0.07, 0.07, 1.9, 8]} />
         </mesh>
       ))}
-      <mesh position={[WHEEL_SITE.x + 9.2, 0.04, WHEEL_SITE.z + 6.25]} visible={false}>
-        <boxGeometry args={[0.01, 0.01, 0.01]} />
-      </mesh>
     </group>
   );
 }

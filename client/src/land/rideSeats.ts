@@ -22,7 +22,7 @@ export function carouselRiderPose(seat: number, nowMs: number, outPos: Vector3, 
   return cp;
 }
 
-const wp: WheelSeatPose = { x: 0, y: 0, z: 0, fx: 1, fz: 0, sway: 0, gondola: 0, pivotX: 0, pivotY: 0 };
+const wp: WheelSeatPose = { x: 0, y: 0, z: 0, fx: 0, fz: 1, sway: 0, gondola: 0, pivotX: 0, pivotY: 0 };
 const eulW = new Euler(0, 0, 0, "YXZ");
 const qz = new Quaternion();
 const axZ = new Vector3(0, 0, 1);
@@ -30,7 +30,7 @@ const axZ = new Vector3(0, 0, 1);
 /** The wheel seat's avatar pose: seated on the cushion, facing east or west, tipping with the cabin's swing. */
 export function wheelRiderPose(seat: number, nowMs: number, outPos: Vector3, outQuat: Quaternion): void {
   wheelSeatPose(seat, nowMs, wp);
-  outPos.set(wp.x + wp.fx * SIT_POSE.hipsBehindRoot, wp.y - SIT_POSE.contactY, wp.z);
+  outPos.set(wp.x, wp.y - SIT_POSE.contactY, wp.z + wp.fz * SIT_POSE.hipsBehindRoot);
   eulW.set(0, Math.atan2(wp.fx, wp.fz), 0, "YXZ");
   outQuat.setFromEuler(eulW);
   qz.setFromAxisAngle(axZ, wp.sway);

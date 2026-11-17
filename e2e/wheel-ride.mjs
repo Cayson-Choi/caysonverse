@@ -89,8 +89,8 @@ await run.step("join", async () => {
   await sleep(6000);
   for (const [name, x, y, z, tx, ty, tz, fov] of [
     ["w01-approach", 190, 1.7, -100, 205, 22, -140, 62],
-    ["w02-platform", 214, 1.7, -122, 207, 3, -140, 62],
-    ["w03-gondola-close", 214, 2.2, -133, 206, 2, -140, 60],
+    ["w02-platform", 216, 1.7, -122, 207, 3, -137, 62],
+    ["w03-gondola-close", 214, 2.6, -128, 205, 2, -137, 60],
     ["w03b-whole-wheel", 205, 3, -70, 205, 24, -140, 62],
   ]) {
     await A.page.evaluate(([x, y, z, tx, ty, tz, fov]) => { window.__cvShot = { x, y, z, tx, ty, tz, fov }; }, [x, y, z, tx, ty, tz, fov]);
@@ -101,13 +101,13 @@ await run.step("join", async () => {
 });
 
 await run.step("board", async () => {
-  await goTo(A, 211, -134.5, 1.5);
-  await goTo(B, 214, -133, 2.5);
+  await goTo(A, 211, -130.8, 1.5);
+  await goTo(B, 214, -129, 2.5);
   const at = await pos(A);
-  run.check("A stands at the wheel pad", Math.hypot(at.x - 211, at.z + 134.5) < 5, at);
+  run.check("A stands at the wheel pad", Math.hypot(at.x - 211, at.z + 130.8) < 5, at);
   const t0 = Date.now();
   let st = await probe(A);
-  while (st.status !== "boarding" && Date.now() - t0 < 80000 * SLOW) {
+  while (st.status !== "boarding" && Date.now() - t0 < 60000 * SLOW) {
     await sleep(500);
     st = await probe(A);
   }
@@ -165,7 +165,7 @@ await run.step("ride", async () => {
   const t0 = Date.now();
   let lastAlt = 0;
   let t7 = Infinity;
-  while (Date.now() - t0 < 420000) {
+  while (Date.now() - t0 < 300000) {
     const st = await probe(A);
     const alt = st.probe.eye[1];
     const rise = alt >= lastAlt - 0.02;
