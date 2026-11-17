@@ -439,7 +439,7 @@ export const COASTER_SEATS = COASTER_CARS * 2;
 export const CAR_PITCH = 3.1;
 /** Where the rider's seat is: height of the seat's top over the track's centre line, and the eye over it (m). */
 export const SEAT_TOP = 0.52;
-export const EYE_ABOVE_SEAT = 0.92;
+export const EYE_ABOVE_SEAT = 0.86;
 export const SEAT_HALF_GAP = 0.42;
 
 export interface CarFrame {

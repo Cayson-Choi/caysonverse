@@ -18,7 +18,7 @@ export interface Bounds {
   maxZ: number;
 }
 
-export type GeometryId = "village" | "house";
+export type GeometryId = "village" | "house" | "park";
 
 export interface MapGeometry {
   id: GeometryId;

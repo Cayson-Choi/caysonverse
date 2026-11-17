@@ -40,6 +40,7 @@ import {
 import { BUS_DRIVER, BusDriver, busDriveTrip } from "@caysonverse/shared/village/busDrive";
 import { busDismountSpot } from "@caysonverse/shared/village/busSeats";
 import { VillageCoaster } from "./villageCoaster";
+import { parkGeometry, useParkDoor } from "@caysonverse/shared/village/parkArea";
 import {
   BUS_CAPACITY,
   BUS_SEATS,
@@ -311,6 +312,11 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   /** The village map: the open village, the memorial hall's sealed interior and the twenty rooms of the ten houses (one coordinate space). */
   protected geometry(): MapGeometry {
     return villageGeometry;
+  }
+
+  /** The park (케이슨랜드) is its own place with its own frame and solids; every other area walks on the village geometry. */
+  protected override geometryFor(player: Player): MapGeometry {
+    return player.area === "park" ? parkGeometry : villageGeometry;
   }
 
   /**
@@ -794,7 +800,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     // the village's memorial door and the hall's way out (useDoor), or a house's way out to its porch (useHouseExit)
     const loadFailed = payload !== null && typeof payload === "object" && (payload as { loadFailed?: unknown }).loadFailed === true;
     // …or a lot building's door and its room's way out (L5v2, villageLots.ts useLotDoor: the same reach and in-front rules)
-    const arrival = useDoor(player.area, player.x, player.z) ?? useHouseExit(player.area, player.x, player.z, loadFailed) ?? useLotDoor(player.area, player.x, player.z);
+    const arrival = useDoor(player.area, player.x, player.z) ?? useHouseExit(player.area, player.x, player.z, loadFailed) ?? useLotDoor(player.area, player.x, player.z) ?? useParkDoor(player.area, player.x, player.z);
     if (arrival === null) return; // no door within reach → silent drop
 
     const now = this.now();

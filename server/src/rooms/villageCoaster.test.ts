@@ -10,8 +10,10 @@ interface P {
   busSeat: number;
   fishSpot: number;
   area: string;
+  x: number;
+  z: number;
 }
-const newPlayer = (): P => ({ rideSeat: -1, seatIndex: -1, busSeat: -1, fishSpot: -1, area: "village" });
+const newPlayer = (): P => ({ rideSeat: -1, seatIndex: -1, busSeat: -1, fishSpot: -1, area: "park", x: -17, z: -46 });
 const T0 = 1_900_000_000_000 - (1_900_000_000_000 % COASTER_CYCLE_MS);
 
 function rig() {
@@ -93,6 +95,17 @@ describe("VillageCoaster (server rules)", () => {
     // seats are unique
     const seats = [...r.players.values()].map((p) => p.rideSeat).filter((s) => s >= 0);
     expect(new Set(seats).size).toBe(COASTER_SEATS);
+  });
+  it("boards only in the park, at the queue gate", () => {
+    const r = rig();
+    r.add("far");
+    r.players.get("far")!.z = -120; // the plaza: out of reach
+    r.send("far", VillageMsg.RideBoard);
+    expect(r.players.get("far")!.rideSeat).toBe(-1);
+    r.add("village");
+    r.players.get("village")!.area = "village";
+    r.send("village", VillageMsg.RideBoard);
+    expect(r.players.get("village")!.rideSeat).toBe(-1);
   });
   it("a leave frees the seat for the next rider", () => {
     const r = rig();

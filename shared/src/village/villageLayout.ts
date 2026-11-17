@@ -92,7 +92,7 @@ export type Side = "n" | "s" | "e" | "w";
 export type HouseAreaId = HouseFloorAreaId;
 /** A lot building's walk-in room (L5v2, villageLots.ts `LOT_ROOMS`): `lot:<unit id>`. */
 export type { LotAreaId };
-export type AreaId = "village" | "hall" | HouseAreaId | LotAreaId;
+export type AreaId = "village" | "hall" | "park" | HouseAreaId | LotAreaId;
 
 /** Inside a roofed place: the memorial hall, a house floor or a lot building's room (the indoor light, the quiet, the camera's roof). */
 export function isIndoorArea(area: string): boolean {

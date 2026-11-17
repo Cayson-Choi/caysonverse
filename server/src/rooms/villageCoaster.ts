@@ -5,12 +5,12 @@
  *    open village (not on a seat, not on the bus, not at the lake chair), and a seat is free: the lowest free seat is theirs;
  *  - RideLeave and a leave / disconnect: the seat is freed;
  *  - the unload: every rider of a finished lap is put off when the next cycle's unloading phase begins (`tick`, twice a second).
- * PHASE 1 has no distance rule (the park area is not wired yet: the temporary test entry boards from anywhere, DESIGN.md §9);
- * phase 2 adds "within the queue gate's reach" here, in `canBoard`.
+ * Phase 2: only in the park (area "park"), standing within the queue gate's reach (parkArea.ts COASTER_QUEUE_PAD).
  */
 import type { Client } from "colyseus";
 import { VillageMsg, VillageServerMsg, type RideNoticePayload } from "@caysonverse/shared/village/messages";
 import { COASTER_SEATS, coasterAt } from "@caysonverse/shared/land/coaster";
+import { COASTER_BOARD_REACH_M, COASTER_QUEUE_PAD } from "@caysonverse/shared/village/parkArea";
 
 interface PlayerLike {
   rideSeat: number;
@@ -18,6 +18,8 @@ interface PlayerLike {
   busSeat: number;
   fishSpot: number;
   area: string;
+  x: number;
+  z: number;
 }
 
 export interface CoasterHost {
@@ -66,9 +68,10 @@ export class VillageCoaster {
     this.boardedIn.set(client.sessionId, now.cycle);
   }
 
-  /** The rule a boarding player must meet (phase 2: and be at the queue gate). */
+  /** The rule a boarding player must meet: standing free in the park at the coaster's queue gate. */
   private canBoard(p: PlayerLike): boolean {
-    return p.seatIndex < 0 && p.busSeat < 0 && p.fishSpot < 0 && p.area === "village";
+    if (p.seatIndex >= 0 || p.busSeat >= 0 || p.fishSpot >= 0 || p.area !== "park") return false;
+    return Math.hypot(p.x - COASTER_QUEUE_PAD.x, p.z - COASTER_QUEUE_PAD.z) <= COASTER_QUEUE_PAD.radius + COASTER_BOARD_REACH_M;
   }
 
   leave(sessionId: string): void {
