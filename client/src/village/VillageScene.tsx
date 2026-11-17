@@ -74,6 +74,9 @@ import { prefetchHouse } from "./houseRelease";
 import { houseOpen } from "./keypadText";
 import { liveSunEnabled } from "./sunShadows";
 import { MapPlaces } from "./MapPlaces";
+import { CoasterWorld } from "../land/CoasterWorld";
+import { CoasterHud } from "../land/CoasterHud";
+import { coasterEnabled } from "../land/site";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -136,8 +139,24 @@ function AfterDressed({ children }: { children: ReactNode }) {
 /** A failed village model: its cover lifts at once (the plain ground and the notice show, not "불러오는 중…"). */
 const uncoverVillage = () => vegDressing.uncover();
 
+/** The test entry's scene: no village model to dress, so the loading cover lifts at once and the coaster loads in its own Suspense. */
+function CoasterSandbox() {
+  useEffect(() => {
+    uncoverVillage();
+  }, []);
+  return (
+    <LoadBoundary fallback={null} onReset={() => undefined} onFail={uncoverVillage} notice="롤러코스터를 불러오지 못했어요.">
+      <Suspense fallback={null}>
+        <CoasterWorld />
+      </Suspense>
+    </LoadBoundary>
+  );
+}
+
 /** What the local player's area draws: the village model and its signs (no floor mark at the memorial's door), or the hall's room. */
 function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; pose: Pose }) {
+  // 케이슨랜드 phase 1 test entry (?land=coaster): the village gives way to a bare sandbox with the coaster (docs/designs/caysonland/DESIGN.md section 9)
+  if (area === "village" && coasterEnabled()) return <CoasterSandbox />;
   if (area === "hall") return <HallArea pose={pose} />;
   if (isHouseArea(area)) return <HouseArea area={area} pose={pose} />;
   return (
@@ -474,6 +493,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
         <>
           <VillageMusic />
           <TransitRideHud />
+          {coasterEnabled() && <CoasterHud />}
           <StarFinderButton />
         </>
       }

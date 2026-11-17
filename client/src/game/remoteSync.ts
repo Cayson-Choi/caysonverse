@@ -14,6 +14,7 @@ import { visibilityChange } from "./placeFilter";
 import { normalizeArea, showsInArea, type AreaGate } from "./areaFilter";
 import type { Pose, SeatState } from "./types";
 import { selfBusRide } from "./busRide";
+import { selfRide } from "../land/coasterRide";
 import { noteSelfBusSeat } from "../net/transitSync";
 import { createPlayout } from "./playout";
 import { createEchoWatch, healDeadline, noteEcho, selfDiverged } from "./sentMoves";
@@ -134,12 +135,17 @@ export function startRemoteSync(
         selfBusRide.slot = value ?? -1;
         noteSelfBusSeat(selfBusRide.slot);
       });
+      // My seat on the 별똥별 급행 (land/coasterRide.ts): the camera is the car's while it is >= 0.
+      selfRide.slot = player.rideSeat ?? -1;
+      const offRide = $(player).listen("rideSeat", (value: number) => {
+        selfRide.slot = value ?? -1;
+      });
       const offBusPoint = $(player).onChange(() => {
         selfBusRide.ahead = player.busAhead ?? 0;
         selfBusRide.right = player.busRight ?? 0;
         selfBusRide.yaw = player.busYaw ?? 0;
       });
-      const offs = [off, offSeat, offBus, offBusPoint];
+      const offs = [off, offSeat, offBus, offBusPoint, offRide];
       // Which area I am in (the village scene's maps, bounds, lighting and filter follow it). Seeds the
       // current value immediately, then follows every door.
       if (areas) {
@@ -178,6 +184,7 @@ export function startRemoteSync(
         connected: player.connected,
         seatIndex: player.seatIndex,
         busSeat: player.busSeat ?? -1,
+        rideSeat: player.rideSeat ?? -1,
         busAhead: player.busAhead ?? 0,
         busRight: player.busRight ?? 0,
         busYaw: player.busYaw ?? 0,
@@ -227,6 +234,7 @@ export function startRemoteSync(
       const record = getRemoteRecord(sessionId);
       if (!record) return;
       record.busSeat = player.busSeat ?? -1;
+      record.rideSeat = player.rideSeat ?? -1;
       record.busAhead = player.busAhead ?? 0;
       record.busRight = player.busRight ?? 0;
       record.busYaw = player.busYaw ?? 0;

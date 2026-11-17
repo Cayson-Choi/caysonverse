@@ -80,6 +80,8 @@ import { useFpCursor } from "./useFpCursor";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose } from "../net/transitSync";
 import { busRiderCamera, ownSeatIndex, riderFov, type TransitCameraPose } from "../village/transitCamera";
+import { resetRideCamera, selfRide, stepRideCamera } from "../land/coasterRide";
+import { stepRideAudio, stopRideAudio } from "../land/coasterAudio";
 import { busCamGoal, busCamState, busElevation, busSeatGoal, busSeatPreferred, riderBusPoint, selfBusRide } from "./busRide";
 import { BUS_SEATS, busPlaceOf, cabinFloorAt, seatBodyPoint } from "@caysonverse/shared/village/busCabin";
 import { busSeatUnderRay } from "../village/busSeatPick";
@@ -248,6 +250,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
   // (distinct from viewState.prevMode, which is the mode overview will restore).
   const lastFrameMode = useRef(viewState.mode);
   const busModeBeforeRef = useRef<string | null>(null); // the view mode before boarding the bus (null: not riding)
+  /** The same for the 별똥별 급행 (land/coasterRide.ts), with the lens and the near plane to give back. */
+  const rideBeforeRef = useRef<{ mode: string; fov: number; near: number } | null>(null);
   // The rectangle the overview was last framed for: a different one (a door in 케이슨 마을) re-frames an open overview.
   const lastBounds = useRef(activeBounds());
   /** The seated FP eye's weight (0 standing .. 1 seated) and the seat it eases toward or away from (seatedEye.ts). */
@@ -1263,6 +1267,34 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       busCamState.firstPerson = false;
     }
 
+    // The 별똥별 급행 (케이슨랜드): the camera is the rider's eye in the car's frame (land/coasterRide.ts). Looking round is the first-person
+    // drag (fpYaw to the left, fpPitch down, relative to the car). The village's own camera resumes on the frame the seat is freed.
+    if (selfRide.slot >= 0) {
+      const persp = camera as PerspectiveCamera;
+      if (rideBeforeRef.current === null) {
+        rideBeforeRef.current = { mode: viewState.mode, fov: persp.fov, near: persp.near };
+        if (viewState.mode !== "fp") enterFp(orbit.yaw);
+        viewState.fpYaw = 0;
+        viewState.fpPitch = 0;
+        resetRideCamera();
+        persp.near = 0.05;
+        persp.updateProjectionMatrix();
+      }
+      stepRideCamera(persp, Math.min(delta, 0.1), viewState.fpYaw, viewState.fpPitch, baseFov.current || rideBeforeRef.current.fov);
+      stepRideAudio(performance.now());
+      cameraProbe.distance = 0;
+    } else if (rideBeforeRef.current !== null) {
+      const was = rideBeforeRef.current;
+      rideBeforeRef.current = null;
+      if (was.mode === "tp" && viewState.mode === "fp") exitFp(orbit);
+      const persp = camera as PerspectiveCamera;
+      persp.fov = was.fov;
+      persp.near = was.near;
+      persp.updateProjectionMatrix();
+      resetRideCamera();
+      stopRideAudio();
+    }
+
     // Overview looks down from far above; push the fog band out (eased by ovT) so
     // the whole map reads crisply instead of hazing into the sky. Restored exactly
     // to the scene's fog band at ovT = 0.
@@ -1281,7 +1313,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     // The over-the-shoulder view against an indoor wall widens a portrait phone's view (cameraShoulder.ts), third person only.
     // In the bus the rider's own lens (riderFov, set above) stays as it is.
     const fov = baseFov.current + tpSpot.fovAdd * (1 - t) * (1 - ovT) * (1 - fw);
-    if (selfBusRide.slot < 0 && cam.isPerspectiveCamera && Math.abs(cam.fov - fov) > 1e-3) {
+    if (selfBusRide.slot < 0 && selfRide.slot < 0 && cam.isPerspectiveCamera && Math.abs(cam.fov - fov) > 1e-3) {
       cam.fov = fov;
       cam.updateProjectionMatrix();
     }

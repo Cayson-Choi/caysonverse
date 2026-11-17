@@ -99,6 +99,7 @@ import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
 import { getTransitRenderPose, useTransitState } from "../net/transitSync";
 import { busWalk, busCamState, busSeatGoal, busSeatPreferred, selfBusRide } from "./busRide";
+import { selfRide } from "../land/coasterRide";
 import { busRiderPoints, takenBusSpots } from "./remoteStore";
 import {
   BUS_SEATS,
@@ -695,10 +696,12 @@ export function LocalPlayer({
     const headDist = Math.hypot(cameraProbe.x - pose.x, cameraProbe.y - (group.position.y + HEAD_HEIGHT), cameraProbe.z - pose.z);
     closeHiddenRef.current = indoorCloseHidden(closeHiddenRef.current, indoorTp, headDist, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE);
     const closeIndoors = closeHiddenRef.current && viewState.ovBlend <= OV_VIS_BLEND;
+    // On the 별똥별 급행 the rider's body is drawn by the others in the car; my own eye is the camera (land/coasterRide.ts).
     group.visible =
-      viewState.ovBlend > OV_VIS_BLEND
+      selfRide.slot < 0 &&
+      (viewState.ovBlend > OV_VIS_BLEND
         ? true
-        : viewState.mode !== "fp" && viewState.blend < HIDE_BLEND && !cameraInsideSelf && !inCloseUp && !closeIndoors;
+        : viewState.mode !== "fp" && viewState.blend < HIDE_BLEND && !cameraInsideSelf && !inCloseUp && !closeIndoors);
     // The destination ring straight ahead, behind the body (a click on the body itself, a walk away from the camera):
     // the body fades and is drawn after the ring, so the ring shows through it (round 6 review: only its dashes showed,
     // on the body, all the way there).
@@ -719,7 +722,7 @@ export function LocalPlayer({
     // movement keys are zeroed so nothing walks the avatar. We don't touch drei's
     // key listeners, so nothing can get stuck on blur (see uiCapture.ts).
     const suspended = isInputSuspended();
-    const captured = isUiCaptured() || suspended || (busBoarded && selfBusRide.slot < 0);
+    const captured = isUiCaptured() || suspended || (busBoarded && selfBusRide.slot < 0) || selfRide.slot >= 0;
     const keys = guardMoveKeys(getKeys(), captured);
     // The joystick obeys the same freeze (a held stick must not steer behind a close-up / the menu).
     const stick = guardMoveInput(moveInput, captured);
@@ -762,7 +765,7 @@ export function LocalPlayer({
     if (manual) {
       clearClickTarget();
       setPreferredSeat(-1); // the keys / stick took over: the chair tapped before no longer outranks a nearer one
-    } else if (!suspended && !busBoarded && !seated && !gliding && !isUiCaptured()) {
+    } else if (!suspended && !busBoarded && selfRide.slot < 0 && !seated && !gliding && !isUiCaptured()) {
       // ui-capture gate (review v2-14 M1): while the chat input owns the keyboard
       // the KEYS are frozen above — a pre-set click target must freeze too, or the
       // avatar keeps walking while the user types (asymmetric input freeze).

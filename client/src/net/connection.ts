@@ -224,6 +224,14 @@ export function waitForSelf(r: SelfWaitable): Promise<void> {
   });
 }
 
+/** 케이슨랜드 별똥별 급행: get on / off (the server picks the seat while boarding is open; docs/designs/caysonland/DESIGN.md). */
+export function sendRideBoard(): void {
+  room?.send(VillageMsg.RideBoard, {});
+}
+export function sendRideLeave(): void {
+  room?.send(VillageMsg.RideLeave, {});
+}
+
 /**
  * Tab close / navigation (`pagehide`, which fires on mobile too): a best-effort CONSENTED leave, so the
  * server removes the player at once instead of holding a 20 s ghost window.
