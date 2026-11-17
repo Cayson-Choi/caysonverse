@@ -134,7 +134,7 @@ def _save(px, scale, path):
     img.save()
 
 
-def bake_room(kit, objs, unit_id, out_dir, setup_day_night, size=1024, samples=96):
+def bake_room(kit, objs, unit_id, out_dir, setup_day_night, size=1024, samples=96, file_id=None):
     """Bakes the room's day and night lightmaps; returns the GLB extras entry (`lightmap`)."""
     os.makedirs(out_dir, exist_ok=True)
     targets = _targets(objs, unit_id)
@@ -153,7 +153,7 @@ def bake_room(kit, objs, unit_id, out_dir, setup_day_night, size=1024, samples=9
     scale = float(np.percentile(lit.max(axis=1), 99.5)) if lit.size else 1.0
     files = {}
     for t in ("day", "night"):
-        p = os.path.join(out_dir, "%s_lm_%s.png" % (unit_id, t))
+        p = os.path.join(out_dir, "%s_lm_%s.png" % (file_id or unit_id, t))
         _save(out[t], scale, p)
         files[t] = p
         B.log("lightmap:", t, "->", p, "mean", float(out[t].mean()))

@@ -428,6 +428,12 @@ if (ONLY.includes("phone")) {
     const l = await lots(p);
     run.check("phone: the six loaded at the light tier", l && l.tier === "low" && l.device === "phone" && l.failed.length === 0, { tier: l?.tier, textures: l?.textures });
     numbers.phoneLots = l;
+    if (process.env.CV_NO_TOUR) {
+      // (the rooms only: the lightmaps' before/after on the phone)
+      for (const unit of ["lot_church_nave", "lot_chapel_nave"]) await roomTrip(p, unit, "phone");
+      await p.ctx.close();
+      return;
+    }
     // CV_PROFILE=1: a CPU profile of the walk and the long frames' spans (where a hitch spends its time)
     const cdp = process.env.CV_PROFILE ? await p.ctx.newCDPSession(p.page) : null;
     if (cdp) {

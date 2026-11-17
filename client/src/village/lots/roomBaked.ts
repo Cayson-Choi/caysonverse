@@ -6,4 +6,4 @@
 export const roomBaked = { on: false };
 
 /** The live sky (hemisphere) and key in a baked room, as a share of what an unbaked room keeps (LOT_ROOM_LIGHT). */
-export const BAKED_ROOM_LIGHT = { hemi: 0.35, key: 0.6 } as const;
+export const BAKED_ROOM_LIGHT = { hemi: 0.5, key: 0.6 } as const;

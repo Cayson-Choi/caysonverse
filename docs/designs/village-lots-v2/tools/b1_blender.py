@@ -935,12 +935,26 @@ def run_room(unit_id, kit_mod, viewdef, prefix, tex_dir):
     for p in report["overlap"]["problems"][:150]:
         log(p)
     log("room problems:", len(report["overlap"]["problems"]))
+    # L6: the room's light baked into a lightmap atlas (bake_lots.py), by day and by night, before the export
+    lightmap = None
+    if arg("--lightmap"):
+        import bake_lots
+        global WORLD, SUN_DIR, SUN_ELEV
+        WORLD = getattr(kit, "world_strength", 0.22)
+        SUN_DIR = getattr(kit, "sun_dir", None)
+        SUN_ELEV = getattr(kit, "sun_elev", 38)
+        night_lights(kit)
+        lm = bake_lots.bake_room(kit, objs, unit_id, arg("--lightmap"), setup_world, int(arg("--lm-size", "1024")), int(arg("--lm-samples", "96")))
+        if lm:
+            lightmap = {"day": "lots/%s/%s_lm_day.ktx2" % (tex_dir, unit_id), "night": "lots/%s/%s_lm_night.ktx2" % (tex_dir, unit_id),
+                        "scale": lm["scale"], "channel": 1, "size": lm["size"],
+                        "note": "irradiance = (texel in linear) * scale on TEXCOORD_1 of the lotroom__ shell (bake_lots.py)"}
     out = arg("--out", os.path.join(LOTS, unit_id + ".glb"))
     if "--no-export" not in argv:
         manifest = os.path.join(LOTS, tex_dir, "%s_textures.json" % unit_id)
         write_manifest(kit, {"id": unit_id}, manifest)
         export(out, objs, {"caysonverse": "%s (lots v2 B1 room kit)" % unit_id, "textures": "lots/%s/%s_textures.json" % (tex_dir, unit_id),
-                           "origin": org, "size": size})
+                           "origin": org, "size": size, **({"lightmap": lightmap} if lightmap else {})})
         report["glb"] = glb_stats(out)
         log("wrote", out, report["glb"])
     if REPORT:

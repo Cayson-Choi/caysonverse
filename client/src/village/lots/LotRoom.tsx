@@ -55,12 +55,14 @@ import { LotTextureBank, fetchLotManifest, loadLotOwnMap, manifestPaths, type Lo
  * 대웅전 48 on a PC; the phone's 8 / 10 / 8 / 8 / 14): on a PC every set in full at 1K except the listed small parts (their albedo
  * only: a 1.4 MB map instead of 4.2 MB); on a phone every set as its albedo only (0.7 MB) except the floor (and the 대웅전's 마루)
  * that fills the view. `LotRoom` reports the total (`__cvLotRoom().textures`, the sacred pieces' own maps included).
+ * With the baked light (L6) the painted plaster is albedo-only on a PC too: the lightmap carries the walls' shading, and
+ * its two 1K maps (2.8 MB) fit the same budgets.
  */
 export const ROOM_TEXTURES: Readonly<Record<string, { pcAlbedoOnly: readonly string[]; phoneFull: readonly string[] }>> = {
-  lot_school_class: { pcAlbedoOnly: ["grass", "cast_iron"], phoneFull: ["floor_wood"] },
-  lot_library_reading: { pcAlbedoOnly: ["aluminium_brushed", "wood_painted"], phoneFull: ["floor_wood"] },
+  lot_school_class: { pcAlbedoOnly: ["grass", "cast_iron", "plaster_painted"], phoneFull: ["floor_wood"] },
+  lot_library_reading: { pcAlbedoOnly: ["aluminium_brushed", "wood_painted", "plaster_painted"], phoneFull: ["floor_wood"] },
   lot_chapel_nave: { pcAlbedoOnly: ["aluminium_brushed", "plaster_painted"], phoneFull: [] }, // (the phone's chapel: its statues' own maps take the rest of the 8 MB)
-  lot_church_nave: { pcAlbedoOnly: [], phoneFull: ["floor_wood"] },
+  lot_church_nave: { pcAlbedoOnly: ["plaster_painted"], phoneFull: ["floor_wood"] },
   lot_temple_hall: { pcAlbedoOnly: [], phoneFull: ["wood_pine_natural"] },
 };
 
@@ -332,6 +334,8 @@ export interface RoomLightmapSpec {
  * lights stay on top of it: the sun's key through the windows, the lamps' and the fire's moving part).
  */
 export const LIGHTMAP_GAIN = 0.8;
+/** The longest the entry cover waits for the room's programs (ms): a slow phone still gets in. */
+export const ROOM_COMPILE_WAIT_MS = 2500;
 /** The room's ambient fill with a lightmap in (the bake carries the bounce): this share of the unbaked fill. */
 export const LIGHTMAP_AMBIENT = 0.3;
 
@@ -589,8 +593,9 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
     scene.traverse((o) => {
       if (!isMesh(o) || !o.visible) return;
       for (const m of matsOf(o))
-        for (const k of ["map", "normalMap", "aoMap", "roughnessMap", "metalnessMap", "emissiveMap"] as const) {
-          const t = (m as MeshStandardMaterial)[k];
+        for (const k of ["map", "normalMap", "aoMap", "roughnessMap", "metalnessMap", "emissiveMap", "lightMap", "lmNight"] as const) {
+          // (the baked light's two maps too, L6: their first draw was a 100-170 ms upload on the way in)
+          const t = k === "lmNight" ? ((m as MeshStandardMaterial).userData.lmNight as Texture | undefined) : (m as MeshStandardMaterial)[k];
           if (t && !seen.has(t)) {
             seen.add(t);
             try {
@@ -782,14 +787,19 @@ export function LotRoomArea({ area, pose }: { area: string; pose: Pose }) {
   // drawn: the cover may lift, the camera keeps to the room's solids, it glides to look into the room, the materials are compiled
   useEffect(() => {
     if (!loaded || !room) return;
-    houseEntryReady();
+    // the cover lifts once the room's programs are compiled (the lightmapped variants are new ones: compiled behind the
+    // curtain, not on the first frame inside), or after ROOM_COMPILE_WAIT_MS at most
+    let live = true;
+    void Promise.race([compileSafely(gl, loaded.root, camera, scene), new Promise((r) => setTimeout(r, ROOM_COMPILE_WAIT_MS))]).then(() => {
+      if (live) houseEntryReady();
+    });
     const solid = loaded.solid;
     const offSight = setSeatSightBlocker((fx, fy, fz, tx, ty, tz) => solid.segmentBlocked(fx, fy, fz, tx, ty, tz, 0.35));
     const offSpot = setSeatSpotBlocker((x, y, z) => solid.underHung(x, y, z, 2.6, 1.0, 0.25) || solid.nearSolid(x, y, z, 0.3));
     const offCamera = setCameraSolids(solid);
     viewState.orbitGoal = { yaw: arrivalYaw(solid, pose.x, pose.z, pose.yaw, CAMERA.distance), pitch: 0.55 };
-    void compileSafely(gl, loaded.root, camera, scene);
     return () => {
+      live = false;
       offSight();
       offSpot();
       offCamera();

@@ -385,7 +385,7 @@ def run_room(unit_id, kit_mod, viewdef, prefix, tex_dir):
     # L6: the room's light baked into a lightmap atlas (bake_lots.py), by day and by night, before the export
     lightmap = None
     lm_dir = B.arg("--lightmap")
-    if lm_dir and not phone:
+    if lm_dir:
         import bake_lots
         room_lights(kit)
         for i, (x, y, z, fsize, w) in enumerate(getattr(kit, "nightfill", [])):
@@ -413,9 +413,10 @@ def run_room(unit_id, kit_mod, viewdef, prefix, tex_dir):
                     o.hide_render = day
                 if o.name.startswith("lotlight__"):
                     o.hide_render = True   # the coloured sun pools are the game's own additive layer
-        lm = bake_lots.bake_room(kit, objs, unit_id, lm_dir, day_night, int(B.arg("--lm-size", "1024")), int(B.arg("--lm-samples", "96")))
+        fid = unit_id + ("_phone" if phone else "")   # (the phone's file: its own atlas, 512 px)
+        lm = bake_lots.bake_room(kit, objs, unit_id, lm_dir, day_night, int(B.arg("--lm-size", "512" if phone else "1024")), int(B.arg("--lm-samples", "96")), fid)
         if lm:
-            lightmap = {"day": "lots/%s/%s_lm_day.ktx2" % (tex_dir, unit_id), "night": "lots/%s/%s_lm_night.ktx2" % (tex_dir, unit_id),
+            lightmap = {"day": "lots/%s/%s_lm_day.ktx2" % (tex_dir, fid), "night": "lots/%s/%s_lm_night.ktx2" % (tex_dir, fid),
                         "scale": lm["scale"], "channel": 1, "size": lm["size"],
                         "note": "irradiance = (texel in linear) * scale on TEXCOORD_1 of the lotroom__ shell (bake_lots.py)"}
             for t in ("day", "night"):
