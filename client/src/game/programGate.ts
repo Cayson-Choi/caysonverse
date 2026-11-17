@@ -160,6 +160,16 @@ export function installProgramGate(
     }
   } as WebGLRenderer["render"];
   let programCount = 0;
+  /** an object's main-pass key, kept while its scene, geometry and shadow-receiving stay (no string built per draw) */
+  const keys = new WeakMap<Object3D, { scene: Scene; geometry: BufferGeometry; receive: boolean; key: string }>();
+  const keyOf = (shadow: boolean, material: Material, scene: Scene, object: Object3D, geometry: BufferGeometry): string => {
+    if (shadow) return `s${depthVariant(material)}.${scene.id}:${variantOf(object, geometry)}`;
+    const k = keys.get(object);
+    if (k && k.scene === scene && k.geometry === geometry && k.receive === object.receiveShadow) return k.key;
+    const key = `${scene.id}:${variantOf(object, geometry)}`;
+    keys.set(object, { scene, geometry, receive: object.receiveShadow, key });
+    return key;
+  };
   /** geometries drawn at least once (their buffers are on the GPU), and this frame's upload budget */
   const drawnGeometries = new WeakSet<BufferGeometry>();
   let geometryBudget = GEOMETRY_BYTES_PER_FRAME;
@@ -348,10 +358,10 @@ export function installProgramGate(
       tracks.set(material, t);
       if (props.currentProgram && props.currentProgram.isReady() !== false) {
         if (import.meta.env.DEV) (props.currentProgram as { tag?: string }).tag ??= "trusted";
-        t.programs.set(`${shadow ? `s${depthVariant(material)}.` : ""}${sceneFor.id}:${variantOf(object, geometry)}`, props.currentProgram);
+        t.programs.set(keyOf(shadow, material, sceneFor, object, geometry), props.currentProgram);
       }
     }
-    const variant = `${shadow ? `s${depthVariant(material)}.` : ""}${sceneFor.id}:${variantOf(object, geometry)}`;
+    const variant = keyOf(shadow, material, sceneFor, object, geometry);
     if (t.version !== material.version) {
       // needsUpdate: three looks the program up again, usually finding the same one. Holding the object back would make it
       // blink, so it is drawn three's way, and the gate follows the program three picked.
