@@ -13,6 +13,7 @@ import math
 import b1_geom as G
 import b1_parts as P
 import b1_room as R
+import library_room_dress as DR
 from b1_geom import Mesh, S
 
 FLOOR = S("LM_library_floor")                                 # floor_wood
@@ -50,6 +51,7 @@ MATS = {
     "LM_library_stone": {"set": "stone_ashlar"},
     "LM_library_brick": {"set": "brick_red"},
     "LM_library_fabric": {"set": "fabric_upholstery"},
+    "LM_library_brass": {"set": "aluminium_brushed", "metal": True, "rough": 0.7},
     "M_glass": {"glass": True},
     "M_screen": {"screen": True},
 }
@@ -88,34 +90,65 @@ def build(spec, unit, layout):
     sol = {s["name"]: s for s in spec["solids"]}
     holes = {
         "door": [(5.6, 7.8, 0.0, 3.4)] + [(a, b, 0.0, 3.3) for a, b in BAYS],
-        "left": [(u - 0.8, u + 0.8, 3.0, 4.9) for u in (Z - 3.4, Z - 6.2, Z - 9.0)],
-        "right": [(u - 0.8, u + 0.8, 3.0, 4.9) for u in (4.4, 6.9, 9.4)] + [(0.6, 2.4, 0.9, 3.6)],
+        "left": [(u - 0.8, u + 0.8, 3.5, 4.92) for u in (Z - 3.4, Z - 6.2, Z - 9.0)],
+        "right": [(u - 0.8, u + 0.8, 3.5, 4.92) for u in (4.4, 6.9, 9.4)] + [(0.6, 2.4, 0.9, 3.6)],
     }
-    W = R.box_room(kit, X, Z, H, WALL, FLOOR, CEIL, holes)
+    W = R.box_room(kit, X, Z, H, DR.PLASTER, FLOOR, DR.COFFER, holes)
     S_, D, Gd = kit.S, kit.D, kit.G
     for u in (Z - 3.4, Z - 6.2, Z - 9.0):
-        R.window(kit, W["left"], u, 3.0, 1.6, 1.9, PAINT, STONE, WALL, cols=2, rows=2, arch=True)
+        R.window(kit, W["left"], u, 3.5, 1.6, 1.42, PAINT, DR.OAK_RICH, DR.PLASTER, cols=2, rows=2, arch=True)
     for u in (4.4, 6.9, 9.4):
-        R.window(kit, W["right"], u, 3.0, 1.6, 1.9, PAINT, STONE, WALL, cols=2, rows=2, arch=True)
-    R.window(kit, W["right"], 1.5, 0.9, 1.8, 2.7, PAINT, STONE, WALL, cols=3, rows=4)
+        R.window(kit, W["right"], u, 3.5, 1.6, 1.42, PAINT, DR.OAK_RICH, DR.PLASTER, cols=2, rows=2, arch=True)
+    R.window(kit, W["right"], 1.5, 0.9, 1.8, 2.7, PAINT, DR.OAK_RICH, DR.PLASTER, cols=3, rows=4)
+    # oak panelling to 3.45 m on every free wall stretch; oak pilasters on the upper walls between the windows
+    for (a, b) in ((0.0, 1.28), (3.92, 5.42), (7.98, 9.48), (12.12, X)):
+        DR.panelling(kit.D, W["door"], a, b, 0.0, 3.45)
+    DR.panelling(kit.D, W["left"], Z - 1.4, Z, 0.0, 3.45)
+    DR.panelling(kit.D, W["right"], 0.0, 0.6, 0.0, 3.45)
+    DR.panelling(kit.D, W["right"], 2.4, 3.0, 0.0, 3.45)
+    DR.panelling(kit.D, W["right"], 0.6, 2.4, 0.0, 0.85)
+    for f, us, L in ((W["left"], (Z - 3.4, Z - 6.2, Z - 9.0), Z), (W["right"], (4.4, 6.9, 9.4), Z), (W["back"], (), X), (W["door"], (), X)):
+        edges = sorted([0.0, L] + [u + d for u in us for d in (-0.95, 0.95)])
+        for u in edges[1:-1]:
+            f.box(kit.D, u - 0.15, u + 0.15, 3.45, 4.75, 0.0, 0.06, DR.OAK_RICH, skip=("-w",))
+            f.box(kit.D, u - 0.19, u + 0.19, 4.62, 4.75, 0.0, 0.09, DR.GILT, skip=("-w",))
+        f.box(kit.D, 0.0, L, 3.4, 3.5, 0.0, 0.07, DR.OAK_RICH, skip=("-w",))
     door(kit, W["door"])
     for (a, b) in BAYS:
         bay(kit, W["door"], a, b)
-    R.beams(D, X, Z, H, OAK_DK, step=2.1, along="x", depth=0.28, width=0.22)
-    stacks(kit, sol)
-    fireplace(kit)
+    DR.coffered_ceiling(D, kit)
+    DR.bookcases(kit, sol)
+    DR.fireplace(kit)
     tables(kit, spec, sol)
     librarian(kit, sol)
     catalogue(kit, sol)
     cart(kit, sol)
-    ladder(kit, sol)
-    armchairs(kit, sol)
-    for (x, z) in ((4.5, 3.4), (8.9, 3.4), (4.5, 7.4), (8.9, 7.4)):
-        R.pendant(kit, D, x, z, H, 1.55, BRASS, BRASS, "lantern")
-    # cornice where walls meet the ceiling
-    for f, L in ((W["door"], X), (W["back"], X), (W["left"], Z), (W["right"], Z)):
-        f.box(D, 0.0, L, H - 0.2, H - 0.08, 0.0, 0.1, PAINT.t(G.hexc("FFF8EC")), skip=("-w",))
+    DR.ladder(kit, sol)
+    # the fireside: two tufted leather chesterfields turned to the fire, side tables with lamps, Persian rugs
+    for name, yaw in (("armchair_w", math.pi / 2), ("armchair_e", -math.pi / 2)):
+        r = sol[name]["rect"]
+        DR.chesterfield(D, (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2, yaw)
+    for name in ("side_table_w", "side_table_e"):
+        r = sol[name]["rect"]
+        DR.side_table(Gd, kit.glow("lamps"), kit.lights, (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2)
+    def WOOL(c):  # wool pile: the plaster scan's fine relief carries the dyes truly (fabric is too dark)
+        return S("LM_library_plaster", G.hexc(c))
+    DR.rug(Gd, 6.7, 8.1, 4.4, 2.3, WOOL("7E3226"), WOOL("2A3249"), WOOL("CDB48A"))
+    DR.rug(Gd, 6.7, 3.9, 1.0, 4.2, WOOL("6E2A22"), WOOL("2A3249"), WOOL("CDB48A"))
+    r = sol["globe"]["rect"]
+    DR.globe(D, (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2)
+    for name in ("plant_1", "plant_2"):
+        r = sol[name]["rect"]
+        DR.tall_plant(D, (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2)
+    for (x, z) in ((4.5, 5.5), (8.9, 5.5)):
+        DR.chandelier(kit, D, x, z, 3.75)
     pictures(kit, W)
+    kit.sun_dir = (1.0, 0.0, 0.35)
+    kit.sun_elev = 34
+    kit.world_strength = 0.16
+    kit.look = "AgX - Medium High Contrast"
+    kit.exposure = 0.45
+    kit.haze = (0.3, X - 0.3, 0.0, H - 0.3, 0.3, Z - 0.3, 0.004)
     kit.ground = Mesh("ground")
     return kit
 
@@ -512,7 +545,7 @@ def pictures(kit, W):
     """Framed botanical prints between the door and the bays and on the west wall's corridor stretch (flat on the walls)."""
     Gd = kit.G
     f = W["door"]
-    for (u, v) in ((4.6, 2.0), (4.6, 2.75), (8.7, 2.25)):
+    for (u, v) in ((4.6, 4.05), (8.7, 4.05), (0.65, 4.05), (12.75, 4.05)):
         f.box(Gd, u - 0.28, u + 0.28, v - 0.36, v + 0.36, 0.0, 0.035, OAK_DK, skip=("-w",))
         f.box(Gd, u - 0.22, u + 0.22, v - 0.3, v + 0.3, 0.035, 0.038, PAPER, skip=("-w",))
         for k in range(3):

@@ -1117,6 +1117,9 @@ const SCHOOL_IN: LotInteriorSpec = {
     ...[0, 1, 2, 3].flatMap((c) => [0, 1, 2].map((r) => solid(`desk_${c * 3 + r + 1}`, 4 + c * 2.2 - 1.32, 4 + c * 2.2 - 0.82, 3.6 + r * 1.4 - 0.4, 3.6 + r * 1.4 + 0.4, 0.72))),
     // B1 (2026-11-17), appended: the low cupboard under the back windows (books, plants, the aquarium)
     solid("shelf_back", 2.6, 14.8, 7.0, 7.4, 1.35),
+    // B1 (2026-11-17, review): the reading corner by the sunny side windows
+    solid("reading_shelf", 14.95, 15.35, 3.2, 6.6, 1.15), solid("easel", 12.2, 13.0, 6.2, 6.85, 1.7),
+    solid("globe_stand", 13.6, 14.3, 2.7, 3.4, 1.25), solid("plant_tall", 11.35, 11.95, 6.35, 6.95, 1.7),
   ],
   seats: [0, 1, 2, 3].flatMap((c) => [0, 1, 2].map((r) => iseat(`lot_school_chair_${c * 3 + r + 1}`, 4 + c * 2.2, 3.6 + r * 1.4, "left", "backed", 0.44, 1, 0.45, 0.22, 0.23))),
   budget: { pc: { triangles: 60_000, textureMB: 24, draws: 40 }, phone: { triangles: 25_000, textureMB: 8, draws: 25 } },
@@ -1137,6 +1140,9 @@ const LIBRARY_IN: LotInteriorSpec = {
     // the book trolley behind the desk and the card catalogue by the door
     solid("armchair_w", 1.05, 1.95, 8.15, 9.05, 1.05), solid("armchair_e", 11.45, 12.35, 8.15, 9.05, 1.05),
     solid("ladder", 11.75, 12.4, 6.6, 7.2, 2.6), solid("book_cart", 12.5, 13.3, 0.7, 1.5, 1.0), solid("catalogue", 8.2, 9.2, 0.06, 0.56, 1.3),
+    // B1 (2026-11-17, review): side tables with lamps by the chesterfields, a floor globe, two tall plants
+    solid("side_table_w", 1.2, 1.8, 7.4, 8.0, 1.25), solid("side_table_e", 11.6, 12.2, 7.4, 8.0, 1.25),
+    solid("globe", 1.25, 2.0, 2.55, 3.3, 1.25), solid("plant_1", 12.55, 13.25, 1.8, 2.5, 1.8), solid("plant_2", 0.15, 0.85, 0.3, 1.0, 1.8),
   ],
   seats: [
     iseat("lot_library_chair_1", 3.05, 4.9, "right", "backed", 0.46, 1, 0.46, 0.22, 0.23),

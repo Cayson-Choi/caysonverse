@@ -14,3 +14,13 @@
 | li_stlouis | [Reading Room, St. Louis Central Public Library, Olive Street, St. Louis, MO.jpg](https://commons.wikimedia.org/wiki/File:Reading_Room,_St._Louis_Central_Public_Library,_Olive_Street,_St._Louis,_MO.jpg) | w_lemay | CC BY-SA 2.0 | 높은 천장 열람실, 벽 책장, 긴 열람 테이블·독서등 → 책장 벽, 긴 테이블 2, 초록 독서등, 들보 천장 (실내) |
 
 비교 시트: `compare_exterior.jpg`, `compare_interior.jpg` (왼쪽 실제 사진, 오른쪽 B1 Blender 렌더). 게임 경로(KTX2) 룩데브: `lookdev_pc_phone.jpg`.
+
+검토 뒤 더한 참고(2026-11-17, 아름다운 실제 도서관·교실):
+
+| 키 | 파일 | 작가 | 라이선스 | 본 것 → 만든 것 |
+| --- | --- | --- | --- | --- |
+| li_admont | [Austria - Admont Abbey Library - 1240.jpg](https://commons.wikimedia.org/wiki/File:Austria_-_Admont_Abbey_Library_-_1240.jpg) | Jorge Royan | CC BY-SA 3.0 | 밝은 큰 열람실, 긴 책장 벽, 높은 창 → 높은 아치 창 빛, 열람 테이블 |
+| li_strahov | [Strahov library.jpg](https://commons.wikimedia.org/wiki/File:Strahov_library.jpg) | Moyan Brenn from Italy | CC BY 2.0 | 꿀색 나무 책장이 천장 코니스까지, 금박 장식, 회랑 느낌 → 3.3 m 조각 책장, 금박 크레스트, 소란반자 |
+| li_ladder | [Library Ladder, Biltmore House, Biltmore Estate, Asheville, NC (46728130021).jpg](https://commons.wikimedia.org/wiki/File:Library_Ladder,_Biltmore_House,_Biltmore_Estate,_Asheville,_NC_(46728130021).jpg) | Warren LeMay from Cincinnati, OH, United States | CC0 | 굴림 사다리 → 놋쇠 레일 사다리 |
+| li_books | [Admont Abbey Library books.jpg](https://commons.wikimedia.org/wiki/File:Admont_Abbey_Library_books.jpg) | Marco Almbauer | CC BY-SA 4.0 | 가죽·양피지 책 줄 → 책 색·높이 다양화, 기댄 책 |
+| li_fireplace | [Reading Room fireplace.JPG](https://commons.wikimedia.org/wiki/File:Reading_Room_fireplace.JPG) | C.S. Imming | CC BY-SA 3.0 | 나무 오버맨틀 벽난로, 초록 독서등, 노란 벽 → 석회암 벽난로·오버맨틀, 독서등 |

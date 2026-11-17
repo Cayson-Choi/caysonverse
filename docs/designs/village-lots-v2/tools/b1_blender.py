@@ -46,6 +46,9 @@ SAMPLES = int(arg("--samples", "16"))
 BLEND = arg("--blend")
 T0 = time.time()
 LOT = None
+SUN_DIR = None   # a kit may set the sun's compass direction (local) for its renders: rooms light through their windows
+SUN_ELEV = 38
+WORLD = 0.22
 YAW = 0.0
 CX = CZ = 0.0
 
@@ -577,7 +580,7 @@ def setup_world(day):
     except Exception:
         pass
     nt.links.new(sky.outputs["Color"], bg.inputs["Color"])
-    bg.inputs["Strength"].default_value = 0.22 if day else 0.06
+    bg.inputs["Strength"].default_value = (WORLD if day else 0.06)
     nt.links.new(bg.outputs["Background"], out.inputs["Surface"])
     sun = bpy.data.objects.get("Sun")
     if sun is None:
@@ -586,8 +589,10 @@ def setup_world(day):
     sun.data.color = (1.0, 0.95, 0.86) if day else (0.55, 0.65, 1.0)
     sun.data.angle = math.radians(0.8)
     # a mid-morning sun from the south-south-west of the front, 38 degrees up (local: front = +z)
-    d = Vector(l2b((5.0, 0, 9.0))) - Vector(l2b((0, 0, 0)))
-    d = d.normalized() * math.cos(math.radians(38)) + Vector((0, 0, math.sin(math.radians(38))))
+    sd = SUN_DIR or (5.0, 0, 9.0)
+    elev = math.radians(SUN_ELEV)
+    d = Vector(l2b(sd)) - Vector(l2b((0, 0, 0)))
+    d = d.normalized() * math.cos(elev) + Vector((0, 0, math.sin(elev)))
     sun.rotation_euler = (-d).to_track_quat("-Z", "Y").to_euler()
     for o in bpy.data.objects:
         if o.name.startswith("lotnight__") or o.name.startswith("nightlight_"):
@@ -644,7 +649,8 @@ def render_all(kit, mats, outdir, viewdef, prefix):
     sc.render.image_settings.quality = 88
     try:
         sc.view_settings.view_transform = "AgX"
-        sc.view_settings.look = "AgX - Base Contrast"
+        sc.view_settings.look = getattr(kit, "look", "AgX - Base Contrast")
+        sc.view_settings.exposure = getattr(kit, "exposure", 0.0)
     except Exception:
         pass
     try:
@@ -655,8 +661,40 @@ def render_all(kit, mats, outdir, viewdef, prefix):
         ee.shadow_resolution_scale = 1.0
     except Exception:
         pass
+    global SUN_DIR, SUN_ELEV, WORLD
+    WORLD = getattr(kit, "world_strength", 0.22)
+    SUN_DIR = getattr(kit, "sun_dir", None)
+    SUN_ELEV = getattr(kit, "sun_elev", 38)
     cam = obj("Cam", bpy.data.cameras.new("Cam"))
     sc.camera = cam
+    haze = getattr(kit, "haze", None)
+    if haze:
+        # render-only: a faint warm haze in the room so the daylight through the windows shows as shafts
+        (x0, x1, y0, y1, z0, z1, dens) = haze
+        me = bpy.data.meshes.new("haze")
+        bm = bmesh.new()
+        bmesh.ops.create_cube(bm, size=1.0)
+        bm.to_mesh(me)
+        bm.free()
+        ho = obj("haze", me)
+        ho.location = l2b(((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2))
+        ho.scale = (x1 - x0, z1 - z0, y1 - y0)
+        hm = bpy.data.materials.new("haze")
+        hm.use_nodes = True
+        nt = hm.node_tree
+        for n in list(nt.nodes):
+            nt.nodes.remove(n)
+        outn = nt.nodes.new("ShaderNodeOutputMaterial")
+        vol = nt.nodes.new("ShaderNodeVolumePrincipled")
+        vol.inputs["Density"].default_value = dens
+        vol.inputs["Color"].default_value = (1.0, 0.93, 0.82, 1)
+        nt.links.new(vol.outputs["Volume"], outn.inputs["Volume"])
+        me.materials.append(hm)
+        try:
+            sc.eevee.volumetric_tile_size = "4"
+            sc.eevee.use_volumetric_shadows = True
+        except Exception:
+            pass
     ground(kit, mats)
     night_lights(kit)
     for o in bpy.data.objects:
@@ -705,7 +743,8 @@ def run(lot_id, kit_mod, viewdef, prefix, tex_dir):
     if "--no-export" not in argv:
         write_manifest(kit, lot, manifest)
         export(out, objs, {"caysonverse": "%s (lots v2 B1 kit)" % lot_id, "textures": "lots/%s/%s_textures.json" % (tex_dir, lot_id),
-                           "doors": door_extras, "roofSlabs": kit.roof_slabs})
+                           "doors": door_extras, "roofSlabs": kit.roof_slabs,
+                           "vegetation": [dict(v, x=round(l2w(v["lx"], v["lz"])[0], 2), z=round(l2w(v["lx"], v["lz"])[1], 2)) for v in getattr(kit, "vegetation", [])]})
         report["glb"] = glb_stats(out)
         log("wrote", out, report["glb"])
     if REPORT:

@@ -556,8 +556,11 @@ def yard(kit):
     P.lantern_post(kit, D, 6.4, 9.94, 3.3, IRON, GLASS, "fence:fr lamp", glow_part="lamps", arm=(0.0, -0.55))
     # two young lime trees (contract colliders tree_1 / tree_2, appended by B1) and clipped box hedges with low flowers inside
     # the front fence, either side of the gate
-    P.tree(D, 9.6, 6.6, BARK, LEAF, 4.6, 1.0, seed=3)
-    P.tree(D, -5.6, 8.6, BARK, LEAF_DK, 4.3, 1.15, seed=7)
+    # (coordinator review 2026-11-17: no hand-made blob trees) the two yard trees are the village's own vegetation: the
+    # "green" broadleaf kind of client/src/village/veg (treeSkeleton TREE_KINDS), grown at runtime by createVegetation; the
+    # lot file carries only their spots (asset.extras.vegetation) and the trunks' colliders tree_1 / tree_2
+    kit.vegetation = [{"kind": "green", "lx": 9.6, "lz": 6.6, "H": 5.0, "R": 1.3, "seed": 910},
+                      {"kind": "green", "lx": -5.6, "lz": 8.6, "H": 4.6, "R": 1.2, "seed": 911}]
     for (x0, x1) in ((-6.9, -3.2), (3.2, 9.0)):
         D.cbox(x0, x1, 0.0, 0.3, 9.5, 9.8, LEAF_DK, c=0.05, skip=("-y",), label="hedge", kind="walkover")
     swings(kit)

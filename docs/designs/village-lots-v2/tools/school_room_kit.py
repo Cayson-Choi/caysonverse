@@ -16,7 +16,7 @@ import b1_room as R
 from b1_geom import Mesh, S
 
 FLOOR = S("LM_school_floor")                                 # floor_wood
-WALL = S("LM_school_plaster", G.hexc("FFF8EA"))              # plaster_painted, warm cream
+WALL = S("LM_school_render", G.hexc("FFF3DC"))               # stucco_white (the school's own render set): warm, bright              # plaster_painted, warm cream
 CEIL = S("LM_school_plaster", G.hexc("FFFCF5"))
 BOARD = S("LM_school_plaster", G.hexc("4A7A62"))             # the chalkboard's matt green slate paint
 CHALK = S("LM_school_plaster", G.hexc("F4F2EA"))
@@ -29,7 +29,7 @@ PINK = S("LM_school_paint", G.hexc("F2BDC0"))
 RED = S("LM_school_paint", G.hexc("D9574A"))
 YEL = S("LM_school_paint", G.hexc("F2C94C"))
 NAVY = S("LM_school_paint", G.hexc("3E5C8A"))
-PAPER = S("LM_school_paint", G.hexc("FFFDF6"))
+PAPER = S("LM_school_plaster", G.hexc("FFFDF6"))            # paper: the plaster scan's fine tooth (the painted-board set shows grooves)
 OAK = S("LM_school_oak", G.hexc("E8D2B0"))                   # wood_oak
 OAK_DK = S("LM_school_oak", G.hexc("B48A62"))
 CORK = S("LM_school_oak", G.hexc("C99A66"))
@@ -46,6 +46,7 @@ OPAL = S("M_glass", G.lin(0.95, 0.95, 0.92))
 MATS = {
     "LM_school_floor": {"set": "floor_wood"},
     "LM_school_plaster": {"set": "plaster_painted"},
+    "LM_school_render": {"set": "stucco_white", "rough": 0.95},
     "LM_school_paint": {"set": "wood_painted", "normal": 0.5},
     "LM_school_oak": {"set": "wood_oak", "rough": 0.85},
     "LM_school_iron": {"set": "cast_iron", "metal": True},
@@ -116,6 +117,13 @@ def build(spec, unit, layout):
         Gd.lathe([(r, 0.0), (r, 0.006 + k * 0.002), (0.0, 0.006 + k * 0.002)], 24, S("LM_school_paint", G.hexc(c)), 7.7, 1.3, 0.0)
     clock(kit)
     bunting(kit)
+    reading_corner(kit, sol)
+    curtains(kit)
+    kit.sun_elev = 30
+    kit.world_strength = 0.14
+    kit.look = "AgX - Medium High Contrast"
+    kit.exposure = 0.3
+    kit.haze = (0.3, X - 0.3, 0.0, H - 0.2, 2.6, Z - 0.3, 0.003)
     plants(kit)
     kit.ground = Mesh("ground")
     return kit
@@ -201,8 +209,7 @@ def board(kit):
         stroke((fx + 0.05 * math.cos(a), fy + 0.6 + 0.05 * math.sin(a)), (fx + 0.13 * math.cos(a), fy + 0.6 + 0.13 * math.sin(a)))
     stroke((fx, fy + 0.2), (fx + 0.12, fy + 0.3))
     # map roll above the board (overhead)
-    f.box(D, 1.2, 3.6, 2.42, 2.5, 0.0, 0.1, OAK_DK, skip=("-w",))
-    Gd.member(f.p(1.25, 2.4, 0.07), f.p(3.55, 2.4, 0.07), G.prof_round(0.04, 8), PAPER.t(G.hexc("E9DFC5")))
+    world_map(kit, f, 1.0, 3.8, 2.45, 3.45)
 
 
 def teacher(kit):
@@ -259,7 +266,7 @@ def desks(kit, spec):
     """Twelve desks (solids desk_1..12) and chairs (seats lot_school_chair_1..12, facing the board = -x), exercise books."""
     Gd = kit.G
     dk = desk_kind()
-    ch = R.chair_kind("chair", OAK, IRON, w=0.42)
+    chs = [R.chair_kind("chair_y", S("LM_school_paint", G.hexc("F2C94C")), IRON, w=0.42), R.chair_kind("chair_g", S("LM_school_paint", G.hexc("7CC08A")), IRON, w=0.42)]
     rg = G.rng(4)
     for s in spec["solids"]:
         if not s["name"].startswith("desk_"):
@@ -275,8 +282,8 @@ def desks(kit, spec):
         bk.member((0.0, 0.727, -0.13), (0.0, 0.727, 0.13), G.prof_box(0.003, 0.001), S("LM_school_paint", G.hexc("C8C2B4")))
         Gd.extend(G.moved(bk, cx, 0.0, cz, a))
         Gd.member((cx + 0.15, 0.725, cz - 0.1), (cx + 0.16, 0.725, cz + 0.07), G.prof_round(0.004, 5), YEL)
-    for s in spec["seats"]:
-        kit.place("chair", ch, s["x"], 0.0, s["z"], -math.pi / 2)
+    for i, s in enumerate(spec["seats"]):
+        kit.place(("chair_y", "chair_g")[i % 2], chs[i % 2], s["x"], 0.0, s["z"], -math.pi / 2)
 
 
 def back_shelf(kit, sol):
@@ -294,8 +301,9 @@ def back_shelf(kit, sol):
     for k in range(n):
         a = x0 + k * w
         D.box(a + 0.02, a + w - 0.02, 0.1, 0.8, z0 + 0.0, z0 + 0.02, PAINT.t(G.hexc("EFE9DE")))
-        if k % 3 == 0:
-            Gd.cbox(a + 0.08, a + w - 0.08, 0.12, 0.38, z0 + 0.04, z0 + 0.3, OAK.t(G.hexc("D8B98A")), c=0.03)
+        if k % 3 != 1:
+            Gd.cbox(a + 0.06, a + w - 0.06, 0.12, 0.36, z0 + 0.03, z0 + 0.3, cols[(k * 7) % 6], c=0.02)
+            Gd.cbox(a + 0.06, a + w - 0.06, 0.46, 0.7, z0 + 0.03, z0 + 0.3, cols[(k * 5 + 2) % 6], c=0.02)
         else:
             u = a + 0.06
             while u < a + w - 0.08:
@@ -439,3 +447,92 @@ def pot_geranium(m, p):
     for k in range(3):
         a = k * 2 * math.pi / 3 + 0.4
         m.sphere(x + 0.05 * math.cos(a), y + 0.28, z + 0.05 * math.sin(a), 0.045, PET_RED if k % 2 else PET_PINK, n=6, rings=4)
+
+
+def world_map(kit, f, u0, u1, v0, v1):
+    """A school wall map of the world above the board (overhead): oak top and bottom rods, a pale-blue ocean, continents in
+    soft greens and ochres as raised paper layers, a compass rose; no words."""
+    D, Gd = kit.D, kit.G
+    f.box(D, u0 - 0.05, u1 + 0.05, v1, v1 + 0.04, 0.0, 0.05, OAK_DK, skip=("-w",))
+    f.box(D, u0 - 0.05, u1 + 0.05, v0 - 0.04, v0, 0.0, 0.05, OAK_DK, skip=("-w",))
+    f.box(Gd, u0, u1, v0, v1, 0.0, 0.006, S("LM_school_plaster", G.hexc("BFD9EA")), skip=("-w",))
+    du, dv = u1 - u0, v1 - v0
+
+    def land(pts, col):
+        f.poly(Gd, [(u0 + a * du, v0 + b * dv, 0.008) for a, b in pts], S("LM_school_plaster", G.hexc(col)))
+    land([(0.08, 0.62), (0.2, 0.8), (0.3, 0.78), (0.28, 0.6), (0.22, 0.5), (0.18, 0.42), (0.12, 0.5)], "A9C98E")     # north america
+    land([(0.24, 0.38), (0.3, 0.36), (0.32, 0.22), (0.27, 0.08), (0.24, 0.2)], "C9D88A")                           # south america
+    land([(0.44, 0.62), (0.5, 0.78), (0.6, 0.8), (0.75, 0.82), (0.88, 0.7), (0.82, 0.55), (0.7, 0.52), (0.6, 0.58), (0.5, 0.56)], "D9C98E")  # eurasia
+    land([(0.47, 0.5), (0.58, 0.52), (0.6, 0.36), (0.54, 0.18), (0.5, 0.3), (0.45, 0.42)], "E2B97A")              # africa
+    land([(0.78, 0.3), (0.88, 0.32), (0.9, 0.2), (0.8, 0.18)], "E8C88A")                                          # australia
+    land([(0.82, 0.62), (0.85, 0.66), (0.84, 0.56)], "9EC9A0")
+    cx, cy = u0 + 0.92 * du, v0 + 0.15 * dv
+    f.poly(Gd, [(cx, cy + 0.12, 0.009), (cx - 0.03, cy, 0.009), (cx, cy - 0.12, 0.009), (cx + 0.03, cy, 0.009)], S("LM_school_plaster", G.hexc("C8553D")))
+
+
+def reading_corner(kit, sol):
+    """The classroom's reading corner by the sunny side windows: a low shelf of picture books under the window (solid
+    reading_shelf), a round rainbow rug, an easel with a painting (solid easel), a globe on a stand (solid globe_stand) and a
+    tall leafy plant (solid plant_tall)."""
+    D, Gd = kit.D, kit.G
+    r = sol["reading_shelf"]["rect"]
+    x0, x1, z0, z1 = r["x0"], r["x1"], r["z0"], r["z1"]
+    D.box(x0, x1, 0.0, 0.82, z0, z1, PAINT.t(G.hexc("F7EBD3")), skip=("-y",))
+    D.cbox(x0 - 0.0, x1, 0.82, 0.86, z0, z1, OAK, c=0.01)
+    for y in (0.08, 0.44):
+        z = z0 + 0.05
+        rg = G.rng(int(y * 100))
+        while z < z1 - 0.12:
+            w = rg.uniform(0.02, 0.04)
+            Gd.box(x0 + 0.02, x0 + 0.02 + 0.006, y, y + rg.uniform(0.22, 0.3), z, z + w, (RED, YEL, BLUE, MINT, PINK, NAVY, BUTTER)[rg.randrange(7)])
+            # picture books face out on the top shelf
+            z += w + 0.003
+    for k, zc in enumerate((z0 + 0.5, z0 + 1.5, z0 + 2.6)):
+        Gd.box(x0 - 0.0, x0 + 0.02, 0.86, 1.14, zc - 0.13, zc + 0.13, (YEL, BLUE, PINK)[k])
+    for k in range(5):
+        rr = 1.1 - k * 0.2
+        Gd.lathe([(rr, 0.0), (rr, 0.006 + 0.002 * k), (0.0, 0.006 + 0.002 * k)], 28, S("LM_school_paint", G.hexc(("E46A5A", "F2A65A", "F5D76E", "8CC08A", "7FA8D8")[k])), 13.0, 4.7, 0.0)
+    r = sol["easel"]["rect"]
+    ex, ez = (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2
+    for dx in (-0.28, 0.28):
+        D.member((ex + dx, 0.0, ez + 0.2), (ex + dx * 0.4, 1.65, ez - 0.02), G.prof_box(0.04, 0.03), OAK)
+    D.member((ex, 0.0, ez - 0.28), (ex, 1.6, ez - 0.02), G.prof_box(0.035, 0.03), OAK)
+    D.box(ex - 0.34, ex + 0.34, 0.62, 0.66, ez + 0.06, ez + 0.14, OAK)
+    D.box(ex - 0.3, ex + 0.3, 0.66, 1.42, ez + 0.08, ez + 0.1, PAPER)
+    for (u, v, rr, c) in ((-0.12, 1.25, 0.08, YEL), (0.1, 1.0, 0.1, LEAF), (-0.05, 0.85, 0.06, RED)):
+        D.poly([(ex + u + rr * math.cos(2 * math.pi * k / 10), v + rr * math.sin(2 * math.pi * k / 10), ez + 0.102) for k in range(10)], c)
+    D.poly([(ex - 0.28, 0.68, ez + 0.101), (ex + 0.28, 0.68, ez + 0.101), (ex + 0.28, 0.82, ez + 0.101), (ex - 0.28, 0.82, ez + 0.101)], LEAF_DK)
+    r = sol["globe_stand"]["rect"]
+    gx, gz = (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2
+    D.lathe([(0.24, 0.0), (0.24, 0.03), (0.05, 0.05), (0.035, 0.75), (0.05, 0.78)], 12, OAK, gx, gz, 0.0)
+    Gd.sphere(gx, 1.0, gz, 0.2, S("LM_school_paint", G.hexc("7FB2D8")), n=16, rings=10)
+    for (dx, dy, dz, rr) in ((0.08, 0.06, 0.12, 0.08), (-0.1, -0.02, 0.13, 0.07), (0.0, 0.1, -0.15, 0.08), (-0.14, 0.08, -0.06, 0.06)):
+        Gd.sphere(gx + dx, 1.0 + dy, gz + dz, rr, S("LM_school_paint", G.hexc("A9C98E")), n=7, rings=4, sy=0.35)
+    Gd.member((gx - 0.04, 0.8, gz), (gx + 0.04, 1.22, gz), G.prof_round(0.006, 4), BRASS)
+    r = sol["plant_tall"]["rect"]
+    px, pz = (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2
+    D.lathe([(0.15, 0.0), (0.19, 0.35), (0.2, 0.38), (0.0, 0.38)], 12, POT, px, pz, 0.0)
+    for k in range(18):
+        a = k * 2.4
+        y = 0.6 + k * 0.06
+        L = 0.24
+        Gd.sphere(px + L * 0.5 * math.cos(a), y, pz + L * 0.5 * math.sin(a), 0.11, LEAF if k % 2 else LEAF_DK, n=6, rings=4, sy=0.5)
+    D.member((px, 0.38, pz), (px, 1.6, pz), G.prof_round(0.02, 5), OAK_DK)
+
+
+def curtains(kit):
+    """Soft yellow cotton curtains flat beside the windows (gathered folds within 5 cm of the wall), on oak poles."""
+    W = R.walls(X, Z)
+    CUR = S("LM_school_render", G.hexc("F8DE8E"))
+    for f, us, w in ((W["back"], [X - x for x in (4.4, 7.7, 11.0)], 1.7), (W["right"], [5.0], 3.4), (W["right"], [1.2], 1.4)):
+        for u in us:
+            for side in (-1, 1):
+                a = u + side * (w / 2 + 0.05)
+                b = a + side * 0.32
+                n = 6
+                for i in range(n):
+                    t0, t1 = i / n, (i + 1) / n
+                    ua, ub = a + (b - a) * t0, a + (b - a) * t1
+                    wa, wb = 0.02 + 0.025 * (i % 2), 0.02 + 0.025 * ((i + 1) % 2)
+                    f.poly(kit.G, [(ua, 0.8, wa), (ub, 0.8, wb), (ub, 3.32, wb), (ua, 3.32, wa)], CUR, out=1)
+            f.box(kit.D, u - w / 2 - 0.45, u + w / 2 + 0.45, 3.36, 3.4, 0.0, 0.05, OAK_DK, skip=("-w",))

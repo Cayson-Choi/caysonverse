@@ -17,3 +17,10 @@
 | sc_classroom2 | [Karmsund folkemuseum Haugesund Norway Interior Skolestue klasserom Class room ca 1910 Skolepulter skrivepulter benker school room benches writing desks 2020-06-10 DSC00309.jpg](https://commons.wikimedia.org/wiki/File:Karmsund_folkemuseum_Haugesund_Norway_Interior_Skolestue_klasserom_Class_room_ca_1910_Skolepulter_skrivepulter_benker_school_room_benches_writing_desks_2020-06-10_DSC00309.jpg) | Wolfmann | CC BY-SA 4.0 | 나무 책상·의자 줄, 높은 창, 벽 장식 → 책상·의자, 큰 창 벽, 그림 벽 (실내) |
 
 비교 시트: `compare_exterior.jpg`, `compare_interior.jpg`, `compare_playground.jpg` (왼쪽 실제 사진, 오른쪽 B1 Blender 렌더). 게임 경로(KTX2) 룩데브: `lookdev_pc_phone.jpg`.
+
+검토 뒤 더한 참고(2026-11-17, 아름다운 실제 도서관·교실):
+
+| 키 | 파일 | 작가 | 라이선스 | 본 것 → 만든 것 |
+| --- | --- | --- | --- | --- |
+| sc_neumarkt | [Grundschule Haus St Marien Neumarkt - Klassenzimmer 02.JPG](https://commons.wikimedia.org/wiki/File:Grundschule_Haus_St_Marien_Neumarkt_-_Klassenzimmer_02.JPG) | DALIBRI | CC BY-SA 3.0 | 밝은 교실, 색 상자 칸 선반, 그림 가득한 벽, 색 의자 → 색 상자·그림·노랑/초록 의자 |
+| sc_neumarkt2 | [Grundschule Haus St Marien Neumarkt - Klassenzimmer 08.JPG](https://commons.wikimedia.org/wiki/File:Grundschule_Haus_St_Marien_Neumarkt_-_Klassenzimmer_08.JPG) | DALIBRI | CC BY-SA 3.0 | 책상 줄, 게시물, 밝은 창 → 책상 줄·게시판·읽기 모퉁이 |

@@ -3,6 +3,18 @@
   "format": "ktx2",
   "note": "Every LM_ material is a shared PBR library set (client/src/village/pbr/pbrLibrary.ts getPbrSet(id, tier, gl) -> createPbrMaterial(set, { repeatMeters: [1, 1] })): the model's UVs are metres, COLOR_0 multiplies the albedo (the tint of the neutral sets), roughness = the ORM's G times roughnessScale. The lot has no maps of its own (letters, clock and numerals are geometry). M_glass is the game's glass; lotnight__ nodes take the game's glow.",
   "materials": {
+    "LM_library_brass": {
+      "pbr": "aluminium_brushed",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 0.7,
+      "normalScale": 1.0,
+      "metal": true
+    },
     "LM_library_brick": {
       "pbr": "brick_red",
       "repeatMeters": [
@@ -96,6 +108,7 @@
     }
   },
   "pbrSets": [
+    "aluminium_brushed",
     "brick_red",
     "fabric_upholstery",
     "floor_wood",
