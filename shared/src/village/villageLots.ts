@@ -570,6 +570,9 @@ const CHURCH: VillageLot = {
     { suffix: "lamp_1", rect: rect(-3.6, -3.3, 6.2, 6.5), cameraHeight: 0 },
     { suffix: "lamp_2", rect: rect(3.3, 3.6, 6.2, 6.5), cameraHeight: 0 },
     { suffix: "notice", rect: rect(5.8, 7.2, 6.3, 6.55), cameraHeight: 0 }, // 환영합니다 board on two posts
+    // the Colmar pass's window boxes of geraniums (to 0.3 m off the side walls, 1.45-1.7 m up; L5v2)
+    { suffix: "window_boxes_w", rect: rect(-4.42, -4.2, -7.7, 0.1), cameraHeight: 0 },
+    { suffix: "window_boxes_e", rect: rect(4.2, 4.42, -7.7, 0.1), cameraHeight: 0 },
   ],
   seats: [
     seat("lot_church_bench_1", -7, 4.5, "out", "backed", 1.8),
