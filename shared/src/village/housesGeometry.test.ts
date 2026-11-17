@@ -24,7 +24,7 @@ import { isRemovedHouseSeat } from "./houseFixes";
 import { GENERATED_HOUSES, GENERATED_HOUSE_NUMBERS } from "./generated/houses";
 import { HOUSES_APRON, HOUSES_BLOCK, HOUSES_ZONE, allHouseWalls, houseCeilingSlab, houseFloorGeometry, houseFloorOuter, houseIsReady, housesBlockers } from "./housesGeometry";
 import { VILLAGE_LAYOUT, houseArea, isHouseArea, buildingIdFromArea, villageBounds, villageGeometry } from "./villageLayout";
-import { LATE_HOUSE_SEATS, VILLAGE_SEATS } from "./benchSeats";
+import { HOUSE_SEAT_ORDER, LATE_HOUSE_SEATS, TAIL_HOUSE_SEATS, VILLAGE_SEATS } from "./benchSeats";
 import { keypadEntries } from "./buildingAccess";
 import { generatedHouseNumbers, renderIndex } from "../../../scripts/gen-houses-index";
 
@@ -201,17 +201,19 @@ describe("seatIndex is int16 on the wire", () => {
 });
 
 describe("the house seats in the one global list", () => {
-  const houseSeats = VILLAGE_SEATS.filter((s) => isHouseArea(s.area));
+  // (a retired seat keeps its old index in its house's area but is no seat: release 4 retired h2_1_0:back, h2_1_1:back)
+  const houseSeats = VILLAGE_SEATS.filter((s) => isHouseArea(s.area) && !s.retired);
 
   it("come in one run after every village bench and hall seat (main's later seats after them), in house, floor, marker order", () => {
     const firstHouse = VILLAGE_SEATS.findIndex((s) => isHouseArea(s.area));
     expect(firstHouse).toBe(51); // after the 20 village bench places and the hall's 31 (25 places since release 3.1, the 6 removed chairs retired in place)
     // seat ids are append-only: the seats a later release restored (LATE_HOUSE_SEATS) are at the very end of the list instead
-    const inRun = houseSeats.filter((s) => !LATE_HOUSE_SEATS.includes(s.bench));
-    const end = firstHouse + inRun.length;
-    expect(VILLAGE_SEATS.slice(firstHouse, end).every((s) => isHouseArea(s.area))).toBe(true);
-    expect(VILLAGE_SEATS.slice(end, VILLAGE_SEATS.length - LATE_HOUSE_SEATS.length).some((s) => isHouseArea(s.area))).toBe(false);
-    expect(VILLAGE_SEATS.slice(-LATE_HOUSE_SEATS.length).map((s) => s.bench)).toEqual([...LATE_HOUSE_SEATS]);
+    // (release 4: and the seats the realism pass added, after those; a seat gone keeps its index retired: HOUSE_SEAT_ORDER)
+    const end = firstHouse + HOUSE_SEAT_ORDER.length;
+    expect(VILLAGE_SEATS.slice(firstHouse, end).map((s) => s.id)).toEqual([...HOUSE_SEAT_ORDER]);
+    const inRun = VILLAGE_SEATS.slice(firstHouse, end).filter((s) => !s.retired);
+    expect(VILLAGE_SEATS.slice(end, VILLAGE_SEATS.length - TAIL_HOUSE_SEATS.length).some((s) => isHouseArea(s.area))).toBe(false);
+    expect(VILLAGE_SEATS.slice(-TAIL_HOUSE_SEATS.length).map((s) => (LATE_HOUSE_SEATS.includes(s.bench) ? s.bench : s.id))).toEqual([...TAIL_HOUSE_SEATS]);
     const keys = inRun.map((s) => {
       const m = /^house:house_(\d+):([12])$/.exec(s.area)!;
       const k = Number(/^h\d+_[12]_(\d+)/.exec(s.bench)![1]);
@@ -225,7 +227,7 @@ describe("the house seats in the one global list", () => {
    * Markers the art leaves with no place to stand (listed for the art round, docs/designs/houses-interior/review): house 9's dining chair
    * in the middle of the row on the stair's side — the table in front, a chair on each side, the stair 1 m behind its backrest.
    */
-  const KNOWN_UNSITTABLE = new Set(["h9_1_6"]);
+  const KNOWN_UNSITTABLE = new Set<string>([]);   // realism pass 2026-11-17: house 9's dining chair has room now
 
   it("every marker of every finished house has at least one seat; only a backless 'both' marker may lose a facing", () => {
     for (const n of GENERATED_HOUSE_NUMBERS) {

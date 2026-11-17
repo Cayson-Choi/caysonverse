@@ -13,6 +13,7 @@ import {
   CHAIR_BACK_BEHIND,
   LAKE_SEAT_BASE,
   LATE_HOUSE_SEATS,
+  TAIL_HOUSE_SEATS,
   SHELTER_BENCH,
   STAND_CLEARANCE,
   VILLAGE_BENCHES,
@@ -518,8 +519,9 @@ describe("the fishing lake's seats in the global index (A10, design 5.4 and 12.2
     const deck = VILLAGE_SEATS.filter((s) => s.id.startsWith("zelkova_deck:"));
     expect(deck).toHaveLength(6);
     // release 3 appended the deck, then the house seats the art brought back (LATE_HOUSE_SEATS): no live index moved
-    const late = VILLAGE_SEATS.slice(-LATE_HOUSE_SEATS.length);
-    expect(late.map((s) => s.bench)).toEqual([...LATE_HOUSE_SEATS]);
+    // (release 4 then the house seats the realism pass added: TAIL_HOUSE_SEATS)
+    const late = VILLAGE_SEATS.slice(-TAIL_HOUSE_SEATS.length);
+    expect(late.map((s) => (LATE_HOUSE_SEATS.includes(s.bench) ? s.bench : s.id))).toEqual([...TAIL_HOUSE_SEATS]);
     const tail = VILLAGE_SEATS.length - late.length;
     expect(LAKE_SEAT_BASE).toBe(tail - lakeIdx.length - FALLS_SEATS.length - deck.length);
     expect(VILLAGE_SEATS.slice(tail - deck.length, tail)).toEqual(deck);
@@ -589,7 +591,7 @@ describe("the plaza zelkova deck (평상, UX 2026-11-16)", () => {
   it("six places, the very last seats (after the lake's and release 2's waterfall stones), so no older index moves", () => {
     expect(deck).toHaveLength(6);
     // (only release 3's restored house seats, LATE_HOUSE_SEATS, follow them)
-    expect(deck.map(({ i }) => i)).toEqual([0, 1, 2, 3, 4, 5].map((k) => VILLAGE_SEATS.length - LATE_HOUSE_SEATS.length - 6 + k));
+    expect(deck.map(({ i }) => i)).toEqual([0, 1, 2, 3, 4, 5].map((k) => VILLAGE_SEATS.length - TAIL_HOUSE_SEATS.length - 6 + k));
     expect(deck[0]!.i).toBeGreaterThan(LAKE_SEAT_BASE);
   });
 

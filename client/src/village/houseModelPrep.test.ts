@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { BoxGeometry, BufferAttribute, BufferGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Texture } from "three";
 import { houseFiles } from "@caysonverse/shared/village/houseAreas";
-import { disposeHouse, dressLoadedHouse, houseUrls, houseViewMapping, houseWantsLightmap, houseWantsView, isHouseLightmapMaterial, prepareHouse, solidTriangles, HOUSE_CEILING_MATERIAL, HOUSE_VIEW_MATERIAL } from "./houseModelPrep";
+import { applyHouseTextures, disposeHouse, disposeLoadedHouse, dressLoadedHouse, houseSharedTextureNames, houseTextureUrl, houseUrls, houseViewMapping, houseWantsLightmap, houseWantsView, isHouseLightmapMaterial, prepareHouse, solidTriangles, HOUSE_CEILING_MATERIAL, HOUSE_VIEW_MATERIAL } from "./houseModelPrep";
 import { houseGltfEntry } from "./houseRelease";
 import { houseNightUniform, patchHouseLightmapMaterial, resetHouseNight, houseNightMapUniform } from "./houseNight";
 
@@ -154,3 +154,51 @@ describe("the builders' files dressed for the game (G round 3)", () => {
     expect(g.groups).toHaveLength(2);
   });
 });
+
+describe("the shared photo-real albedos (realism pass 2026-11-17)", () => {
+  function texturedHouse() {
+    const root = new Group();
+    const small = new Texture();
+    small.name = "T_h_floor_oak";
+    small.repeat.set(2, 2);
+    const floor = new MeshBasicMaterial({ map: small });
+    floor.name = "LM_floor_oak";
+    const other = new Texture();
+    other.name = "lightmap_or_view";
+    const view = new MeshBasicMaterial({ map: other });
+    view.name = HOUSE_VIEW_MATERIAL;
+    root.add(new Mesh(new BoxGeometry(), floor), new Mesh(new BoxGeometry(), floor), new Mesh(new BoxGeometry(), view));
+    return { root, floor, small };
+  }
+
+  it("lists the T_h_* albedos a house uses, once each, and builds their URLs by tier", () => {
+    const { root } = texturedHouse();
+    expect(houseSharedTextureNames(root)).toEqual(["T_h_floor_oak"]);
+    expect(houseTextureUrl("T_h_floor_oak", "high")).toBe("/textures/houses/hi/T_h_floor_oak.webp");
+    expect(houseTextureUrl("T_h_floor_oak", "low")).toBe("/textures/houses/lo/T_h_floor_oak.webp");
+  });
+
+  it("swaps the GLB's small copy for the shared file once, keeping its repeat, and frees the small copy", () => {
+    const { root, floor, small } = texturedHouse();
+    const freed = vi.spyOn(small, "dispose");
+    const full = new Texture();
+    expect(applyHouseTextures(root, new Map([["T_h_floor_oak", full]]))).toBe(1);
+    expect(floor.map).not.toBe(small);
+    expect(floor.map?.source).toBe(full.source);
+    expect(floor.map?.repeat.x).toBe(2);
+    expect(floor.map?.flipY).toBe(false);
+    expect(freed).toHaveBeenCalled();
+    expect(applyHouseTextures(root, new Map([["T_h_floor_oak", full]]))).toBe(0);
+  });
+
+  it("freeing a house leaves a shared albedo's image for the next house (houseRelease frees it)", () => {
+    const { root, floor } = texturedHouse();
+    const full = new Texture();
+    applyHouseTextures(root, new Map([["T_h_floor_oak", full]]));
+    const img = { close: vi.fn() };
+    (floor.map as Texture).image = img;
+    disposeLoadedHouse(root);
+    expect(img.close).not.toHaveBeenCalled();
+  });
+});
+

@@ -26,10 +26,8 @@ const boundsOf = (s: VillageSeat): Bounds => {
 const BESIDE_ONLY: Record<string, readonly string[]> = {
   hall: [], // (release 3.1: the consult chairs and the letter table are gone — retired seats)
   cafe: ["cafe_terrace_1", "cafe_terrace_2", "cafe_terrace_3", "cafe_terrace_4", "cafe_terrace_5", "cafe_terrace_6", "cafe_terrace_7", "cafe_terrace_8"],
-  houses: [
-    "h1_1_4", "h1_1_5", "h1_1_6", "h1_1_7", "h1_2_3", "h2_2_1", "h3_1_0", "h3_1_2", "h3_1_3", "h3_1_5", "h4_1_0", "h4_1_1",
-    "h5_1_4", "h5_1_5", "h5_1_6", "h5_1_7", "h6_1_4", "h7_1_5", "h9_1_3", "h9_1_4", "h9_1_7", "h9_1_8", "h9_1_9", "h9_1_10", // (houses-art2: house 9's dining chairs moved / restored)
-  ],
+  // the houses (realism pass 2026-11-17): every backed seat has room in front now (chairs pulled out; houseSeatFront.test.ts)
+  houses: [],
   lake: [
     "P01", "P02", "P03", "P04", "P05", "P06", "P07", "P08", "P09", "P10", "P11", "P12", "P13", "P14", "P15", "P16",
     "A1", "A2", "A3", "A4", "B1", "B2", "B3", "B4", "N1", "N2", "N3", "S1", "S2", "S3",
@@ -40,7 +38,7 @@ const BESIDE_ONLY: Record<string, readonly string[]> = {
  * Backed seats walled in front AND at both sides by the layout, whose only stand spot is still BEHIND the backrest — what the owner
  * forbids. Not fixable in the seat code: the furniture must move (reported to their owners). This list may only shrink.
  */
-const BEHIND_LAYOUT_BLOCKED = ["h2_1_3", "h2_2_2", "h3_1_1", "h3_1_4", "h9_1_5"]; // (consult_1 retired in release 3.1; h9_1_5: houses-art2 moved house 9's dining chairs — for the houses art round)
+const BEHIND_LAYOUT_BLOCKED: string[] = []; // (consult_1 retired in release 3.1; the houses re-laid in the realism pass 2026-11-17)
 
 describe("standSide / standCandidates: in front, beside, never behind the backrest", () => {
   const plaza = VILLAGE_SEATS[0]!;

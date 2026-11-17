@@ -800,6 +800,8 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   // seat markers (generated/houses). A house without a model has no seats.
   // Seat ids are append-only (Player.seatIndex is the index): a seat a later release brings back (LATE_HOUSE_SEATS) is left out here
   // and appended at the very end of the list instead, so no live index moves.
+  const houseMade = new Map<string, VillageSeat>();
+  const houseNew: VillageSeat[] = [];
   for (const n of HOUSE_NUMBERS) {
     const house = GENERATED_HOUSES[n];
     if (!house) continue;
@@ -817,7 +819,21 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
           lenient: true,
         }),
       );
-      (LATE_HOUSE_SEATS.includes(m.id) ? late : seats).push(...made);
+      for (const seat of made) {
+        if (LATE_HOUSE_SEATS.includes(m.id)) late.push(seat);
+        else if (HOUSE_SEAT_ORDER.includes(seat.id)) houseMade.set(seat.id, seat);
+        else houseNew.push(seat);
+      }
+    }
+  }
+  // The houses' seats in their live order (HOUSE_SEAT_ORDER, release 3.1's indices 51..168): a seat the houses no longer have keeps
+  // its index as a retired seat (the realism pass 2026-11-17 re-laid houses 2, 6 and 9); a seat they add goes after every list below
+  for (const id of HOUSE_SEAT_ORDER) {
+    const seat = houseMade.get(id);
+    if (seat) seats.push(seat);
+    else {
+      const [, n, floor] = /^h(\d+)_(\d)_/.exec(id)!;
+      seats.push(retiredSeat(id, houseArea(houseBuildingId(Number(n) as HouseNumber), Number(floor) as HouseFloor)));
     }
   }
   // main's later seats last, so the benches', the hall's and the houses' indices stay as they were (review 2026-11-15): the bus
@@ -835,6 +851,9 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   seats.push(...zelkovaDeckSeats());
   // release 3: the house seats the art round 2 brought back (house 9's two dining end chairs, taken out in release 2), last of all
   seats.push(...late.sort((a, b) => LATE_HOUSE_SEATS.indexOf(a.bench) - LATE_HOUSE_SEATS.indexOf(b.bench)));
+  // release 4: the house seats the realism pass (2026-11-17) added or turned round (ADDED_HOUSE_SEATS order; any later one after them)
+  const addedAt = (s: VillageSeat) => (ADDED_HOUSE_SEATS.includes(s.id) ? ADDED_HOUSE_SEATS.indexOf(s.id) : ADDED_HOUSE_SEATS.length);
+  seats.push(...houseNew.map((s, i) => ({ s, i })).sort((a, b) => addedAt(a.s) - addedAt(b.s) || a.i - b.i).map(({ s }) => s));
   return seats;
 }
 
@@ -844,6 +863,37 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
  * not in their house's place. A seat restored later is added here, after these.
  */
 export const LATE_HOUSE_SEATS: readonly string[] = ["h9_1_7", "h9_1_10"];
+
+/**
+ * Release 4 (houses realism pass 2026-11-17, houses 2, 6 and 9 re-laid): seat ids new to the houses, by seat id, appended after
+ * LATE_HOUSE_SEATS in this order (their old ids h2_1_0:back and h2_1_1:back keep their indices as retired seats). A later one goes after.
+ */
+export const ADDED_HOUSE_SEATS: readonly string[] = ["h2_1_0:front", "h2_1_1:front", "h6_1_2:back", "h9_1_6"];
+
+/** Every seat after the zelkova deck, in order: release 3's restored house seats, then release 4's added ones (seat ids, bench ids for LATE). */
+export const TAIL_HOUSE_SEATS: readonly string[] = [...LATE_HOUSE_SEATS, ...ADDED_HOUSE_SEATS];
+
+/**
+ * The houses' seats in the order they took in release 3.1 (Player.seatIndex 51..168): seat ids are append-only. A seat no longer in
+ * the houses keeps its index as a retired seat (retiredSeat); a seat added later goes at the very end of VILLAGE_SEATS.
+ */
+export const HOUSE_SEAT_ORDER: readonly string[] = [
+  "h1_1_0", "h1_1_1", "h1_1_2", "h1_1_3", "h1_1_4", "h1_1_5", "h1_1_6", "h1_1_7",
+  "h1_2_0", "h1_2_1", "h1_2_2:back", "h1_2_3", "h2_1_0:back", "h2_1_1:back", "h2_1_2", "h2_1_3",
+  "h2_1_4", "h2_1_5", "h2_1_6", "h2_1_7", "h2_1_8", "h2_2_0", "h2_2_1", "h2_2_2",
+  "h2_2_3", "h2_2_4", "h2_2_5", "h3_1_0", "h3_1_1", "h3_1_2", "h3_1_3", "h3_1_4",
+  "h3_1_5", "h3_1_6:front", "h3_1_7:front", "h3_2_0", "h3_2_1", "h3_2_2", "h3_2_3", "h4_1_0",
+  "h4_1_1", "h4_1_2", "h4_1_3", "h4_1_4", "h4_1_5", "h4_1_6", "h4_2_0", "h4_2_1",
+  "h4_2_2", "h5_1_0", "h5_1_1", "h5_1_2", "h5_1_3", "h5_1_4", "h5_1_5", "h5_1_6",
+  "h5_1_7", "h5_2_0", "h5_2_1", "h5_2_2", "h5_2_3", "h5_2_4", "h6_1_0", "h6_1_1",
+  "h6_1_2:front", "h6_1_3:front", "h6_1_3:back", "h6_1_4", "h6_1_5", "h6_1_6", "h6_2_0", "h6_2_1",
+  "h6_2_2", "h6_2_3", "h7_1_0", "h7_1_1", "h7_1_2", "h7_1_3", "h7_1_4:back", "h7_1_5",
+  "h7_1_6", "h7_2_0:back", "h7_2_1:back", "h7_2_2:front", "h7_2_2:back", "h8_1_0:front", "h8_1_1:front", "h8_1_2",
+  "h8_1_3", "h8_1_4", "h8_1_5", "h8_2_0", "h8_2_1", "h8_2_2", "h8_2_3", "h9_1_0:back",
+  "h9_1_1:back", "h9_1_2:front", "h9_1_2:back", "h9_1_3", "h9_1_4", "h9_1_5", "h9_1_8", "h9_1_9",
+  "h9_2_0", "h9_2_1", "h9_2_2", "h9_2_3", "h10_1_0", "h10_1_1", "h10_1_2", "h10_1_3",
+  "h10_1_4:front", "h10_1_5:front", "h10_2_0", "h10_2_1", "h10_2_2", "h10_2_3",
+];
 
 /**
  * The plaza zelkova's round deck (평상): an octagon about the trunk (VILLAGE_LAYOUT.plaza.zelkova), its faces 0.46 m up and
