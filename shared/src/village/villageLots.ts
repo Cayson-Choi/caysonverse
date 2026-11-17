@@ -919,7 +919,9 @@ export const LOT_SURFACE_RULES = Object.freeze({
     lot_library: Object.freeze(["brick_red", "stone_ashlar", "roof_clay_tile", "wood_painted", "wood_oak", "floor_wood", "plaster_painted", "fabric_upholstery", "granite_flamed"]),
     lot_temple: Object.freeze(["roof_giwa", "dancheong_wood", "wood_pine_natural", "granite_flamed", "stone_wall_korean", "rock", "dirt_path"]),
     lot_church: Object.freeze(["wood_siding", "roof_shingle", "wood_painted", "granite_flamed", "wood_oak", "cast_iron", "metal_roof_seam"]),
-    lot_gate: Object.freeze(["stone_cladding", "wrought_iron", "render", "granite", "concrete_paving", "metal_painted"]),
+    // B3 2026-11-17: the 75ab7df gate re-seated on the library's KTX2 sets (v1's band names had no library sets): ashlar
+    // towers, granite plinths, cream render, glossy painted iron and domes (plaster_painted), brushed metal, oak benches
+    lot_gate: Object.freeze(["stone_ashlar", "granite_flamed", "stucco_white", "plaster_painted", "aluminium_brushed", "wood_oak"]),
   }),
 });
 
@@ -1204,6 +1206,12 @@ const TEMPLE_IN: LotInteriorSpec = {
     solid("sumidan", 2.5, 8.9, 5.6, 7.4, 1.1), // 수미단 with the three figures
     solid("offering", 4.2, 7.2, 4.9, 5.4, 0.85), // 공양상: candles, incense burner, flowers, fruit
     solid("bell_small", 0.3, 0.9, 5.8, 6.6, 1.2), solid("drum", 10.5, 11.1, 5.8, 6.6, 1.2),
+    // B3 (2026-11-17), appended: the hall's ten 배흘림 wall columns (r 0.24, half in the walls; the bays 3.8 m as outside)
+    ...[0, 3.8, 7.6, 11.4].flatMap((x, k) => [
+      solid(`col_f${k + 1}`, Math.max(0, x - 0.26), Math.min(11.4, x + 0.26), 0, 0.26, 6),
+      solid(`col_b${k + 1}`, Math.max(0, x - 0.26), Math.min(11.4, x + 0.26), 7.14, 7.4, 6),
+    ]),
+    solid("col_l", 0, 0.26, 3.44, 3.96, 6), solid("col_r", 11.14, 11.4, 3.44, 3.96, 6),
   ],
   seats: [0, 1, 2].flatMap((r) => [0, 1, 2, 3].map((c) => iseat(`lot_temple_cushion_${r * 4 + c + 1}`, 3.3 + c * 1.6, 1.8 + r * 1.0, "in", "floor", 0.7, 1, 0.12, 0.35, 0.35))),
   budget: { pc: { triangles: 140_000, textureMB: 48, draws: 60 }, phone: { triangles: 55_000, textureMB: 14, draws: 35 } },

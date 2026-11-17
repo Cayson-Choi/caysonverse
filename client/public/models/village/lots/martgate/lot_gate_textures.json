@@ -1,0 +1,107 @@
+{
+  "lot": "lot_gate",
+  "format": "ktx2",
+  "note": "Every LM_ material is a shared PBR library set (client/src/village/pbr/pbrLibrary.ts getPbrSet(id, tier, gl) -> createPbrMaterial(set, { repeatMeters: [1, 1] })): the model's UVs are metres, COLOR_0 multiplies the albedo (the tint of the neutral sets), roughness = the ORM's G times roughnessScale. The lot has no maps of its own (letters, clock and numerals are geometry). M_glass is the game's glass; lotnight__ nodes take the game's glow. Lots v2 B3: the 75ab7df gate on the library's KTX2 sets; M_martgate_goods is the gate's own word-free atlas.",
+  "materials": {
+    "LM_martgate_granite": {
+      "pbr": "granite_flamed",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_martgate_metal": {
+      "pbr": "aluminium_brushed",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 0.6,
+      "normalScale": 1.0,
+      "metal": true
+    },
+    "LM_martgate_oak": {
+      "pbr": "wood_oak",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.83,
+      "vertexColor": true,
+      "roughnessScale": 0.85,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_martgate_render": {
+      "pbr": "stucco_white",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 2.0,
+      "vertexColor": true,
+      "roughnessScale": 0.95,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_martgate_steel": {
+      "pbr": "plaster_painted",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 2.0,
+      "vertexColor": true,
+      "roughnessScale": 0.45,
+      "normalScale": 0.4,
+      "metal": false
+    },
+    "LM_martgate_stone": {
+      "pbr": "stone_ashlar",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 3.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "M_glass": {
+      "kind": "glass"
+    },
+    "M_martgate_goods": {
+      "kind": "own",
+      "maps": {
+        "albedo": "lot_gate_goods.ktx2"
+      },
+      "uv": "atlas (TEXCOORD_0 0..1, no repeat)",
+      "colorSpace": "srgb",
+      "note": "word-free goods atlas (flag, flower-bed foliage, soil, the park's picture map): gate_goods.py"
+    },
+    "M_lamp": {
+      "kind": "lamp",
+      "note": "bulb / lantern glass: pale, a faint warm emission by day; lotnight__ nodes carry the night glow"
+    },
+    "M_sign_emit": {
+      "kind": "emit",
+      "note": "glowing faces (marquee letters, uplights): unlit, COLOR_0 is the colour"
+    }
+  },
+  "pbrSets": [
+    "aluminium_brushed",
+    "granite_flamed",
+    "plaster_painted",
+    "stone_ashlar",
+    "stucco_white",
+    "wood_oak"
+  ]
+}
