@@ -35,7 +35,7 @@ import { VillageModel } from "./VillageModel";
 import { VillageBus } from "./VillageBus";
 import { BUSSTOP_MODEL_URL, BusStopShelter } from "./BusStopShelter";
 import { VillageMusic } from "./VillageMusic";
-import { LakeWorld } from "../lake/LakeScene";
+import { LakeLampLights, LakeWorld } from "../lake/LakeScene";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
 import { clearBusCache, clearVillageCaches, holdVillageFiles, holdsVillageFiles } from "./villageRelease";
 import { LoadBoundary } from "./LoadBoundary";
@@ -459,6 +459,9 @@ export function VillageScene({ identity }: { identity: Identity }) {
         <>
           {area === "village" && <MapPlaces pose={pose} seat={seat} />}
           <DayNight area={area} tier={tier} />
+          {/* The lake lamps' lights, from the first frame and in every area (hall, houses: far away, they light nothing
+              there): the scene's light count is part of every lit shader, so it never changes (perf/no-hitch). */}
+          <LakeLampLights tier={tier} />
           <VillageArea area={area} tier={tier} pose={pose} />
           <GuideNpcs area={area} />
           <VillageDoors pose={pose} />

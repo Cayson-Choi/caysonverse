@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { AnimationMixer, Group, LoopOnce, Vector3, type AnimationAction, type Camera, type Plane } from "three";
+import { AnimationMixer, Group, LoopOnce, Vector3, type AnimationAction, type Camera, type Object3D, type Plane } from "three";
 import { busCamState } from "./busRide";
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
 import { setAvatarOpacity } from "./characterAvatar";
@@ -33,6 +33,7 @@ import {
   stepLoop,
 } from "./stride";
 import { decideMixerTick } from "./mixerThrottle";
+import { AVATAR_LOD, avatarTreeCadence, behindCamera } from "./avatarLod";
 import { typingRegistry } from "./typing";
 import {
   JUMP_FADE_IN_S,
@@ -126,6 +127,9 @@ export function RemotePlayer({
   const nickname = record?.nickname ?? "";
 
   const groupRef = useRef<Group>(null);
+  const lodFramesRef = useRef(0); // frames since the node tree was last refreshed (step 8)
+  const castsRef = useRef(true); // whether the avatar casts a shadow now (step 8)
+  const castersRef = useRef<Object3D[] | null>(null);
 
   // Assemble the toy figure from the synced appearance ONCE (the same useAvatar path as
   // the local player). The hook owns its materials and the shared merged geometry and
@@ -573,6 +577,11 @@ export function RemotePlayer({
         mixer.update(delta);
         fadeRef.current = Math.max(0, fadeRef.current - delta);
       }
+      // a rider moves with the bus: its node tree every frame (step 8's LOD is for walkers)
+      if (!group.matrixWorldAutoUpdate) {
+        group.updateMatrix();
+        group.updateMatrixWorld(true);
+      }
       return;
     }
     const seat = seatRef.current;
@@ -765,6 +774,34 @@ export function RemotePlayer({
           framesSinceRef.current = 0;
         }
       }
+    }
+
+    // 8) Far LOD (avatarLod.ts): the avatar's node tree (bones, meshes, tag) is refreshed here, every frame near, every few
+    //    frames far or behind the camera (three's own pass skips it); only near avatars cast a shadow.
+    if (group.matrixWorldAutoUpdate) {
+      group.matrixAutoUpdate = false;
+      group.matrixWorldAutoUpdate = false;
+    }
+    const ce = state.camera.matrixWorld.elements;
+    const behind = behindCamera(group.position.x, group.position.z, state.camera.position.x, state.camera.position.z, -ce[8]!, -ce[10]!);
+    lodFramesRef.current += 1;
+    if (lodFramesRef.current >= avatarTreeCadence(camDist, behind) || transient || fadeRef.current > 0) {
+      lodFramesRef.current = 0;
+      group.updateMatrix();
+      group.updateMatrixWorld(true);
+    }
+    const casts = camDist < AVATAR_LOD.shadowM;
+    if (casts !== castsRef.current) {
+      castsRef.current = casts;
+      // the meshes that cast as built (characterAvatar.ts), found once
+      if (!castersRef.current) {
+        const list: Object3D[] = [];
+        avatar.root.traverse((o) => {
+          if (o.castShadow) list.push(o);
+        });
+        castersRef.current = list;
+      }
+      for (const o of castersRef.current) o.castShadow = casts;
     }
   });
 

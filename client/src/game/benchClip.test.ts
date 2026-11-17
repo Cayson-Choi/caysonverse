@@ -3,7 +3,7 @@ import { MeshStandardMaterial, Vector3 } from "three";
 import { SIT_POSE } from "@caysonverse/shared/sitPose";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import type { BuiltAvatar } from "./characterAvatar";
-import { benchClipPlanes, clipAvatar } from "./benchClip";
+import { benchClipPlanes, clipAvatar, isBenchClipped } from "./benchClip";
 
 /** Whether three would clip point p with `clipIntersection` planes: only when it is behind (negative side of) ALL of them. */
 const clipped = (planes: NonNullable<ReturnType<typeof benchClipPlanes>>, p: Vector3) => planes.every((pl) => pl.distanceToPoint(p) < 0);
@@ -33,23 +33,28 @@ describe("benchClipPlanes — what of a sitter is hidden: inside the bench only"
   });
 });
 
-describe("clipAvatar — on and off, recompiling only on a change", () => {
-  it("sets the planes on every material with clipIntersection, and takes them off again", () => {
+describe("clipAvatar — on and off, one shader variant for both", () => {
+  it("sets the planes on every material with clipIntersection; off is the pair that clips nothing, without a recompile", () => {
     const a = new MeshStandardMaterial();
     const b = new MeshStandardMaterial();
     const avatar = { materials: [a, b] } as unknown as BuiltAvatar;
     const planes = benchClipPlanes(VILLAGE_SEATS[3]!)!;
     const v0 = a.version;
+    clipAvatar(avatar, null); // primed when the avatar is made: the two-plane variant from the start
+    expect(a.version).toBe(v0 + 1);
+    expect(a.clippingPlanes?.length).toBe(2);
+    expect(isBenchClipped(avatar)).toBe(false);
     clipAvatar(avatar, planes);
     expect(a.clippingPlanes).toBe(planes);
     expect(b.clipIntersection).toBe(true);
     expect(a.clipShadows).toBe(true); // the hidden cloth casts no shadow either
-    expect(a.version).toBe(v0 + 1);
+    expect(a.version).toBe(v0 + 1); // the same variant: no recompile
+    expect(isBenchClipped(avatar)).toBe(true);
     clipAvatar(avatar, planes); // the same: nothing to do
-    expect(a.version).toBe(v0 + 1);
     clipAvatar(avatar, null);
-    expect(a.clippingPlanes).toBeNull();
-    expect(b.clipIntersection).toBe(false);
-    expect(b.clipShadows).toBe(false);
+    expect(a.version).toBe(v0 + 1);
+    expect(isBenchClipped(avatar)).toBe(false);
+    // the planes that clip nothing really clip nothing: every point is in front of both
+    for (const p of a.clippingPlanes!) expect(p.distanceToPoint(new Vector3(0, -50, 0))).toBeGreaterThan(0);
   });
 });

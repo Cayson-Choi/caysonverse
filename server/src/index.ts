@@ -7,6 +7,7 @@ import { rooms } from "./rooms";
 import { fakeClockActive } from "./clock";
 import { initMemorial } from "./memorial/service";
 import { mountMemorialApi } from "./memorial/api";
+import { startPerfProbe } from "./perfProbe";
 
 const PORT = Number(process.env.PORT ?? DEFAULT_SERVER_PORT);
 
@@ -56,6 +57,9 @@ const server = defineServer({
     }
   },
 });
+
+// The bot load test's probe (off unless CV_PERF_LOG is set; see perfProbe.ts).
+startPerfProbe();
 
 server.listen(PORT).then(() => {
   console.log(`[${APP_NAME}] listening on http://localhost:${PORT}`);

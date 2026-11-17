@@ -13,6 +13,7 @@ import { OverviewMarker } from "./OverviewMarker";
 import { CompassProbe } from "./CompassProbe";
 import { ClickMarker } from "./ClickMarker";
 import { NametagSystem } from "./NametagSystem";
+import { ProgramGate } from "./ShaderGate";
 import { RenderStatsProbe } from "./RenderStatsProbe";
 import { QualityEffects, ShadowFloor, useQualityTier } from "./QualityEffects";
 import { SceneWarmUp } from "./SceneWarmUp";
@@ -336,6 +337,7 @@ export function PlayShell(p: PlayShellProps) {
         <NametagSystem />
         {p.effects && <QualityEffects tier={tier} brightness={brightness} exposure={light.exposure} toneCurve={light.toneCurve} />}
         {p.effects && profile.shadows && p.shadowFloor !== false && <ShadowFloor bounds={b} decal={p.groundDecal ?? null} color={p.shadowColor} />}
+        <ProgramGate />
         {import.meta.env.DEV && <RenderStatsProbe />}
       </Canvas>
       <LoadingOverlay />
