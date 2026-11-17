@@ -324,9 +324,10 @@ describe("the memorial hall's door (inside): its leaves never pass through anyth
   });
 
   it("swept from shut to fully open, the leaves, the header and the track cross no triangle of the hall", () => {
-    // the room round the door is really there: its shell, the tea corner, the map, the flower stand (thousands of triangles)
+    // the room round the door is really there: its shell, the vestibule, the walls (release 3.1's simpler hall: no tea corner,
+    // map or flower stand any more — a few hundred triangles round the door)
     const triangles = hall.meshes.reduce((n, m) => n + m.tris.length / 9, 0);
-    expect(triangles).toBeGreaterThan(1000);
+    expect(triangles).toBeGreaterThan(200);
     const hits = clashes(hallDoorRig(), hall, ["door__leaf_l", "door__leaf_r"]);
     expect(hits).toEqual([]);
     expect(selfClashes(hallDoorRig())).toEqual([]);

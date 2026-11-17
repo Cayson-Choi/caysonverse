@@ -319,7 +319,8 @@ describe("where the hall desk stood (removed with its chairs, owner 2026-11-17: 
     for (const [x, z] of [[303.0, 4.0], [304.15, 2.5], [305.0, 4.6]] as const) {
       const t = villageAndHallTargets("hall", x, z);
       expect(t.some((v) => v.id.startsWith("guide:"))).toBe(false);
-      expect(((HALL_ACTIVE_MAP.seats ?? []) as readonly { id?: string }[]).some((st) => /^consult_/.test(st.id ?? ""))).toBe(false);
+      // (the consult chairs' indices stay as retired seats, release 3.1: none of them can be offered)
+      expect(((HALL_ACTIVE_MAP.seats ?? []) as readonly { id?: string; retired?: boolean }[]).some((st) => /^consult_/.test(st.id ?? "") && !st.retired)).toBe(false);
     }
   });
 });
