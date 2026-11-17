@@ -39,5 +39,7 @@
 
 자세한 기록은 `village/lots/sacred/LICENSE.md`와 `docs/designs/village-lots-v2/tools/sacred/SOURCES.md`에 있어요.
 
-- **출처 표시(공공누리 제1유형, 발주자 승인 2026-11-17 "출처 밝히고 써")**: 이 저작물은 국가유산청에서 공공누리 제1유형으로 개방한 '국가유산 3D 프린팅 데이터(보물 제370호 울주 간월사지 석조여래좌상, 국보 제200호 금동보살입상)'을 이용하였으며, 해당 저작물은 공공데이터포털(www.data.go.kr)에서 무료로 내려받을 수 있습니다.
+- **출처 표시(공공누리 제1유형, 발주자 승인 2026-11-17 "출처 밝히고 써")**: 이 저작물은 국가유산청에서 공공누리 제1유형으로 개방한 '국가유산 3D 프린팅 데이터(국보 제200호 금동보살입상)'을 이용하였으며, 해당 저작물은 공공데이터포털(www.data.go.kr)에서 무료로 내려받을 수 있습니다.
 - 덴마크 국립미술관(SMK) 석고 주조 스캔 KAS225·KAS1959·KAS82 — 퍼블릭 도메인. The Metropolitan Museum of Art, Cleveland Museum of Art 공개 자료 — CC0.
+- 본존불 3D: "Gilt bronze statuette of Sakyamuni Buddha" by dluo — **CC BY 4.0** (https://zenodo.org/records/10225206)
+- 십자고상 3D: "Crucified Christ" from St. Jadwiga's hospital, WirtualneMuzeaMalopolski — CC0 (https://zenodo.org/records/21567941)

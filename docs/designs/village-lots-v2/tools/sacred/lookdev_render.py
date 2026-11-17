@@ -91,6 +91,7 @@ sc.render.resolution_x, sc.render.resolution_y = 1000, 1250
 cd = bpy.data.cameras.new("c"); cam = bpy.data.objects.new("c", cd); sc.collection.objects.link(cam); sc.camera = cam
 shots = {
     "close1m": (Vector((0.25, -1.0, plinth + H * 0.82)), Vector((0, 0, plinth + H * 0.80)), 40),
+    "face": (Vector((0.0, -1.2, plinth + H * 0.66)), Vector((0, 0, plinth + H * 0.66)), 50),
     "full": (Vector((0.5, -max(2.2, H * 1.9), plinth + H * 0.55)), Vector((0, 0, plinth + H * 0.5)), 40),
     "seat": (Vector((-1.2, -6.0, 1.1 if mode == "chapel" else 0.75)), Vector((0, 0, plinth + H * 0.55)), 50),
 }

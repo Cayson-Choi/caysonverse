@@ -47,6 +47,8 @@ elif ext == ".obj":
 else:
     raise SystemExit(f"unsupported source {ext}")
 meshes = [o for o in sc.objects if o.type == "MESH"]
+for o in meshes:  # unparent keeping the world transform (glTF parents carry the Y-up rotation and the scan's scale)
+    mw = o.matrix_world.copy(); o.parent = None; o.matrix_world = mw
 for o in sc.objects: o.select_set(o in meshes)
 bpy.context.view_layer.objects.active = meshes[0]
 # bake every imported transform (glTF nodes carry scale/rotation) and join into one high-poly
@@ -58,6 +60,7 @@ hi.parent = None
 hi.name = "high"
 rep["src_materials"] = [m.name for m in hi.data.materials if m]
 rx, ry, rz = [math.radians(a) for a in job.get("rot_deg", [0, 0, 0])]
+hi.rotation_mode = "XYZ"  # glTF imports use quaternions
 hi.rotation_euler = (rx, ry, rz)
 bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
 
@@ -276,9 +279,20 @@ else:
 if surf != "scan":  # "scan": keep the photogrammetry's own textured materials and bake their colour
     hi.data.materials.clear(); hi.data.materials.append(hm)
 else:
-    # the DIFFUSE colour pass is base colour x (1 - metallic): make the scan's materials dielectric for the bake
+    # the DIFFUSE colour pass is base colour x (1 - metallic): make the scan's materials dielectric for the bake.
+    # Photogrammetry often comes "unlit" (emission): rebuild such a material as Principled(base colour = its image).
     for m in hi.data.materials:
         if not (m and m.node_tree): continue
+        mnt = m.node_tree
+        if not any(n.type == "BSDF_PRINCIPLED" for n in mnt.nodes):
+            tex_n = next((n for n in mnt.nodes if n.type == "TEX_IMAGE"), None)
+            out_n = next((n for n in mnt.nodes if n.type == "OUTPUT_MATERIAL"), None)
+            pb = mnt.nodes.new("ShaderNodeBsdfPrincipled")
+            if tex_n: mnt.links.new(tex_n.outputs["Color"], pb.inputs["Base Color"])
+            if out_n:
+                for l in list(out_n.inputs["Surface"].links): mnt.links.remove(l)
+                mnt.links.new(pb.outputs[0], out_n.inputs["Surface"])
+            log("rebuilt unlit material", m.name)
         for n in m.node_tree.nodes:
             if n.type == "BSDF_PRINCIPLED":
                 for l in list(n.inputs["Metallic"].links): m.node_tree.links.remove(l)
@@ -327,6 +341,66 @@ bake("ao", "AO")
 sc.cycles.samples = 8
 bk.use_pass_direct = False; bk.use_pass_indirect = False; bk.use_pass_color = True
 bake("albedo", "DIFFUSE", pass_filter={"COLOR"})
+
+import numpy as np
+
+
+def _box(a, k):
+    """mean filter (k x k) on an H x W x C array, edge-clamped, via summed-area table"""
+    pad = k // 2
+    b = np.pad(a, ((pad + 1, pad), (pad + 1, pad), (0, 0)), mode="edge").astype(np.float64)
+    c = b.cumsum(0).cumsum(1)
+    return ((c[k:, k:] - c[:-k, k:] - c[k:, :-k] + c[:-k, :-k]) / (k * k)).astype(np.float32)
+
+
+if surf == "scan" and job.get("clean", True):
+    # "brand-new" (owner 2026-11-17 "새것 같아야 해"): pull dark grime, cracks and chips up to the local colour, lift the paint
+    asz = tex["albedo"]
+    A = np.empty(asz * asz * 4, np.float32); imgs["albedo"][0].pixels.foreach_get(A); A = A.reshape(asz, asz, 4)
+    rgb = A[..., :3]
+    loc = _box(rgb, job.get("clean_window", 21))
+    lum = rgb.mean(2, keepdims=True); llum = loc.mean(2, keepdims=True)
+    dark = np.clip((llum * job.get("clean_dark", 0.78) - lum) / np.maximum(llum * 0.25, 1e-3), 0, 1)
+    rgb = rgb * (1 - dark) + loc * dark
+    grey = rgb.mean(2, keepdims=True)
+    rgb = grey + (rgb - grey) * job.get("fresh_sat", 1.15)
+    rgb = np.clip(rgb * job.get("fresh_gain", 1.08), 0, 1)
+    A[..., :3] = rgb; imgs["albedo"][0].pixels.foreach_set(A.ravel())
+    rep["cleaned_pct"] = round(100 * float((dark > 0.5).mean()), 2)
+if surf == "scan" and job.get("regions"):
+    # region masks baked from object position (e.g. the oak cross behind the corpus), then recoloured fresh
+    asz = tex["albedo"]
+    saved = [m for m in hi.data.materials]
+    for reg in job["regions"]:
+        mm = bpy.data.materials.new("mask"); mm.use_nodes = True; mt_ = mm.node_tree
+        for n in list(mt_.nodes):
+            if n.type != "OUTPUT_MATERIAL": mt_.nodes.remove(n)
+        tc2 = mt_.nodes.new("ShaderNodeTexCoord"); sp2 = mt_.nodes.new("ShaderNodeSeparateXYZ"); mt_.links.new(tc2.outputs["Object"], sp2.inputs[0])
+        # box in fractions of the height: {"x": [lo, hi], "y": [lo, hi], "z": [lo, hi]} (missing axis = unbounded)
+        acc = None
+        for ax in ("x", "y", "z"):
+            if ax not in reg: continue
+            lo_, hi_ = reg[ax]
+            g1 = mt_.nodes.new("ShaderNodeMath"); g1.operation = "GREATER_THAN"; mt_.links.new(sp2.outputs[ax.upper()], g1.inputs[0]); g1.inputs[1].default_value = lo_ * H
+            g2 = mt_.nodes.new("ShaderNodeMath"); g2.operation = "LESS_THAN"; mt_.links.new(sp2.outputs[ax.upper()], g2.inputs[0]); g2.inputs[1].default_value = hi_ * H
+            m2 = mt_.nodes.new("ShaderNodeMath"); m2.operation = "MULTIPLY"; mt_.links.new(g1.outputs[0], m2.inputs[0]); mt_.links.new(g2.outputs[0], m2.inputs[1])
+            if acc is not None:
+                m3 = mt_.nodes.new("ShaderNodeMath"); m3.operation = "MULTIPLY"; mt_.links.new(acc, m3.inputs[0]); mt_.links.new(m2.outputs[0], m3.inputs[1]); acc = m3.outputs[0]
+            else:
+                acc = m2.outputs[0]
+        em2 = mt_.nodes.new("ShaderNodeEmission"); mt_.links.new(acc, em2.inputs["Color"])
+        mt_.links.new(em2.outputs[0], next(n for n in mt_.nodes if n.type == "OUTPUT_MATERIAL").inputs["Surface"])
+        for i in range(len(hi.data.materials)): hi.data.materials[i] = mm
+        img("mask_" + reg["name"], asz, False)
+        bake("mask_" + reg["name"], "EMIT")
+        for i, m in enumerate(saved): hi.data.materials[i] = m
+    A = np.empty(asz * asz * 4, np.float32); imgs["albedo"][0].pixels.foreach_get(A); A = A.reshape(asz, asz, 4)
+    for reg in job["regions"]:
+        M = np.empty(asz * asz * 4, np.float32); imgs["mask_" + reg["name"]][0].pixels.foreach_get(M); M = M.reshape(asz, asz, 4)[..., :1]
+        lum = A[..., :3].mean(2, keepdims=True); detail = lum / np.maximum(_box(lum, 31), 1e-3)
+        fresh = np.array(reg["color"], np.float32)[None, None, :] * (1 + (detail - 1) * reg.get("keep_detail", 0.5))
+        A[..., :3] = A[..., :3] * (1 - M) + np.clip(fresh, 0, 1) * M
+    imgs["albedo"][0].pixels.foreach_set(A.ravel())
 if surf != "scan":
     bake("rough", "ROUGHNESS")
     # metallic: route the metal value through emission for a bake
@@ -341,7 +415,6 @@ if surf != "scan":
     L.new(old, mo.inputs["Surface"])
 
 # pack ORM (R = AO, G = roughness, B = metallic)
-import numpy as np
 size = tex["orm"]
 
 

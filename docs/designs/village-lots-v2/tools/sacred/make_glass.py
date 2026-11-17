@@ -53,7 +53,7 @@ def lancet_mask(W, H, spring=None):
     return a
 
 
-def clean(im, sat=1.12, contrast=1.06, bright=1.0):
+def clean(im, sat=1.22, contrast=1.08, bright=1.04):
     """brand-new glass: lift the museum photo a little (no grime look), keep its real colours"""
     im = ImageEnhance.Color(im).enhance(sat)
     im = ImageEnhance.Contrast(im).enhance(contrast)

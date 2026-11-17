@@ -11,10 +11,10 @@
 | `lotstatue__lot_chapel_nave_mary` 성모상 | *The Virgin and Child, 'Bruges Madonna'* 석고 주조(1897), 미켈란젤로 원작의 복제, KAS225, 129 cm | 덴마크 국립미술관(SMK), Royal Cast Collection | 퍼블릭 도메인(Public Domain Mark 1.0) | https://open.smk.dk/artwork/image/KAS225 · 파일 https://api.smk.dk/api/v1/download-3d/h128nk494_KAS225_small.stl |
 | `lotstatue__lot_chapel_nave_saint_a` 성인상(수도복, 십자가와 책) | *Frans af Assisi* 석고 주조, KAS1959 | SMK | 퍼블릭 도메인(PDM 1.0) | https://open.smk.dk/artwork/image/KAS1959 · https://api.smk.dk/api/v1/download-3d/xd07gz58b_KAS1959_small.stl |
 | `lotstatue__lot_chapel_nave_saint_b` 성인상(갑옷과 방패) | *St. Georg iklædt rustning og kappe, med skjold* 석고 주조(도나텔로 원작의 복제), KAS82 | SMK | 퍼블릭 도메인(PDM 1.0) | https://open.smk.dk/artwork/image/KAS82 · https://api.smk.dk/api/v1/download-3d/765376019_KAS82_small.stl |
-| `lotstatue__lot_temple_hall_buddha` 본존불(좌상 + 연화대) | 보물 제370호 울주 간월사지 석조여래좌상 3D프린팅 데이터(2017, STL) | 국가유산청(구 문화재청) | **공공누리 제1유형(출처표시)** — 상업적 이용·변경 허용, 출처 표시 의무 | 공공데이터포털 https://www.data.go.kr/data/15028100/fileData.do (과거 데이터 "보물 제370호 …", 파일 FILE_000000001433404) |
-| `lotstatue__lot_temple_hall_bodhisattva` 협시보살(입상, 좌우 한 쌍으로 거울 배치) | 국보200 금동보살입상 3D프린팅 데이터(2018, STL) | 국가유산청(구 문화재청) | **공공누리 제1유형(출처표시)** | 같은 데이터셋 (과거 데이터 "국보200_금동보살입상…", 파일 FILE_000000001494494) |
+| `lotstatue__lot_temple_hall_buddha` 본존불(광배·연화대 포함 2.8 m) | *Gilt bronze statuette of Sakyamuni Buddha*, 당말~오대(10세기), 중국 저장성박물관 소장품의 채색 사진측량 스캔 — 스캔 색을 깨끗이(때·얼룩 제거), 나발은 짙은 군청으로 칠함 | 3D: dluo (Sketchfab `7d0cbc0e0d034e63a02274ab8af70eee`) | **CC BY 4.0** — 표시: "Gilt bronze statuette of Sakyamuni Buddha" by dluo, CC BY 4.0 | Zenodo(로그인 없음) https://zenodo.org/records/10225206 |
+| `lotstatue__lot_temple_hall_bodhisattva` 협시보살(입상, 좌우 한 쌍으로 거울 배치, 새 금박) | 국보200 금동보살입상 3D프린팅 데이터(2018, STL) | 국가유산청(구 문화재청) | **공공누리 제1유형(출처표시)** | 같은 데이터셋 (과거 데이터 "국보200_금동보살입상…", 파일 FILE_000000001494494) |
 
-공공누리 제1유형은 발주자 승인(2026-11-17, "출처 밝히고 써"). 출처 표시 문구(크레딧 `client/public/models/LICENSE.md`·라이선스 문서에 그대로): "이 저작물은 국가유산청에서 공공누리 제1유형으로 개방한 '국가유산 3D 프린팅 데이터(보물 제370호 울주 간월사지 석조여래좌상, 국보 제200호 금동보살입상)'을 이용하였으며, 해당 저작물은 공공데이터포털(www.data.go.kr)에서 무료로 내려받을 수 있습니다."
+공공누리 제1유형은 발주자 승인(2026-11-17, "출처 밝히고 써"). 출처 표시 문구(크레딧 `client/public/models/LICENSE.md`·라이선스 문서에 그대로): "이 저작물은 국가유산청에서 공공누리 제1유형으로 개방한 '국가유산 3D 프린팅 데이터(국보 제200호 금동보살입상)'을 이용하였으며, 해당 저작물은 공공데이터포털(www.data.go.kr)에서 무료로 내려받을 수 있습니다."
 
 스캔에 함께 들어 있던 이름판(글자 판)은 지우고 조각상만 남겼어요(가장 큰 덩어리만 남김). 실제 문화재 이름은 게임 안에 나오지 않아요.
 
@@ -27,7 +27,7 @@
 | `lotglass__lot_chapel_nave_glass_lancet_assumption` | Assumption of the Virgin, ca. 1505–10 (198995) + 470299 바탕 | The Met | CC0 | https://www.metmuseum.org/art/collection/search/198995 |
 | `lotglass__lot_chapel_nave_glass_rose` 장미창 | 가운데 467933, 꽃잎 198995·463649·Composite Window of English Stained Glass 15th c.(463580)에서 잘라 배치, 바탕은 코발트 유리색 | The Met | CC0 | https://www.metmuseum.org/art/collection/search/463580 |
 | `lotglass__lot_church_nave_glass_church_clear` 교회 창(인물 없음) | 470299 그리자유 무늬를 거의 맑게 + 호박색·하늘색 테두리 | The Met | CC0 | https://www.metmuseum.org/art/collection/search/470299 |
-| `lotstatue__lot_chapel_nave_crucifix` 십자고상(제대 위, 2.4 m) | *Crucifix*, 참나무에 채색, 고딕(objectID 466395) — 사진에서 십자가와 예수상을 나누어 **입체 부조**(예수상 몸이 십자가보다 최대 약 16 cm 튀어나옴)로 만들고 사진을 앞에서 입힘 | The Met | CC0 | https://www.metmuseum.org/art/collection/search/466395 |
+| `lotstatue__lot_chapel_nave_crucifix` 십자고상(2.4 m, 십자가 포함 실제 3D 스캔) | *"Crucified Christ" from St. Jadwiga's hospital*, 16세기 비에츠 공방, 목조 채색, Museum of the Biecz Land AH/1273 — 예수상은 새로 마감한 밝은 피나무색, 십자가는 새 참나무색으로 다시 칠함(스캔의 조각 음영은 그대로) | WirtualneMuzeaMalopolski (Sketchfab `d2404e52b2d144e18f0621903c98c06a`) | **CC0** | Zenodo(로그인 없음) https://zenodo.org/records/21567941 |
 | `lotart__lot_temple_hall_taenghwa` 후불탱화 | *The Assembly of Tejaprabha Buddha*, 조선 1878 (1998.120) — 아래 가운데 화기(글씨 칸)는 지우고 빈 붉은 칸으로 | Cleveland Museum of Art | CC0 | https://www.clevelandart.org/art/1998.120 (이미지 https://openaccess-cdn.clevelandart.org/1998.120/1998.120_print.jpg) |
 
 이름이 적힌 띠가 있는 Met 463582(성 로크)는 성인 이름 글자 때문에 뺐어요. Met 이미지는 Met Collection API(`collectionapi.metmuseum.org`)의 `isPublicDomain: true` 항목만 받았어요.
@@ -50,3 +50,13 @@ Sketchfab에 **CC0로 표시된 박물관 실사 채색 스캔**이 있지만 �
 - 협시보살: "1997.11 Standing Bodhisattva" 조선 목조 금칠 (Cleveland, CC0) …/1a57a0d6609145b486ed5b1d3e9ec7fb
 - 성모상(채색): "1970.13 Enthroned Virgin with Christ Child" (Cleveland, CC0) …/9ec47d9d285e4f40b22ef8e405923123
 - 성인상(채색): "A Statue of Saint Stanislaus" (Małopolska, CC0) …/3c1bae0687144f51861a8a52be036c2b
+
+## 2026-11-17 교체 (Sketchfab 로그인 대신 Zenodo의 공개 사본)
+- Sketchfab 로그인은 되지 않아(Epic 권한 허용 실패) 쓰지 않았어요. 같은 Sketchfab 모델들의 공개 사본이 Zenodo(Objaverse 1.0 보관본, 로그인 없음, HTTPS)에 라이선스와 함께 있어서 거기서 받았어요.
+- 본존불: 풍화된 돌 스캔(간월사지) → 금동 사카무니 좌상 스캔(위 표). 십자고상: 사진-부조 → 실제 3D 스캔(위 표). 간월사지 스캔과 Met 466395 사진-부조는 더 이상 쓰지 않아요.
+- 받았지만 쓰지 않은 것: Cleveland 1997.11 보살(Zenodo 10301828, CC0 — 금박이 많이 닳고 머리 모양이 승려형이라 지금 금동보살입상이 나음),
+  Cleveland 1918.501 아미타삼존(Zenodo 10316297 — 15 cm 크기라 확대하면 흐림), 성 스타니스와프(Zenodo 21291624, CC0 — 지금 성인상 유지),
+  Hunt Museum 십자고상 3점(Zenodo 18948596/18948636/18948644, CC BY 4.0 — 작은 탁상용·백랍).
+- Cleveland 1973.85 좌불·1970.13 성모상은 공개 사본을 찾지 못했어요(Cleveland 누리집은 Sketchfab만 연결).
+- "새것 같아야 해"(사장님 2026-11-17): 스캔 색의 때·균열·얼룩을 주변 색으로 메우고(`process_statue.py` "clean"), 고해상도를 살짝 다듬어 노멀·AO의 흠을 줄이고,
+  탱화 균열을 메우고 색을 맑게, 색유리 채도를 올렸어요.

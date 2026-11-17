@@ -2,24 +2,284 @@
   "about": "B2s/B3s sacred props for the walk-in interiors (contract 11, design 11.2). Each GLB is standalone: KTX2 textures (KHR_texture_basisu; albedo ETC1S sRGB, normal/ORM UASTC+Zstd), glTF +Y up, metres, the object's front faces +Z (glTF) and its origin is at the bottom centre (statues: base on the floor/plinth; wall pieces: bottom edge, back against the wall at z = 0). <name>_phone.glb is the phone LOD with 512 px maps (glass: half size). Materials named M_pbr_<set> carry only a fallback colour + metre UVs: bind pbrLibrary.getPbrSet(<set>) at load. Sources and licences: docs/designs/village-lots-v2/tools/sacred/SOURCES.md.",
   "gpuMB": "texture GPU memory with mips (1 byte/texel), shared by every instance of the same GLB",
   "items": [
-    { "file": "lotstatue__lot_chapel_nave_mary.glb", "room": "lot_chapel_nave", "what": "성모상 (Virgin and Child), white Carrara marble", "size_m": [0.588, 1.35, 0.674], "pc": { "tris": 14000, "gpuMB": 8.0 }, "phone": { "tris": 5000, "gpuMB": 1.0 }, "place": "on the 'mary' plinth (solid 0.8 x 0.7, total 2.4 m): plinth top ~1.05 m, facing the nave (+z of the room)" },
-    { "file": "lotstatue__lot_chapel_nave_saint_a.glb", "room": "lot_chapel_nave", "what": "성인상 A (friar with cross and book), marble", "size_m": [0.542, 1.45, 0.542], "pc": { "tris": 12000, "gpuMB": 4.0 }, "phone": { "tris": 4500, "gpuMB": 1.0 }, "place": "on the 'saint' plinth (8.4..9.2, 9.5..10.2)" },
-    { "file": "lotstatue__lot_chapel_nave_saint_b.glb", "room": "lot_chapel_nave", "what": "성인상 B (young knight with shield), marble — optional second saint (e.g. a side niche or the loft stair)", "size_m": [0.534, 1.45, 0.374], "pc": { "tris": 12000, "gpuMB": 4.0 }, "phone": { "tris": 4500, "gpuMB": 1.0 } },
-    { "file": "lotstatue__lot_chapel_nave_crucifix.glb", "room": "lot_chapel_nave", "what": "십자고상: polychrome oak crucifix, photo-relief (corpus up to ~0.3 m proud of the cross)", "size_m": [1.848, 2.4, 0.316], "pc": { "tris": 14000, "gpuMB": 8.0 }, "phone": { "tris": 5000, "gpuMB": 1.0 }, "place": "apse wall above the altar, bottom ~2.2 m; it is meant to be seen from the front (pews)" },
-    { "file": "lotglass__lot_chapel_nave_glass_lancet_virgin.glb", "room": "lot_chapel_nave", "what": "figurative lancet: Virgin and Child", "size_m": [1.0, 2.6, 0.03], "pc": { "tris": 597, "gpuMB": 2.93 }, "phone": { "tris": 597, "gpuMB": 0.73 }, "material": "M_glass_stained: base + emissive = glass colour (scale emissiveIntensity by daylight), came in normal/ORM; saddle bars cast_iron; lead edge M_lead", "light": "docs/designs/village-lots-v2/tools/sacred/light/glass_lancet_virgin_transmit.png" },
-    { "file": "lotglass__lot_chapel_nave_glass_lancet_nativity.glb", "room": "lot_chapel_nave", "what": "figurative lancet: Nativity in grisaille", "size_m": [1.0, 2.6, 0.03], "pc": { "tris": 597, "gpuMB": 2.93 }, "phone": { "tris": 597, "gpuMB": 0.73 }, "light": "docs/designs/village-lots-v2/tools/sacred/light/glass_lancet_nativity_transmit.png" },
-    { "file": "lotglass__lot_chapel_nave_glass_lancet_assumption.glb", "room": "lot_chapel_nave", "what": "figurative lancet: Assumption with angels, in grisaille", "size_m": [1.0, 2.6, 0.03], "pc": { "tris": 597, "gpuMB": 2.93 }, "phone": { "tris": 597, "gpuMB": 0.73 }, "light": "docs/designs/village-lots-v2/tools/sacred/light/glass_lancet_assumption_transmit.png" },
-    { "file": "lotglass__lot_chapel_nave_glass_rose.glb", "room": "lot_chapel_nave", "what": "rose window, 2.4 m, 3D stone tracery (M_pbr_stone_ashlar) + figurative glass", "size_m": [2.454, 2.454, 0.16], "pc": { "tris": 12942, "gpuMB": 4.5 }, "phone": { "tris": 12942, "gpuMB": 1.13 }, "light": "docs/designs/village-lots-v2/tools/sacred/light/glass_rose_transmit.png" },
-    { "file": "lotprop__lot_chapel_nave_station.glb", "room": "lot_chapel_nave", "what": "Station of the Cross: moulded oak plaque 0.36 x 0.50 m with a small oak cross; child meshes ..._num_01..14 are the bronze numerals I..XIV — show exactly one per placed station", "pc": { "tris_per_station": "plaque + one numeral (see GLB)", "gpuMB": 0 }, "place": "14 along the side walls at ~1.4 m (bottom edge), 7 per side, I near the sanctuary on the left going round to XIV" },
-    { "file": "lotglass__lot_church_nave_glass_church_clear.glb", "room": "lot_church_nave", "what": "plain near-clear leaded lancet with amber/blue border, no figures", "size_m": [1.0, 2.6, 0.03], "pc": { "tris": 597, "gpuMB": 2.93 }, "phone": { "tris": 597, "gpuMB": 0.73 }, "light": "docs/designs/village-lots-v2/tools/sacred/light/glass_church_clear_transmit.png" },
-    { "file": "lotprop__lot_church_nave_cross.glb", "room": "lot_church_nave", "what": "simple oak cross 1.0 x 1.8 m (M_pbr_wood_oak)", "size_m": [1.0, 1.8, 0.07], "pc": { "tris": 216, "gpuMB": 0 } },
-    { "file": "lotstatue__lot_temple_hall_buddha.glb", "room": "lot_temple_hall", "what": "본존불: seated Buddha on its lotus seat, gilded (개금) with dark-blue hair curls", "size_m": [1.673, 2.1, 1.678], "pc": { "tris": 15000, "gpuMB": 8.0 }, "phone": { "tris": 6000, "gpuMB": 1.0 }, "place": "centre of the 수미단 (x 5.7, z ~6.5, top 1.1 m), facing the door" },
-    { "file": "lotstatue__lot_temple_hall_bodhisattva.glb", "room": "lot_temple_hall", "what": "협시보살: standing gilt bodhisattva — place TWICE, left as is and right mirrored (scale.x = -1), shared textures", "size_m": [0.979, 2.3, 0.493], "pc": { "tris": 12000, "gpuMB": 4.0 }, "phone": { "tris": 4500, "gpuMB": 1.0 }, "place": "on the 수미단 either side of the Buddha (x ~3.6 and ~7.8)" },
-    { "file": "lotart__lot_temple_hall_taenghwa.glb", "room": "lot_temple_hall", "what": "후불탱화 3.6 m wide in silk border and red-lacquer frame (M_pbr_dancheong_wood fallback)", "size_m": [4.02, 2.586, 0.07], "pc": { "tris": 442, "gpuMB": 4.81 }, "phone": { "tris": 442, "gpuMB": 1.2 }, "place": "back wall behind the 수미단, bottom ~2.2 m so it rises above the Buddha's halo" }
+    {
+      "file": "lotstatue__lot_chapel_nave_mary.glb",
+      "room": "lot_chapel_nave",
+      "what": "성모상 (Virgin and Child), white Carrara marble",
+      "size_m": [
+        0.588,
+        1.35,
+        0.674
+      ],
+      "pc": {
+        "tris": 14000,
+        "gpuMB": 8.0
+      },
+      "phone": {
+        "tris": 5000,
+        "gpuMB": 1.0
+      },
+      "place": "on the 'mary' plinth (solid 0.8 x 0.7, total 2.4 m): plinth top ~1.05 m, facing the nave (+z of the room)"
+    },
+    {
+      "file": "lotstatue__lot_chapel_nave_saint_a.glb",
+      "room": "lot_chapel_nave",
+      "what": "성인상 A (friar with cross and book), marble",
+      "size_m": [
+        0.542,
+        1.45,
+        0.542
+      ],
+      "pc": {
+        "tris": 12000,
+        "gpuMB": 4.0
+      },
+      "phone": {
+        "tris": 4500,
+        "gpuMB": 1.0
+      },
+      "place": "on the 'saint' plinth (8.4..9.2, 9.5..10.2)"
+    },
+    {
+      "file": "lotstatue__lot_chapel_nave_saint_b.glb",
+      "room": "lot_chapel_nave",
+      "what": "성인상 B (young knight with shield), marble — optional second saint (e.g. a side niche or the loft stair)",
+      "size_m": [
+        0.534,
+        1.45,
+        0.374
+      ],
+      "pc": {
+        "tris": 12000,
+        "gpuMB": 4.0
+      },
+      "phone": {
+        "tris": 4500,
+        "gpuMB": 1.0
+      }
+    },
+    {
+      "file": "lotstatue__lot_chapel_nave_crucifix.glb",
+      "room": "lot_chapel_nave",
+      "what": "십자고상: real 3D scan (16th-c. carved crucifix), corpus freshly finished limewood, new oak cross",
+      "size_m": [
+        1.6,
+        2.4,
+        0.451
+      ],
+      "pc": {
+        "tris": 15999,
+        "gpuMB": 8.0
+      },
+      "phone": {
+        "tris": 5999,
+        "gpuMB": 1.0
+      },
+      "place": "apse wall above the altar, bottom ~2.2 m; back of the cross against the wall"
+    },
+    {
+      "file": "lotglass__lot_chapel_nave_glass_lancet_virgin.glb",
+      "room": "lot_chapel_nave",
+      "what": "figurative lancet: Virgin and Child",
+      "size_m": [
+        1.0,
+        2.6,
+        0.03
+      ],
+      "pc": {
+        "tris": 597,
+        "gpuMB": 2.93
+      },
+      "phone": {
+        "tris": 597,
+        "gpuMB": 0.73
+      },
+      "material": "M_glass_stained: base + emissive = glass colour (scale emissiveIntensity by daylight), came in normal/ORM; saddle bars cast_iron; lead edge M_lead",
+      "light": "docs/designs/village-lots-v2/tools/sacred/light/glass_lancet_virgin_transmit.png"
+    },
+    {
+      "file": "lotglass__lot_chapel_nave_glass_lancet_nativity.glb",
+      "room": "lot_chapel_nave",
+      "what": "figurative lancet: Nativity in grisaille",
+      "size_m": [
+        1.0,
+        2.6,
+        0.03
+      ],
+      "pc": {
+        "tris": 597,
+        "gpuMB": 2.93
+      },
+      "phone": {
+        "tris": 597,
+        "gpuMB": 0.73
+      },
+      "light": "docs/designs/village-lots-v2/tools/sacred/light/glass_lancet_nativity_transmit.png"
+    },
+    {
+      "file": "lotglass__lot_chapel_nave_glass_lancet_assumption.glb",
+      "room": "lot_chapel_nave",
+      "what": "figurative lancet: Assumption with angels, in grisaille",
+      "size_m": [
+        1.0,
+        2.6,
+        0.03
+      ],
+      "pc": {
+        "tris": 597,
+        "gpuMB": 2.93
+      },
+      "phone": {
+        "tris": 597,
+        "gpuMB": 0.73
+      },
+      "light": "docs/designs/village-lots-v2/tools/sacred/light/glass_lancet_assumption_transmit.png"
+    },
+    {
+      "file": "lotglass__lot_chapel_nave_glass_rose.glb",
+      "room": "lot_chapel_nave",
+      "what": "rose window, 2.4 m, 3D stone tracery (M_pbr_stone_ashlar) + figurative glass",
+      "size_m": [
+        2.454,
+        2.454,
+        0.16
+      ],
+      "pc": {
+        "tris": 12942,
+        "gpuMB": 4.5
+      },
+      "phone": {
+        "tris": 12942,
+        "gpuMB": 1.13
+      },
+      "light": "docs/designs/village-lots-v2/tools/sacred/light/glass_rose_transmit.png"
+    },
+    {
+      "file": "lotprop__lot_chapel_nave_station.glb",
+      "room": "lot_chapel_nave",
+      "what": "Station of the Cross: moulded oak plaque 0.36 x 0.50 m with a small oak cross; child meshes ..._num_01..14 are the bronze numerals I..XIV — show exactly one per placed station",
+      "pc": {
+        "tris_per_station": "plaque + one numeral (see GLB)",
+        "gpuMB": 0
+      },
+      "place": "14 along the side walls at ~1.4 m (bottom edge), 7 per side, I near the sanctuary on the left going round to XIV"
+    },
+    {
+      "file": "lotglass__lot_church_nave_glass_church_clear.glb",
+      "room": "lot_church_nave",
+      "what": "plain near-clear leaded lancet with amber/blue border, no figures",
+      "size_m": [
+        1.0,
+        2.6,
+        0.03
+      ],
+      "pc": {
+        "tris": 597,
+        "gpuMB": 2.93
+      },
+      "phone": {
+        "tris": 597,
+        "gpuMB": 0.73
+      },
+      "light": "docs/designs/village-lots-v2/tools/sacred/light/glass_church_clear_transmit.png"
+    },
+    {
+      "file": "lotprop__lot_church_nave_cross.glb",
+      "room": "lot_church_nave",
+      "what": "simple oak cross 1.0 x 1.8 m (M_pbr_wood_oak)",
+      "size_m": [
+        1.0,
+        1.8,
+        0.07
+      ],
+      "pc": {
+        "tris": 216,
+        "gpuMB": 0
+      }
+    },
+    {
+      "file": "lotstatue__lot_temple_hall_buddha.glb",
+      "room": "lot_temple_hall",
+      "what": "본존불: gilt Sakyamuni seated on a lotus throne with a flaming mandorla (real photogrammetry colour, cleaned brand-new, dark-blue hair curls)",
+      "size_m": [
+        1.376,
+        2.79,
+        1.269
+      ],
+      "pc": {
+        "tris": 19978,
+        "gpuMB": 8.0
+      },
+      "phone": {
+        "tris": 6977,
+        "gpuMB": 1.0
+      },
+      "place": "centre of the 수미단 (x 5.7, z ~6.5, top 1.1 m), facing the door; top reaches ~3.9 m"
+    },
+    {
+      "file": "lotstatue__lot_temple_hall_bodhisattva.glb",
+      "room": "lot_temple_hall",
+      "what": "협시보살: standing gilt bodhisattva — place TWICE, left as is and right mirrored (scale.x = -1), shared textures",
+      "size_m": [
+        0.979,
+        2.3,
+        0.493
+      ],
+      "pc": {
+        "tris": 12000,
+        "gpuMB": 4.0
+      },
+      "phone": {
+        "tris": 4500,
+        "gpuMB": 1.0
+      },
+      "place": "on the 수미단 either side of the Buddha (x ~3.6 and ~7.8)"
+    },
+    {
+      "file": "lotart__lot_temple_hall_taenghwa.glb",
+      "room": "lot_temple_hall",
+      "what": "후불탱화 3.6 m wide in silk border and red-lacquer frame (M_pbr_dancheong_wood fallback)",
+      "size_m": [
+        4.02,
+        2.586,
+        0.07
+      ],
+      "pc": {
+        "tris": 442,
+        "gpuMB": 4.81
+      },
+      "phone": {
+        "tris": 442,
+        "gpuMB": 1.2
+      },
+      "place": "back wall behind the 수미단, bottom ~2.2 m so it rises above the Buddha's halo"
+    }
   ],
   "roomTotals": {
-    "lot_chapel_nave": { "pc": { "tris": "Mary 14k + saint A 12k (+ saint B 12k) + crucifix 14k + 3 lancets 1.8k + rose 12.9k + 14 stations ≈ 55–67k of 140k", "gpuMB": "8 + 4 (+4) + 8 + 8.8 + 4.5 ≈ 33–37 of 48" }, "phone": { "gpuMB": "≈ 7.6 of 14" } },
-    "lot_church_nave": { "pc": { "tris": "glass 597 per window + cross 216", "gpuMB": "2.93 (one texture set for every window)" } },
-    "lot_temple_hall": { "pc": { "tris": "Buddha 15k + 2 x 12k + 탱화 0.4k ≈ 39.4k of 140k", "gpuMB": "8 + 4 + 4.8 ≈ 16.8 of 48" }, "phone": { "tris": "≈ 15.4k of 55k", "gpuMB": "≈ 3.2 of 14" } }
+    "lot_chapel_nave": {
+      "pc": {
+        "tris": "Mary 14k + saint A 12k (+ saint B 12k) + crucifix 16k + 3 lancets 1.8k + rose 12.9k + 14 stations ≈ 57–69k of 140k",
+        "gpuMB": "8 + 4 (+4) + 8 + 8.8 + 4.5 ≈ 33–37 of 48"
+      },
+      "phone": {
+        "gpuMB": "≈ 7.6 of 14"
+      }
+    },
+    "lot_church_nave": {
+      "pc": {
+        "tris": "glass 597 per window + cross 216",
+        "gpuMB": "2.93 (one texture set for every window)"
+      }
+    },
+    "lot_temple_hall": {
+      "pc": {
+        "tris": "Buddha 20k + 2 x 12k + 탱화 0.4k ≈ 44.4k of 140k",
+        "gpuMB": "8 + 4 + 4.8 ≈ 16.8 of 48"
+      },
+      "phone": {
+        "tris": "≈ 16.4k of 55k",
+        "gpuMB": "≈ 3.2 of 14"
+      }
+    }
   }
 }
