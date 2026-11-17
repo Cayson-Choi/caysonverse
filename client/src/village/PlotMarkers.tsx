@@ -4,6 +4,8 @@ import { canvas2d } from "../game/spriteCanvas";
 import { FONT_FAMILY } from "../game/nametag";
 import { fitFontPx, labelCanvasSize } from "../game/hub/hubSignSpecs";
 import { plotMarkerSpecs, type PlotMarkerSpec } from "./plotSigns";
+import { VILLAGE_LOTS } from "@caysonverse/shared/village/villageLots";
+import { useLotsDrawn } from "./lots/lotsStore";
 
 /**
  * The words on the empty building plots' signs (케이슨 마을, Task 4; Task 7: on the model's boards). The village
@@ -77,9 +79,12 @@ export function PlotMarkers() {
     [assets],
   );
 
+  // a plot whose lot building stands (L5) has no "곧 지어져요" sign any more (its post is out of the village clone too)
+  const drawn = useLotsDrawn();
+  const built = new Set(VILLAGE_LOTS.filter((l) => l.plot && drawn.includes(l.id)).map((l) => l.plot));
   return (
     <group>
-      {specs.map((spec) => (
+      {specs.filter((spec) => !built.has(spec.id)).map((spec) => (
         <group key={spec.id} name={`plot_sign__${spec.id}`} position={[spec.post.x, 0, spec.post.z]} rotation={[0, spec.yaw, 0]}>
           <mesh
             geometry={assets.plane}

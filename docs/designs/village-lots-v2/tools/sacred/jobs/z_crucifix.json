@@ -1,0 +1,5 @@
+{"src":"art/sacred/src/zenodo/malopolska_crucified_christ.glb","out_dir":"art/sacred/build/z_crucifix","name":"lotstatue__lot_chapel_nave_crucifix","rot_deg":[0,0,0],"crop_z":[0,1],"height_m":2.4,"tri_pc":16000,"tri_phone":6000,"tex":{"normal":2048,"albedo":2048,"orm":1024},"surface":"scan","keep_largest":false,"smooth":1,"scan_rough":0.45,"scan_gold":0.0,"fresh_sat":1.05,"fresh_gain":1.0,
+ "regions":[
+  {"name":"corpus","y":[-1.0,0.042],"color":[0.86,0.70,0.50],"keep_detail":0.85},
+  {"name":"cross","y":[0.042,1.0],"color":[0.42,0.27,0.16],"keep_detail":0.8},
+  {"name":"cross_low","x":[-0.075,0.075],"y":[0.0,1.0],"z":[-0.01,0.265],"color":[0.42,0.27,0.16],"keep_detail":0.8}]}

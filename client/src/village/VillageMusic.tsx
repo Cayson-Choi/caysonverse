@@ -3,7 +3,7 @@ import { useSoundStore } from "../stores/soundStore";
 import { useMusicStore } from "../stores/musicStore";
 import { createBrowserBgm, mountVillageBgm, type VillageBgm } from "./villageBgm";
 import { useLocalArea } from "./villageArea";
-import { isHouseArea } from "@caysonverse/shared/village/villageLayout";
+import { isIndoorArea } from "@caysonverse/shared/village/villageLayout";
 
 /**
  * The village's music: owns the controller for as long as the village scene is mounted (the effect creates and
@@ -36,7 +36,7 @@ export function VillageMusic() {
   }, [bgm]);
 
   useEffect(() => {
-    bgm?.setHall(area === "hall" || isHouseArea(area));
+    bgm?.setHall(isIndoorArea(area));
   }, [bgm, area]);
 
   useEffect(() => {

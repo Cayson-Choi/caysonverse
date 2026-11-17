@@ -108,3 +108,29 @@ describe("programGate", () => {
     expect(variantOf(m, g)).toBe("rc");
   });
 });
+
+describe("programGate: released programs", () => {
+  it("never asks GL about a program three released (no program object, or no material using it)", async () => {
+    const { installProgramGate } = await import("./programGate");
+    const isReady = vi.fn(() => false);
+    const released = { isReady, program: undefined, usedTimes: 0 };
+    const gl = {
+      extensions: { has: () => true },
+      // the drawn material's own program is ready (its first use asks whether anything else is still compiling)
+      properties: { get: () => ({ currentProgram: { isReady: () => true } }) },
+      info: { programs: [released] },
+      getRenderTarget: () => null,
+      setRenderTarget: () => {},
+      compile: () => new Set(),
+      renderBufferDirect: () => {},
+      render: () => {},
+    } as unknown as WebGLRenderer;
+    installProgramGate(gl, () => 0);
+    const mesh = new Mesh(new BufferGeometry(), new MeshStandardMaterial());
+    const draw = vi.spyOn(gl as unknown as { renderBufferDirect: () => void }, "renderBufferDirect");
+    rbd(gl, new PerspectiveCamera(), new Scene(), mesh.geometry, mesh.material as MeshStandardMaterial, mesh, null);
+    await flushTimers();
+    expect(isReady).not.toHaveBeenCalled();
+    expect(draw).toHaveBeenCalled(); // the released program does not hold the draw back either
+  });
+});

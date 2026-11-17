@@ -34,6 +34,7 @@ import {
   SHRUB_VARIANT,
   VARIANT_SPECS,
   VILLAGE_TREE_SPECS,
+  LOT_TREE_SPECS,
   WILLOW_SPECS,
   YOUNG_SPECS,
   treeSkeleton,
@@ -828,6 +829,8 @@ export class VillageVegetation {
       const shift = housesMode() === "new" ? a8TreeShift(spec.x, spec.z) : null;
       return shift ? shiftSkeleton(sk, shift.dx, shift.dz) : sk;
     });
+    // (the lot buildings' trees with them: the schoolyard's, from the lot models' extras, L5v2)
+    village.push(...LOT_TREE_SPECS.map(treeSkeleton));
     const willows = WILLOW_SPECS.map(treeSkeleton);
     const young = YOUNG_SPECS.map(treeSkeleton);
     const variant = {

@@ -1,0 +1,623 @@
+{
+  "$comment": "M1 PBR material library manifest. scripts/build-materials.mjs reads this, downloads the CC0 sources into art/materials/src/ (not committed), and writes client/public/textures/pbr/{2k,1k}/<id>_{albedo,normal,orm}.ktx2 plus client/src/village/pbr/pbrManifest.generated.ts. tileMeters = real-world size of one texture tile (from the source's published dimensions where it has them; 'est' marks an estimate). density = the plan's target px/m (PLAN.md section 3).",
+  "sets": [
+    {
+      "id": "asphalt",
+      "label": "아스팔트 (마을 순환 도로, 주차장)",
+      "group": "ground",
+      "use": "Road surface: ring road, parking. Fine cracks; tyre-mark/patch macro variation is G1/vrb2's job.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "asphalt_02"
+      },
+      "tileMeters": 3,
+      "density": 512
+    },
+    {
+      "id": "sidewalk_pavers",
+      "normal2k": true,
+      "label": "보도블록 (인터로킹 200x100)",
+      "group": "ground",
+      "use": "Sidewalks and bus-stop apron: grey 200x100 concrete blocks in running bond.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "pavement_04"
+      },
+      "tileMeters": 3.1,
+      "density": 1024,
+      "process": {
+        "albedo": {
+          "saturation": 0.6,
+          "lift": 0.05
+        }
+      }
+    },
+    {
+      "id": "plaza_granite",
+      "normal2k": true,
+      "label": "광장 화강석 판석",
+      "group": "ground",
+      "use": "Plaza slabs: grey granite (거창석-like) large-format slabs with real joints. Add per-slab tint jitter and water-stain macro in the shader.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "granite_tile_03"
+      },
+      "tileMeters": 1.8,
+      "density": 1024,
+      "process": {
+        "albedo": {
+          "saturation": 0.45,
+          "lift": 0.07
+        }
+      },
+      "note": "The scan is a brown-grey granite; desaturated and lifted toward the light grey of Korean 거창석 plaza slabs."
+    },
+    {
+      "id": "granite_flamed",
+      "label": "화강석 버너 마감 (연석, 화분대, 분수 갓돌)",
+      "group": "stone",
+      "use": "Jointless flamed granite for curbs (1 m segments: put the joint in the geometry), planter copings, fountain basin, bollards, steps.",
+      "source": {
+        "provider": "ambientcg",
+        "asset": "Granite002A"
+      },
+      "tileMeters": 1,
+      "tileEstimated": true,
+      "density": 1024,
+      "process": {
+        "albedo": {
+          "lift": 0.06,
+          "contrast": 0.82,
+          "saturation": 0.55
+        },
+        "deriveNormalFromAlbedo": {
+          "strength": 2.2,
+          "blur": 0.6
+        },
+        "deriveRoughnessFromAlbedo": {
+          "base": 0.78,
+          "range": 0.14
+        },
+        "deriveAoFromAlbedo": {
+          "strength": 0.25
+        }
+      },
+      "note": "The source is a polished countertop granite; the pipeline turns it into a flamed (burner) finish: lighter, lower contrast, rough (0.71-0.85) with crystal micro-relief derived from the albedo."
+    },
+    {
+      "id": "grass",
+      "label": "잔디",
+      "group": "ground",
+      "use": "Lawns and empty lots. Real lawn photo scan; desaturated a little toward Korean countryside grass. Blend with dirt_path through a mask for worn patches.",
+      "source": {
+        "provider": "ambientcg",
+        "asset": "Grass004"
+      },
+      "tileMeters": 1.4,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "saturation": 0.82
+        },
+        "roughness": {
+          "scale": 0.4,
+          "offset": 0.68
+        }
+      },
+      "note": "ambientCG's roughness map averages 0.26, which made the lawn glint like plastic; remapped to ~0.78."
+    },
+    {
+      "id": "dirt_path",
+      "label": "흙길 (마사토)",
+      "group": "ground",
+      "use": "Footpaths, worn ground under benches, field edges, flower-bed soil.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "park_dirt"
+      },
+      "tileMeters": 3,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "saturation": 0.65
+        }
+      },
+      "note": "Desaturated from ochre toward the beige-grey of Korean 마사토."
+    },
+    {
+      "id": "gravel",
+      "label": "자갈 (강자갈)",
+      "group": "ground",
+      "use": "Creek bed and banks, drainage strips, gravel parking, under the pavilion eaves.",
+      "source": {
+        "provider": "ambientcg",
+        "asset": "Gravel022"
+      },
+      "tileMeters": 1.5,
+      "density": 512
+    },
+    {
+      "id": "stucco_white",
+      "label": "드라이비트 (흰색 스타코)",
+      "group": "exterior",
+      "use": "Korean countryside house walls (드라이비트/스타코 흰색·미색). Tint with material.color for off-white; add rain streaks under windows as a macro mask.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "white_stucco"
+      },
+      "tileMeters": 2,
+      "density": 512
+    },
+    {
+      "id": "ceramic_siding",
+      "label": "세라믹 사이딩 (가로 패널)",
+      "group": "exterior",
+      "use": "Horizontal fibre-cement / ceramic lap siding on house walls and gables. Grey; tint for beige/white variants.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "exterior_wall_cladding_03"
+      },
+      "tileMeters": 1.96,
+      "density": 512
+    },
+    {
+      "id": "wood_siding",
+      "label": "목재 사이딩",
+      "group": "exterior",
+      "use": "Horizontal lap wood siding: the cafe, the bait shop, sheds.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "wooden_planks"
+      },
+      "tileMeters": 2,
+      "density": 512
+    },
+    {
+      "id": "metal_roof_seam",
+      "label": "징크 / 칼라강판 지붕",
+      "group": "exterior",
+      "use": "Standing-seam style metal roofs (리얼징크, 칼라강판), container and shed walls, fence sheets. Recoloured to dark zinc grey; tint with material.color for blue/red 강판.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "box_profile_metal_sheet"
+      },
+      "tileMeters": 2,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "recolor": [
+            0.235,
+            0.245,
+            0.255
+          ],
+          "saturation": 0
+        }
+      }
+    },
+    {
+      "id": "roof_shingle",
+      "label": "아스팔트 슁글",
+      "group": "exterior",
+      "use": "Asphalt shingle roofs of the newer houses.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "grey_roof_01"
+      },
+      "tileMeters": 8,
+      "density": 512,
+      "note": "Source tile is 8 m, so the 2K set is 256 px/m (below the 512 target) — fine at roof viewing distance; never put it within 2 m of the camera."
+    },
+    {
+      "id": "roof_giwa",
+      "label": "기와 (짙은 회색 점토 기와)",
+      "group": "exterior",
+      "use": "Pavilion (정자) and traditional roofs: dark grey clay tiles in rows, ridges in the normal map. Lay the rows along the eaves.",
+      "source": {
+        "provider": "ambientcg",
+        "asset": "RoofingTiles013A"
+      },
+      "tileMeters": 2,
+      "density": 512,
+      "tileEstimated": true,
+      "process": {
+        "roughness": {
+          "scale": 1,
+          "offset": 0.2
+        }
+      },
+      "note": "RoofingTiles013A reads glazed (roughness 0.5); Korean fired 기와 are matte, so roughness is lifted by 0.2."
+    },
+    {
+      "id": "concrete_exposed",
+      "label": "노출 콘크리트",
+      "group": "exterior",
+      "use": "Memorial hall walls, foundations, retaining walls, utility poles' bases, L-gutters.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "concrete_wall_007"
+      },
+      "tileMeters": 2.16,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "saturation": 0.35
+        }
+      }
+    },
+    {
+      "id": "brick_red",
+      "label": "적벽돌",
+      "group": "exterior",
+      "use": "Red-brick houses, garden walls, chimneys.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "red_brick_03"
+      },
+      "tileMeters": 1,
+      "density": 1024
+    },
+    {
+      "id": "rock",
+      "label": "자연석 바위",
+      "group": "stone",
+      "use": "Creek boulders, stone-wall stones, landscaping rocks (same source as today's T_rock/T_stone, now with normal + roughness).",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "rock_boulder_dry"
+      },
+      "tileMeters": 1.8,
+      "density": 512
+    },
+    {
+      "id": "floor_wood",
+      "label": "원목 마루",
+      "group": "interior",
+      "use": "Interior hardwood floors (houses, cafe, memorial hall).",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "wood_floor"
+      },
+      "tileMeters": 1.7,
+      "density": 1024
+    },
+    {
+      "id": "floor_laminate",
+      "label": "강마루 (밝은 오크)",
+      "group": "interior",
+      "use": "Light-oak laminate floors typical of Korean houses and apartments.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "laminate_floor_02"
+      },
+      "tileMeters": 1.7,
+      "density": 1024
+    },
+    {
+      "id": "tile_white",
+      "label": "흰색 타일 (욕실, 주방 벽)",
+      "group": "interior",
+      "use": "Bathroom and kitchen wall tiles, cafe counter front.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "long_white_tiles"
+      },
+      "tileMeters": 1.27,
+      "density": 1024
+    },
+    {
+      "id": "wallpaper",
+      "label": "벽지 (흰색 실크/우드칩)",
+      "group": "interior",
+      "use": "Interior walls and ceilings. Tint with material.color for beige or pastel wallpaper.",
+      "source": {
+        "provider": "ambientcg",
+        "asset": "Wallpaper001A"
+      },
+      "tileMeters": 1,
+      "tileEstimated": true,
+      "density": 512
+    },
+    {
+      "id": "plaster_painted",
+      "label": "도장 미장벽",
+      "group": "interior",
+      "use": "Painted plaster walls (cafe, memorial hall back rooms, stairwells).",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "painted_plaster_wall"
+      },
+      "tileMeters": 2,
+      "density": 512
+    },
+    {
+      "id": "wood_deck",
+      "label": "데크 목재",
+      "group": "wood",
+      "use": "Outdoor decks, the cafe terrace, bridge planks, picnic tables, bench slats (rotate UVs along the slat).",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "wood_floor_deck"
+      },
+      "tileMeters": 1.8,
+      "density": 1024,
+      "process": {
+        "albedo": {
+          "saturation": 0.6
+        }
+      },
+      "note": "The scan is a red-stained hardwood deck; desaturated toward 방부목 / composite deck browns."
+    },
+    {
+      "id": "wood_oak",
+      "label": "오크 무늬목 (가구)",
+      "group": "wood",
+      "use": "Furniture, door leaves, counters, frames, the pavilion's oiled pillars (tint darker).",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "oak_veneer_01"
+      },
+      "tileMeters": 1.83,
+      "density": 1024
+    },
+    {
+      "id": "steel_painted",
+      "label": "분체도장 강철 (검정/진회색)",
+      "group": "metal",
+      "use": "Powder-coated steel: bench frames, railings, lamp and sign poles, bollards, bus-stop frame. Tint with material.color for dark grey or green.",
+      "source": {
+        "provider": "ambientcg",
+        "asset": "Metal027"
+      },
+      "tileMeters": 1,
+      "tileEstimated": true,
+      "density": 512,
+      "process": {
+        "metalness": 0
+      },
+      "note": "ambientCG ships metalness 1 for this powder-coated steel; powder coat is paint (a dielectric), so metalness is forced to 0."
+    },
+    {
+      "id": "aluminium_brushed",
+      "label": "헤어라인 알루미늄",
+      "group": "metal",
+      "use": "Window frames, door handles, kiosk trim, signal housings, mailbox fronts.",
+      "source": {
+        "provider": "ambientcg",
+        "asset": "Metal009"
+      },
+      "tileMeters": 1,
+      "tileEstimated": true,
+      "density": 512
+    },
+    {
+      "id": "cast_iron",
+      "label": "주철 (검정 도장, 마모)",
+      "group": "metal",
+      "use": "Cast-iron bench legs, manhole and drain covers, the fountain's spout, old pump.",
+      "source": {
+        "provider": "ambientcg",
+        "asset": "Metal046B"
+      },
+      "tileMeters": 1,
+      "tileEstimated": true,
+      "density": 512
+    },
+    {
+      "id": "fabric_upholstery",
+      "label": "패브릭 (소파, 방석)",
+      "group": "fabric",
+      "use": "Sofas, cushions, chair seats, curtains. Neutral grey; tint with material.color.",
+      "source": {
+        "provider": "ambientcg",
+        "asset": "Fabric030"
+      },
+      "tileMeters": 0.5,
+      "tileEstimated": true,
+      "density": 1024
+    },
+    {
+      "id": "roof_clay_tile",
+      "label": "붉은 점토 기와 (유럽 시골 학교 지붕)",
+      "group": "roof",
+      "use": "New red clay pantile roofs of the European storybook lots (village school). Brand-new: no moss, no lichen; lay the rows along the eaves.",
+      "source": {
+        "provider": "ambientcg",
+        "asset": "RoofingTiles012A"
+      },
+      "tileMeters": 2.9,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "saturation": 1.05,
+          "lift": 0.01
+        }
+      },
+      "note": "Added by lots v2 B1 (2026-11-17). A clean, brand-new interlocking clay tile scan (ambientCG RoofingTiles012A, 2.9 m); Poly Haven roof_tiles was tried first and dropped (lichen-blotched)."
+    },
+    {
+      "id": "wood_painted",
+      "label": "흰 칠 목재 (창틀, 울타리, 큐폴라, 판벽)",
+      "group": "wood",
+      "use": "Freshly painted timber: window frames and glazing bars, picket fences, cupolas, porches, trims. White; tint with material.color for sage, green or blue paint.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "white_planks_clean"
+      },
+      "tileMeters": 1.8,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "saturation": 0.2,
+          "lift": 0.13
+        },
+        "roughness": {
+          "scale": 0.8,
+          "offset": 0
+        }
+      },
+      "note": "Added by lots v2 B1 (2026-11-17). Desaturated and lifted toward clean white paint; roughness lowered (fresh paint is a little glossier)."
+    },
+    {
+      "id": "play_rubber",
+      "label": "놀이터 고무 바닥 (안전 매트)",
+      "group": "ground",
+      "use": "Rubber safety tiles under swings, slides and climbing frames (EPDM playground tiles). Recoloured to terracotta red; tint for green.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "rubber_tiles"
+      },
+      "tileMeters": 2,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "recolor": [
+            0.66,
+            0.27,
+            0.2
+          ],
+          "saturation": 1
+        }
+      },
+      "note": "Added by lots v2 B1 (2026-11-17). The scan is black gym tiles; recoloured to the terracotta red of playground safety tiles."
+    },
+    {
+      "id": "sand",
+      "label": "놀이 모래 (모래밭)",
+      "group": "ground",
+      "use": "Clean play sand in sandpits and long-jump pits.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "dense_sand"
+      },
+      "tileMeters": 1.8,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "recolor": [
+            0.8,
+            0.71,
+            0.55
+          ],
+          "saturation": 1
+        }
+      },
+      "note": "Added by lots v2 B1 (2026-11-17). Recoloured toward clean, light play sand."
+    },
+    {
+      "id": "stone_ashlar",
+      "label": "꿀색 석회암 마름돌 (성당 벽, 도서관 장식)",
+      "group": "stone",
+      "use": "Honey-coloured dressed limestone ashlar: chapel walls, the library's bands, arches, quoins, sills and copings. Brand-new: clean faces, crisp joints.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "sandstone_blocks_08"
+      },
+      "tileMeters": 3,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "saturation": 0.95,
+          "lift": 0.05,
+          "contrast": 0.9
+        }
+      },
+      "note": "Added by lots v2 B1 (2026-11-17). Lifted a little toward fresh-cut limestone."
+    },
+    {
+      "id": "roof_slate",
+      "label": "천연 슬레이트 지붕",
+      "group": "roof",
+      "use": "Natural slate roofs (library, chapel): even blue-grey slates in courses, brand-new.",
+      "source": {
+        "provider": "ambientcg",
+        "asset": "RoofingTiles003"
+      },
+      "tileMeters": 2,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "recolor": [
+            0.36,
+            0.39,
+            0.43
+          ],
+          "saturation": 1
+        }
+      },
+      "note": "Added by lots v2 B1 (2026-11-17). Clean square natural slates (ambientCG RoofingTiles003), recoloured from green-grey to blue-grey Welsh slate. Poly Haven roof_slates_03 was tried first and dropped (a ridge strip in the tile).",
+      "tileEstimated": true
+    },
+    {
+      "id": "copper_new",
+      "label": "새 동판 (녹청 없는 밝은 구리)",
+      "group": "metal",
+      "use": "Brand-new copper: the chapel spire's cross and finial, the church steeple's spire tip, rain heads and flashing, lantern caps, the fountain spout. No verdigris, no tarnish (lots v2: \"모두 새것\").",
+      "source": {
+        "provider": "ambientcg",
+        "asset": "Metal047A"
+      },
+      "tileMeters": 1,
+      "tileEstimated": true,
+      "density": 512,
+      "note": "Added by lots v2 B2 (2026-11-17). ambientCG Metal047A (CC0): clean, freshly rolled copper sheet with a faint hammered ripple."
+    },
+    {
+      "id": "dancheong_wood",
+      "label": "단청 (절 목부재 채색 아틀라스)",
+      "group": "wood",
+      "use": "Fresh Korean temple dancheong on timber: a painted ATLAS (tileMeters 1, process.atlas), not a tiling texture. Regions (docs/designs/village-lots-v2/tools/temple_atlas.py): 머리초 beams, 서까래·부연 sides and ends, 주의초, 우물반자 연화, 공포 초엽, 수미단 모란 relief, 운문, 금단청 넝쿨 (gold leaf = metal), 연등 paper, and a neutral paint strip to tint (석간주 columns, 주칠 frames).",
+      "source": {
+        "provider": "local",
+        "asset": "dancheong_atlas"
+      },
+      "tileMeters": 1,
+      "density": 2048,
+      "process": {
+        "atlas": true
+      },
+      "note": "Added by lots v2 B3 (2026-11-17). Hand-painted from observation of real temple dancheong (general 머리초/금단청 forms, brand-new colours, no 卍, no letters) by docs/designs/village-lots-v2/tools/temple_dancheong.py; the wood grain under the paint is Poly Haven hinoki_planks' normal (CC0). Own work, CC0."
+    },
+    {
+      "id": "wood_pine_natural",
+      "label": "소나무 백골 (마루, 백골 부재)",
+      "group": "wood",
+      "use": "Natural unpainted pale softwood (Korean pine 소나무 look): the 대웅전 우물마루 floor, 툇마루, the 일주문's unpainted parts, 방석 frames, temple furniture. Brand-new, oiled.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "hinoki_planks"
+      },
+      "tileMeters": 1.89,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "saturation": 1.05,
+          "lift": 0
+        },
+        "roughness": {
+          "scale": 0.9,
+          "offset": 0
+        }
+      },
+      "note": "Added by lots v2 B3 (2026-11-17). Clean raw softwood planks with small knots (Poly Haven hinoki_planks, 1.89 m), close to fresh Korean pine 마루."
+    },
+    {
+      "id": "stone_wall_korean",
+      "label": "화강석 돌담·석축 (절 담장)",
+      "group": "stone",
+      "use": "Temple 돌담 and 석축: grey granite blocks laid with fine joints, brand-new and clean (under a 기와 coping); the 대웅전 기단 sides, the 범종각 and 석등 bases.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "japanese_stone_wall"
+      },
+      "tileMeters": 1.9,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "saturation": 0.9,
+          "lift": 0.02
+        }
+      },
+      "note": "Added by lots v2 B3 (2026-11-17). Grey granite irregular-block wall (Poly Haven japanese_stone_wall, 1.9 m): the look of a new Korean temple 돌담·석축 (no moss)."
+    }
+  ]
+}

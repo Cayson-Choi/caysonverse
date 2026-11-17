@@ -1,0 +1,3 @@
+{"src":"art/sacred/src/smk/KAS225_bruges_madonna.stl","out_dir":"art/sacred/build/mary","name":"lotstatue__lot_chapel_nave_mary",
+ "rot_deg":[0,0,0],"crop_z":[0,1],"height_m":1.35,"tri_pc":14000,"tri_phone":5000,
+ "tex":{"normal":2048,"albedo":1024,"orm":1024},"surface":"marble"}

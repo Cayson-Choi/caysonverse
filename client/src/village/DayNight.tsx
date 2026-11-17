@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { AdditiveBlending, CanvasTexture, Color, Sprite, SpriteMaterial, type Camera, type Scene, type WebGLRenderer } from "three";
-import { isHouseArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
+import { isIndoorArea, isLotArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { useLightRig } from "../game/lightRig";
 import { QUALITY, exposureFor, inverseNeutralToneMap, type QualityTier } from "../game/quality";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -73,6 +73,12 @@ function sunGlowTexture(): CanvasTexture {
   return new CanvasTexture(canvas);
 }
 
+/**
+ * Inside a lot building's room (lots v2) the hall's warm indoor light is turned down to a lit interior's (the builders' look-dev rooms:
+ * the sky half, the key a third, a touch more exposure) — the room's own fill and lamps (LotRoom.tsx) carry it.
+ */
+export const LOT_ROOM_LIGHT = { hemi: 0.55, key: 0.35, exposure: 1.1 } as const;
+
 export function DayNight({ area, tier }: { area: AreaId; tier: QualityTier }) {
   const rig = useLightRig();
   const scene = useThree((s) => s.scene);
@@ -129,11 +135,11 @@ export function DayNight({ area, tier }: { area: AreaId; tier: QualityTier }) {
   }, [get]);
 
   useFrame((_, delta) => {
-    dayNight.step(Math.min(delta, 1), area === "hall" || isHouseArea(area));
+    dayNight.step(Math.min(delta, 1), isIndoorArea(area));
     const s = dayNight.applied;
 
     // Exposure: the scene's (the clock's) times the player's brightness.
-    const exposure = exposureFor(useSettingsStore.getState().settings.brightness) * s.exposure;
+    const exposure = exposureFor(useSettingsStore.getState().settings.brightness) * s.exposure * (isLotArea(area) ? LOT_ROOM_LIGHT.exposure : 1);
     if (gl.toneMappingExposure !== exposure) gl.toneMappingExposure = exposure;
 
     // Fog and the clear colour.
@@ -149,7 +155,7 @@ export function DayNight({ area, tier }: { area: AreaId; tier: QualityTier }) {
 
     // The sun glow: a soft halo where the real sun is (never anywhere else), none indoors or once the sun is down.
     const camera = get().camera;
-    const indoor = area === "hall" || isHouseArea(area);
+    const indoor = isIndoorArea(area);
     const strength = indoor ? 0 : s.sunGlow;
     glow.visible = strength > 0.01;
     if (glow.visible) {
@@ -172,12 +178,12 @@ export function DayNight({ area, tier }: { area: AreaId; tier: QualityTier }) {
     if (hemi) {
       hemi.color.setRGB(s.hemiSky[0], s.hemiSky[1], s.hemiSky[2]);
       hemi.groundColor.setRGB(s.hemiGround[0], s.hemiGround[1], s.hemiGround[2]);
-      hemi.intensity = s.hemiIntensity;
+      hemi.intensity = s.hemiIntensity * (isLotArea(area) ? LOT_ROOM_LIGHT.hemi : 1);
     }
     const sun = rig.sun.current;
     if (sun) {
       sun.color.setRGB(s.keyColor[0], s.keyColor[1], s.keyColor[2]);
-      sun.intensity = s.keyIntensity;
+      sun.intensity = s.keyIntensity * (isLotArea(area) ? LOT_ROOM_LIGHT.key : 1);
       keyOffset(s.keyDir, rig.keyOffset);
       if (!rig.aim.external) {
         const t = sun.target.position;

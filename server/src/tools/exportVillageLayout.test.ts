@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { lotsForLayoutJson } from "@caysonverse/shared/village/villageLots";
 import { exportVillageLayout } from "@caysonverse/shared/village/villageLayout";
 import { main } from "../../../scripts/export-village-layout";
 
@@ -32,7 +33,8 @@ describe("export-village-layout main", () => {
     expect(main([out])).toBe(0);
     expect(fs.existsSync(out)).toBe(true);
     const text = fs.readFileSync(out, "utf8");
-    expect(JSON.parse(text)).toEqual(exportVillageLayout());
+    // (with the lot buildings, L5: the export script's lots line, villageLots lotsForLayoutJson)
+    expect(JSON.parse(text)).toEqual({ ...exportVillageLayout(), lots: JSON.parse(JSON.stringify(lotsForLayoutJson())) });
     expect(text.endsWith("\n")).toBe(true);
     expect(text.startsWith('{\n  "format"')).toBe(true); // 2-space indent, readable in a diff
     expect(log).toHaveBeenCalledTimes(1);

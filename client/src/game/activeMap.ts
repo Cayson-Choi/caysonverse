@@ -27,6 +27,7 @@ import { houseFloorGeometry } from "@caysonverse/shared/village/housesGeometry";
 import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { MEMORIAL_SEAT_MARKERS } from "@caysonverse/shared/village/generated/memorialSeats";
 import { fallsShoreSpot, inFallsRestArea, villagePickArea, villageWalkArea } from "@caysonverse/shared/village/fallsWalk";
+import { lotAt, lotLocalToWorld, lotRoomOf, lotRoomSolids, VILLAGE_LOTS } from "@caysonverse/shared/village/villageLots";
 import type { Bounds, MapGeometry } from "@caysonverse/shared/school/geometry";
 import type { AABB } from "@caysonverse/shared/collision";
 import { HALL_CAMERA_LIMIT, VILLAGE_CAMERA_PAD, type CameraLimit } from "./indoorCamera";
@@ -115,6 +116,8 @@ export const VILLAGE_FURNITURE: readonly AABB[] = Object.freeze(
     ...VILLAGE_BENCHES.map((b) => b.centre),
     // the rebuilt hall: the furniture a marker's seat is on (a bench, an armchair, a chair; the long sofa is wider than 3 m)
     ...MEMORIAL_SEAT_MARKERS.map((m) => ({ x: m.x, z: m.z })),
+    // the lot buildings' benches, 평상 and chairs (L5): a tap inside one's box walks out beside it, as for a plaza bench
+    ...VILLAGE_LOTS.flatMap((l) => l.seats.map((sp) => lotLocalToWorld(l, sp.lx, sp.lz))),
   ].flatMap((c) =>
     villageGeometry.obstacles.filter(
       (o) => c.x > o.minX && c.x < o.maxX && c.z > o.minZ && c.z < o.maxZ && o.maxX - o.minX <= 3 && o.maxZ - o.minZ <= 3,
@@ -129,7 +132,8 @@ export const VILLAGE_ACTIVE_MAP: ActiveMap = Object.freeze({
   pickBounds: villagePickArea(VILLAGE_LAYOUT),
   shore: (x: number, z: number) => fallsShoreSpot(VILLAGE_LAYOUT, x, z),
   cameraPad: VILLAGE_CAMERA_PAD,
-  zoneLabel: (x: number, z: number) => (inFallsRestArea(VILLAGE_LAYOUT, x, z) ? "폭포 쉼터" : "케이슨 마을"),
+  // the lot buildings' grounds (L5, 2026-11-17): their names while standing on one (the market's walk-in hall, a forecourt)
+  zoneLabel: (x: number, z: number) => (inFallsRestArea(VILLAGE_LAYOUT, x, z) ? "폭포 쉼터" : lotAt(x, z)?.name ?? "케이슨 마을"),
   seats: VILLAGE_SEATS, // the one global list; only the village's seats are offered from here
   seatArea: "village",
   furniture: VILLAGE_FURNITURE,
@@ -197,9 +201,39 @@ function houseActiveMap(area: AreaId): ActiveMap {
   return map;
 }
 
+const LOT_ROOM_MAPS = new Map<string, ActiveMap>();
+/** How far under a lot room's ceiling (m) the camera stays (the houses' pad). */
+export const LOT_ROOM_CEILING_PAD = 0.35;
+/**
+ * A lot building's walk-in room (lots v2, L5v2): the one village geometry (its walls, fixed furniture and ceiling slab are in it), the
+ * room's floor as bounds, the camera under its ceiling (no overview: a roof), the building's name, the one seat list narrowed by area.
+ * Every solid of the room is furniture for the tap planner (a pew's, a desk's, a cushion's box: ground inside walks out beside it).
+ */
+function lotRoomActiveMap(area: AreaId): ActiveMap {
+  const existing = LOT_ROOM_MAPS.get(area);
+  if (existing) return existing;
+  const room = lotRoomOf(area);
+  if (!room) return VILLAGE_ACTIVE_MAP;
+  const map: ActiveMap = Object.freeze({
+    geometry: villageGeometry,
+    bounds: room.bounds,
+    cameraLimit: { maxY: Math.round((room.ceiling - LOT_ROOM_CEILING_PAD) * 1e6) / 1e6, overview: false },
+    cameraPad: VILLAGE_CAMERA_PAD,
+    zoneLabel: () => `${room.lot.name} · ${room.unit.name}`,
+    seats: VILLAGE_SEATS,
+    seatArea: area,
+    furniture: lotRoomSolids(room).filter((s) => s.maxX - s.minX <= 3.2 && s.maxZ - s.minZ <= 3.2).map(({ minX, maxX, minZ, maxZ }) => ({ minX, maxX, minZ, maxZ })),
+  });
+  LOT_ROOM_MAPS.set(area, map);
+  return map;
+}
+
 /** The village map for the area the local player is in: one of two prebuilt maps, so a re-render is never a switch. */
 export function villageActiveMap(area: AreaId): ActiveMap {
-  return area === "hall" ? HALL_ACTIVE_MAP : area === "village" ? VILLAGE_ACTIVE_MAP : houseActiveMap(area);
+  if (area === "hall") return HALL_ACTIVE_MAP;
+  if (area === "village") return VILLAGE_ACTIVE_MAP;
+  if (lotRoomOf(area)) return lotRoomActiveMap(area);
+  return houseActiveMap(area);
 }
 
 let current: ActiveMap = VILLAGE_ACTIVE_MAP;

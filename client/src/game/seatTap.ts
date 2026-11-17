@@ -12,6 +12,7 @@ import { isFreeSpot } from "./clickPlan";
 import { CHAIR_BACK_BEHIND, CHAIR_HALF_WIDTH, VILLAGE_SEAT_MARKERS, ZELKOVA_DECK } from "@caysonverse/shared/village/benchSeats";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { lakeSeats } from "@caysonverse/shared/village/lakeLayout";
+import { LOTS_WITH_MODEL, VILLAGE_LOTS, lotColliders, lotLocalToWorld, lotSeatFurnitureBoxes } from "@caysonverse/shared/village/villageLots";
 
 /** A tap this far past a chair's footprint (m) still counts as on it (a seat's edge, a leg, a rail seen edge-on). */
 export const SEAT_TAP_MARGIN = 0.1;
@@ -70,6 +71,32 @@ const FOOTPRINTS: readonly Footprint[] = [...VILLAGE_SEAT_MARKERS.map((m): Footp
 const STONES = VILLAGE_LAYOUT.backdrop.waterfall.options.seats ? VILLAGE_LAYOUT.backdrop.waterfall.seats : [];
 
 /**
+ * The lot buildings' seat furniture (L5, villageLots.ts): each bench, 평상 or chair as a box (its own collider when the contract has
+ * one, else the seat's length by twice its front edge) with the seats on it (`lot:<seat id>`). A tap on it means the seat of the
+ * tapped side and place nearest the tap, as on a seat stone.
+ */
+const LOT_SEAT_BOXES: ReadonlyArray<{ box: AABB; benches: ReadonlySet<string> }> = (() => {
+  const out: Array<{ box: AABB; benches: Set<string> }> = [];
+  for (const l of VILLAGE_LOTS) {
+    if (!LOTS_WITH_MODEL.includes(l.id)) continue;
+    const own = lotColliders(l).map((c) => c.box);
+    const extra = lotSeatFurnitureBoxes(l);
+    for (const sp of l.seats) {
+      const c = lotLocalToWorld(l, sp.lx, sp.lz);
+      const box = [...own, ...extra].find((b) => c.x > b.minX && c.x < b.maxX && c.z > b.minZ && c.z < b.maxZ && b.maxX - b.minX <= 3 && b.maxZ - b.minZ <= 3);
+      if (!box) continue;
+      const hit = out.find((o) => o.box === box);
+      if (hit) hit.benches.add(`lot:${sp.id}`);
+      else out.push({ box, benches: new Set([`lot:${sp.id}`]) });
+    }
+  }
+  return out;
+})();
+
+/** Every lot seat furniture's bench ids (the seats a tap can mean). */
+const LOT_BENCH_IDS: ReadonlySet<string> = new Set(LOT_SEAT_BOXES.flatMap((b) => [...b.benches]));
+
+/**
  * The seat (index into `seats`) whose chair or bench the tap at (x, y, z) landed on, or -1. `seats` is the active map's
  * list; a marker whose seat is not in it (another area) never matches. The nearest footprint centre wins.
  */
@@ -103,6 +130,27 @@ export function seatUnderTap(seats: readonly Seat[], x: number, y: number, z: nu
     for (let i = 0; i < seats.length; i++) {
       const s = seats[i] as { bench?: string; x: number; z: number };
       if (s.bench !== st.id) continue;
+      const sd = Math.hypot(x - s.x, z - s.z);
+      if (sd < atD) {
+        at = i;
+        atD = sd;
+      }
+    }
+    if (at < 0) continue;
+    best = at;
+    bestD = d;
+  }
+  // a lot's bench, 평상 or chair: the seat on it nearest the tap (its side and place)
+  for (const lb of LOT_SEAT_BOXES) {
+    const b = lb.box;
+    if (x < b.minX - margin || x > b.maxX + margin || z < b.minZ - margin || z > b.maxZ + margin) continue;
+    const d = Math.hypot(x - (b.minX + b.maxX) / 2, z - (b.minZ + b.maxZ) / 2);
+    if (d >= bestD) continue;
+    let at = -1;
+    let atD = Infinity;
+    for (let i = 0; i < seats.length; i++) {
+      const s = seats[i] as { bench?: string; x: number; z: number };
+      if (!s.bench || !lb.benches.has(s.bench)) continue;
       const sd = Math.hypot(x - s.x, z - s.z);
       if (sd < atD) {
         at = i;
@@ -193,7 +241,7 @@ export function seatApproachGoalReady(seats: readonly Seat[], index: number): bo
 
 /** The marked seats' indices in `seats` (the ones a tap can mean). */
 export function markedSeatIndices(seats: readonly Seat[]): number[] {
-  const ids = new Set(FOOTPRINTS.map((f) => f.id));
+  const ids = new Set([...FOOTPRINTS.map((f) => f.id), ...LOT_BENCH_IDS]);
   const out: number[] = [];
   seats.forEach((s, i) => {
     if (ids.has((s as { bench?: string }).bench ?? "")) out.push(i);
