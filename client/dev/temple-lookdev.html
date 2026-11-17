@@ -1,0 +1,12 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8" /><title>B3 temple lookdev</title>
+<style>html,body{margin:0;background:#222;overflow:hidden}canvas{display:block}</style></head>
+<body>
+<!-- DEV only (not in the build): B3's lot models (마을 절, 대웅전 room, 케이슨랜드 정문) with the game's KTX2 PBR sets and the sacred
+     props at their markers. e2e/temple-lookdev.mjs drives it.  ?model=...  ?time=day|night  ?tier=2k|1k  ?view=<name> -->
+<script type="module">
+import { runTempleLookdev } from "./templeLookdev.ts"; void runTempleLookdev("lot_temple");
+</script>
+</body>
+</html>

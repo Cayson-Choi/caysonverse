@@ -137,3 +137,13 @@ B1과 같은 방식으로 성당·교회(B2)가 처음 쓰는 세트를 더했�
 | 자산 | 출처 | 라이선스 | 쓰는 곳 | 확인일 |
 | --- | --- | --- | --- | --- |
 | ambientCG `Metal047A` 텍스처 세트(색, 노멀, 거칠기, 금속) | ambientCG, https://ambientcg.com/view?id=Metal047A (내려받은 파일: https://ambientcg.com/get?file=Metal047A_2K-JPG.zip, md5 442ee5a91172472789493135eb1abfc4) | CC0 1.0 Universal | `client/public/textures/pbr/{2k,1k}/copper_new_*.ktx2` (PBR 세트 `copper_new`: 새 동판, 녹청 없음 (성당 첨탑 십자가·꼭지, 교회 첨탑 끝, 빗물받이, 랜턴 갓)) | 2026-11-17 |
+### lots v2 B3가 더한 세트 (2026-11-17)
+
+마을 절(B3)이 처음 쓰는 세트입니다. 같은 방식(`scripts/build-materials.mjs`, 원본은 `art/materials/src/`, 가공한 KTX2만 배포)으로 더했습니다.
+
+| 자산 | 출처 | 라이선스 | 쓰는 곳 | 확인일 |
+| --- | --- | --- | --- | --- |
+| Poly Haven `hinoki_planks` 텍스처 세트(색, 노멀, AO/거칠기/금속 ARM) | Poly Haven, https://polyhaven.com/a/hinoki_planks (내려받은 파일: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/hinoki_planks/hinoki_planks_diff_2k.jpg, https://dl.polyhaven.org/file/ph-assets/Textures/png/2k/hinoki_planks/hinoki_planks_nor_gl_2k.png, https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/hinoki_planks/hinoki_planks_arm_2k.jpg) | CC0 1.0 Universal | `client/public/textures/pbr/{2k,1k}/wood_pine_natural_*.ktx2` (PBR 세트 `wood_pine_natural`: 소나무 백골 마루), `dancheong_wood` 노멀의 나뭇결 | 2026-11-17 |
+| Poly Haven `japanese_stone_wall` 텍스처 세트(색, 노멀, AO/거칠기/금속 ARM) | Poly Haven, https://polyhaven.com/a/japanese_stone_wall (같은 형식의 2k 파일 3장) | CC0 1.0 Universal | `client/public/textures/pbr/{2k,1k}/stone_wall_korean_*.ktx2` (PBR 세트 `stone_wall_korean`: 화강석 돌담·석축) | 2026-11-17 |
+| 단청 아틀라스 `dancheong_wood` (직접 그림) | `docs/designs/village-lots-v2/tools/temple_dancheong.py`로 그린 일반형 머리초·금단청·꽃살·연등 무늬(실제 절 이름·글자·卍 없음) | CC0 1.0 Universal (자체 제작) | `client/public/textures/pbr/{2k,1k}/dancheong_wood_*.ktx2` | 2026-11-17 |
+| 케이슨랜드 정문 그림 지도 아틀라스 `lot_gate_goods` | `docs/designs/village-lots-v2/tools/gate_goods.py`: L4(75ab7df) 깃발·꽃밭·흙 칸을 다시 쓰고 글자 없는 공원 그림 지도를 새로 그림 | 자체 제작 | `client/public/models/village/lots/martgate/lot_gate_goods.ktx2` | 2026-11-17 |

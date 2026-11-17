@@ -102,6 +102,15 @@
 **PBR GPU 예산 메모(L5v2·설계자)**: `LOT_SURFACE_RULES.families`대로면 학교 외관만 9세트(PC 2K 약 72 MB / 폰 1K 약 30 MB), B1 네 모델 합 15세트로 `pbrSets`(다섯 채 12세트·PC 60 / 폰 24 MB)를 넘어요. 설계자가 맞출 예정. 실내 GLB `lot_school_class.glb`·`lot_library_reading.glb`는 노드 `lotroom__<unit>` 아래
 `_shell`·`_furniture`·`_goods` 메시와 `lotinst__<unit>_<kind>`, 창밖 풍경은 `M_screen`(빛 받지 않는 정점색), 재질은 lot과 같은 PBR 세트(`lots/<dir>/<unit>_textures.json`).
 
+**B3가 덧붙인 것 (2026-11-17)**: 대웅전 실내 `solids` 끝에 벽 기둥 10개(`col_f1..4`, `col_b1..4`, `col_l`, `col_r`: 반지름 0.24 배흘림 기둥이 벽에 반쯤 묻힘, 칸 3.8 m).
+성물은 `lot_temple_hall.glb` 안 빈 물체 `lotstatue__lot_temple_hall_buddha`·`_bodhisattva_l`·`_bodhisattva_r`(scale x −1)·`lotart__lot_temple_hall_taenghwa`(게임 yaw, 원점 = 받침 가운데)와
+`asset.extras.sacred`(노드 → `sacred/…glb` PC·폰 파일, mirrorX): L5v2가 들어갔을 때 그 자리에 불러요. 실내의 창호지·촛불은 `M_screen`.
+`dancheong_wood`는 **아틀라스**(tileMeters 1, `process.atlas`, 영역은 `tools/temple_atlas.py`): UV가 곧 아틀라스 좌표예요(반복 없음; 금박은 ORM 금속).
+정문은 `gate_kit.py`(75ab7df) → `gate_base.py`로 라이브러리 세트(`LM_martgate_*`) + 자기 맵 `lots/martgate/lot_gate_goods.ktx2`(글자 없는 그림 지도) + `M_lamp`/`M_sign_emit`,
+문짝은 가운데에서 나눈 `door__lot_gate_main_l/_r`(탑 면 경첩, B11 전까지 닫힘). `LOT_SURFACE_RULES.families.lot_gate`를 실제 세트 이름으로 고침.
+지붕 판 잰 값(L5v2 확인용): 일주문 처마 밑면 ≈ 4.9(창방 3.72–4.1이 그 아래 x ±2.95), 대웅전 앞 처마 밑면 ≈ 4.9(서까래 끝)·모서리 5.4, 끝 z −3.15·x ±7.6,
+범종각 처마 밑면 ≈ 3.5, 끝 x −11.85..−7.55·z −10.6..−6.4.
+
 순서: B1 · B2 · B3 동시에(서로 다른 파일, **Blender는 한 번에 하나씩 차례로** — PC 공유), L5v2는 동시에 시작 → L6. `art/`는 git 무시라 스크립트 사본은 `docs/designs/village-lots-v2/tools/`에.
 
 ## 10. 빌더 공통 규칙 (B1–B3·L5v2·L6 브리프에 그대로)
