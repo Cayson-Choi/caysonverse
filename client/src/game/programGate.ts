@@ -21,9 +21,9 @@ import type { BufferGeometry, Camera, Material, Object3D, Scene, Texture, WebGLR
  * (three's own synchronous path), so nothing can stay hidden.
  *
  * Textures too: a texture loaded as an <img> (drei's useTexture: the light maps) is decoded on the main thread by its first
- * upload, 100-250 ms for a 2048² light map. An object whose material has such a texture not uploaded yet is held back the
- * same way while the image is decoded off the main thread (`createImageBitmap`, flipped as three would flip it); the bitmap
- * replaces the image and its upload is a copy.
+ * upload, 100-250 ms for a 2048² light map. An object whose material has a texture not on the GPU yet is held back the
+ * same way: the <img> is decoded off the main thread first (`img.decode()`, which keeps the pixels with the image), then
+ * the textures are uploaded a few per frame.
  *
  * A program is tracked per scene, per material and per object variant (instanced, skinned, batched, morphed, shadow-receiving,
  * vertex colours, tangents: the parts of three's program key that come from the object, not the material). A material
@@ -184,6 +184,9 @@ export function installProgramGate(
     const all = (gl.info as { programs?: ProgramLike[] | null } | undefined)?.programs;
     if (all && all.length !== programCount) {
       programCount = all.length;
+      // three's list holds the live programs only: one released meanwhile must not be asked again (a deleted object)
+      const live = new Set(all);
+      for (const p of compiling) if (!live.has(p)) compiling.delete(p);
       for (const p of all) if (!used.has(p)) compiling.add(p);
     }
     for (const p of compiling) {
@@ -205,20 +208,6 @@ export function installProgramGate(
 
   /** textures to upload, a few per frame (an upload with its mipmaps is 10-60 ms for 2048²) */
   const uploads = new Set<Texture>();
-  /**
-   * Textures whose <img> was swapped for its decoded bitmap. Once uploaded, the <img> goes back (and the bitmap is closed:
-   * a decoded 2048² light map is 16 MB of memory the page would otherwise keep twice). A later re-upload (needsUpdate, a
-   * lost context) reads the <img> again, as three always did.
-   */
-  const swapped = new WeakMap<Texture, { img: HTMLImageElement; flipY: boolean; bmp: ImageBitmap }>();
-  const giveBack = (tex: Texture) => {
-    const s = swapped.get(tex);
-    if (!s || !isUploaded(tex) || tex.image !== s.bmp) return;
-    swapped.delete(tex);
-    tex.image = s.img; // the source's version stays: no upload
-    tex.flipY = s.flipY;
-    s.bmp.close();
-  };
   const isUploaded = (tex: Texture) => (gl.properties.get(tex) as { __webglInit?: boolean }).__webglInit === true;
 
   /** After a frame that held something back: start compiles and upload textures, within a slice of main-thread time. */
@@ -283,23 +272,21 @@ export function installProgramGate(
       } catch {
         // leave it to three's own path
       }
-      giveBack(tex);
       n++;
     }
     stats.pending = queue.size + uploads.size;
   };
 
   /**
-   * Whether the material's textures are on the GPU. If not: an <img> is first decoded off the main thread (and swapped for
-   * the decoded bitmap), then every texture is queued for an upload in a later flush.
+   * Whether the material's textures are on the GPU. If not: an <img> is first decoded off the main thread, then every
+   * texture is queued for an upload in a later flush.
    */
   const texturesReady = (material: Material, t: Track): boolean => {
     if (t.texReady) return true;
     let ready = true;
     for (const tex of texturesOf(material)) {
       if (isUploaded(tex)) {
-        giveBack(tex);
-        continue;
+          continue;
       }
       const img = tex.image as { width?: number; height?: number } | null;
       // render targets, depth and empty textures: nothing to upload ahead
@@ -307,33 +294,16 @@ export function installProgramGate(
       ready = false;
       const state = decodes.get(tex);
       if (state === "pending") continue;
-      if (state === undefined && typeof HTMLImageElement !== "undefined" && img instanceof HTMLImageElement && img.complete && img.naturalWidth && typeof createImageBitmap === "function") {
+      if (state === undefined && typeof HTMLImageElement !== "undefined" && img instanceof HTMLImageElement && img.complete && img.naturalWidth) {
         decodes.set(tex, "pending");
-        // decode() runs off the main thread; the bitmap made from the decoded image is then a cheap copy
+        // decode() runs off the main thread and keeps the decoded pixels with the <img>: its upload is then a copy
         img
           .decode()
           .catch(() => undefined)
-          .then(() =>
-            createImageBitmap(img, {
-              imageOrientation: tex.flipY ? "flipY" : "from-image",
-              premultiplyAlpha: tex.premultiplyAlpha ? "premultiply" : "none",
-              colorSpaceConversion: "none",
-            }),
-          )
-          .then(
-            (bmp) => {
-              // still the same image and not uploaded meanwhile (three's own path took it): swap the decoded copy in
-              if (tex.image === img && !isUploaded(tex)) {
-                swapped.set(tex, { img, flipY: tex.flipY, bmp });
-                tex.image = bmp;
-                tex.flipY = false;
-                tex.needsUpdate = true;
-                stats.decoded++;
-              } else bmp.close();
-              decodes.set(tex, "done");
-            },
-            () => decodes.set(tex, "done"),
-          );
+          .then(() => {
+            decodes.set(tex, "done");
+            stats.decoded++;
+          });
         continue;
       }
       decodes.set(tex, "done");
