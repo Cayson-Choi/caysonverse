@@ -546,6 +546,20 @@
       },
       "note": "Added by lots v2 B1 (2026-11-17). Clean square natural slates (ambientCG RoofingTiles003), recoloured from green-grey to blue-grey Welsh slate. Poly Haven roof_slates_03 was tried first and dropped (a ridge strip in the tile).",
       "tileEstimated": true
+    },
+    {
+      "id": "copper_new",
+      "label": "새 동판 (녹청 없는 밝은 구리)",
+      "group": "metal",
+      "use": "Brand-new copper: the chapel spire's cross and finial, the church steeple's spire tip, rain heads and flashing, lantern caps, the fountain spout. No verdigris, no tarnish (lots v2: \"모두 새것\").",
+      "source": {
+        "provider": "ambientcg",
+        "asset": "Metal047A"
+      },
+      "tileMeters": 1,
+      "tileEstimated": true,
+      "density": 512,
+      "note": "Added by lots v2 B2 (2026-11-17). ambientCG Metal047A (CC0): clean, freshly rolled copper sheet with a faint hammered ripple."
     }
   ]
 }

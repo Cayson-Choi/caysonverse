@@ -1561,5 +1561,52 @@ export const PBR_SETS: readonly PbrSetInfo[] = [
         }
       }
     }
+  },
+  {
+    "id": "copper_new",
+    "label": "새 동판 (녹청 없는 밝은 구리)",
+    "group": "metal",
+    "use": "Brand-new copper: the chapel spire's cross and finial, the church steeple's spire tip, rain heads and flashing, lantern caps, the fountain spout. No verdigris, no tarnish (lots v2: \"모두 새것\").",
+    "tileMeters": 1,
+    "tileEstimated": true,
+    "density": 512,
+    "source": {
+      "provider": "ambientcg",
+      "asset": "Metal047A",
+      "page": "https://ambientcg.com/view?id=Metal047A",
+      "license": "CC0 1.0 Universal"
+    },
+    "meanAlbedo": [
+      0.7956,
+      0.5185,
+      0.3627
+    ],
+    "meanOrm": [
+      1,
+      0.2627,
+      1
+    ],
+    "tiers": {
+      "2k": {
+        "albedo": {
+          "bytes": 673885,
+          "hash": "688a133e76"
+        }
+      },
+      "1k": {
+        "albedo": {
+          "bytes": 189177,
+          "hash": "f6917d4369"
+        },
+        "normal": {
+          "bytes": 542214,
+          "hash": "2159ecbd49"
+        },
+        "orm": {
+          "bytes": 439332,
+          "hash": "9ba36af169"
+        }
+      }
+    }
   }
 ] as const;

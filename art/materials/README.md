@@ -99,6 +99,7 @@ mesh.material = mat;
 | `sand` | 놀이 모래 (모래밭) | Clean play sand in sandpits and long-jump pits. | 1.8 | 1138 / 569 (목표 512) | 813 / - | 231 / 1251 / 903 | [polyhaven dense_sand](https://polyhaven.com/a/dense_sand) |
 | `stone_ashlar` | 꿀색 석회암 마름돌 (성당 벽, 도서관 장식) | Honey-coloured dressed limestone ashlar: chapel walls, the library's bands, arches, quoins, sills and copings. Brand-new: clean faces, crisp joints. | 3 | 683 / 341 (목표 512) | 641 / - | 167 / 386 / 463 | [polyhaven sandstone_blocks_08](https://polyhaven.com/a/sandstone_blocks_08) |
 | `roof_slate` | 천연 슬레이트 지붕 | Natural slate roofs (library, chapel): even blue-grey slates in courses, brand-new. | 2 (추정) | 1024 / 512 (목표 512) | 867 / - | 252 / 1298 / 968 | [ambientcg RoofingTiles003](https://ambientcg.com/view?id=RoofingTiles003) |
+| `copper_new` | 새 동판 (녹청 없는 밝은 구리) | Brand-new copper: the chapel spire's cross and finial, the church steeple's spire tip, rain heads and flashing, lantern caps, the fountain spout. No verdigris, no tarnish (lots v2: "모두 새것"). | 1 (추정) | 2048 / 1024 (목표 512) | 658 / - | 185 / 530 / 429 | [ambientcg Metal047A](https://ambientcg.com/view?id=Metal047A) |
 <!-- sets:end -->
 
 ## 다시 만들기

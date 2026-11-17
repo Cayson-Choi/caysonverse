@@ -129,3 +129,11 @@ M1 라이브러리와 같은 방식(`scripts/build-materials.mjs`, 원본은 `ar
 | Poly Haven `dense_sand` 텍스처 세트(색, 노멀, AO/거칠기/금속 ARM) | Poly Haven (작가 Dimitrios Savva), https://polyhaven.com/a/dense_sand (내려받은 파일: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dense_sand/dense_sand_diff_2k.jpg, https://dl.polyhaven.org/file/ph-assets/Textures/png/2k/dense_sand/dense_sand_nor_gl_2k.png, https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dense_sand/dense_sand_arm_2k.jpg) | CC0 1.0 Universal | `client/public/textures/pbr/{2k,1k}/sand_*.ktx2` (PBR 세트 `sand`: 놀이 모래 (모래밭)) | 2026-11-17 |
 | Poly Haven `sandstone_blocks_08` 텍스처 세트(색, 노멀, AO/거칠기/금속 ARM) | Poly Haven (작가 Rob Tuytel), https://polyhaven.com/a/sandstone_blocks_08 (내려받은 파일: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/sandstone_blocks_08/sandstone_blocks_08_diff_2k.jpg, https://dl.polyhaven.org/file/ph-assets/Textures/png/2k/sandstone_blocks_08/sandstone_blocks_08_nor_gl_2k.png, https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/sandstone_blocks_08/sandstone_blocks_08_arm_2k.jpg) | CC0 1.0 Universal | `client/public/textures/pbr/{2k,1k}/stone_ashlar_*.ktx2` (PBR 세트 `stone_ashlar`: 꿀색 석회암 마름돌 (성당 벽, 도서관 장식)) | 2026-11-17 |
 | ambientCG `RoofingTiles003` 텍스처 세트(색, 노멀, 거칠기) | ambientCG, https://ambientcg.com/view?id=RoofingTiles003 (내려받은 파일: https://ambientcg.com/get?file=RoofingTiles003_2K-JPG.zip) | CC0 1.0 Universal | `client/public/textures/pbr/{2k,1k}/roof_slate_*.ktx2` (PBR 세트 `roof_slate`: 천연 슬레이트 지붕) | 2026-11-17 |
+
+### lots v2 B2가 더한 세트 (2026-11-17)
+
+B1과 같은 방식으로 성당·교회(B2)가 처음 쓰는 세트를 더했습니다(원본 CC0 1.0, 내려받기는 발주자의 2026-11-17 v2 지시 "copper_new는 CC0 원본으로 라이브러리에 더하기"에 따른 것).
+
+| 자산 | 출처 | 라이선스 | 쓰는 곳 | 확인일 |
+| --- | --- | --- | --- | --- |
+| ambientCG `Metal047A` 텍스처 세트(색, 노멀, 거칠기, 금속) | ambientCG, https://ambientcg.com/view?id=Metal047A (내려받은 파일: https://ambientcg.com/get?file=Metal047A_2K-JPG.zip, md5 442ee5a91172472789493135eb1abfc4) | CC0 1.0 Universal | `client/public/textures/pbr/{2k,1k}/copper_new_*.ktx2` (PBR 세트 `copper_new`: 새 동판, 녹청 없음 (성당 첨탑 십자가·꼭지, 교회 첨탑 끝, 빗물받이, 랜턴 갓)) | 2026-11-17 |
