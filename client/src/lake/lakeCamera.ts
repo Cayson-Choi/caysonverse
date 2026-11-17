@@ -48,7 +48,9 @@ export function backToFishing(bodyYaw: number): void {
  * out, so the bent rod, the line and the fish breaking out of the water 3 m out in front are seen side on (from straight behind
  * the head hid them). The player's own drag cancels it as always.
  */
-export const LIFT_VIEW = { side: -2.3, pitch: 0.1, distance: 7 } as const;
+// hotfix 2026-11-17 (owner: "고기가 딸려 올라오는 장면이 없고"): from -2.3 / 0.1 / 7 the rod tip and the fish hanging from it were
+// over the top of the view (the live frames): further round to the side, further out and level, so the tip stays in sight.
+export const LIFT_VIEW = { side: -0.95, pitch: 0.06, distance: 7 } as const;
 
 export function liftCamera(bodyYaw: number): void {
   if (viewState.mode !== "tp" || !saved) return;

@@ -261,11 +261,13 @@ export interface FishModel {
 }
 
 /**
- * The view scale of a held fish (cm / refCm x this). Lake v2: 1.8x real (was 1.25x like the people): a 20 cm crucian at 1.25x was
- * a speck in the chibi's hands at the fishing camera's 4.6 m (the 2026-11-16 frames); 1.8x reads as a fish, still smaller than the
- * avatar's torso for the common sizes.
+ * The drawn length (m) of a caught fish of `cm` (hotfix 2026-11-17, owner: "잡았는데 손에 아무것도 표시가 안돼"): at 1.8x a 19 cm
+ * bluegill was 0.34 m, a speck beside the chibi's fists and lost at the rod tip — always readable now (10 cm -> 0.55 m, 19 cm ->
+ * 0.67 m, 40 cm -> 0.94 m, 70 cm -> 1.33 m; the model is 1 m long at scale 1), the order of sizes kept.
  */
-export const FISH_VIEW_SCALE = 1.8;
+export function fishDrawnLen(cm: number): number {
+  return 0.42 + Math.max(0, cm) * 0.013;
+}
 
 /** The flex uniform of one fish model's materials: x phase, y amplitude, z bend. */
 interface FlexUniform {
@@ -338,7 +340,7 @@ export function createFishModel(): FishModel {
   return {
     root,
     setCm(cm) {
-      root.scale.setScalar(Math.max(0.05, (cm / 100) * FISH_VIEW_SCALE));
+      root.scale.setScalar(fishDrawnLen(cm));
     },
     setKind(kind) {
       const id = fishKindFromId(kind) as LakeFishId | null;
@@ -422,7 +424,7 @@ function createStandInFish(): FishModel {
   return {
     root,
     setCm(cm) {
-      const s = (cm / 100) * FISH_VIEW_SCALE;
+      const s = fishDrawnLen(cm);
       root.scale.setScalar(Math.max(0.05, s));
     },
     setKind(_kind, hex) {
