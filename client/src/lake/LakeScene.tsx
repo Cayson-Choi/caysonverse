@@ -28,7 +28,7 @@ import { clearNpcCache } from "../village/npcAvatar";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { dayNight } from "../village/dayNightDriver";
 import type { Pose } from "../game/types";
-import { LAKE_AREA, LAKE_FACE_DIR, LAKE_FISHING_SPOTS, LAKE_RENTAL_PAD, LAKE_SHORE, LAKE_WATER_Y, insidePolygon } from "@caysonverse/shared/village/lakeLayout";
+import { LAKE_AREA, LAKE_FACE_DIR, LAKE_FISHING_SPOTS, LAKE_LAMPS, LAKE_RENTAL_PAD, LAKE_SHORE, LAKE_WATER_Y, insidePolygon } from "@caysonverse/shared/village/lakeLayout";
 import { LAKE_URLS, lakeAssetWanted } from "./lakeAssets";
 import { createDrops } from "./lakeDrops";
 import { LakeGreybox } from "./LakeGreybox";
@@ -131,13 +131,15 @@ function LakeGlb({ tier, pose }: { tier: VillageTier; pose: Pose }) {
       m.renderOrder = 2;
     }
   }, [dressed, water]);
-  // the lamps' own light at night on the pier and the 좌대 (the facilities' light maps carry the lamps' pools; these lights are for the avatars): the rich tier only, always in
-  // the scene (a light count that changes would recompile every lit material at dusk), dark by day
-  const lampLights = useRef<Array<PointLight | null>>([]);
+  // the lamps' own lights (LakeLampLights) sit where the file's lamp heads are
+  useEffect(() => {
+    lampHeadsFromFile = dressed.lampHeads;
+    return () => {
+      if (lampHeadsFromFile === dressed.lampHeads) lampHeadsFromFile = null;
+    };
+  }, [dressed]);
   useFrame(() => {
-    const s = dayNight.applied;
-    lakeDayNight(dressed, s);
-    for (const l of lampLights.current) if (l) l.intensity = LAMP_LIGHT.intensity * s.lights;
+    lakeDayNight(dressed, dayNight.applied);
   });
   return (
     <>
@@ -150,20 +152,52 @@ function LakeGlb({ tier, pose }: { tier: VillageTier; pose: Pose }) {
           <LakeShopkeeper structures={structs.scene} pose={pose} />
         </Suspense>
       </LoadBoundary>
-      {tier === "high" &&
-        dressed.lampHeads.map((p, i) => (
-          <pointLight
-            key={i}
-            ref={(l) => {
-              lampLights.current[i] = l;
-            }}
-            position={[p.x, p.y - 0.15, p.z]}
-            color={LAMP_LIGHT.color}
-            intensity={0}
-            distance={LAMP_LIGHT.distance}
-            decay={LAMP_LIGHT.decay}
-          />
-        ))}
+    </>
+  );
+}
+
+/** The lake file's lamp heads (world), once it is in; LakeLampLights moves its lights onto them. */
+let lampHeadsFromFile: readonly Vector3[] | null = null;
+/** Lamp head height (m) before the file is in (the lights are dark by day, and the file comes long before dusk matters). */
+const LAMP_HEAD_Y = 2.6;
+
+/**
+ * The lamps' own light at night on the pier and the 좌대 (the facilities' light maps carry the lamps' pools; these lights are for
+ * the avatars): the rich tier only, dark by day. Mounted with the village scene itself in every area (VillageScene.tsx),
+ * NOT with the lake file (which comes in seconds later):
+ * the scene's light count is part of every lit material's shader, so lights that appear later recompile the whole village's
+ * materials — that was the second-long freeze a while after entering (perf/no-hitch, e2e/perf-routes.mjs). One light per
+ * LAKE_LAMPS entry, always; they move onto the file's lamp heads when it is in.
+ */
+export function LakeLampLights({ tier }: { tier: VillageTier }) {
+  const lights = useRef<Array<PointLight | null>>([]);
+  useFrame(() => {
+    const k = LAMP_LIGHT.intensity * dayNight.applied.lights;
+    const heads = lampHeadsFromFile;
+    for (let i = 0; i < lights.current.length; i++) {
+      const l = lights.current[i];
+      if (!l) continue;
+      l.intensity = k;
+      const h = heads?.[i];
+      if (h && (l.position.x !== h.x || l.position.z !== h.z)) l.position.set(h.x, h.y - 0.15, h.z);
+    }
+  });
+  if (tier !== "high") return null;
+  return (
+    <>
+      {LAKE_LAMPS.map((p, i) => (
+        <pointLight
+          key={i}
+          ref={(l) => {
+            lights.current[i] = l;
+          }}
+          position={[p.x, LAMP_HEAD_Y, p.z]}
+          color={LAMP_LIGHT.color}
+          intensity={0}
+          distance={LAMP_LIGHT.distance}
+          decay={LAMP_LIGHT.decay}
+        />
+      ))}
     </>
   );
 }
