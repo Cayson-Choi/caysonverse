@@ -24,6 +24,8 @@ export interface LotMatSpec {
   roughnessScale?: number;
   normalScale?: number;
   metal?: boolean;
+  /** A linear RGB multiplier on the set's albedo (the material's colour): one set, a lighter or warmer stone of it. */
+  albedoGain?: [number, number, number];
   maps?: { albedo: string };
 }
 

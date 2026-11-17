@@ -43,7 +43,9 @@ WATER = P.GLASS
 GLASS = P.GLASS
 
 MATS = {
-    "LM_chapel_stone": {"set": "stone_ashlar"},
+    # stone_ashlar's honey albedo (mean linear 0.43/0.34/0.23) under the tint read dark brown in game: brightened to the
+    # warm cream limestone of the renders and the references (L5v2, owner colour pass)
+    "LM_chapel_stone": {"set": "stone_ashlar", "gain": [2.0, 2.15, 2.6]},
     "LM_chapel_roof": {"set": "roof_slate"},
     "LM_chapel_granite": {"set": "granite_flamed"},
     "LM_chapel_oak": {"set": "wood_oak", "rough": 0.85},

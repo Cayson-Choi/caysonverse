@@ -35,6 +35,14 @@ PET_LAV = S("LM_church_green", G.hexc("9C82D8"))
 LAV_STEM = S("LM_church_green", G.hexc("A7B89A"))
 PET_PINK = S("LM_church_green", G.hexc("F2A2B8"))
 DARK = S("LM_church_paint", G.hexc("4A4440"))           # the dim nave seen through the glass
+# Colmar pass (L5v2, owner reference colmar-petite-venise): painted louvred shutters and window boxes of geraniums, a sage
+# water table and frieze: the white church gets the colour and depth of the Alsatian streets, still all brand-new
+SHUTTER = S("LM_church_paint", G.hexc("6F9A86"))       # deeper sage-green shutters
+SHUTTER_DK = S("LM_church_paint", G.hexc("587E6C"))    # their louvre slats, a shade darker
+BAND = S("LM_church_paint", G.hexc("B9CDB3"))          # the water table and the frieze under the eaves: pale sage
+BOX_P = S("LM_church_paint", G.hexc("8FAF94"))         # the window boxes
+PET_RED = S("LM_church_green", G.hexc("E0453F"))       # geraniums
+PET_CORAL = S("LM_church_green", G.hexc("F27A6B"))
 GLASS = P.GLASS
 
 MATS = {
@@ -61,7 +69,7 @@ TOWER = (-1.4, 1.4, 0.1, 2.94)   # x0, x1, z0, z1 (bell slot at z 1.5)
 T1 = 11.0           # top of the clapboard stage
 T2 = 13.0           # top of the belfry
 SPIRE_TOP = 21.4
-WIN_Z = (-1.4, -4.2, -7.0)
+WIN_Z = (-1.2, -3.8, -6.4)   # (Colmar pass: spaced so every lancet has its shutters inside the corner boards)
 WIN_SILL, WIN_H = 2.0, 2.6
 DOOR_W, DOOR_H = 2.2, 3.4
 
@@ -108,7 +116,8 @@ def body(kit):
             window(kit, f, u)
         f.box(D, -half, half, 0.0, 0.55, 0.0, 0.1, GRAN, skip=("-w", "-v"))
         f.box(S_, -half - 0.02, half + 0.02, EAVE - 0.28, EAVE, 0.0, 0.06, TRIM, skip=("-w",))
-        f.box(S_, -half, half, 0.55, 0.72, 0.0, 0.05, TRIM, skip=("-w",))
+        f.box(S_, -half, half, 0.55, 0.72, 0.0, 0.05, BAND, skip=("-w",))            # water table (sage)
+        f.box(S_, -half, half, EAVE - 0.62, EAVE - 0.28, 0.0, 0.035, BAND, skip=("-w",))  # frieze under the cornice
         for u in (-half, half):
             a, b = (u, u + 0.2) if u < 0 else (u - 0.2, u)
             f.box(S_, a, b, 0.55, EAVE - 0.28, 0.0, 0.07, TRIM, skip=("-w",))
@@ -146,6 +155,43 @@ def body(kit):
 LAVENDER = Q.lavender_kind("lavender", LAV_STEM, PET_LAV)
 FLOWER_W = Q.flower_low_kind("flower_w", LEAF, PET_W)
 FLOWER_P = Q.flower_low_kind("flower_p", LEAF, PET_PINK)
+GERANIUM = Q.flower_low_kind("geranium", LEAF, PET_RED, h=0.24, r=0.11)
+GERANIUM_C = Q.flower_low_kind("geranium_c", LEAF, PET_CORAL, h=0.22, r=0.1)
+
+
+def shutters_and_box(kit, f, u, w, sill, top, seed=0):
+    """Colmar pass: a pair of louvred shutters folded back beside the casing (sill .. the head's spring) and a painted window
+    box of geraniums on the sill brackets."""
+    D = kit.D
+    sw = 0.46
+    for sg in (-1, 1):
+        a = u + sg * (w / 2 + 0.16)
+        b = a + sg * sw
+        u0, u1 = min(a, b), max(a, b)
+        f.box(D, u0, u1, sill, top, 0.02, 0.07, SHUTTER, skip=("-w",))
+        # stiles and rails proud of the panel, louvre slats between
+        f.box(D, u0, u0 + 0.06, sill, top, 0.07, 0.085, SHUTTER, skip=("-w",))
+        f.box(D, u1 - 0.06, u1, sill, top, 0.07, 0.085, SHUTTER, skip=("-w",))
+        for v0 in (sill, (sill + top) / 2 - 0.04, top - 0.08):
+            f.box(D, u0 + 0.06, u1 - 0.06, v0, v0 + 0.08, 0.07, 0.085, SHUTTER, skip=("-w",))
+        n = int((top - sill - 0.3) / 0.16)
+        for k in range(n):
+            v = sill + 0.12 + k * (top - sill - 0.24) / max(1, n)
+            if abs(v - ((sill + top) / 2)) < 0.07:
+                continue
+            D.member(f.p(u0 + 0.06, v, 0.078), f.p(u1 - 0.06, v, 0.078), [(-0.035, -0.006), (0.035, 0.006), (0.035, 0.016), (-0.035, 0.004)], SHUTTER_DK)
+    # the window box: under the sill, on its brackets, geraniums along it
+    bx0, bx1, by0, by1 = u - w / 2 - 0.12, u + w / 2 + 0.12, sill - 0.5, sill - 0.26
+    f.box(D, bx0, bx1, by0, by1, 0.08, 0.3, BOX_P)
+    f.box(D, bx0 - 0.02, bx1 + 0.02, by1 - 0.035, by1, 0.06, 0.315, TRIM)
+    r = G.rng(seed)
+    k = 0
+    x = bx0 + 0.12
+    while x < bx1 - 0.08:
+        p = f.p(x + (r.random() - 0.5) * 0.04, by1, 0.19 + (r.random() - 0.5) * 0.04)
+        kit.place("geranium" if k % 3 != 1 else "geranium_c", GERANIUM if k % 3 != 1 else GERANIUM_C, p[0], p[1], p[2], r.random() * 6.28)
+        x += 0.17
+        k += 1
 
 
 def window(kit, f, u):
@@ -180,6 +226,7 @@ def window(kit, f, u):
     f.box(D, u - w / 2 - 0.2, u + w / 2 + 0.2, sill - 0.07, sill, -0.02, 0.09, TRIM)
     for du in (-w / 2, w / 2):
         f.box(D, u + du - 0.04, u + du + 0.04, sill - 0.24, sill - 0.07, 0.0, 0.07, TRIM)
+    shutters_and_box(kit, f, u, w, sill, sp, seed=int(abs(u) * 100))
     # sage sash and glazing bars (a diamond-free plain lattice: 2 x 4 panes)
     f.box(D, u - w / 2 + 0.02, u + w / 2 - 0.02, sill + 0.02, sill + 0.09, -d, -d + 0.04, SAGE)
     D.member(f.p(u, sill + 0.09, -d + 0.02), f.p(u, sp + Q.apex_of(0, w, 1.0) - 0.05, -d + 0.02), G.prof_box(0.035, 0.035), SAGE)

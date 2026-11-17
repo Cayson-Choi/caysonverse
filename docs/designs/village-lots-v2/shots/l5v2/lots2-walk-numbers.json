@@ -41,8 +41,8 @@
     "triangles": 49067,
     "calls": 33,
     "sceneTris": 37393,
-    "programs": 161,
-    "textures": 571,
+    "programs": 159,
+    "textures": 562,
     "lots": null,
     "levels": null
    }
@@ -69,10 +69,10 @@
      "draws": 40
     },
     "textures": {
-     "far": 1398101,
-     "near": 29360128,
+     "far": 2796203,
+     "near": 25165824,
      "sets": 8,
-     "nearSets": 7,
+     "nearSets": 6,
      "own": 1398101
     },
     "lamps": {
@@ -88,8 +88,8 @@
     "triangles": 102084,
     "calls": 44,
     "sceneTris": 90422,
-    "programs": 165,
-    "textures": 613,
+    "programs": 163,
+    "textures": 605,
     "lots": null,
     "levels": null
    }
@@ -135,8 +135,8 @@
     "triangles": 112370,
     "calls": 30,
     "sceneTris": 131027,
-    "programs": 171,
-    "textures": 673,
+    "programs": 169,
+    "textures": 664,
     "lots": null,
     "levels": null
    }
@@ -182,8 +182,8 @@
     "triangles": 41892,
     "calls": 27,
     "sceneTris": 30387,
-    "programs": 174,
-    "textures": 723,
+    "programs": 172,
+    "textures": 714,
     "lots": null,
     "levels": null
    }
@@ -229,8 +229,8 @@
     "triangles": 100573,
     "calls": 27,
     "sceneTris": 101053,
-    "programs": 173,
-    "textures": 758,
+    "programs": 171,
+    "textures": 749,
     "lots": null,
     "levels": null
    }
@@ -276,8 +276,8 @@
     "triangles": 112370,
     "calls": 30,
     "sceneTris": 131027,
-    "programs": 168,
-    "textures": 293,
+    "programs": 172,
+    "textures": 292,
     "lots": null,
     "levels": null
    }
@@ -323,7 +323,7 @@
     "triangles": 112370,
     "calls": 30,
     "sceneTris": 131027,
-    "programs": 171,
+    "programs": 168,
     "textures": 292,
     "lots": null,
     "levels": null
@@ -417,7 +417,7 @@
     "triangles": 47991,
     "calls": 24,
     "sceneTris": 61221,
-    "programs": 114,
+    "programs": 115,
     "textures": 370,
     "lots": null,
     "levels": null
@@ -426,26 +426,26 @@
  },
  "frames": {
   "pc_join": {
-   "frames": 113,
-   "fps": 12.1,
+   "frames": 139,
+   "fps": 13.8,
    "p50": 16.7,
-   "p95": 333.3,
-   "max": 1383.3,
-   "over50": 31,
-   "over100": 19
+   "p95": 250,
+   "max": 1283.2,
+   "over50": 38,
+   "over100": 21
   },
   "pc_lots_tour": {
-   "frames": 22691,
-   "fps": 59.8,
+   "frames": 22619,
+   "fps": 59.5,
    "p50": 16.7,
-   "p95": 16.7,
-   "max": 233.3,
-   "over50": 6,
-   "over100": 4
+   "p95": 16.8,
+   "max": 333.4,
+   "over50": 16,
+   "over100": 10
   },
   "pc_lot_school_class_enter": {
-   "frames": 176,
-   "fps": 59.6,
+   "frames": 170,
+   "fps": 58.2,
    "p50": 16.7,
    "p95": 16.8,
    "max": 50,
@@ -453,175 +453,175 @@
    "over100": 0
   },
   "pc_lot_school_class_round_and_out": {
-   "frames": 1348,
-   "fps": 55.9,
+   "frames": 1335,
+   "fps": 55.2,
    "p50": 16.7,
    "p95": 16.7,
-   "max": 1566.6,
+   "max": 1849.9,
    "over50": 2,
-   "over100": 2
+   "over100": 1
   },
   "pc_lot_library_reading_enter": {
-   "frames": 170,
-   "fps": 59.6,
-   "p50": 16.7,
-   "p95": 16.8,
-   "max": 33.4,
-   "over50": 0,
-   "over100": 0
-  },
-  "pc_lot_library_reading_round_and_out": {
-   "frames": 911,
-   "fps": 54.1,
-   "p50": 16.7,
-   "p95": 16.8,
-   "max": 1650,
-   "over50": 1,
-   "over100": 1
-  },
-  "pc_lot_chapel_nave_enter": {
-   "frames": 177,
-   "fps": 59.2,
-   "p50": 16.7,
-   "p95": 16.8,
-   "max": 49.9,
-   "over50": 0,
-   "over100": 0
-  },
-  "pc_lot_chapel_nave_round_and_out": {
-   "frames": 957,
-   "fps": 54.3,
-   "p50": 16.7,
-   "p95": 16.8,
-   "max": 1583.3,
-   "over50": 2,
-   "over100": 1
-  },
-  "pc_lot_church_nave_enter": {
    "frames": 172,
-   "fps": 59.3,
-   "p50": 16.7,
-   "p95": 16.7,
-   "max": 33.4,
-   "over50": 0,
-   "over100": 0
-  },
-  "pc_lot_church_nave_round_and_out": {
-   "frames": 927,
-   "fps": 54,
-   "p50": 16.7,
-   "p95": 16.8,
-   "max": 1633.3,
-   "over50": 1,
-   "over100": 1
-  },
-  "pc_lot_temple_hall_enter": {
-   "frames": 161,
-   "fps": 56.4,
-   "p50": 16.7,
-   "p95": 16.8,
-   "max": 133.3,
-   "over50": 1,
-   "over100": 1
-  },
-  "pc_lot_temple_hall_round_and_out": {
-   "frames": 865,
-   "fps": 54.7,
-   "p50": 16.7,
-   "p95": 16.7,
-   "max": 1399.9,
-   "over50": 1,
-   "over100": 1
-  },
-  "pc_sunset_lot_chapel_nave_enter": {
-   "frames": 169,
-   "fps": 60,
-   "p50": 16.7,
-   "p95": 16.8,
-   "max": 33.3,
-   "over50": 0,
-   "over100": 0
-  },
-  "pc_sunset_lot_chapel_nave_round_and_out": {
-   "frames": 957,
-   "fps": 53.8,
-   "p50": 16.7,
-   "p95": 16.8,
-   "max": 1700,
-   "over50": 3,
-   "over100": 1
-  },
-  "pc_night_lot_chapel_nave_enter": {
-   "frames": 171,
-   "fps": 59.9,
-   "p50": 16.7,
-   "p95": 16.7,
-   "max": 33.3,
-   "over50": 0,
-   "over100": 0
-  },
-  "pc_night_lot_chapel_nave_round_and_out": {
-   "frames": 960,
-   "fps": 54.4,
-   "p50": 16.7,
-   "p95": 16.8,
-   "max": 1533.3,
-   "over50": 2,
-   "over100": 1
-  },
-  "phone_join": {
-   "frames": 178,
-   "fps": 24.4,
-   "p50": 16.7,
-   "p95": 116.7,
-   "max": 1783.3,
-   "over50": 19,
-   "over100": 10
-  },
-  "phone_lots_tour": {
-   "frames": 22583,
-   "fps": 59.8,
-   "p50": 16.7,
-   "p95": 16.8,
-   "max": 150,
-   "over50": 11,
-   "over100": 3
-  },
-  "phone_lot_church_nave_enter": {
-   "frames": 169,
-   "fps": 58.2,
-   "p50": 16.7,
-   "p95": 16.7,
-   "max": 100,
-   "over50": 1,
-   "over100": 0
-  },
-  "phone_lot_church_nave_round_and_out": {
-   "frames": 903,
-   "fps": 51.7,
-   "p50": 16.7,
-   "p95": 16.8,
-   "max": 999.9,
-   "over50": 11,
-   "over100": 8
-  },
-  "phone_lot_chapel_nave_enter": {
-   "frames": 175,
-   "fps": 60.2,
+   "fps": 60.3,
    "p50": 16.7,
    "p95": 16.7,
    "max": 16.8,
    "over50": 0,
    "over100": 0
   },
-  "phone_lot_chapel_nave_round_and_out": {
-   "frames": 933,
-   "fps": 52.4,
+  "pc_lot_library_reading_round_and_out": {
+   "frames": 930,
+   "fps": 54.8,
    "p50": 16.7,
    "p95": 16.8,
-   "max": 1616.6,
-   "over50": 5,
-   "over100": 4
+   "max": 1483.3,
+   "over50": 1,
+   "over100": 1
+  },
+  "pc_lot_chapel_nave_enter": {
+   "frames": 169,
+   "fps": 59.9,
+   "p50": 16.7,
+   "p95": 16.8,
+   "max": 33.3,
+   "over50": 0,
+   "over100": 0
+  },
+  "pc_lot_chapel_nave_round_and_out": {
+   "frames": 968,
+   "fps": 54.8,
+   "p50": 16.7,
+   "p95": 16.8,
+   "max": 1483.3,
+   "over50": 2,
+   "over100": 1
+  },
+  "pc_lot_church_nave_enter": {
+   "frames": 171,
+   "fps": 60.2,
+   "p50": 16.7,
+   "p95": 16.8,
+   "max": 16.8,
+   "over50": 0,
+   "over100": 0
+  },
+  "pc_lot_church_nave_round_and_out": {
+   "frames": 942,
+   "fps": 54.7,
+   "p50": 16.7,
+   "p95": 16.8,
+   "max": 1516.6,
+   "over50": 1,
+   "over100": 1
+  },
+  "pc_lot_temple_hall_enter": {
+   "frames": 170,
+   "fps": 58.8,
+   "p50": 16.7,
+   "p95": 16.8,
+   "max": 50,
+   "over50": 0,
+   "over100": 0
+  },
+  "pc_lot_temple_hall_round_and_out": {
+   "frames": 856,
+   "fps": 54.3,
+   "p50": 16.7,
+   "p95": 16.8,
+   "max": 1450,
+   "over50": 1,
+   "over100": 1
+  },
+  "pc_sunset_lot_chapel_nave_enter": {
+   "frames": 170,
+   "fps": 59.9,
+   "p50": 16.7,
+   "p95": 16.7,
+   "max": 33.4,
+   "over50": 0,
+   "over100": 0
+  },
+  "pc_sunset_lot_chapel_nave_round_and_out": {
+   "frames": 932,
+   "fps": 52.3,
+   "p50": 16.7,
+   "p95": 16.8,
+   "max": 2116.6,
+   "over50": 2,
+   "over100": 1
+  },
+  "pc_night_lot_chapel_nave_enter": {
+   "frames": 175,
+   "fps": 60,
+   "p50": 16.7,
+   "p95": 16.8,
+   "max": 33.4,
+   "over50": 0,
+   "over100": 0
+  },
+  "pc_night_lot_chapel_nave_round_and_out": {
+   "frames": 962,
+   "fps": 54.2,
+   "p50": 16.7,
+   "p95": 16.7,
+   "max": 1633.2,
+   "over50": 2,
+   "over100": 1
+  },
+  "phone_join": {
+   "frames": 172,
+   "fps": 18.4,
+   "p50": 16.7,
+   "p95": 183.4,
+   "max": 1200,
+   "over50": 40,
+   "over100": 23
+  },
+  "phone_lots_tour": {
+   "frames": 21772,
+   "fps": 57.3,
+   "p50": 16.7,
+   "p95": 16.8,
+   "max": 533.3,
+   "over50": 101,
+   "over100": 25
+  },
+  "phone_lot_church_nave_enter": {
+   "frames": 179,
+   "fps": 58.5,
+   "p50": 16.7,
+   "p95": 16.8,
+   "max": 66.6,
+   "over50": 1,
+   "over100": 0
+  },
+  "phone_lot_church_nave_round_and_out": {
+   "frames": 916,
+   "fps": 51.8,
+   "p50": 16.7,
+   "p95": 16.8,
+   "max": 1433.2,
+   "over50": 7,
+   "over100": 5
+  },
+  "phone_lot_chapel_nave_enter": {
+   "frames": 176,
+   "fps": 59.9,
+   "p50": 16.7,
+   "p95": 16.7,
+   "max": 33.2,
+   "over50": 0,
+   "over100": 0
+  },
+  "phone_lot_chapel_nave_round_and_out": {
+   "frames": 939,
+   "fps": 52.6,
+   "p50": 16.7,
+   "p95": 16.8,
+   "max": 1000,
+   "over50": 12,
+   "over100": 5
   }
  },
  "pcLots": {
@@ -645,14 +645,14 @@
     "lot_church",
     "lot_gate"
    ],
-   "shellTriangles": 13092,
+   "shellTriangles": 13256,
    "shellDraws": 20,
    "detailTriangles": {
-    "lot_school": 7622,
+    "lot_school": 8198,
     "lot_chapel": 6467,
     "lot_library": 6758,
     "lot_temple": 10227,
-    "lot_church": 5411,
+    "lot_church": 7139,
     "lot_gate": 7130
    },
    "goodsTriangles": {
@@ -660,7 +660,7 @@
     "lot_chapel": 8427,
     "lot_library": 10500,
     "lot_temple": 9364,
-    "lot_church": 2772,
+    "lot_church": 4410,
     "lot_gate": 7630
    },
    "detailDraws": {
@@ -676,7 +676,7 @@
     "lot_chapel": 15,
     "lot_library": 15,
     "lot_temple": 10,
-    "lot_church": 4,
+    "lot_church": 6,
     "lot_gate": 10
    },
    "nightTriangles": 3614,
@@ -688,10 +688,10 @@
    ]
   },
   "visible": {
-   "triangles": 24331,
-   "draws": 62
+   "triangles": 27861,
+   "draws": 64
   },
-  "loadMs": 6872,
+  "loadMs": 7178,
   "textures": {
    "far": 37748736,
    "near": 75497472,
@@ -783,14 +783,14 @@
  },
  "load_pc": {
   "plaza": {
-   "triangles": 2512709,
+   "triangles": 2537855,
    "calls": 366,
-   "sceneTris": 2653687,
-   "programs": 261,
-   "textures": 292,
+   "sceneTris": 2675513,
+   "programs": 260,
+   "textures": 289,
    "lots": {
-    "triangles": 24331,
-    "draws": 62
+    "triangles": 27861,
+    "draws": 64
    },
    "levels": {
     "lot_school": 0,
@@ -801,20 +801,20 @@
     "lot_gate": 0
    },
    "at": {
-    "x": -0.3174731416118023,
-    "z": 14.079496362139265,
-    "yaw": 1.816154648380336,
+    "x": 0.336963828129792,
+    "z": 14.001526075360886,
+    "yaw": -1.5753251954741905,
     "seatIndex": -1
    }
   },
   "lot_school": {
-   "triangles": 3527990,
+   "triangles": 3528110,
    "calls": 659,
-   "sceneTris": 3384242,
-   "programs": 261,
-   "textures": 309,
+   "sceneTris": 3384322,
+   "programs": 260,
+   "textures": 306,
    "lots": {
-    "triangles": 32340,
+    "triangles": 33080,
     "draws": 75
    },
    "levels": {
@@ -826,20 +826,20 @@
     "lot_gate": 0
    },
    "at": {
-    "x": 57.97861200213355,
-    "z": 14.990608983670048,
-    "yaw": 1.5415844551085822,
+    "x": 57.97811209004877,
+    "z": 14.99055671684026,
+    "yaw": 1.5414675602200676,
     "seatIndex": -1
    }
   },
   "lot_chapel": {
-   "triangles": 3332858,
+   "triangles": 3331682,
    "calls": 614,
-   "sceneTris": 3100452,
-   "programs": 261,
-   "textures": 357,
+   "sceneTris": 3099956,
+   "programs": 260,
+   "textures": 354,
    "lots": {
-    "triangles": 31042,
+    "triangles": 31206,
     "draws": 73
    },
    "levels": {
@@ -851,20 +851,20 @@
     "lot_gate": 0
    },
    "at": {
-    "x": 40.475691882124615,
-    "z": -36.99140045756813,
-    "yaw": 1.5973066954180146,
+    "x": 40.476517446014384,
+    "z": -36.99144800188262,
+    "yaw": 1.5972274478310338,
     "seatIndex": -1
    }
   },
   "lot_library": {
-   "triangles": 3154460,
+   "triangles": 3148940,
    "calls": 259,
-   "sceneTris": 3243662,
-   "programs": 261,
-   "textures": 423,
+   "sceneTris": 3241066,
+   "programs": 260,
+   "textures": 418,
    "lots": {
-    "triangles": 33406,
+    "triangles": 33570,
     "draws": 75
    },
    "levels": {
@@ -876,20 +876,20 @@
     "lot_gate": 0
    },
    "at": {
-    "x": -50.48192420681926,
-    "z": 14.860029013145736,
-    "yaw": -1.1562429956066156,
+    "x": -50.48133039885934,
+    "z": 14.859735558788923,
+    "yaw": -1.1561584886237553,
     "seatIndex": -1
    }
   },
   "lot_temple": {
-   "triangles": 2812781,
+   "triangles": 2810061,
    "calls": 255,
-   "sceneTris": 2792437,
-   "programs": 261,
-   "textures": 469,
+   "sceneTris": 2791241,
+   "programs": 260,
+   "textures": 463,
    "lots": {
-    "triangles": 35739,
+    "triangles": 35903,
     "draws": 70
    },
    "levels": {
@@ -901,21 +901,21 @@
     "lot_gate": 0
    },
    "at": {
-    "x": -52.503704090534164,
-    "z": -36.83369383963863,
-    "yaw": -2.082261598405653,
+    "x": -52.50535168936192,
+    "z": -36.8344070900995,
+    "yaw": -2.082807326623066,
     "seatIndex": -1
    }
   },
   "lot_church": {
-   "triangles": 2126727,
-   "calls": 257,
-   "sceneTris": 2374573,
-   "programs": 261,
-   "textures": 539,
+   "triangles": 2132179,
+   "calls": 261,
+   "sceneTris": 2377443,
+   "programs": 260,
+   "textures": 533,
    "lots": {
-    "triangles": 39091,
-    "draws": 81
+    "triangles": 42621,
+    "draws": 83
    },
    "levels": {
     "lot_school": 0,
@@ -926,21 +926,21 @@
     "lot_gate": 2
    },
    "at": {
-    "x": -0.000002315405463746818,
-    "z": 52.47628567880766,
-    "yaw": 0.00000715261980124691,
+    "x": -0.0000024555660607710655,
+    "z": 52.46825238199384,
+    "yaw": 0.0000074019101493019745,
     "seatIndex": -1
    }
   },
   "lot_gate": {
-   "triangles": 1514367,
-   "calls": 146,
-   "sceneTris": 1958693,
-   "programs": 261,
-   "textures": 562,
+   "triangles": 1516433,
+   "calls": 148,
+   "sceneTris": 1961563,
+   "programs": 260,
+   "textures": 556,
    "lots": {
-    "triangles": 39091,
-    "draws": 81
+    "triangles": 42621,
+    "draws": 83
    },
    "levels": {
     "lot_school": 0,
@@ -951,9 +951,9 @@
     "lot_gate": 2
    },
    "at": {
-    "x": -23.65392917651787,
-    "z": 90.43086094666221,
-    "yaw": -1.6597363018409796,
+    "x": -23.655621225351908,
+    "z": 90.42951186259934,
+    "yaw": -1.6562834079263378,
     "seatIndex": -1
    }
   }
@@ -979,14 +979,14 @@
     "lot_church",
     "lot_gate"
    ],
-   "shellTriangles": 13092,
+   "shellTriangles": 13256,
    "shellDraws": 20,
    "detailTriangles": {
-    "lot_school": 7622,
+    "lot_school": 8198,
     "lot_chapel": 6467,
     "lot_library": 6758,
     "lot_temple": 10227,
-    "lot_church": 5411,
+    "lot_church": 7139,
     "lot_gate": 7130
    },
    "goodsTriangles": {
@@ -994,7 +994,7 @@
     "lot_chapel": 8427,
     "lot_library": 10500,
     "lot_temple": 9364,
-    "lot_church": 2772,
+    "lot_church": 4410,
     "lot_gate": 7630
    },
    "detailDraws": {
@@ -1010,7 +1010,7 @@
     "lot_chapel": 15,
     "lot_library": 15,
     "lot_temple": 10,
-    "lot_church": 4,
+    "lot_church": 6,
     "lot_gate": 10
    },
    "nightTriangles": 3614,
@@ -1022,10 +1022,10 @@
    ]
   },
   "visible": {
-   "triangles": 16148,
+   "triangles": 16312,
    "draws": 51
   },
-  "loadMs": 4718,
+  "loadMs": 6920,
   "textures": {
    "far": 18874368,
    "near": 0,
@@ -1106,11 +1106,11 @@
   "plaza": {
    "triangles": 739788,
    "calls": 176,
-   "sceneTris": 1449514,
-   "programs": 155,
-   "textures": 149,
+   "sceneTris": 1449118,
+   "programs": 153,
+   "textures": 163,
    "lots": {
-    "triangles": 16148,
+    "triangles": 16312,
     "draws": 51
    },
    "levels": {
@@ -1122,20 +1122,20 @@
     "lot_gate": 0
    },
    "at": {
-    "x": 0.07572789048416467,
-    "z": 14.30853717462039,
-    "yaw": -2.900908729481355,
+    "x": 0.32800245272192635,
+    "z": 13.963536952294064,
+    "yaw": -1.4600839015210678,
     "seatIndex": -1
    }
   },
   "lot_school": {
-   "triangles": 701546,
+   "triangles": 702266,
    "calls": 215,
-   "sceneTris": 1866482,
-   "programs": 152,
-   "textures": 225,
+   "sceneTris": 1867222,
+   "programs": 151,
+   "textures": 226,
    "lots": {
-    "triangles": 32340,
+    "triangles": 33080,
     "draws": 75
    },
    "levels": {
@@ -1147,20 +1147,20 @@
     "lot_gate": 0
    },
    "at": {
-    "x": 57.984079012085616,
-    "z": 14.99078807524416,
-    "yaw": 1.5416456351876415,
+    "x": 57.97093083673233,
+    "z": 14.992464552783307,
+    "yaw": 1.5479010472203587,
     "seatIndex": -1
    }
   },
   "lot_chapel": {
    "triangles": 797883,
    "calls": 263,
-   "sceneTris": 1705642,
-   "programs": 152,
+   "sceneTris": 1705806,
+   "programs": 151,
    "textures": 272,
    "lots": {
-    "triangles": 31042,
+    "triangles": 31206,
     "draws": 73
    },
    "levels": {
@@ -1172,20 +1172,20 @@
     "lot_gate": 0
    },
    "at": {
-    "x": 40.47731290400687,
-    "z": -36.991521321620105,
-    "yaw": 1.5970655148129107,
+    "x": 40.471118658722276,
+    "z": -36.99119846670838,
+    "yaw": 1.5975519734416124,
     "seatIndex": -1
    }
   },
   "lot_library": {
    "triangles": 839736,
    "calls": 101,
-   "sceneTris": 1827424,
-   "programs": 152,
+   "sceneTris": 1827588,
+   "programs": 151,
    "textures": 303,
    "lots": {
-    "triangles": 33406,
+    "triangles": 33570,
     "draws": 75
    },
    "levels": {
@@ -1197,20 +1197,20 @@
     "lot_gate": 0
    },
    "at": {
-    "x": -50.48001445787545,
-    "z": 14.859159263959153,
-    "yaw": -1.1561661459348989,
+    "x": -50.51147550798306,
+    "z": 14.873006144538557,
+    "yaw": -1.1561643687314163,
     "seatIndex": -1
    }
   },
   "lot_temple": {
    "triangles": 628530,
    "calls": 91,
-   "sceneTris": 1390545,
-   "programs": 152,
+   "sceneTris": 1390709,
+   "programs": 151,
    "textures": 333,
    "lots": {
-    "triangles": 35739,
+    "triangles": 35903,
     "draws": 70
    },
    "levels": {
@@ -1222,21 +1222,21 @@
     "lot_gate": 0
    },
    "at": {
-    "x": -52.50519375709083,
-    "z": -36.83458495082571,
-    "yaw": -2.0821197565484098,
+    "x": -52.50190495573585,
+    "z": -36.83316448269583,
+    "yaw": -2.0810350912190114,
     "seatIndex": -1
    }
   },
   "lot_church": {
-   "triangles": 737698,
-   "calls": 84,
-   "sceneTris": 1588933,
-   "programs": 152,
+   "triangles": 741084,
+   "calls": 86,
+   "sceneTris": 1592463,
+   "programs": 151,
    "textures": 362,
    "lots": {
-    "triangles": 24331,
-    "draws": 62
+    "triangles": 27861,
+    "draws": 64
    },
    "levels": {
     "lot_school": 0,
@@ -1247,20 +1247,20 @@
     "lot_gate": 0
    },
    "at": {
-    "x": -0.000002392190975034132,
-    "z": 52.4709955975795,
-    "yaw": 0.0000072709998936002845,
+    "x": -0.0000022829138788345273,
+    "z": 52.47484558707208,
+    "yaw": 0.000007021014595007349,
     "seatIndex": -1
    }
   },
   "lot_gate": {
    "triangles": 530556,
    "calls": 70,
-   "sceneTris": 1355034,
-   "programs": 152,
+   "sceneTris": 1355198,
+   "programs": 151,
    "textures": 368,
    "lots": {
-    "triangles": 30908,
+    "triangles": 31072,
     "draws": 70
    },
    "levels": {
@@ -1272,9 +1272,9 @@
     "lot_gate": 2
    },
    "at": {
-    "x": -23.654522061385567,
-    "z": 90.4292364493369,
-    "yaw": -1.6552212680957787,
+    "x": -23.686149121293862,
+    "z": 90.42740851470502,
+    "yaw": -1.6579050679520262,
     "seatIndex": -1
    }
   }

@@ -54,6 +54,7 @@ const startFrames = (p) =>
     let last = performance.now();
     const tick = (t) => {
       window.__l2f.push(t - last);
+      if (t - last > 100) (window.__l2fLong ??= []).push([last, t]);
       last = t;
       if (window.__l2f) window.__l2fId = requestAnimationFrame(tick);
     };
@@ -119,7 +120,10 @@ async function sceneLoad(p, tag) {
   );
   const out = {};
   for (const s of spots) {
+    const i0 = await p.page.evaluate(() => window.__l2f?.length ?? 0);
     const w = s.name === "plaza" ? await walkPlanned(p, s.x, s.z, 1.5) : await walkWay(p, s.name, s.x, s.z);
+    // the long frames of this leg (where a hitch is: CV_HITCH_LOG=1)
+    if (process.env.CV_HITCH_LOG) console.log(`      hitch ${tag} -> ${s.name}: ${JSON.stringify(await p.page.evaluate((i) => (window.__l2f ?? []).slice(i).filter((d) => d > 100).map((d) => Math.round(d)), i0))}`);
     await sleep(2500);
     out[s.name] = { ...(await frameLoad(p)), at: w.at };
     console.log(`      load ${tag} ${s.name}: ${JSON.stringify(out[s.name]).slice(0, 220)}`);
@@ -423,14 +427,28 @@ if (ONLY.includes("phone")) {
     const l = await lots(p);
     run.check("phone: the six loaded at the light tier", l && l.tier === "low" && l.device === "phone" && l.failed.length === 0, { tier: l?.tier, textures: l?.textures });
     numbers.phoneLots = l;
+    // CV_PROFILE=1: a CPU profile of the walk and the long frames' spans (where a hitch spends its time)
+    const cdp = process.env.CV_PROFILE ? await p.ctx.newCDPSession(p.page) : null;
+    if (cdp) {
+      await cdp.send("Profiler.enable");
+      await cdp.send("Profiler.setSamplingInterval", { interval: 250 });
+      await cdp.send("Profiler.start");
+    }
+    const t0 = cdp ? await p.page.evaluate(() => performance.now()) : 0;
     await startFrames(p);
     const load = await sceneLoad(p, "phone");
+    const long = await p.page.evaluate(() => window.__l2fLong ?? []);
     await stopFrames(p, "phone_lots_tour");
+    if (cdp) {
+      const { profile } = await cdp.send("Profiler.stop");
+      writeFileSync(join(OUT, "phone_profile.json"), JSON.stringify({ profile, t0, long }));
+    }
     const worst = Math.max(...Object.values(load).map((v) => v.triangles));
     // (a frame's triangles count every shadow-cascade pass too; the static budget — 300_000 — is the files' scene triangles, see the report)
     const lotsWorst = Math.max(...Object.values(load).map((v) => v.lots?.triangles ?? 0));
     run.check("phone: the lots draw at most their shells + the nearest lot's detail + one pool (LOD)", lotsWorst <= 13_200 + 20_000 + 14_000 + 3_700, { lotsWorst, frame: Object.fromEntries(Object.entries(load).map(([k, v]) => [k, [v.triangles, v.calls, v.lots?.triangles, v.lots?.draws]])) });
-    for (const unit of ["lot_church_nave", "lot_chapel_nave"]) await roomTrip(p, unit, "phone");
+    // (CV_PHONE_TOUR_ONLY=1: the walk round the six only — the hitch comparison runs)
+    if (!process.env.CV_PHONE_TOUR_ONLY) for (const unit of ["lot_church_nave", "lot_chapel_nave"]) await roomTrip(p, unit, "phone");
     const l2 = await lots(p);
     run.check("phone: at most two lots in detail", Object.values(l2?.levels ?? {}).filter((v) => v > 0).length <= 2, l2?.levels);
     await p.ctx.close();

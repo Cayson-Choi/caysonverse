@@ -97,7 +97,12 @@
       "vertexColor": true,
       "roughnessScale": 1.0,
       "normalScale": 1.0,
-      "metal": false
+      "metal": false,
+      "albedoGain": [
+        2.0,
+        2.15,
+        2.6
+      ]
     },
     "M_glass": {
       "kind": "glass"

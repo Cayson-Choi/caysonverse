@@ -590,6 +590,8 @@ def write_manifest(kit, lot, path):
             continue
         mats[name] = {"pbr": d["set"], "repeatMeters": [1, 1], "tileMeters": tiles[d["set"]], "vertexColor": True,
                       "roughnessScale": d.get("rough", 1.0), "normalScale": d.get("normal", 1.0), "metal": bool(d.get("metal"))}
+        if d.get("gain"):
+            mats[name]["albedoGain"] = list(d["gain"])  # linear RGB multiplier on the set's albedo (the game's material colour)
     js = {
         "lot": lot["id"],
         "format": "ktx2",
