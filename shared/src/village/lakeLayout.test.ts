@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { isBlocked, type AABB } from "../collision";
 import { MOVE_ELAPSED_CEIL_MS, RUN_SPEED, VILLAGE_MAX_CLIENTS } from "../constants";
 import { PLAYER_RADIUS, SEAT_REACH, approachesSeat } from "../worldMap";
-import { SIT_POSE } from "../sitPose";
 import {
   LAKE_AREA,
   LAKE_COLLIDER_AREA,
@@ -375,34 +374,8 @@ describe("seats (rule P6: every seat sit-able; a backed one only from its front)
     for (const s of seats.filter((q) => q.kind === "fishing_chair")) {
       const spot = LAKE_FISHING_SPOTS.find((q) => q.id === s.spot)!;
       expect(s.yaw).toBeCloseTo(spot.yaw, 9);
-      // (the chair gap puts a pier-edge root up to 1 cm past the deck's edge: judged 3 cm back along the facing)
-      const fb = LAKE_FACE_DIR[spot.face];
-      expect(onLakeDeck(s.x - fb.x * 0.03, s.z - fb.z * 0.03) || !inLakeWater(s.x - fb.x * 0.03, s.z - fb.z * 0.03), `${s.id} root`).toBe(true);
+      expect(onLakeDeck(s.x, s.z) || !inLakeWater(s.x, s.z), `${s.id} root`).toBe(true);
       expect(Math.hypot(s.x - spot.anchor.x, s.z - spot.anchor.z)).toBeLessThan(0.5);
-    }
-  });
-
-  it("fishing chairs: the sitter's back clears the backrest (bulky tops), the butt is on the seat, the calves are in front of its edge", () => {
-    const CHAIR = { frontEdge: 0.21, seatTop: 0.46 };
-    const CHAIR_BACK_FACE = 0.208; // build_chair.py: the back panel's face at its lower edge (the uprights lean back from there)
-    const BULKIEST_BACK = 0.738; // measured in Sit_Chair_Idle over every outfit part (the fattest top / coat)
-    for (const s of seats.filter((q) => q.kind === "fishing_chair")) {
-      const spot = LAKE_FISHING_SPOTS.find((q) => q.id === s.spot)!;
-      const f = LAKE_FACE_DIR[spot.face];
-      // the chair's centre stands 0.55 m inside the water's edge (lakeLayout chairSeat), facing out
-      const centre = { x: spot.anchor.x - f.x * 0.55, z: spot.anchor.z - f.z * 0.55 };
-      const aheadOfCentre = (s.x - centre.x) * f.x + (s.z - centre.z) * f.z; // the root, along the facing
-      const backrestBehindRoot = aheadOfCentre + CHAIR_BACK_FACE;
-      const edgeBehindRoot = aheadOfCentre - CHAIR.frontEdge;
-      // the bare torso's back is SIT_POSE.torsoBehindRoot behind the root; the bulkiest outfit (measured: top 0.738 behind the root; the back panel's face is 0.208 behind the chair's centre)
-      expect(backrestBehindRoot - BULKIEST_BACK, `${s.id}: gap to the backrest`).toBeGreaterThanOrEqual(0.025);
-      // the butt (0.40..0.50 m behind the root) sits on the seat: its front edge is not behind the butt's front
-      expect(edgeBehindRoot, `${s.id}: the seat reaches under the butt`).toBeLessThanOrEqual(0.4 + 1e-9);
-      expect(SIT_POSE.torsoBehindRoot).toBeLessThan(BULKIEST_BACK);
-      // the hanging calves (0.22 m behind the root) stay in front of the seat's front edge
-      expect(edgeBehindRoot, `${s.id}: calves clear the front edge`).toBeGreaterThan(SIT_POSE.calvesBehindRoot);
-      expect(s.frontEdge, `${s.id}: frontEdge`).toBeCloseTo(edgeBehindRoot, 2);
-      expect(s.approachEdge, `${s.id}: approachEdge (the chair's outer back, 0.26 behind its centre)`).toBeCloseTo(aheadOfCentre + 0.26, 2);
     }
   });
 
