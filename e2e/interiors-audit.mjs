@@ -3,7 +3,7 @@
  * walks in by the real doors, then shoots a fixed set of photo cameras (window.__cvShot) in each room's own frame.
  *   server:  PORT=2993 npx tsx src/index.ts   (server/)      client: VITE_SERVER_URL=http://localhost:2993 npx vite --port 5993 --strictPort (client/)
  *   CV_CLIENT_URL=http://localhost:5993 node e2e/interiors-audit.mjs --what=houses [--houses=2,3] [--phone] [--night] [--out=<dir>] [--tag=before]
- *   --what=houses|lots|shop   (lots: --rooms=lot_school_class,lot_library_reading)
+ *   --what=houses|lots|shop|cafe   (lots: --rooms=lot_school_class,lot_library_reading; --q=cafe=off adds a DEV address flag)
  */
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -25,7 +25,7 @@ const page = p.page;
 const time = night ? "2026-11-03T22:30" : "2026-11-03T12:30";
 const imp = (path) => page.evaluate((x) => window.__imp(x).then(() => true), path);
 
-await page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(time)}`, { waitUntil: "domcontentloaded" });
+await page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(time)}${arg("q", "") ? "&" + arg("q", "") : ""}`, { waitUntil: "domcontentloaded" });
 await entryReady(p);
 await page.locator("input.cv-input").first().fill("audit" + Math.floor(Math.random() * 900 + 100));
 await press(p, page.locator(".cv-submit"));
@@ -183,8 +183,18 @@ if (what === "cafe") {
     d: [50.6, 1.6, -20, 50.6, 1.2, -10, 70],
     e: [50, 1.3, -14, 50, 3.0, -17, 80],
     f: [44.5, 1.6, -13, 56, 1.3, -14, 70],
+    // through the glass from the terrace (standing eye height): left window, the door, right window, and the whole front from the plaza side
+    w1: [43.2, 1.6, -19.6, 54, 1.7, -14.8, 62],
+    w2: [43.2, 1.6, -15.1, 54, 1.9, -15.1, 62],
+    w3: [43.2, 1.6, -10.6, 54, 1.7, -15.4, 62],
+    w4: [36, 2.0, -15.1, 50, 1.9, -15.1, 58],
+    w5: [44.6, 1.55, -12.5, 52, 1.6, -18.5, 66],
   };
   await shoot("cafe", V);
+}
+if (what === "plaza") {
+  await sleep(4000);
+  await shoot("plaza", { o: [30, 40, 60, 0, 0, 0, 55], cafe: [30, 14, 6, 50, 2, -15, 55] });
 }
 console.log("errors", JSON.stringify(run.errors).slice(0, 500));
 await browser.close();
