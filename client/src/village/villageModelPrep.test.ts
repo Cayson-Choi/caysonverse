@@ -341,7 +341,7 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(fs.indexOf("vec3 villageAlbedo = diffuseColor.rgb;")).toBeLessThan(fs.indexOf("#include <color_fragment>"));
     // Both maps are read only while they count.
     // The day map's texel goes through the live sun's swap (sunShadows.ts ssDay: the baked sun out, the real one in).
-    expect(fs).toContain("if ( uVillageNight < 0.999 ) lightMapTexel.rgb = ssDay( texture2D( lightMap, vLightMapUv ).rgb, vLightMapUv ) * uVillageDayTint * ( 1.0 - uVillageNight );");
+    expect(fs).toContain("lightMapTexel.rgb = ssDay( villageRawLight, vLightMapUv ) * uVillageDayTint * ( 1.0 - uVillageNight );");
     expect(shader.uniforms.uSsOn).toBe(sunShadowUniforms.uSsOn);
     expect(shader.uniforms.uSsNearMap).toBe(sunShadowUniforms.uSsNearMap);
     // The normal, n.l and the live shadow are read at the top of main (the derivatives outside every branch).
@@ -380,7 +380,7 @@ describe("prepareVillage: the model dressed for the game", () => {
     const ground = compileOf(f.mats.LM_grass);
     expect(ground.uniforms).not.toHaveProperty("uVillageNearFade");
     expect(ground.fragmentShader).not.toContain("discard");
-    expect(f.mats.LM_grass.customProgramCacheKey()).toBe("village-light-ground");
+    expect(f.mats.LM_grass.customProgramCacheKey()).toBe("village-light-ground-grass");
     expect(f.mats.LM_grass.userData[NEAR_FADE_KEY]).toBeUndefined();
     expect(FOLIAGE_NEAR_FADE[0]).toBeGreaterThan(VILLAGE_CAMERA_PLANES.near);
   });

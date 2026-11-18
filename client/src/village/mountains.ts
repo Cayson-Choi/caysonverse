@@ -27,6 +27,7 @@ import {
   Matrix3,
   Matrix4,
   MeshBasicMaterial,
+  Quaternion,
   Uint16BufferAttribute,
   Uint32BufferAttribute,
   Vector3,
@@ -60,7 +61,7 @@ export const MOUNTAIN_LOOK = {
   hazeDistance: 1010,
   hazePower: 1.47,
   /** The extra haze in the valleys (the foot of each ridge): × (1 - t)^1.5. */
-  valley: 0.45,
+  valley: 0.26,
   /** The haze never quite hides the farthest ridge by day. */
   hazeMax: 0.86,
   /** The sky colour the haze takes: the dome's texture this far above the horizon (radians). */
@@ -206,6 +207,24 @@ uniform vec4 uHaze; // start, distance, valley, max
 uniform float uHazePow;
 varying float vValley;
 varying vec3 vMtnWorld;
+float mtnHash( vec3 p ) { p = fract( p * 0.3183099 + 0.1 ); p *= 17.0; return fract( p.x * p.y * p.z * ( p.x + p.y + p.z ) ); }
+float mtnNoise( vec3 x ) {
+  vec3 i = floor( x ); vec3 f = fract( x ); f = f * f * ( 3.0 - 2.0 * f );
+  return mix( mix( mix( mtnHash( i ), mtnHash( i + vec3( 1, 0, 0 ) ), f.x ), mix( mtnHash( i + vec3( 0, 1, 0 ) ), mtnHash( i + vec3( 1, 1, 0 ) ), f.x ), f.y ),
+    mix( mix( mtnHash( i + vec3( 0, 0, 1 ) ), mtnHash( i + vec3( 1, 0, 1 ) ), f.x ), mix( mtnHash( i + vec3( 0, 1, 1 ) ), mtnHash( i + vec3( 1, 1, 1 ) ), f.x ), f.y ), f.z );
+}
+`;
+// The atlas's leaf-scale grain reads as a repeating scale pattern on the near ridges: it is sampled from a blurrier mip, and the
+// forest's own broad light and dark stands (world-space noise at two scales) break the repetition.
+const FRAGMENT_MAP = /* glsl */ `
+#ifdef USE_MAP
+{
+  vec4 mtnTex = texture2D( map, vMapUv, 3.4 );
+  float mn = mtnNoise( vMtnWorld * 0.035 ) * 0.6 + mtnNoise( vMtnWorld * 0.11 + 7.0 ) * 0.4;
+  mtnTex.rgb *= 0.78 + 0.5 * mn;
+  diffuseColor *= mtnTex;
+}
+#endif
 `;
 // After the map: the land (map × the land tint in diffuse) fades into the dome's horizon sky in this direction.
 const FRAGMENT_HAZE = /* glsl */ `
@@ -256,7 +275,7 @@ export function createMountainMaterial(
       .replace("#include <fog_vertex>", `#include <fog_vertex>\n${VERTEX_MAIN}`);
     let frag = shader.fragmentShader
       .replace("#include <common>", `#include <common>\n${FRAGMENT_PARS}`)
-      .replace("#include <map_fragment>", `#include <map_fragment>\n${FRAGMENT_HAZE}`);
+      .replace("#include <map_fragment>", `${FRAGMENT_MAP}\n${FRAGMENT_HAZE}`);
     if (inverse) {
       frag = frag
         .replace("void main() {", `${curve === "neutral" ? "#define VILLAGE_INVERSE_NEUTRAL\n" : ""}${INVERSE_TONE_GLSL}\nvoid main() {`)
@@ -300,6 +319,17 @@ const scratch: Rgb = [1, 1, 1];
 // ───────────────────────────────────────── cutting the old far range ─────────────────────────────────────────
 
 const tmp = new Vector3();
+const RIM_VARY_R2 = 96 * 96;
+const tmpL = new Matrix4();
+const varM = new Matrix4();
+const varQ = new Quaternion();
+const varS = new Vector3();
+const zero = new Vector3();
+const up = new Vector3(0, 1, 0);
+const hash01 = (v: number) => {
+  const s = Math.sin(v) * 43758.5453;
+  return s - Math.floor(s);
+};
 const tmpM = new Matrix4();
 
 export interface BackdropCut {
@@ -314,11 +344,12 @@ export interface BackdropCut {
  * world origin, in x/z) and the far forest's instances standing beyond it. The geometry belongs to the loader's cache:
  * the trimmed mesh gets a copy sharing its attributes with a new index; `restore` gives the original back.
  */
-export function cutFarBackdrop(root: Object3D, radius = BACKDROP_CUT_RADIUS): BackdropCut {
+export function cutFarBackdrop(root: Object3D, radius = BACKDROP_CUT_RADIUS, repose?: (x: number, z: number) => number): BackdropCut {
   const r2 = radius * radius;
   const undo: Array<() => void> = [];
   let trianglesRemoved = 0;
   let instancesRemoved = 0;
+  let reposed = 0;
   root.updateMatrixWorld(true);
   root.traverse((o) => {
     if ((o as Mesh).isMesh && o.name === BACKDROP_MESH && !(o as InstancedMesh).isInstancedMesh) {
@@ -365,11 +396,30 @@ export function cutFarBackdrop(root: Object3D, radius = BACKDROP_CUT_RADIUS): Ba
         tmpM.fromArray(saved, i * 16).premultiply(inst.matrixWorld);
         const x = tmpM.elements[12]!;
         const z = tmpM.elements[14]!;
-        if (x * x + z * z > r2) continue;
+        const d2 = x * x + z * z;
+        // beyond the cut (repose gives the outer ground's height) or on the rim of the village (95 m out: kept where it stands)
+        if (d2 > r2 || (repose && d2 > RIM_VARY_R2)) {
+          // a far tree beyond the cut: stood again on the outer ground (repose gives its height), or gone where there is none
+          const y = d2 > r2 ? (repose ? repose(x, z) : Number.NaN) : tmpM.elements[13]!;
+          if (!Number.isFinite(y)) continue;
+          // the forest was one crown copied at an even spacing: each tree gets its own size and turn, one in six is left out
+          const h1 = hash01(x * 12.9898 + z * 78.233);
+          const h2 = hash01(x * 39.346 + z * 11.135);
+          const h3 = hash01(x * 7.123 + z * 91.717);
+          if (h1 < 1 / 6) continue;
+          tmpL.fromArray(saved, i * 16);
+          varM.compose(zero, varQ.setFromAxisAngle(up, h2 * Math.PI * 2), varS.setScalar(0.7 + h3 * 0.85));
+          tmpL.multiply(varM);
+          tmpL.toArray(arr, kept * 16);
+          arr[kept * 16 + 13] = saved[i * 16 + 13]! + (y - tmpM.elements[13]!);
+          kept++;
+          reposed++;
+          continue;
+        }
         if (kept !== i) arr.set(saved.subarray(i * 16, i * 16 + 16), kept * 16);
         kept++;
       }
-      if (kept === count) return;
+      if (kept === count && !reposed) return;
       instancesRemoved += count - kept;
       inst.count = kept;
       inst.instanceMatrix.needsUpdate = true;
