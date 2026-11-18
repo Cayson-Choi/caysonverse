@@ -632,31 +632,59 @@ try {
     const pad = await p.page.evaluate(async () => (await window.__imp("/village/parkArea.ts")).WHEEL_PAD);
     await walkWithDetour(pad.x, pad.z, 1.5);
     const st = () =>
-      p.page.evaluate(async () => {
+      p.page.evaluate(async (pad) => {
         const { wheelAt, WHEEL_RIDE_CYCLES } = await window.__imp("/land/wheel.ts");
-        const { selfRide } = await window.__imp("/src/land/coasterRide.ts");
+        const { selfRide, rideNotice, landPose } = await window.__imp("/src/land/coasterRide.ts");
         const { RIDE } = await window.__imp("/land/rides.ts");
         const { villageClock } = await window.__imp("/src/village/villageClock.ts");
+        const room = (await window.__imp("/src/net/connection.ts")).getRoom();
+        const me = room?.state?.players?.get(room.sessionId);
         const { status, cycle } = wheelAt(villageClock.liveMs());
-        return { status, cycle, cyclesPerLap: WHEEL_RIDE_CYCLES, slot: selfRide.slot, onWheel: selfRide.ride === RIDE.wheel };
-      });
-    await press(p, p.page.getByTestId("ride-go-wheel")); // the HUD also reserves the next loading gondola when the wheel turns
-    const boardDeadline = Date.now() + 60000;
+        const slot = me?.rideSeat ?? null;
+        return {
+          status, cycle, cyclesPerLap: WHEEL_RIDE_CYCLES,
+          slot, serverRide: me?.rideId ?? null, clientSlot: selfRide.slot, clientRide: selfRide.ride,
+          aboard: slot !== null && slot >= 0 && me.rideId === RIDE.wheel && selfRide.ride === RIDE.wheel && selfRide.slot === slot,
+          atPad: me?.area === "park" && Math.hypot(me.x - pad.x, me.z - pad.z) <= pad.radius,
+          notice: rideNotice.reason, hudPose: { ...landPose },
+        };
+      }, pad);
+    const boardingDiagnostics = async (message, state) => {
+      console.log(`wheel ${message}: ${JSON.stringify({ pad, state, interaction: await interactionState() })}`);
+    };
+    const openDeadline = Date.now() + 60000;
     let state = await st();
-    while (state.slot < 0 && Date.now() < boardDeadline) {
+    while ((!state.atPad || state.status !== "boarding") && Date.now() < openDeadline) {
       await sleep(250);
       state = await st();
     }
-    if (!state.onWheel || state.slot < 0) throw new Error(`Wheel boarding failed: ${JSON.stringify(state)}`);
+    const interaction = await interactionState();
+    const wheel = interaction.targets.find((t) => t.id === "ride_board:wheel");
+    if (!state.atPad || state.status !== "boarding" || !wheel || interaction.action !== wheel.label) {
+      await boardingDiagnostics("station not ready", state);
+      throw new Error("Wheel boarding needs the synced player at the open station and its action button");
+    }
+    console.log(`wheel board: ${JSON.stringify({ pad, state, interaction })}`);
+    if (p.touch) await p.page.locator(".cv-action-btn").and(p.page.getByRole("button", { name: wheel.label, exact: true })).tap();
+    else await act(p);
+    const boardDeadline = Date.now() + 60000;
+    do {
+      await sleep(250);
+      state = await st();
+    } while (!state.aboard && Date.now() < boardDeadline);
+    if (!state.aboard) {
+      await boardingDiagnostics("boarding failed", state);
+      throw new Error(`Wheel boarding failed: ${JSON.stringify(state)}`);
+    }
     const boarded = state;
     let turned = false;
     const rideDeadline = Date.now() + 220000;
-    while (state.onWheel && state.slot === boarded.slot && Date.now() < rideDeadline) {
+    while (state.aboard && state.slot === boarded.slot && Date.now() < rideDeadline) {
       if (state.status === "riding") turned = true;
       await sleep(500);
       state = await st();
     }
-    if (!turned || state.slot >= 0 || state.cycle - boarded.cycle < boarded.cyclesPerLap) {
+    if (!turned || state.slot !== -1 || state.clientSlot !== -1 || state.cycle - boarded.cycle < boarded.cyclesPerLap) {
       throw new Error(`Incomplete wheel lap: boarded=${JSON.stringify(boarded)} end=${JSON.stringify(state)}`);
     }
     run.check("wheel: same seat through a full revolution and automatic unload", true, { slot: boarded.slot, boardedCycle: boarded.cycle, unloadedCycle: state.cycle });
