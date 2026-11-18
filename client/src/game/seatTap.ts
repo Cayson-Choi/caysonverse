@@ -172,7 +172,12 @@ const CLEAR_WANTED = 0.3;
 /** How far round the goal (m) the seat must still be the one offered: a tap-walk stops up to ARRIVE_DIST short of it. */
 const ROBUST_STEPS = [0.4, 0.3, 0.2, 0.1, 0] as const;
 
-const goals = new WeakMap<readonly Seat[], Map<number, { x: number; z: number } | null>>();
+interface CachedGoal {
+  bounds: Bounds;
+  obstacles: readonly AABB[];
+  point: { x: number; z: number } | null;
+}
+const goals = new WeakMap<readonly Seat[], Map<number, CachedGoal>>();
 
 /**
  * How far round the seat point (m) an obstacle can matter to the goal search: the goal's radius, the widest ring, the
@@ -190,7 +195,7 @@ function obstaclesNear(x: number, z: number, obstacles: readonly AABB[]): AABB[]
  * within SEAT_REACH) — where it stays offered all round the spot a tap-walk's stop could be (it stops up to ARRIVE_DIST
  * short: ROBUST_STEPS, the widest ring that holds first), then as roomy as the terrace allows (a way round needs room to
  * get in). Another chair nearer the stop is no matter: the tapped one is preferred (seatPreference.ts). Null when there
- * is no such spot. Cached per seat list.
+ * is no such spot. The village and interiors share a seat list, so a cached result belongs to its map's bounds and obstacles.
  *
  * Cost (review 2026-11-15: up to 20 ms in a pointerup handler, the first tap on a porch bench): only the obstacles near the
  * seat are tested (`obstaclesNear`), which keeps one seat well under CameraRig's PLAN_SLICE_MS, and `warmSeatApproachGoals`
@@ -199,7 +204,8 @@ function obstaclesNear(x: number, z: number, obstacles: readonly AABB[]): AABB[]
 export function seatApproachGoal(seats: readonly Seat[], index: number, allObstacles: readonly AABB[], bounds: Bounds): { x: number; z: number } | null {
   let byIndex = goals.get(seats);
   if (!byIndex) goals.set(seats, (byIndex = new Map()));
-  if (byIndex.has(index)) return byIndex.get(index) ?? null;
+  const cached = byIndex.get(index);
+  if (cached?.bounds === bounds && cached.obstacles === allObstacles) return cached.point;
   const s = seats[index];
   const obstacles = obstaclesNear(s.x, s.z, allObstacles);
   let best: { x: number; z: number } | null = null;
@@ -230,13 +236,14 @@ export function seatApproachGoal(seats: readonly Seat[], index: number, allObsta
       }
     }
   }
-  byIndex.set(index, best);
+  byIndex.set(index, { bounds, obstacles: allObstacles, point: best });
   return best;
 }
 
 /** Whether seat `index` of `seats` has its goal worked out already. */
-export function seatApproachGoalReady(seats: readonly Seat[], index: number): boolean {
-  return goals.get(seats)?.has(index) ?? false;
+export function seatApproachGoalReady(seats: readonly Seat[], index: number, obstacles: readonly AABB[], bounds: Bounds): boolean {
+  const cached = goals.get(seats)?.get(index);
+  return cached?.bounds === bounds && cached.obstacles === obstacles;
 }
 
 /** The marked seats' indices in `seats` (the ones a tap can mean). */
@@ -259,7 +266,12 @@ export function warmSeatApproachGoals(
   bounds: Bounds,
   schedule: (run: () => void) => unknown = (run) => setTimeout(run, 0),
 ): () => void {
-  const todo = markedSeatIndices(seats).filter((i) => !seatApproachGoalReady(seats, i));
+  const todo = markedSeatIndices(seats).filter((i) => {
+    const { x, z } = seats[i];
+    return x + GOAL_RADIUS >= bounds.minX && x - GOAL_RADIUS <= bounds.maxX &&
+      z + GOAL_RADIUS >= bounds.minZ && z - GOAL_RADIUS <= bounds.maxZ &&
+      !seatApproachGoalReady(seats, i, obstacles, bounds);
+  });
   let cancelled = false;
   const step = (): void => {
     if (cancelled) return;
