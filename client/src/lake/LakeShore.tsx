@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Group, Mesh, type BufferGeometry, type Object3D } from "three";
 import { LAKE_SHORE, LAKE_WATER_Y } from "@caysonverse/shared/village/lakeLayout";
+import { compileSafely } from "../game/compileSafely";
 import { getPbrSet } from "../village/pbr/pbrLibrary";
 import { groundGrainTexture } from "../village/groundDetail";
 import { bankGeometry } from "../village/creek/creekGeometry";

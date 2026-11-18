@@ -18,6 +18,7 @@ import {
 import { mergeStones } from "./creekStones";
 import { groundGrainTexture } from "../groundDetail";
 import { makeFountainNoise } from "../fountainWater";
+import { compileSafely } from "../../game/compileSafely";
 import { getPbrSet, type PbrSet } from "../pbr/pbrLibrary";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { createDepthWater } from "./depthWater";

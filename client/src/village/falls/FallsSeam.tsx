@@ -2,6 +2,7 @@ import { compileSafely } from "../../game/compileSafely";
 import { useEffect, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Group, Mesh } from "three";
+import { compileSafely } from "../../game/compileSafely";
 import { getPbrSet } from "../pbr/pbrLibrary";
 import { groundGrainTexture } from "../groundDetail";
 import { mergeStones, mulberry32, type StoneSpec } from "../creek/creekStones";

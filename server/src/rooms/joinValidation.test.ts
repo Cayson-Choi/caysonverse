@@ -167,6 +167,7 @@ describe("validateJoinOptions — appearance", () => {
       "appearance",
       "deviceKeyHash",
       "nickname",
+      "tabId",
     ]);
   });
 

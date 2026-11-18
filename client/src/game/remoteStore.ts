@@ -267,6 +267,20 @@ export interface DrawnPose {
  */
 export const remoteDrawnProbe = new Map<string, DrawnPose>();
 
+/** Where a remote's body is on the SCREEN (not the pose it was told to be drawn at): what the renderer will draw this frame. */
+export interface RenderedView {
+  /** "full": the avatar's own node tree (its matrixWorld as it stands); "imp": the far stand-in's instance; "none": neither is in the scene. */
+  kind: "full" | "imp" | "none";
+  x: number;
+  y: number;
+  z: number;
+  /** The avatar group's visibility. */
+  visible: boolean;
+}
+
+/** DEV-only E2E probe (`__cv.getRemoteView`): a function per remote reading the rendered body's world point on demand. */
+export const remoteViewProbe = new Map<string, () => RenderedView>();
+
 /**
  * Where the other riders on foot stand in the bus (bus-local, the server's newest point): the walk predicts with them as
  * bodies it does not step into (busCabin.ts crowdBlocks); a seated rider is inside its seat's solid already.
