@@ -19,6 +19,7 @@ import {
   dropOverview,
   requestRecenter,
   cancelOrbitGoal,
+  zoomSkyBy,
 } from "./viewState";
 import {
   overviewFar,
@@ -796,6 +797,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
               viewState.ovHeight + delta * CAMERA.ovPinchSpeed,
               fitHeight.current,
             );
+          } else if (viewState.skyLook && viewState.mode === "fp") {
+            zoomSkyBy(Math.exp((pinchPrev - curr) * 0.006)); // fingers apart (curr > prev) = lens in
           } else {
             cancelOrbitGoal(); // the player took the camera back
             applyZoom(orbit, pinchZoomDelta(pinchPrev, curr), ZOOM_BAND);
@@ -824,7 +827,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         viewState.ovCenterZ = c.z;
       } else if (viewState.mode === "fp") {
         cancelOrbitGoal();
-        const gain = dragSpeed();
+        const gain = dragSpeed() * viewState.skyZoom; // zoomed in, a drag turns the view less
         viewState.fpYaw = normalizeAngle(viewState.fpYaw - DRAG_SIGN * dx * gain);
         viewState.fpPitch = clampFpPitch(viewState.fpPitch + DRAG_SIGN * dy * gain, viewState.skyLook);
       } else {
@@ -957,6 +960,11 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
           viewState.ovHeight + e.deltaY * CAMERA.ovZoomSpeed,
           fitHeight.current,
         );
+        return;
+      }
+      // The star finder's sky view: the wheel narrows / widens the lens (never leaves first person).
+      if (viewState.skyLook && viewState.mode === "fp") {
+        zoomSkyBy(Math.exp(Math.max(-300, Math.min(300, e.deltaY)) * 0.0022));
         return;
       }
       // deltaY < 0 = zoom in (toward min → one notch past min enters FP);
@@ -1338,7 +1346,15 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     // away entirely. Continuous in ovT, and restored exactly to the scene's far plane at 0.
     // The over-the-shoulder view against an indoor wall widens a portrait phone's view (cameraShoulder.ts), third person only.
     // In the bus the rider's own lens (riderFov, set above) stays as it is.
-    const fov = baseFov.current + tpSpot.fovAdd * (1 - t) * (1 - ovT) * (1 - fw);
+    // The star finder's zoom (a narrower lens while looking up at the sky; eased, back to 1 when it is closed).
+    viewState.skyFovBase = baseFov.current;
+    const zoomOn = viewState.skyLook && viewState.mode === "fp";
+    if (!zoomOn) viewState.skyZoomGoal = 1;
+    if (viewState.skyZoom !== viewState.skyZoomGoal) {
+      const dz = viewState.skyZoomGoal - viewState.skyZoom;
+      viewState.skyZoom = Math.abs(dz) < 0.002 ? viewState.skyZoomGoal : viewState.skyZoom + dz * (1 - Math.exp(-9 * Math.min(delta, 0.1)));
+    }
+    const fov = (baseFov.current + tpSpot.fovAdd * (1 - t) * (1 - ovT) * (1 - fw)) * viewState.skyZoom;
     if (selfBusRide.slot < 0 && selfRide.slot < 0 && cam.isPerspectiveCamera && Math.abs(cam.fov - fov) > 1e-3) {
       cam.fov = fov;
       cam.updateProjectionMatrix();

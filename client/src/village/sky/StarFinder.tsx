@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import {
   SEASON_NAME,
   SEASON_ORDER,
@@ -11,7 +11,7 @@ import {
 import { altAzOf, moonPhaseName, seasonAt, type Vec3 } from "@caysonverse/shared/village/skyMath";
 import type { Orbit } from "../../game/types";
 import { clampFpPitch } from "../../game/viewMode";
-import { enterFp, exitFp, exitOverview, viewState } from "../../game/viewState";
+import { enterFp, exitFp, exitOverview, setSkyZoomGoal, viewState, zoomSkyBy } from "../../game/viewState";
 import { isTouchDevice } from "../../device";
 import { HUD_INFO_BTN_W_PX } from "../../game/hud";
 import { useTouchHudLayout } from "../../ui/useTouchHudLayout";
@@ -26,6 +26,7 @@ import { moonDirection } from "./StarSkyExtras";
 import {
   closeFinder,
   setFinderView,
+  setFolded,
   setShowFound,
   patchFinder,
   useStarFinder,
@@ -105,6 +106,8 @@ export function StarFinder({ orbit }: { orbit: Orbit }) {
     <>
       <SkyLayers />
       {open && area === "village" && !boarded && <FinderCard orbit={orbit} />}
+      {open && area === "village" && !boarded && <ZoomControls />}
+      <Discovery />
       <Announcer />
     </>
   );
@@ -145,6 +148,67 @@ function SkyLayers() {
   );
 }
 
+/** The zoom buttons (+ / the zoom readout that resets it / −): at the screen's side, only while looking at the night sky. */
+function ZoomControls() {
+  const night = useStarFinder((s) => s.phase === "night" && s.catalogReady);
+  const firstPerson = useStarFinder((s) => s.firstPerson);
+  const layout = useTouchHudLayout();
+  const readout = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    skyOverlay.zoomText = readout.current;
+    return () => {
+      skyOverlay.zoomText = null;
+    };
+  }, [night, firstPerson]);
+  if (!night || !firstPerson) return null;
+  const left = isTouchDevice && layout.column.side === "right";
+  return (
+    <div className={"cv-sky-zoom" + (left ? " is-left" : "")} role="group" aria-label="하늘 확대">
+      <CardButton label="하늘 확대" onClick={() => zoomSkyBy(1 / 1.4)}>
+        ＋
+      </CardButton>
+      <button
+        type="button"
+        className="cv-sky-btn cv-sky-zoom-read"
+        aria-label="확대 원래대로"
+        title="눌러서 원래 크기로"
+        tabIndex={-1}
+        onPointerDown={(e) => e.preventDefault()}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setSkyZoomGoal(1)}
+      >
+        <span ref={readout}>×1.0</span>
+      </button>
+      <CardButton label="하늘 축소" onClick={() => zoomSkyBy(1.4)}>
+        －
+      </CardButton>
+    </div>
+  );
+}
+
+/** The "발견!" moment: a short sparkle and the figure's one-line story (the first time a figure is found). */
+function Discovery() {
+  const d = useStarFinder((s) => s.discovery);
+  useEffect(() => {
+    if (!d) return;
+    const id = setTimeout(() => patchFinder({ discovery: null }), 5200);
+    return () => clearTimeout(id);
+  }, [d]);
+  const f = d ? figureById(d.id) : undefined;
+  if (!d || !f) return null;
+  return (
+    <div className="cv-sky-found" key={d.at} aria-hidden="true">
+      <span className="cv-sky-sparks">
+        {Array.from({ length: 12 }, (_, i) => (
+          <i key={i} style={{ "--a": `${i * 30}deg`, "--d": `${46 + (i % 3) * 14}px` } as CSSProperties} />
+        ))}
+      </span>
+      <p className="cv-sky-found-big">✨ 발견! {figureTitle(f)}</p>
+      <p className="cv-sky-found-story">{f.story}</p>
+    </div>
+  );
+}
+
 /** Screen-reader words ("카시오페이아자리를 찾았어요"). */
 function Announcer() {
   const announce = useStarFinder((s) => s.announce);
@@ -158,12 +222,47 @@ function Announcer() {
 function FinderCard({ orbit }: { orbit: Orbit }) {
   const view = useStarFinder((s) => s.view);
   const phase = useStarFinder((s) => s.phase);
-  const [folded, setFolded] = useState(false);
+  const folded = useStarFinder((s) => s.folded);
   const card = useRef<HTMLElement>(null);
   useEffect(() => {
     skyOverlay.card = card.current;
     return () => {
       skyOverlay.card = null;
+    };
+  }, [folded]);
+  // While the player drags to look around (or wheels / pinches the lens) the card and the zoom buttons fade, so the sky
+  // is clear; they come back a moment after the hand lifts. Plain class toggles, no React render.
+  useEffect(() => {
+    let timer = 0;
+    const fade = (on: boolean) => {
+      for (const el of document.querySelectorAll(".cv-sky-card, .cv-sky-zoom")) el.classList.toggle("is-looking", on);
+    };
+    const inUi = (t: EventTarget | null) => t instanceof Element && !!t.closest(".cv-sky-card, .cv-sky-zoom, button, input");
+    const onMove = (e: PointerEvent) => {
+      if (e.buttons === 0 || inUi(e.target)) return;
+      clearTimeout(timer);
+      fade(true);
+    };
+    const onUp = () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(() => fade(false), 700);
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (inUi(e.target)) return;
+      fade(true);
+      onUp();
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    window.addEventListener("wheel", onWheel, { passive: true });
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("wheel", onWheel);
+      fade(false);
     };
   }, []);
   // A phone: beside the HUD's button column (its side and inset from the touch layout), under the top row.
@@ -171,21 +270,61 @@ function FinderCard({ orbit }: { orbit: Orbit }) {
   const beside = layout.column.inset + HUD_INFO_BTN_W_PX + 8;
   const style: CSSProperties | undefined = isTouchDevice
     ? layout.column.side === "left"
-      ? { left: beside, right: layout.column.inset }
-      : { left: layout.column.inset, right: beside }
+      ? { left: beside, right: folded ? "auto" : layout.column.inset }
+      : { left: folded ? "auto" : layout.column.inset, right: beside }
     : undefined;
+  if (folded) return <FoldedPill style={style} cardRef={card} />;
   return (
     <section
       ref={card}
       style={style}
-      className={"cv-sky-card" + (isTouchDevice ? " is-touch" : "") + (folded ? " is-folded" : "")} aria-label="별자리 찾기">
-      <CardHead folded={folded} onFold={() => setFolded((f) => !f)} />
-      {!folded && (view === "album" ? <Album /> : phase === "day" ? <DayBody /> : <NightBody orbit={orbit} />)}
+      className={"cv-sky-card" + (isTouchDevice ? " is-touch" : "")}
+      aria-label="별자리 찾기"
+    >
+      <CardHead onFold={() => setFolded(true)} />
+      <div className="cv-sky-scroll">
+        {view === "album" ? <Album /> : phase === "day" ? <DayBody /> : <NightBody orbit={orbit} />}
+      </div>
+      {phase === "night" && <CardFoot />}
     </section>
   );
 }
 
-function CardHead({ folded, onFold }: { folded: boolean; onFold: () => void }) {
+/** The folded card: one small pill ("🔭 별자리 6/6 ▸"); a tap unfolds it. */
+function FoldedPill({ style, cardRef }: { style: CSSProperties | undefined; cardRef: React.RefObject<HTMLElement | null> }) {
+  const progress = useStarFinder((s) => s.progress);
+  const season = seasonAt(villageClock.nowMs());
+  const c = seasonCounts(progress)[season];
+  return (
+    <section ref={cardRef} style={style} className={"cv-sky-card is-pill" + (isTouchDevice ? " is-touch" : "")} aria-label="별자리 찾기">
+      <button
+        type="button"
+        className="cv-sky-pill-btn"
+        aria-label="별자리 카드 펼치기"
+        tabIndex={-1}
+        onPointerDown={(e) => e.preventDefault()}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setFolded(false)}
+      >
+        🔭 별자리 {c.found}/{c.total} <span aria-hidden="true">▸</span>
+      </button>
+      <CardButton label="별자리 찾기 닫기" onClick={closeFinder}>
+        ✕
+      </CardButton>
+    </section>
+  );
+}
+
+/** The card's foot (night): whether the found figures' lines stay on the sky, with what it means in one line. */
+function CardFoot() {
+  return (
+    <footer className="cv-sky-foot">
+      <ShowFoundToggle />
+    </footer>
+  );
+}
+
+function CardHead({ onFold }: { onFold: () => void }) {
   const view = useStarFinder((s) => s.view);
   const progress = useStarFinder((s) => s.progress);
   const season = seasonAt(villageClock.nowMs());
@@ -193,21 +332,15 @@ function CardHead({ folded, onFold }: { folded: boolean; onFold: () => void }) {
   return (
     <header className="cv-sky-head">
       <span className="cv-sky-title">
-        🔭 {!isTouchDevice && "별자리 찾기 "}
-        <span className="cv-sky-count">
-          {!isTouchDevice && "· "}
-          {countText(SEASON_NAME[season], c.found, c.total)}
-        </span>
+        🔭 <span className="cv-sky-count">{countText(SEASON_NAME[season], c.found, c.total)}</span>
       </span>
       <span className="cv-sky-head-btns">
         <CardButton label={view === "album" ? "찾기로 돌아가기" : "별자리 도감"} onClick={() => setFinderView(view === "album" ? "find" : "album")}>
           {view === "album" ? "🔭" : "📖"}
         </CardButton>
-        {isTouchDevice && (
-          <CardButton label={folded ? "카드 펼치기" : "카드 접기"} onClick={onFold}>
-            {folded ? "▾" : "▴"}
-          </CardButton>
-        )}
+        <CardButton label="카드 접기" onClick={onFold}>
+          ◂
+        </CardButton>
         <CardButton label="별자리 찾기 닫기" onClick={closeFinder}>
           ✕
         </CardButton>
@@ -392,7 +525,10 @@ function ShowFoundToggle() {
   return (
     <label className="cv-sky-toggle" onPointerDown={(e) => e.preventDefault()}>
       <input type="checkbox" tabIndex={-1} checked={on} onChange={(e) => setShowFound(e.currentTarget.checked)} />
-      본 별자리 선 계속 보기
+      <span className="cv-sky-toggle-text">
+        <span className="cv-sky-toggle-label">찾은 별자리 선 항상 켜두기</span>
+        <span className="cv-sky-toggle-hint">{on ? "켜짐 · 본 별자리 선이 하늘에 그대로 남아요" : "꺼짐 · 고른 별자리 선만 보여요"}</span>
+      </span>
     </label>
   );
 }
@@ -447,9 +583,6 @@ function Album() {
           </ul>
         </section>
       ))}
-      <div className="cv-sky-actions">
-        <ShowFoundToggle />
-      </div>
     </div>
   );
 }
