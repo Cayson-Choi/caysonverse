@@ -11,7 +11,7 @@
 | `lotstatue__lot_chapel_nave_mary` 성모상 | *The Virgin and Child, 'Bruges Madonna'* 석고 주조(1897), 미켈란젤로 원작의 복제, KAS225, 129 cm | 덴마크 국립미술관(SMK), Royal Cast Collection | 퍼블릭 도메인(Public Domain Mark 1.0) | https://open.smk.dk/artwork/image/KAS225 · 파일 https://api.smk.dk/api/v1/download-3d/h128nk494_KAS225_small.stl |
 | `lotstatue__lot_chapel_nave_saint_a` 성인상(수도복, 십자가와 책) | *Frans af Assisi* 석고 주조, KAS1959 | SMK | 퍼블릭 도메인(PDM 1.0) | https://open.smk.dk/artwork/image/KAS1959 · https://api.smk.dk/api/v1/download-3d/xd07gz58b_KAS1959_small.stl |
 | `lotstatue__lot_chapel_nave_saint_b` 성인상(갑옷과 방패) | *St. Georg iklædt rustning og kappe, med skjold* 석고 주조(도나텔로 원작의 복제), KAS82 | SMK | 퍼블릭 도메인(PDM 1.0) | https://open.smk.dk/artwork/image/KAS82 · https://api.smk.dk/api/v1/download-3d/765376019_KAS82_small.stl |
-| `lotstatue__lot_temple_hall_buddha` 본존불(광배·연화대 포함 2.8 m) | *Gilt bronze statuette of Sakyamuni Buddha*, 당말~오대(10세기), 중국 저장성박물관 소장품의 채색 사진측량 스캔 — 스캔 색을 깨끗이(때·얼룩 제거), 나발은 짙은 군청으로 칠함 | 3D: dluo (Sketchfab `7d0cbc0e0d034e63a02274ab8af70eee`) | **CC BY 4.0** — 표시: "Gilt bronze statuette of Sakyamuni Buddha" by dluo, CC BY 4.0 | Zenodo(로그인 없음) https://zenodo.org/records/10225206 |
+| `lotstatue__lot_temple_hall_buddha` 본존불과 연화대 (2.0 m) | 프로젝트를 위해 직접 제작 | Caysonverse | 프로젝트 원작 | 제작 도구와 이전 이력은 아래 본존불 항목 참조 |
 | `lotstatue__lot_temple_hall_bodhisattva` 협시보살(입상, 좌우 한 쌍으로 거울 배치, 새 금박) | 국보200 금동보살입상 3D프린팅 데이터(2018, STL) | 국가유산청(구 문화재청) | **공공누리 제1유형(출처표시)** | 같은 데이터셋 (과거 데이터 "국보200_금동보살입상…", 파일 FILE_000000001494494) |
 
 공공누리 제1유형은 발주자 승인(2026-11-17, "출처 밝히고 써"). 출처 표시 문구(크레딧 `client/public/models/LICENSE.md`·라이선스 문서에 그대로): "이 저작물은 국가유산청에서 공공누리 제1유형으로 개방한 '국가유산 3D 프린팅 데이터(국보 제200호 금동보살입상)'을 이용하였으며, 해당 저작물은 공공데이터포털(www.data.go.kr)에서 무료로 내려받을 수 있습니다."
@@ -70,7 +70,13 @@ Sketchfab에 **CC0로 표시된 박물관 실사 채색 스캔**이 있지만 �
 - **족자 2점**: Cleveland 1918.542 (CC0), `make_scroll.py`(새것 손질) + `build_scroll.py`(옻칠 축·금 마구리·끈·술) — 뒤 벽 좌우, 오른쪽은 거울.
 - **연등**: 스캔·사진 없이 직접 모델링한 연꽃봉오리 연등(두 줄 꽃잎, 능선 있는 꽃잎).
 
-## 2026-11-18 본존불 v2 — 직접 만든 원작 (소유자 "그냥 블렌더로 니가 입체적인 불상을 니가 만들어. 여러 부처님 불상을 찾아보고 비슷하게 만들면 되잖아")
+## 현행 대웅전 본존불과 연화대 (2026-11-19)
+
+본존불 PC·폰 GLB는 프로젝트를 위해 직접 제작했다. 얼굴과 나발, 손, 옷주름, 연꽃잎과 밑면 부조를 Blender에서 모델링했다. 별도의 바탕 메시나 스캔을 사용하지 않았다. 소유자가 제공한 6면 사진은 비례와 형태를 살피는 데 사용했다. 색상·노멀·ORM 텍스처는 절차적으로 생성했다.
+
+`buddha_build.py`는 같은 폴더의 `buddha_head.py`, `buddha_body.py`, `buddha_lap.py`, `buddha_mesh.py`로 두 LOD를 조립한다. Blender 5.3에서 `blender -b -P buddha_build.py -- <build-dir>`로 중간 GLB를 만든 뒤, `node buddha_pack.mjs <build-dir> <sacred-GLB-dir>`로 게임 파일을 만든다. 루트와 이 폴더의 `node/`에서 각각 `npm ci --allow-git=all`로 의존성을 설치한다.
+
+## 이전 제작 이력 · 2026-11-18 본존불 v2 — 직접 만든 원작 (소유자 "그냥 블렌더로 니가 입체적인 불상을 니가 만들어. 여러 부처님 불상을 찾아보고 비슷하게 만들면 되잖아")
 - **본존불(연화대 포함) = 이 프로젝트의 원작**이에요. dluo 스캔(CC BY 4.0)은 더 이상 쓰지 않아요(파일 이름·자리 `lotstatue__lot_temple_hall_buddha*.glb`는 그대로).
 - **바탕 메시 (CC0 1.0)**: Blender Studio **Human Base Meshes** 번들 v1.2 — `GEO-body_male_realistic`(멀티레스 3)과 `Foot - Realistic`.
   https://www.blender.org/download/demo-files/ (받은 곳: Blender 공식 미러 https://ftp.halifax.rwth-aachen.de/blender/demo/asset-bundles/human-base-meshes/human-base-meshes-bundle-v1.2.0.zip,
