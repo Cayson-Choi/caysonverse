@@ -27,7 +27,7 @@ mkdirSync(run.evidence, { recursive: true });
 
 const NOON = "2026-11-03T12:30";
 const NAMES = { coaster: "별똥별 급행", carousel: "달빛 회전목마", wheel: "하늘 등불 바퀴", droptower: "구름 낙하탑" };
-const PADS = { coaster: { x: 2, z: -12 }, carousel: { x: 110, z: -119 }, wheel: { x: 205, z: -128.2 }, droptower: { x: -44, z: -78 } };
+const PADS = { coaster: { x: 2, z: -12 }, carousel: { x: 110, z: -119 }, wheel: { x: 205, z: -128.2 }, droptower: { x: -61, z: -88 } };
 const report = [];
 
 async function until(fn, ms, step = 150) {

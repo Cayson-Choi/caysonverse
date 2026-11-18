@@ -44,8 +44,8 @@ export const CAROUSEL_PAD = Object.freeze({ x: 110, z: -119, radius: 3 });
 /** The wheel's boarding pad: on the grass at the foot of the platform steps (the rider is lifted into the gondola; the avatar never walks on the deck). */
 export const WHEEL_PAD = Object.freeze({ x: 205, z: -128.2, radius: 3 });
 /** The cloud drop tower (shared/src/land/dropTower.ts): its axis and its boarding pad, on the grass east of its platform (the rider is lifted into the seat). */
-export const DROP_SITE_AT = Object.freeze({ x: -58, z: -78 });
-export const DROP_PAD = Object.freeze({ x: -44, z: -78, radius: 3 });
+export const DROP_SITE_AT = Object.freeze({ x: -75, z: -88 });
+export const DROP_PAD = Object.freeze({ x: -61, z: -88, radius: 3 });
 
 /** The village side: the gate lot's door pad and where you stand coming out (world metres, from the gate lot). */
 export function parkGateDoor() {

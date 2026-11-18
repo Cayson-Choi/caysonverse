@@ -11,7 +11,7 @@
  * the seat's hip height; everything is a pure function of the clock.
  */
 
-export const DROP_SITE = Object.freeze({ x: -58, z: -78 });
+export const DROP_SITE = Object.freeze({ x: -75, z: -88 });
 export const DROP_TOWER_H = 52;
 export const DROP_SEATS = 16;
 export const DROP_SEATS_PER_FACE = 4;

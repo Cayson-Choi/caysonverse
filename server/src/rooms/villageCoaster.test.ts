@@ -268,8 +268,8 @@ describe("VillageCoaster (server rules)", () => {
     for (let i = 0; i < 17; i++) {
       r.add(`d${i}`);
       const p = r.players.get(`d${i}`)!;
-      p.x = -44;
-      p.z = -78;
+      p.x = -61;
+      p.z = -88;
       r.send(`d${i}`, VillageMsg.RideBoard, { ride: "droptower" });
     }
     const p0 = r.players.get("d0")!;

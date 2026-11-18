@@ -19,8 +19,8 @@ if (outArg) run.evidence = outArg.slice("--out=".length);
 mkdirSync(run.evidence, { recursive: true });
 
 const TIME = night ? "2026-11-03T21:30" : "2026-11-03T12:30";
-const SITE = { x: -58, z: -78 };
-const PAD = { x: -44, z: -78 };
+const SITE = { x: -75, z: -88 };
+const PAD = { x: -61, z: -88 };
 let nickSeq = 0;
 async function joinLand(p, prefix) {
   await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(TIME)}`, { waitUntil: "domcontentloaded", timeout: 120000 });
@@ -113,12 +113,12 @@ if (!only3) {
     await joinLand(O, "Do");
     run.check("O enters the park", await enterPark(O), { area: await areaOf(O) });
     await sleep(3000);
-    await goTo(O, -40, -78, 4);
-    await shotFrom(O, "d01-approach-eye-level.png", -34, 1.7, -78, SITE.x, 7, SITE.z, 62);
-    await shotFrom(O, "d02-platform-higher.png", -43, 5.5, -70, SITE.x + 3, 3, SITE.z, 62);
-    await shotFrom(O, "d03-whole-tower.png", -6, 14, -70, SITE.x, 26, SITE.z, 62);
-    await shotFrom(O, "d04-cloud-crown.png", -78, 34, -92, SITE.x, 50, SITE.z, 50);
-    await shotFrom(O, "d05-car-close.png", -46, 3.4, -82, SITE.x + 3, 2.2, SITE.z, 52);
+    await goTo(O, SITE.x + 18, SITE.z, 4);
+    await shotFrom(O, "d01-approach-eye-level.png", SITE.x + 24, 1.7, SITE.z, SITE.x, 7, SITE.z, 62);
+    await shotFrom(O, "d02-platform-higher.png", SITE.x + 15, 5.5, SITE.z + 8, SITE.x + 3, 3, SITE.z, 62);
+    await shotFrom(O, "d03-whole-tower.png", SITE.x + 52, 14, SITE.z + 8, SITE.x, 26, SITE.z, 62);
+    await shotFrom(O, "d04-cloud-crown.png", SITE.x - 20, 34, SITE.z - 14, SITE.x, 50, SITE.z, 50);
+    await shotFrom(O, "d05-car-close.png", SITE.x + 12, 3.4, SITE.z - 4, SITE.x + 3, 2.2, SITE.z, 52);
     const t0 = Date.now();
     let a = await probe(O);
     while (!(a.stage === "hold" && a.rideT > 15) && Date.now() - t0 < 300000 * SLOW) {
@@ -126,8 +126,8 @@ if (!only3) {
       a = await probe(O);
     }
     run.check("the car holds at 42 m on the clock", a.stage === "hold" && Math.abs(a.y - 42) < 0.2, { stage: a.stage, y: a.y });
-    await shotFrom(O, "d06-car-at-the-top.png", -30, 8, -66, SITE.x, 38, SITE.z, 56);
-    await shotFrom(O, "d07-car-at-the-top-close.png", -42, 22, -74, SITE.x + 1, 42, SITE.z, 42);
+    await shotFrom(O, "d06-car-at-the-top.png", SITE.x + 28, 8, SITE.z + 12, SITE.x, 38, SITE.z, 56);
+    await shotFrom(O, "d07-car-at-the-top-close.png", SITE.x + 16, 22, SITE.z + 4, SITE.x + 1, 42, SITE.z, 42);
     await O.page.evaluate(() => { window.__cvShot = null; });
   });
   await b.close();
@@ -235,7 +235,7 @@ if (!phone && !process.argv.includes("--look")) {
     await joinLand(G, "Dg");
     await enterPark(O);
     await enterPark(G);
-    await goTo(O, -40, -84, 3);
+    await goTo(O, SITE.x + 18, SITE.z - 6, 3);
     await goTo(G, PAD.x, PAD.z, 1.5);
     const gat = await pos(G);
     run.check("G stands at the pad", Math.hypot(gat.x - PAD.x, gat.z - PAD.z) < 5, gat);
@@ -247,7 +247,7 @@ if (!phone && !process.argv.includes("--look")) {
     await sleep(2000);
     const seen = (await remotes(O)).find((r) => r.nickname === G.nick);
     run.check("O sees G on the tower (rideId 5, rideSeat 0)", !!seen && seen.rideId === 5 && seen.rideSeat === 0, { rideId: seen?.rideId, rideSeat: seen?.rideSeat });
-    await shotFrom(O, "d15-remote-rider-seen-from-outside.png", -46, 3.2, -84, SITE.x + 2.8, 2.0, SITE.z, 38);
+    await shotFrom(O, "d15-remote-rider-seen-from-outside.png", SITE.x + 12, 3.2, SITE.z - 6, SITE.x + 2.8, 2.0, SITE.z, 38);
     await O.page.evaluate(() => { window.__cvShot = null; });
     await G.page.close();
     const gone = await until(async () => !(await remotes(O)).some((r) => r.nickname === G.nick), 20000);
