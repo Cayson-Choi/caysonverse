@@ -392,7 +392,7 @@ const LIGHTMAP_TEXEL_FROM = "vec4 lightMapTexel = texture2D( lightMap, vLightMap
 // dark strip round the gazebo against the village lawn's flat 0.9): its baked light never falls below the village lawn's, fading out into the
 // forest floor east of x 168.
 const LAKE_LAWN_LIGHT = /* glsl */ `{
-		float lakeLawnW = 1.0 - smoothstep( 168.0, 186.0, vSsWorld.x );
+		float lakeLawnW = 1.0 - smoothstep( 184.0, 198.0, vSsWorld.x );
 		villageRawLight = max( villageRawLight, vec3( 0.985 * lakeLawnW ) );
 	}`;
 const lightmapTexelTo = (grass: boolean, lake = false) => /* glsl */ `vec4 lightMapTexel = vec4( 0.0, 0.0, 0.0, 1.0 );

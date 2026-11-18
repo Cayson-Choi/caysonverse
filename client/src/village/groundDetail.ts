@@ -134,12 +134,12 @@ const ROCK_BLEND = /* glsl */ `{
 /** The lake lawn's vertex tint dims toward its south / east edge (0.75-0.8): divided out there so it meets the village lawn with no strip. */
 const LAKE_VERTEX_FLATTEN = /* glsl */ `#ifdef USE_COLOR
   {
-    float lakeVcW = 1.0 - smoothstep( 168.0, 186.0, vSsWorld.x );
+    float lakeVcW = 1.0 - smoothstep( 184.0, 198.0, vSsWorld.x );
     sampledDiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.97 ) / max( vColor.rgb, vec3( 0.5 ) ), lakeVcW );
   }
 #endif
-  // and its west edge (x 98, where the village lawn takes over) is 5 % greener than the village lawn: eased in over 16 m
-  sampledDiffuseColor.rgb *= mix( vec3( 0.975, 0.86, 1.0 ), vec3( 1.0 ), smoothstep( 98.0, 116.0, vSsWorld.x ) );
+  // and its west edge (x 98, where the village lawn takes over) is 5 % greener than the village lawn: eased in over 30 m
+  sampledDiffuseColor.rgb *= mix( vec3( 0.975, 0.86, 1.0 ), vec3( 1.0 ), smoothstep( 98.0, 128.0, vSsWorld.x ) );
 `;
 
 /** `#include <map_fragment>` for a ground material: optional smooth-tap where magnified, then the grain. */

@@ -128,6 +128,13 @@ export function prepareLakeTerrain(root: Object3D, day: Texture, night: Texture 
       if (m.name.startsWith("LM_")) {
         lightmapMaterial(m, day);
         liftMaterial(m, LAKE_LIGHT);
+        if (m.name === "LM_grass") {
+          // the village lawn's triangles that straddle the lake zone's edge lie under / over the lake lawn at the same height (y 0): they showed
+          // through as a straight seam and a wedge (the village's darker light). The lake lawn is drawn over them.
+          m.polygonOffset = true;
+          m.polygonOffsetFactor = -2;
+          m.polygonOffsetUnits = -4;
+        }
         const village = GROUND_GRADE[m.name];
         const grade = village && m.name === "LM_grass" ? ([village[0]! * LAKE_GRASS_MATCH[0], village[1]! * LAKE_GRASS_MATCH[1], village[2]! * LAKE_GRASS_MATCH[2]] as const) : village;
         const gnVillage = GROUND_GRADE_NIGHT[m.name];
