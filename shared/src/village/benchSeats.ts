@@ -32,7 +32,7 @@
  * and the stand-up animation carries the body there from the seat.
  */
 
-import { isBlocked } from "../collision";
+import { isBlocked, type AABB } from "../collision";
 import { standSide } from "./standSpot";
 import { CHAIR_SIDE_CLEAR, CHAIR_SIDE_FAR, PLAYER_RADIUS, SEAT_REACH, approachesSeat, type Seat } from "../worldMap";
 import { BACKED_ROOT_AHEAD, FLOOR_SIT_POSE, SIT_ROOT_AHEAD } from "../sitPose";
@@ -217,6 +217,11 @@ const REACH_STEP = 0.1;
 const REACH_MARGIN = 0.05;
 const REACH_CACHE = new Map<string, (x: number, z: number) => boolean>();
 
+/** Only boxes touching the search rectangle can contain or touch any of the bodies tested inside it. */
+function obstaclesIn(obstacles: readonly AABB[], bounds: Bounds): readonly AABB[] {
+  return obstacles.filter((b) => b.maxX >= bounds.minX && b.minX <= bounds.maxX && b.maxZ >= bounds.minZ && b.minZ <= bounds.maxZ);
+}
+
 /**
  * Where a body walks to on house N floor F from its arrival spot (a flood fill, the radius plus REACH_MARGIN: a slit a body only squeezes
  * through diagonally — which no tap finds — does not count). A house seat's stand spot must be one of these (G round 3: house 7's
@@ -233,10 +238,12 @@ export function houseStandReach(n: HouseNumber, floor: HouseFloor, geometry: Map
   const cellX = (i: number) => b.minX + i * REACH_STEP;
   const cellZ = (j: number) => b.minZ + j * REACH_STEP;
   const r = PLAYER_RADIUS + REACH_MARGIN;
+  // Every tested centre is at least r inside this floor's rectangle, so its entire circle lies inside too.
+  const obstacles = obstaclesIn(geometry.obstacles, b);
   const free = (i: number, j: number) => {
     const x = cellX(i);
     const z = cellZ(j);
-    return x > b.minX + r && x < b.maxX - r && z > b.minZ + r && z < b.maxZ - r && !isBlocked(x, z, r, geometry.obstacles, 0);
+    return x > b.minX + r && x < b.maxX - r && z > b.minZ + r && z < b.maxZ - r && !isBlocked(x, z, r, obstacles, 0);
   };
   const seen = new Uint8Array(nx * nz);
   const si = Math.round((start.x - b.minX) / REACH_STEP);
@@ -343,12 +350,18 @@ function chairStand(
   const cx = seat.reachFrom?.x ?? seat.x;
   const cz = seat.reachFrom?.z ?? seat.z;
   const bonus = seat.reachFrom ? 0 : (seat.reachBonus ?? 0);
+  const maxDistance = 1.6;
+  // The rounded centre must pass the maxDistance test. Add the satellite ring and the largest tested body margin
+  // on each axis to cover both the circular collision checks and standsClear's square clearance.
+  const reach = maxDistance + STAND_SHORT + PLAYER_RADIUS + Math.max(HOUSE_STAND_EXTRA, STAND_CLEARANCE, STAND_SQUARE_CLEARANCE);
+  const obstacles = obstaclesIn(geometry.obstacles, { minX: cx - reach, maxX: cx + reach, minZ: cz - reach, maxZ: cz + reach });
+  const localGeometry = { ...geometry, obstacles };
   for (let ix = -26; ix <= 26; ix++) {
     for (let iz = -26; iz <= 26; iz++) {
       const x = Math.round((cx + ix * step) * 1000) / 1000;
       const z = Math.round((cz + iz * step) * 1000) / 1000;
       const own = Math.hypot(x - cx, z - cz);
-      if (own >= bestD || own > 1.6) continue;
+      if (own >= bestD || own > maxDistance) continue;
       if (allow && !allow(x, z)) continue;
       // offered from the spot itself; and from anywhere a step short of it (a tap walk stops 0.35 m before its target) never the
       // neighbour instead: there it is this chair or none — and, for a house seat, this one still (a stop it is not offered from sat nobody)
@@ -359,11 +372,11 @@ function chairStand(
         const pz = k === 8 ? z : z + Math.sin(a) * STAND_SHORT;
         const d = Math.hypot(px - cx, pz - cz);
         ok = !neighbours.some((n) => Math.hypot(n.x - px, n.z - pz) < d + (k === 8 ? STAND_NEIGHBOUR_MARGIN : 0.01));
-        if (ok && seat.reachFrom && k < 8 && !isBlocked(px, pz, PLAYER_RADIUS, geometry.obstacles, 0)) ok = approachesSeat(seat, px, pz);
+        if (ok && seat.reachFrom && k < 8 && !isBlocked(px, pz, PLAYER_RADIUS, obstacles, 0)) ok = approachesSeat(seat, px, pz);
       }
-      if (!ok || !standsClear(x, z, bounds, geometry)) continue;
+      if (!ok || !standsClear(x, z, bounds, localGeometry)) continue;
       // a house seat's spot keeps a hand's width more from the furniture: a tap-walk's way in to it turns there (G round 3: house 9's end chair)
-      if (seat.reachFrom && isBlocked(x, z, PLAYER_RADIUS + HOUSE_STAND_EXTRA, geometry.obstacles, 0)) continue;
+      if (seat.reachFrom && isBlocked(x, z, PLAYER_RADIUS + HOUSE_STAND_EXTRA, obstacles, 0)) continue;
       best = { x, z };
       bestD = own;
     }
