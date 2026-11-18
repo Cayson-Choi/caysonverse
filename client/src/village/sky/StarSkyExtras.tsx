@@ -185,7 +185,8 @@ void main() {
   float r = length(p);
   vec3 tint = vec3(1.0, 0.96, 0.88);
   // the soft glow round the moon, faded out well inside the plane's edge (a bigger moon showed the plane's square: night audit 2026-11-18)
-  vec3 outc = tint * (0.16 / (1.0 + r * r * 1.8)) * (1.0 - smoothstep(0.45, 0.98, max(abs(vP.x), abs(vP.y))));
+  // (a round window: the square max(|x|,|y|) one left a visibly square halo — owner 2026-11-19 "번짐이 네모")
+  vec3 outc = tint * (0.16 / (1.0 + r * r * 1.8)) * (1.0 - smoothstep(0.35, 0.97, length(vP)));
   if (r < 1.0) {
     float disc = 1.0 - smoothstep(0.93, 1.0, r);
     float chord = sqrt(max(1.0 - r * r, 0.0));
