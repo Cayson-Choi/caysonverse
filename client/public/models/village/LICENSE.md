@@ -85,3 +85,13 @@ Poly Haven CC0 1.0 자산으로 만든 것입니다(2026-11-16 Poly Haven API로
 | bark_brown_02 | https://polyhaven.com/a/bark_brown_02 | 과수원 나무 껍질 `bark_plum_*`, 바크 칩 |
 | brown_mud | https://polyhaven.com/a/brown_mud | 화단 흙 바탕 `soil_*` |
 | rock_boulder_dry | https://polyhaven.com/a/rock_boulder_dry | 사각 화분 테두리 `stone_*` |
+
+## 집 외관 2차 (2026-11-18)
+
+`houses/house_wood_*`, `house_sandstone_*`, `house_tile_*`는 Poly Haven CC0 1.0 자산을 가공한 것입니다(2026-11-18 API로 내려받음).
+
+| Poly Haven 자산 | 주소 | 쓰는 곳 |
+| --- | --- | --- |
+| dark_wood | https://polyhaven.com/a/dark_wood | 참나무 보·기둥·베란다 판자 `house_wood_*` |
+| mossy_sandstone | https://polyhaven.com/a/mossy_sandstone | 사암 `house_sandstone_*` (이끼 얼룩은 지우고 한 덩이의 결만 씀) |
+| clay_roof_tiles_03 | https://polyhaven.com/a/clay_roof_tiles_03 | 기와 `house_tile_*`, 케이슨랜드 정문 첨탑 |

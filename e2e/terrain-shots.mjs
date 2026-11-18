@@ -93,13 +93,15 @@ try {
             const ts = [];
             let last = performance.now();
             let n = 0;
+            r3.info.autoReset = false; // sum every pass of the frame (shadow cascades, scene, post), not only the last
+            r3.info.reset();
             const f = (t) => {
               ts.push(t - last);
               last = t;
               if (++n < 90) requestAnimationFrame(f);
               else {
                 ts.sort((a, b) => a - b);
-                res({ medianMs: Math.round(ts[45] * 10) / 10, calls: r3.info.render.calls, tris: r3.info.render.triangles });
+                res({ medianMs: Math.round(ts[45] * 10) / 10, calls: Math.round(r3.info.render.calls / 90), tris: Math.round(r3.info.render.triangles / 90) });
               }
             };
             requestAnimationFrame(f);
