@@ -1,4 +1,3 @@
-import { compileSafely } from "../../game/compileSafely";
 import { useEffect, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import {

@@ -1,4 +1,3 @@
-import { compileSafely } from "../../game/compileSafely";
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Box3, BufferGeometry, DoubleSide, Float32BufferAttribute, Group, Mesh, Uint32BufferAttribute, Vector3, type InstancedMesh, type Material, type Object3D, type ShaderMaterial, type Scene } from "three";
