@@ -30,6 +30,7 @@ import { VillageMountains, mountainsMode, preloadMountains } from "./VillageMoun
 import { LakeVillagePatch } from "../lake/PatchVillage";
 import { FallsModel } from "./falls/FallsModel";
 import { LotsVillagePatch } from "./lots/LotsVillagePatch";
+import { ExteriorDress } from "./ExteriorDress";
 import { fallsMode, fallsRuntimeFor } from "./falls/fallsConfig";
 import { fallsModelBuilt } from "./falls/fallsLoader";
 import { StreetFurniture } from "./street/StreetFurniture";
@@ -272,6 +273,8 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       <LakeVillagePatch root={nodes.root} />
       {/* The lot buildings (L5) take the old plot signs and posts out of this clone once they are drawn (lots/LotsVillagePatch.tsx). */}
       <LotsVillagePatch root={nodes.root} />
+      {/* The memorial roof, the cafe parasols, the pavilion roof, the plaza seats and the fountain crescent get real surfaces (exteriorDress.ts). */}
+      <ExteriorDress root={nodes.root} tier={tier} />
       {veg && <primitive object={veg.group} dispose={null} />}
       {mountains && (
         <Suspense fallback={null}>

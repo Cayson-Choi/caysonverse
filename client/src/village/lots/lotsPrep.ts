@@ -594,6 +594,48 @@ export function vestibuleFloor(root: Object3D, l: (typeof VILLAGE_LOTS)[number],
   return m;
 }
 
+/**
+ * The gate lot's file carries cut-off silhouettes of Caysonland's coaster and wheel on the grass behind the gate (z >= 108 on the
+ * village plan; the gate itself ends at z ~ 102). They stood in the open, sliced at their feet: the park is its own area, so they are
+ * taken out of the lot's detail (the gate building is untouched).
+ */
+export const LOT_GATE_BACK_Z = 104;
+
+/** Remove the triangles of every mesh under `node` whose centre is past `zMax` (world); returns the geometries made and the count. */
+export function cullBeyondZ(node: Object3D, zMax: number): { made: BufferGeometry[]; removed: number } {
+  node.updateWorldMatrix(true, true);
+  const made: BufferGeometry[] = [];
+  let removed = 0;
+  const v = new Vector3();
+  node.traverse((o) => {
+    if (!isMeshObj(o)) return;
+    const g = o.geometry;
+    const pos = g.getAttribute("position");
+    if (!pos) return;
+    const idx = g.index;
+    const total = idx ? idx.count : pos.count;
+    const keep: number[] = [];
+    for (let t = 0; t + 2 < total; t += 3) {
+      let cz = 0;
+      for (let k = 0; k < 3; k++) cz += v.fromBufferAttribute(pos, idx ? idx.getX(t + k) : t + k).applyMatrix4(o.matrixWorld).z / 3;
+      if (cz > zMax) {
+        removed++;
+        continue;
+      }
+      for (let k = 0; k < 3; k++) keep.push(idx ? idx.getX(t + k) : t + k);
+    }
+    if (keep.length === total) return;
+    const out = new BufferGeometry();
+    for (const name of Object.keys(g.attributes)) out.setAttribute(name, g.getAttribute(name));
+    out.setIndex(keep);
+    out.computeBoundingSphere();
+    out.computeBoundingBox();
+    o.geometry = out;
+    made.push(out);
+  });
+  return { made, removed };
+}
+
 /** Shell materials drawn from both sides: the roofs (seen from under the market's roof; L3's hall roof faces down in its file). */
 const SHELL_DOUBLE_SIDED = new Set<string>([]);
 
@@ -723,6 +765,7 @@ export function prepareLots(
         const copy = node; // the loader's own object: each GLB is read once (VillageLots keeps its own parse per visit)
         scene.remove(copy);
         root.add(copy);
+        if (id === "lot_gate" && n.startsWith("lotdetail__")) own.geometries.push(...cullBeyondZ(copy, LOT_GATE_BACK_Z).made);
         if (n.startsWith("lotnight__")) {
           copy.traverse((o) => {
             if (!isMeshObj(o)) return;

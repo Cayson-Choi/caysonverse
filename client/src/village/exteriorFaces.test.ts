@@ -1,0 +1,108 @@
+import { describe, expect, it } from "vitest";
+import { BufferGeometry, Float32BufferAttribute, Group, Mesh, MeshBasicMaterial } from "three";
+import { DRESS_RULES, SURFACES, boxUv, clusterCentres, findSplits, geometryWithout, selectFaces, takeFaces, type FaceRule } from "./exteriorFaces";
+import { cullBeyondZ } from "./lots/lotsPrep";
+import { pbrIdsOf } from "./exteriorFacesTestUtil";
+
+/** Two upward quads (4 triangles): one at the origin, one 20 m east; each with a distinct uv and a vertex colour. */
+function quads(): Mesh {
+  const pos: number[] = [];
+  const uv: number[] = [];
+  const col: number[] = [];
+  const idx: number[] = [];
+  [
+    [0, 5.5, [0.352, 0.508], [1, 1, 1]],
+    [20, 5.5, [0.7, 0.2], [0.5, 0.25, 0.14]],
+  ].forEach(([x, y, u, c], q) => {
+    const X = x as number;
+    const Y = y as number;
+    pos.push(X, Y, 0, X + 2, Y, 0, X + 2, Y, 2, X, Y, 2);
+    for (let i = 0; i < 4; i++) {
+      uv.push((u as number[])[0]!, (u as number[])[1]!);
+      col.push(...(c as number[]));
+    }
+    const b = q * 4;
+    idx.push(b, b + 2, b + 1, b, b + 3, b + 2);
+  });
+  const g = new BufferGeometry();
+  g.setAttribute("position", new Float32BufferAttribute(pos, 3));
+  g.setAttribute("uv", new Float32BufferAttribute(uv, 2));
+  g.setAttribute("color", new Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  const m = new Mesh(g, new MeshBasicMaterial({ name: "LM_atlas" }));
+  (m.material as MeshBasicMaterial).name = "LM_atlas";
+  m.updateMatrixWorld(true);
+  return m;
+}
+
+const rule = (over: Partial<FaceRule> = {}): FaceRule => ({ id: "t", material: "LM_atlas", box: [-1, 0, -1, 5, 10, 5], surface: "oak", ...over });
+
+describe("exteriorFaces", () => {
+  it("selects the faces whose centre is in the box and that pass the test", () => {
+    const m = quads();
+    expect(selectFaces(m, rule())).toEqual([0, 3]);
+    expect(selectFaces(m, rule({ box: [15, 0, -1, 30, 10, 5] }))).toEqual([6, 9]);
+    expect(selectFaces(m, rule({ test: (t) => t.u > 0.5 }))).toEqual([]);
+    expect(selectFaces(m, rule({ box: [-1, 0, -1, 30, 10, 5], test: (t) => !!t.color && t.color[0] < 0.6 }))).toEqual([6, 9]);
+    expect(selectFaces(m, rule({ test: (t) => t.ny > 0.9 && t.area > 1.9 }))).toEqual([0, 3]);
+  });
+
+  it("geometryWithout drops exactly the taken triangles and shares the attributes", () => {
+    const m = quads();
+    const g = geometryWithout(m.geometry, new Set([0, 3]));
+    expect(g.index!.count).toBe(6);
+    expect(g.getAttribute("position")).toBe(m.geometry.getAttribute("position"));
+    expect([...g.index!.array].every((i) => i >= 4)).toBe(true);
+  });
+
+  it("takeFaces gives an unindexed world geometry with the asked UVs", () => {
+    const m = quads();
+    m.position.set(1, 2, 3);
+    m.updateMatrixWorld(true);
+    const keep = takeFaces(m, [0, 3], { mode: "keep", unit: 2 }, 4);
+    expect(keep.triangles).toBe(2);
+    const pos = keep.geometry.getAttribute("position");
+    expect(pos.count).toBe(6);
+    expect(pos.getX(0)).toBeCloseTo(1);
+    expect(pos.getY(0)).toBeCloseTo(7.5);
+    expect(keep.geometry.getAttribute("uv").getX(0)).toBeCloseTo(0.352 * 0.5);
+    const box = takeFaces(m, [0], { mode: "box" }, 2);
+    // a top face is projected on the ground plane in metres / tile
+    expect(box.geometry.getAttribute("uv").getX(1)).toBeCloseTo(boxUv(3, 7.5, 3, 0, 1, 0, 2)[0]);
+    expect(keep.geometry.boundingSphere!.radius).toBeGreaterThan(0);
+  });
+
+  it("clusters parasol faces by their middles", () => {
+    const c = clusterCentres([[0, 0], [1, 0.5], [0.5, 1], [10, 10], [10.5, 9.5]]);
+    expect(c).toHaveLength(2);
+    expect(c[0]![0]).toBeCloseTo(0.5, 0);
+  });
+
+  it("every rule names a known surface, and every surface's library set exists", () => {
+    for (const r of DRESS_RULES) expect(Object.keys(SURFACES)).toContain(r.surface);
+    for (const id of pbrIdsOf(SURFACES)) expect(id).toBeTruthy();
+  });
+
+  it("findSplits only takes meshes of the rule's material", () => {
+    const g = new Group();
+    g.add(quads());
+    const other = quads();
+    (other.material as MeshBasicMaterial).name = "LM_grass";
+    g.add(other);
+    const found = findSplits(g, [rule()]);
+    expect(found).toHaveLength(1);
+    expect(found[0]!.taken).toEqual([0, 3]);
+  });
+
+  it("cullBeyondZ removes the decoys' triangles past the gate and keeps the rest", () => {
+    const g = new BufferGeometry();
+    g.setAttribute("position", new Float32BufferAttribute([0, 0, 90, 1, 0, 90, 0, 1, 90, 0, 0, 120, 1, 0, 120, 0, 1, 120], 3));
+    g.setIndex([0, 1, 2, 3, 4, 5]);
+    const m = new Mesh(g, new MeshBasicMaterial());
+    const root = new Group();
+    root.add(m);
+    const r = cullBeyondZ(root, 104);
+    expect(r.removed).toBe(1);
+    expect(m.geometry.index!.count).toBe(3);
+  });
+});

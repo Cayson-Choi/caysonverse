@@ -84,7 +84,7 @@
       "tileMeters": 1.8,
       "vertexColor": true,
       "roughnessScale": 0.9,
-      "normalScale": 0.6,
+      "normalScale": 1.9,
       "metal": false
     },
     "LM_church_roof": {
@@ -97,7 +97,12 @@
       "vertexColor": true,
       "roughnessScale": 1.0,
       "normalScale": 1.0,
-      "metal": false
+      "metal": false,
+      "albedoGain": [
+        2.2,
+        2.2,
+        2.3
+      ]
     },
     "LM_church_siding": {
       "pbr": "wood_siding",
@@ -108,7 +113,7 @@
       "tileMeters": 2.0,
       "vertexColor": true,
       "roughnessScale": 0.85,
-      "normalScale": 1.0,
+      "normalScale": 2.4,
       "metal": false
     },
     "M_glass": {

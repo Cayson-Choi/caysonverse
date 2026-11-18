@@ -19,6 +19,7 @@ import { villageClock } from "../village/villageClock";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 import { parkMaterial, pickSet } from "./pbr";
 import { isTouchDevice } from "../device";
+import { Booth, type BoothSpec } from "./ParkBooth";
 
 export const CAROUSEL_STATIC_URL = "/models/land/carousel_static.glb";
 export const CAROUSEL_HORSE_URL = "/models/land/carousel_horse.glb";
@@ -116,7 +117,7 @@ function bulbPlaces(): V3[] {
   return out;
 }
 
-/** The entrance: a gate arch with the ride's name, a low iron fence with gilded finials round the platform (open at the entrance), a ticket kiosk. */
+/** The entrance: a gate arch with the ride's name, a low iron fence with gilded finials round the platform (open at the entrance); the ticket booth is ParkBooth. */
 function entranceGeometry(): BufferGeometry {
   const b = new GeoBuilder();
   const X: V3 = [1, 0, 0];
@@ -151,15 +152,6 @@ function entranceGeometry(): BufferGeometry {
     b.box([cx + sx * 2.6, 3.85, gz - 0.3], X, Y, 0.18, 0.28, 0.18, [1, 0.88, 0.5]);
   }
   b.box([cx, 3.3, gz], X, Y, 2.8, 0.2, 0.2, [0.08, 0.1, 0.48]); // below the sign: the sign board hangs clear above it
-  // the ticket kiosk beside the entrance
-  const kx = cx + 7.5;
-  const kz = CAROUSEL_PAD.z + 1.5;
-  b.box([kx, 0.15, kz], X, Y, 1.9, 0.15, 1.7, [0.6, 0.58, 0.54], 2);
-  b.box([kx, 1.55, kz], X, Y, 1.7, 1.4, 1.5, [0.95, 0.9, 0.78], 2);
-  b.box([kx, 1.9, kz + 1.52], X, Y, 1.1, 0.5, 0.05, [0.1, 0.09, 0.09]);
-  for (let i = 0; i < 8; i++) b.box([kx - 1.4 + i * 0.4, 3.0, kz + 0.2], X, [0, 0.93, -0.36], 0.2, 0.025, 1.0, i % 2 ? [0.97, 0.94, 0.88] : [0.55, 0.06, 0.1]);
-  b.box([kx, 3.3, kz], X, Y, 2.1, 0.12, 1.9, [0.08, 0.1, 0.48]);
-  b.cylinder([kx, 3.4, kz], [kx, 4.3, kz], 0.07, 0.0, 6, [0.95, 0.7, 0.2]);
   return b.build();
 }
 
@@ -221,6 +213,11 @@ export function CarouselWorld({ env, all }: { env: Texture; all: Texture[] }) {
     return m;
   }, [all, env]);
   const entrance = useMemo(entranceGeometry, []);
+  // the ticket booth beside the entrance (the old kiosk's footprint: 3.8 x 3.4 m at 7.5 m east of the centre)
+  const ticketBooth = useMemo<BoothSpec>(
+    () => ({ x: CAROUSEL_CENTER.x + 7.5, z: CAROUSEL_PAD.z + 1.5, w: 3.4, d: 3.0, kind: "ticket", plaster: "#efe0d8", tile: "#8c93ff", title: "매표소", sub: "TICKETS", stripes: [[0.7, 0.1, 0.16], [0.97, 0.94, 0.88]] }),
+    [],
+  );
   const entranceMat = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.25 }), []);
   const sign = useMemo(signTexture, []);
   const signMat = useMemo(() => new MeshStandardMaterial({ map: sign, emissive: new Color("#ffffff"), emissiveMap: sign, emissiveIntensity: 0.2, roughness: 0.6 }), [sign]);
@@ -339,6 +336,7 @@ export function CarouselWorld({ env, all }: { env: Texture; all: Texture[] }) {
         <instancedMesh key={`c${i}`} ref={(r) => { carriageRefs.current[i] = r; }} args={[p.geometry, p.material, 2]} frustumCulled={false} castShadow receiveShadow />
       ))}
       <mesh geometry={entrance} material={entranceMat} castShadow receiveShadow />
+      <Booth all={all} spec={ticketBooth} />
       <mesh position={[CAROUSEL_CENTER.x, 4.15, CAROUSEL_CENTER.z + CAROUSEL_RADIUS + 0.9]} material={signMat}>
         <planeGeometry args={[5.4, 1.15]} />
       </mesh>

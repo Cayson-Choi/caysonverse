@@ -7,6 +7,7 @@ import {
   CircleGeometry,
   Color,
   CylinderGeometry,
+  DoubleSide,
   ExtrudeGeometry,
   Float32BufferAttribute,
   InstancedMesh,
@@ -42,9 +43,12 @@ import { ParkProps } from "./ParkProps";
 import { ParkVegetation } from "./ParkVegetation";
 import type { VillageTier } from "../village/villageModelPrep";
 import { GeoBuilder, type V3 } from "./geoBuilder";
-import { gateSignTexture } from "./canvasTextures";
+import { gateSignTexture, queueBoardTexture } from "./canvasTextures";
 import { ALL_PARK_URLS, featherTexture, parkMaterial, pickSet } from "./pbr";
+import { addBellRoof, addHedge, addLathe } from "./parkShapes";
+import { boxwoodTextures } from "./boxwoodTexture";
 
+const MARBLE_URL = (isTouchDevice ? "/textures/houses/lo/" : "/textures/houses/hi/") + "T_h_stone.webp";
 const PINE_URL = (isTouchDevice ? "/textures/houses/lo/" : "/textures/houses/hi/") + "T_h_wood_pine.webp";
 const X: V3 = [1, 0, 0];
 const Y: V3 = [0, 1, 0];
@@ -174,7 +178,7 @@ function GateArch({ all }: { all: Texture[] }) {
   const sign = useMemo(() => gateSignTexture(), []);
   const signMat = useMemo(() => new MeshStandardMaterial({ map: sign, roughness: 0.55, emissive: new Color("#ffffff"), emissiveMap: sign, emissiveIntensity: 0.15 }), [sign]);
   const stone = useMemo(() => parkMaterial(pickSet(all, "Concrete034"), 1, { color: new Color("#efe6d6"), normalScale: 0.6 }), [all]);
-  const roof = useMemo(() => parkMaterial(pickSet(all, "RoofingTiles013A"), 1, { color: new Color("#8e94f0"), normalScale: 1.0 }), [all]);
+  const roof = useMemo(() => parkMaterial(pickSet(all, "RoofingTiles013A"), 1, { color: new Color("#aab0ff").multiplyScalar(2.6), normalScale: 1.0 }), [all]);
   const starGeo = useMemo(() => {
     const sh = new Shape();
     for (let i = 0; i < 10; i++) {
@@ -198,9 +202,15 @@ function GateArch({ all }: { all: Texture[] }) {
   }, []);
   const roofGeo = useMemo(() => {
     const b = new GeoBuilder();
+    // a bell-shaped tiled spire on each tower (swept concave sides, an eave kick, the plan rounding into a cone), not stepped boxes
+    for (const tx of [31.25, 48.75]) addBellRoof(b, tx, 10.6, -186.5, 2.15, 3.7, 5.6, [1, 1, 1], 1.6);
+    return b.build();
+  }, []);
+  const trimGeo = useMemo(() => {
+    const b = new GeoBuilder();
+    // a gilt collar under each spire and a gilt ball finial on its tip, turned on the lathe
     for (const tx of [31.25, 48.75]) {
-      // a pointed roof on each tower: four stepped boxes
-      for (let k = 0; k < 6; k++) b.box([tx, 10.6 + k * 0.7, -186.5], X, Y, 2.0 - k * 0.32, 0.36, 3.6 - k * 0.55, [1, 1, 1], 2);
+      addLathe(b, tx, -186.5, [[0.01, 0], [0.12, 0.02], [0.34, 0.12], [0.4, 0.3], [0.3, 0.46], [0.12, 0.56], [0.09, 0.7], [0.2, 0.86], [0.26, 1.04], [0.2, 1.24], [0.06, 1.4], [0.01, 1.46]], [1, 1, 1], 1, 20, 16.0);
     }
     return b.build();
   }, []);
@@ -208,6 +218,7 @@ function GateArch({ all }: { all: Texture[] }) {
     <group>
       <mesh geometry={geoStone} material={stone} castShadow receiveShadow />
       <mesh geometry={roofGeo} material={roof} castShadow />
+      <mesh geometry={trimGeo} material={gold} castShadow />
       <mesh position={[40, 8.6, -184.85]} rotation={[0, Math.PI, 0]} material={signMat}>
         <planeGeometry args={[14, 3.5]} />
       </mesh>
@@ -227,17 +238,32 @@ function QueueHall({ all, pine }: { all: Texture[]; pine: Texture }) {
   const q = PARK_QUEUE_HALL;
   const cx = (q.minX + q.maxX) / 2;
   const cz = (q.minZ + q.maxZ) / 2;
-  const geo = useMemo(() => {
+  // the hall in three skins: a stone floor slab, plastered walls with timber battens (the shops' plaster, so the park reads as one
+  // village), and the timber posts, beam and queue rails
+  const { floorGeo, wallGeo, woodGeo } = useMemo(() => {
+    const f = new GeoBuilder();
+    const wl = new GeoBuilder();
     const b = new GeoBuilder();
     const w = q.maxX - q.minX;
     const d = q.maxZ - q.minZ;
+    const timber: V3 = [0.42, 0.28, 0.17];
     // the floor slab and the back (south) and side walls, the front open
-    b.box([cx, 0.1, cz], X, Y, w / 2, 0.1, d / 2, [0.8, 0.78, 0.74], 3);
-    b.box([cx, 2.2, q.maxZ - 0.2], X, Y, w / 2, 2.2, 0.2, [0.95, 0.9, 0.8], 3);
-    for (const sx of [-1, 1]) b.box([cx + sx * (w / 2 - 0.2), 2.2, cz + 3], X, Y, 0.2, 2.2, d / 2 - 3, [0.95, 0.9, 0.8], 3);
+    f.box([cx, 0.1, cz], X, Y, w / 2, 0.1, d / 2, [0.85, 0.83, 0.79], 2.5);
+    wl.box([cx, 2.2, q.maxZ - 0.2], X, Y, w / 2, 2.2, 0.2, [0.96, 0.91, 0.8], 3);
+    wl.box([cx, 0.45, q.maxZ - 0.2], X, Y, w / 2 + 0.05, 0.45, 0.24, [0.7, 0.68, 0.63], 2);
+    for (const sx of [-1, 1]) {
+      wl.box([cx + sx * (w / 2 - 0.2), 2.2, cz + 3], X, Y, 0.2, 2.2, d / 2 - 3, [0.96, 0.91, 0.8], 3);
+      wl.box([cx + sx * (w / 2 - 0.2), 0.45, cz + 3], X, Y, 0.24, 0.45, d / 2 - 3, [0.7, 0.68, 0.63], 2);
+      // timber battens and rails on the inside faces of the side walls
+      const inX = cx + sx * (w / 2 - 0.42);
+      for (let z = q.minZ + 4.5; z <= q.maxZ - 1; z += 3.2) b.box([inX, 2.3, z], X, Y, 0.05, 2.0, 0.09, timber);
+      for (const y of [0.95, 3.0]) b.box([inX, y, cz + 3], X, Y, 0.05, 0.09, d / 2 - 3, timber);
+    }
+    for (let x = q.minX + 2; x <= q.maxX - 1.5; x += 3.2) b.box([x, 2.3, q.maxZ - 0.42], X, Y, 0.09, 2.0, 0.05, timber);
+    for (const y of [0.95, 3.0]) b.box([cx, y, q.maxZ - 0.42], X, Y, w / 2, 0.09, 0.05, timber);
     // timber posts along the open front and a beam
-    for (let x = q.minX + 1; x <= q.maxX - 0.5; x += 4.6) b.cylinder([x, 0.2, q.minZ + 3.2], [x, 4.4, q.minZ + 3.2], 0.2, 0.2, 10, [0.42, 0.28, 0.17]);
-    b.box([cx, 4.4, q.minZ + 3.2], X, Y, w / 2, 0.22, 0.26, [0.42, 0.28, 0.17]);
+    for (let x = q.minX + 1; x <= q.maxX - 0.5; x += 4.6) b.cylinder([x, 0.2, q.minZ + 3.2], [x, 4.4, q.minZ + 3.2], 0.2, 0.2, 10, timber);
+    b.box([cx, 4.4, q.minZ + 3.2], X, Y, w / 2, 0.22, 0.26, timber);
     // the queue's switchback rails: five lanes, 1.1 m high, with posts
     for (let k = 0; k < 5; k++) {
       const z = q.minZ + 7 + k * 4.4;
@@ -247,10 +273,14 @@ function QueueHall({ all, pine }: { all: Texture[]; pine: Texture }) {
       b.box([(x0 + x1) / 2, 0.55, z], X, Y, (x1 - x0) / 2, 0.03, 0.03, [0.9, 0.9, 0.94]);
       for (let x = x0; x <= x1; x += 3) b.cylinder([x, 0.1, z], [x, 1.1, z], 0.04, 0.04, 6, [0.9, 0.9, 0.94]);
     }
-    // a name board over the entrance
-    b.box([cx, 4.0, q.minZ + 3.0], X, Y, 5, 0.6, 0.08, [0.16, 0.18, 0.62]);
-    return b.build();
+    // the name board's frame over the entrance (its face is the lettered plane below)
+    b.box([cx, 4.0, q.minZ + 3.0], X, Y, 5.15, 0.7, 0.07, [0.36, 0.23, 0.14]);
+    return { floorGeo: f.build(), wallGeo: wl.build(), woodGeo: b.build() };
   }, [q, cx, cz]);
+  const boardTex = useMemo(() => queueBoardTexture(), []);
+  const boardMat = useMemo(() => new MeshStandardMaterial({ map: boardTex, roughness: 0.6, emissive: new Color("#ffffff"), emissiveMap: boardTex, emissiveIntensity: 0.14 }), [boardTex]);
+  const floorMat = useMemo(() => parkMaterial(pickSet(all, "Concrete034"), 0.8, { vertexColors: true, color: new Color("#efe6d6"), normalScale: 0.6 }), [all]);
+  const plasterMat = useMemo(() => parkMaterial(pickSet(all, "Plaster003"), 0.7, { vertexColors: true, normalScale: 1.0, color: new Color("#ffffff") }), [all]);
   const { roofGeo, trimGeo } = useMemo(() => {
     const roof = new GeoBuilder();
     const trim = new GeoBuilder();
@@ -291,7 +321,12 @@ function QueueHall({ all, pine }: { all: Texture[]; pine: Texture }) {
   const trimMat = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }), []);
   return (
     <group>
-      <mesh geometry={geo} material={wall} castShadow receiveShadow />
+      <mesh geometry={floorGeo} material={floorMat} castShadow receiveShadow />
+      <mesh geometry={wallGeo} material={plasterMat} castShadow receiveShadow />
+      <mesh geometry={woodGeo} material={wall} castShadow receiveShadow />
+      <mesh position={[cx, 4.0, q.minZ + 2.93]} rotation={[0, Math.PI, 0]} material={boardMat}>
+        <planeGeometry args={[10, 1.3]} />
+      </mesh>
       <mesh geometry={roofGeo} material={roof} castShadow receiveShadow />
       <mesh geometry={trimGeo} material={trimMat} castShadow />
       <mesh position={[PARK_PLATFORM.minX, 0, 0]} visible={false} />
@@ -299,7 +334,18 @@ function QueueHall({ all, pine }: { all: Texture[]; pine: Texture }) {
   );
 }
 
-function Fountain({ all }: { all: Texture[] }) {
+/** The plaza's star fountain: a stepped, moulded marble basin, a baluster and a scalloped upper bowl turned on the lathe, a slender
+ * column carrying a turning gilt star, eight arching jets, gilt star finials on the rim. Marble from the village's CC0 set. */
+function Fountain({ all, env }: { all: Texture[]; env: Texture }) {
+  const marbleTex = useTexture(MARBLE_URL) as Texture;
+  const marble = useMemo(() => {
+    const t = marbleTex.clone();
+    t.wrapS = t.wrapT = RepeatWrapping;
+    t.colorSpace = SRGBColorSpace;
+    t.anisotropy = 8;
+    t.needsUpdate = true;
+    return new MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.26, metalness: 0.02, envMap: env, envMapIntensity: 0.55 });
+  }, [marbleTex, env]);
   const stone = useMemo(() => parkMaterial(pickSet(all, "Concrete034"), 1, { color: new Color("#eee6d8"), normalScale: 0.5 }), [all]);
   const water = useMemo(() => new MeshStandardMaterial({ color: "#6ab4d8", roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.82 }), []);
   const gold = useMemo(() => new MeshStandardMaterial({ color: "#f2c14e", emissive: new Color("#6b4a08"), emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.6 }), []);
@@ -313,26 +359,55 @@ function Fountain({ all }: { all: Texture[] }) {
     }
     return new ExtrudeGeometry(sh, { depth: 0.3, bevelEnabled: true, bevelSize: 0.06, bevelThickness: 0.06, bevelSegments: 2 });
   }, []);
+  const smallStar = useMemo(() => {
+    const sh = new Shape();
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 === 0 ? 0.3 : 0.13;
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      if (i === 0) sh.moveTo(Math.cos(a) * r, -Math.sin(a) * r);
+      else sh.lineTo(Math.cos(a) * r, -Math.sin(a) * r);
+    }
+    return new ExtrudeGeometry(sh, { depth: 0.08, bevelEnabled: true, bevelSize: 0.02, bevelThickness: 0.02, bevelSegments: 1 });
+  }, []);
+  const marbleGeo = useMemo(() => {
+    const b = new GeoBuilder();
+    const W: V3 = [1, 1, 1];
+    // the paving apron and the moulded basin (outer foot, ogee lip, inner wall, floor just under the water)
+    addLathe(b, 0, 0, [[5.35, 0], [5.35, 0.06], [4.8, 0.1]], [0.96, 0.95, 0.92], 2, 64);
+    addLathe(b, 0, 0, [[0.01, 0.0], [4.6, 0.0], [4.6, 0.2], [4.5, 0.28], [4.5, 0.55], [4.62, 0.62], [4.62, 0.8], [4.5, 0.95], [4.25, 1.0], [4.05, 0.95], [4.0, 0.86], [0.01, 0.86]], W, 2, 72);
+    // the baluster: a plinth, a swelling urn, a collar, the upper bowl with a rolled lip, a column to the star
+    addLathe(b, 0, 0, [[0.01, 0.86], [1.05, 0.86], [1.05, 1.0], [0.85, 1.08], [0.6, 1.14], [0.5, 1.4], [0.68, 1.72], [0.62, 1.95], [0.5, 2.1], [0.58, 2.3], [1.2, 2.4], [1.75, 2.62], [1.82, 2.78], [1.7, 2.82], [1.52, 2.74], [1.45, 2.68], [0.01, 2.68]], W, 2, 56);
+    addLathe(b, 0, 0, [[0.01, 2.68], [0.46, 2.68], [0.38, 2.88], [0.24, 3.1], [0.2, 3.5], [0.22, 4.2], [0.33, 4.36], [0.3, 4.52], [0.16, 4.64], [0.01, 4.66]], W, 2, 28);
+    // eight low piers round the rim, each carrying a small gilt star (the gold is its own mesh below)
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+      addLathe(b, Math.cos(a) * 4.62, Math.sin(a) * 4.62, [[0.01, 0.95], [0.2, 0.95], [0.2, 1.25], [0.26, 1.32], [0.2, 1.4], [0.01, 1.42]], W, 1, 12);
+    }
+    return b.build();
+  }, []);
   const jets = useMemo(() => Array.from({ length: 8 }, (_, i) => (i / 8) * Math.PI * 2), []);
   const ref = useRef<Mesh>(null);
   useFrame(({ clock }) => {
     if (ref.current) ref.current.rotation.y = clock.elapsedTime * 0.4;
   });
   const { x, z } = PARK_PLAZA;
+  void stone;
   return (
     <group position={[x, 0, z]}>
-      <mesh position={[0, 0.45, 0]} material={stone} castShadow receiveShadow><cylinderGeometry args={[4.4, 4.6, 0.9, 40]} /></mesh>
+      <mesh geometry={marbleGeo} material={marble} castShadow receiveShadow />
       <mesh position={[0, 0.92, 0]} material={water}><cylinderGeometry args={[4.0, 4.0, 0.08, 40]} /></mesh>
-      <mesh position={[0, 1.6, 0]} material={stone} castShadow><cylinderGeometry args={[0.55, 0.8, 1.4, 20]} /></mesh>
-      <mesh position={[0, 2.5, 0]} material={stone} castShadow><cylinderGeometry args={[1.6, 0.6, 0.35, 28]} /></mesh>
       <mesh position={[0, 2.75, 0]} material={water}><cylinderGeometry args={[1.45, 1.45, 0.06, 28]} /></mesh>
-      <mesh position={[0, 3.6, 0]} material={stone} castShadow><cylinderGeometry args={[0.22, 0.4, 1.8, 14]} /></mesh>
-      <mesh ref={ref} position={[0, 5.1, 0]} geometry={starGeo} material={gold} />
+      <mesh position={[0, 4.78, 0]} material={gold}><sphereGeometry args={[0.2, 14, 10]} /></mesh>
+      <mesh ref={ref} position={[0, 5.45, 0]} geometry={starGeo} material={gold} />
       {jets.map((a, i) => (
         <mesh key={i} position={[Math.cos(a) * 2.2, 1.7, Math.sin(a) * 2.2]} rotation={[Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35]} material={water}>
           <cylinderGeometry args={[0.03, 0.06, 1.4, 6]} />
         </mesh>
       ))}
+      {Array.from({ length: 8 }, (_, i) => {
+        const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+        return <mesh key={`s${i}`} geometry={smallStar} material={gold} position={[Math.cos(a) * 4.62, 1.5, Math.sin(a) * 4.62]} rotation={[0, -a + Math.PI / 2, 0]} castShadow />;
+      })}
     </group>
   );
 }
@@ -366,18 +441,41 @@ function Lamps() {
 }
 
 /** Flower beds ring the fountain and line the promenade; park benches stand along the paths (decor: no seat ids yet). */
-function Beds({ pine }: { pine: Texture }) {
-  const bedGeo = useMemo(() => {
+function Beds({ pine, all }: { pine: Texture; all: Texture[] }) {
+  const troughGeo = useMemo(() => {
     const b = new GeoBuilder();
     // the flower troughs round the fountain (stone, with a cap course; the flowers and soil are the village flower system's)
     for (const t of PARK_TROUGHS) {
       const cx = (t.x0 + t.x1) / 2;
       const cz = (t.z0 + t.z1) / 2;
-      b.box([cx, 0.4, cz], X, Y, (t.x1 - t.x0) / 2, 0.4, (t.z1 - t.z0) / 2, [0.78, 0.76, 0.72], 2);
-      b.box([cx, 0.82, cz], X, Y, (t.x1 - t.x0) / 2 + 0.07, 0.04, (t.z1 - t.z0) / 2 + 0.07, [0.86, 0.84, 0.8]);
+      b.box([cx, 0.4, cz], X, Y, (t.x1 - t.x0) / 2, 0.4, (t.z1 - t.z0) / 2, [0.9, 0.88, 0.84], 2);
+      b.box([cx, 0.82, cz], X, Y, (t.x1 - t.x0) / 2 + 0.07, 0.04, (t.z1 - t.z0) / 2 + 0.07, [1, 0.98, 0.94], 2);
     }
-    // hedges lining the promenade's two sides
-    for (const hx of [28.6, 51.4]) b.box([hx, 0.55, -150], X, Y, 0.6, 0.55, 28, [0.2, 0.42, 0.22]);
+    return b.build();
+  }, []);
+  const troughMat = useMemo(() => parkMaterial(pickSet(all, "Concrete034"), 1, { vertexColors: true, color: new Color("#efe6d6"), normalScale: 0.6 }), [all]);
+  // hedges lining the promenade's two sides: clipped boxwood, a trimmed profile with a leafy skin (parkShapes.addHedge)
+  const hedgeGeo = useMemo(() => {
+    const b = new GeoBuilder();
+    for (const [i, hx] of [28.6, 51.4].entries()) {
+      // a run of short hedges with a hand's gap between them, so it reads as planted sections and not one long box
+      const segs: Array<[number, number]> = [];
+      for (let z = -178; z < -122; z += 7) segs.push([z + 0.15, Math.min(z + 6.85, -122)]);
+      segs.forEach(([a, c], k) =>
+        addHedge(b, hx, a, hx, c, { width: 1.25, height: 1.15, bump: 0.05, tile: 0.6, seed: 11 + i * 17 + k }, (_t, crown, lf) => {
+          const v = 0.74 + lf * 0.35 + crown * 0.22;
+          return [v * 0.9, v, v * 0.88];
+        }),
+      );
+    }
+    return b.build();
+  }, []);
+  const hedgeMat = useMemo(() => {
+    const tx = boxwoodTextures();
+    return new MeshStandardMaterial({ map: tx.map, bumpMap: tx.bump, bumpScale: 2.2, vertexColors: true, roughness: 0.72, side: DoubleSide });
+  }, []);
+  const bedGeo = useMemo(() => {
+    const b = new GeoBuilder();
     // benches (a seat plank, a back, two legs) along the avenue and the promenade
     const bench = (x: number, z: number, face: number) => {
       b.box([x, 0.5, z], X, Y, 0.35, 0.05, 1.0, [0.72, 0.5, 0.3]);
@@ -400,6 +498,8 @@ function Beds({ pine }: { pine: Texture }) {
   }, [pine]);
   return (
     <group>
+      <mesh geometry={troughGeo} material={troughMat} castShadow receiveShadow />
+      <mesh geometry={hedgeGeo} material={hedgeMat} castShadow receiveShadow />
       <mesh geometry={bedGeo} material={benchMat} castShadow receiveShadow />
     </group>
   );
@@ -450,10 +550,10 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       <Shops all={all} />
       <GateArch all={all} />
       <QueueHall all={all} pine={pine!} />
-      <Fountain all={all} />
+      <Fountain all={all} env={env} />
       <ParkVegetation />
       <Lamps />
-      <Beds pine={pine!} />
+      <Beds pine={pine!} all={all} />
       <ParkProps all={all} />
       <ParkScenery all={all} />
       <Suspense fallback={null}>
@@ -461,7 +561,7 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       </Suspense>
       <CoasterWorld all={all} pine={pine!} env={env} />
       <CarouselWorld env={env} all={all} />
-      <WheelWorld env={env} />
+      <WheelWorld env={env} all={all} />
     </group>
   );
 }

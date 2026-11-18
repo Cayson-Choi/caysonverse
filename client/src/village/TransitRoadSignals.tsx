@@ -2,7 +2,8 @@ import { versionedUrl } from "./modelUrl";
 import { Suspense, useEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
-import { CanvasTexture, Color, SRGBColorSpace, type Material, type Mesh, type MeshStandardMaterial, type Object3D } from "three";
+import { BoxGeometry, CanvasTexture, Color, Group, Mesh as ThreeMesh, MeshStandardMaterial as StdMaterial, PlaneGeometry, RepeatWrapping, SRGBColorSpace, TextureLoader, Vector2, type Material, type Mesh, type MeshStandardMaterial, type Object3D, type Texture } from "three";
+import { projectMetreUV } from "../land/parkShapes";
 import { signalPoleSpots } from "@caysonverse/shared/village/crossings";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { transitNowMs } from "../net/transitSync";
@@ -110,20 +111,105 @@ function apply(l: Lamps, s: LampState, ctx: CanvasRenderingContext2D | null, tex
   if (ctx && tex) drawCountdown(ctx, tex, s.countdown.seconds, s.countdown.color);
 }
 
+/** The signal heads' housings (M_sig_black): a flat near-black in the file. Powder-coated graphite steel with orange-peel relief. */
+const SIG_PAINT_URLS = ["/textures/park/PaintedMetal013_n.webp", "/textures/park/PaintedMetal013_r.webp"] as const;
+
+/** A small sticker (canvas): a yellow service label with a bar code. */
+function stickerTexture(): CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 160;
+  const ctx = c.getContext("2d")!;
+  ctx.fillStyle = "#f2c63a";
+  ctx.fillRect(0, 0, 256, 160);
+  ctx.strokeStyle = "#222";
+  ctx.lineWidth = 6;
+  ctx.strokeRect(6, 6, 244, 148);
+  ctx.fillStyle = "#1c1c1c";
+  ctx.font = "bold 40px 'Noto Sans KR', 'Malgun Gothic', sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("신호 제어", 128, 54);
+  ctx.font = "22px 'Noto Sans KR', sans-serif";
+  ctx.fillText("SIGNAL  CTRL  24h", 128, 84);
+  for (let i = 0; i < 34; i++) ctx.fillRect(34 + i * 5.8, 100, 1.5 + (i * 7) % 3, 38);
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+/** Louvred vents and a sticker on the pedestrian head's housing (local to the unit: x -0.77..0.12, y 2.09..3.39, z -0.61..0.12). */
+function cabinetDetail(): Group {
+  const g = new Group();
+  g.name = "sig_cabinet_detail";
+  const dark = new StdMaterial({ color: "#14171b", roughness: 0.55, metalness: 0.3 });
+  const slat = new BoxGeometry(0.012, 0.022, 0.36);
+  const slatB = new BoxGeometry(0.36, 0.022, 0.012);
+  const frameW = new BoxGeometry(0.016, 0.3, 0.42);
+  const frameB = new BoxGeometry(0.42, 0.3, 0.016);
+  const west = new ThreeMesh(frameW, dark);
+  west.position.set(-0.774, 2.5, -0.25);
+  const back = new ThreeMesh(frameB, dark);
+  back.position.set(-0.33, 2.5, 0.124);
+  const east = new ThreeMesh(frameW, dark);
+  east.position.set(0.124, 2.5, -0.25);
+  g.add(west, back, east);
+  for (let i = 0; i < 9; i++) {
+    const w = new ThreeMesh(slat, new StdMaterial({ color: "#2b3036", roughness: 0.5, metalness: 0.35 }));
+    w.position.set(-0.784, 2.37 + i * 0.033, -0.25);
+    w.rotation.z = 0.35;
+    const b = new ThreeMesh(slatB, w.material);
+    b.position.set(-0.33, 2.37 + i * 0.033, 0.134);
+    b.rotation.x = -0.35;
+    const e = new ThreeMesh(slat, w.material);
+    e.position.set(0.134, 2.37 + i * 0.033, -0.25);
+    e.rotation.z = -0.35;
+    g.add(w, b, e);
+  }
+  const tex = stickerTexture();
+  const sticker = new ThreeMesh(new PlaneGeometry(0.26, 0.162), new StdMaterial({ map: tex, roughness: 0.4 }));
+  sticker.position.set(-0.7745, 3.02, -0.25);
+  sticker.rotation.y = -Math.PI / 2;
+  g.add(sticker);
+  g.userData.dispose = () => tex.dispose();
+  return g;
+}
+
 function SignalUnits() {
   const gltf = useGLTF(SIGNALS_MODEL_URL, DRACO_PATH);
+  // housings: graphite painted steel with relief, UVs in metres (the file has none)
+  useMemo(() => {
+    const loader = new TextureLoader();
+    const prep = (t: Texture) => {
+      t.wrapS = t.wrapT = RepeatWrapping;
+      t.anisotropy = 4;
+      return t;
+    };
+    const normal = prep(loader.load(SIG_PAINT_URLS[0]));
+    const rough = prep(loader.load(SIG_PAINT_URLS[1]));
+    const paint = new StdMaterial({ name: "M_sig_black", color: new Color("#4b525b"), roughness: 0.62, metalness: 0.05, normalMap: normal, normalScale: new Vector2(0.5, 0.5), roughnessMap: rough, side: 2 });
+    gltf.scene.traverse((o) => {
+      const mesh = o as Mesh;
+      if (!mesh.isMesh || !/sig_black/.test(mesh.name) || (mesh.userData as { cvPainted?: boolean }).cvPainted) return;
+      mesh.geometry = projectMetreUV(mesh.geometry, 0.6);
+      mesh.material = paint;
+      (mesh.userData as { cvPainted?: boolean }).cvPainted = true;
+    });
+  }, [gltf]);
+  const detail = useMemo(cabinetDetail, []);
   const spots = useMemo(() => signalPoleSpots(), []);
   const units = useMemo(
     () =>
       spots.map(() => {
         const u = gltf.scene.clone(true);
+        u.add(detail.clone(true));
         u.traverse((o) => {
           const mesh = o as Mesh;
           if (mesh.isMesh) mesh.castShadow = /sig_zinc|sig_black/.test(mesh.name);
         });
         return u;
       }),
-    [gltf, spots],
+    [gltf, spots, detail],
   );
   const lamps = useMemo(() => lampMaterials(gltf.scene), [gltf]);
   const display = useMemo(() => {

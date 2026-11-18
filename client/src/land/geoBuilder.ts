@@ -17,6 +17,11 @@ export class GeoBuilder {
     return this.idx.length / 3;
   }
 
+  /** One vertex (position, normal, uv, colour) appended; returns its index (the shape helpers in parkShapes.ts build on it). */
+  rawVertex(p: V3, n: V3, u: number, v: number, c: V3): number {
+    return this.vert(p, n, u, v, c);
+  }
+
   private vert(p: V3, n: V3, u: number, v: number, c: V3): number {
     this.pos.push(p[0], p[1], p[2]);
     this.nor.push(n[0], n[1], n[2]);
