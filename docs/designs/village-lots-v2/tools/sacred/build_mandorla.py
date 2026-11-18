@@ -2,6 +2,8 @@
 # The scanned statuette's own halo was a thin photogrammetry sheet (lumpy at 2.8 m), so process_statue.py cuts it off ("cut") and this
 # builds a clean, crisp, brand-new gilt one in the statue's own frame (origin = bottom centre, face toward Blender -Y = glTF +Z).
 #   blender -b --factory-startup -P build_mandorla.py -- <out.glb> [head_x head_y head_z]
+# env MANDORLA_CAP=0 leaves out the lapis cap and curls (the 2026-11-18 v2 본존불 has its own 육계 and 나발);
+# env MANDORLA_STYLE=round keeps only the head halo (두광: painted disc, gilt rings, beads, lotus petals) — the Seokguram way.
 # Writes <out.glb> with two mesh nodes: lotstatue__lot_temple_hall_buddha_halo (PC) and ..._halo_phone. Material: one gilt PBR.
 import bpy, bmesh, sys, os, math, random
 from mathutils import Vector, Matrix
@@ -214,7 +216,7 @@ for i in range(56):
 for o in bd: o.select_set(True)
 bpy.context.view_layer.objects.active = bd[0]
 for o in sc.objects: o.select_set(o in bd)
-bpy.ops.object.join(); parts.append(bpy.context.active_object); bpy.data.objects.remove(bead, do_unlink=True)
+bpy.ops.object.join(); bpy.context.active_object.name = "beads_head"; parts.append(bpy.context.active_object); bpy.data.objects.remove(bead, do_unlink=True)
 
 # a ring of lotus petals around the disc edge
 pv, pf = [], []
@@ -321,41 +323,47 @@ def medallion(x, z):
 for (mx, mz) in ((0.50, 1.30), (-0.50, 1.30), (0.47, 2.20), (-0.47, 2.20), (0.0, 2.55)):
     medallion(HX + mx, mz)
 
-# ---- the Buddha crown knot and snail-shell curls: the scan own cap is cut away (process_statue.py cut z > 1.79); this is a smooth
-# lapis dome with rows of small curls, sitting where the scan forehead stops
-CAP_Z = 1.78
-CY = HY - 0.03
-bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=12, radius=1.0, location=(HX, CY, CAP_Z))
-part(lapis, (0.137, 0.150, 0.118))
-bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=8, radius=1.0, location=(HX, CY + 0.005, CAP_Z + 0.115))
-part(lapis, (0.068, 0.07, 0.07))
-bpy.ops.mesh.primitive_uv_sphere_add(segments=8, ring_count=5, radius=0.02, location=(HX, CY + 0.005, CAP_Z + 0.19))
-part(gold)
-bpy.ops.mesh.primitive_uv_sphere_add(segments=6, ring_count=4, radius=0.0105)
-curl = bpy.context.active_object
-curl.data.materials.append(lapis)
-cl = []
-for row, (lat0, n) in enumerate(((0.05, 22), (0.40, 18), (0.68, 12), (0.95, 6))):
-    for i in range(n):
-        lon = 2 * math.pi * (i + 0.5 * (row % 2)) / n
-        x_ = 0.137 * math.cos(lat0) * math.cos(lon)
-        y_ = 0.150 * math.cos(lat0) * math.sin(lon)
-        z_ = 0.118 * math.sin(lat0)
-        if y_ < -0.03 and lat0 < 0.2:
-            continue
-        o = curl.copy()
-        o.data = curl.data
-        sc.collection.objects.link(o)
-        o.location = (HX + x_, CY + y_, CAP_Z + z_ + 0.012)
-        cl.append(o)
-for o in sc.objects:
-    o.select_set(o in cl)
-bpy.context.view_layer.objects.active = cl[0]
-bpy.ops.object.join()
-parts.append(bpy.context.active_object)
-bpy.data.objects.remove(curl, do_unlink=True)
+if os.environ.get("MANDORLA_CAP", "1") == "1":
+    # ---- the Buddha crown knot and snail-shell curls: the scan own cap is cut away (process_statue.py cut z > 1.79); this is a smooth
+    # lapis dome with rows of small curls, sitting where the scan forehead stops
+    CAP_Z = 1.78
+    CY = HY - 0.03
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=12, radius=1.0, location=(HX, CY, CAP_Z))
+    part(lapis, (0.137, 0.150, 0.118))
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=8, radius=1.0, location=(HX, CY + 0.005, CAP_Z + 0.115))
+    part(lapis, (0.068, 0.07, 0.07))
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=8, ring_count=5, radius=0.02, location=(HX, CY + 0.005, CAP_Z + 0.19))
+    part(gold)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=6, ring_count=4, radius=0.0105)
+    curl = bpy.context.active_object
+    curl.data.materials.append(lapis)
+    cl = []
+    for row, (lat0, n) in enumerate(((0.05, 22), (0.40, 18), (0.68, 12), (0.95, 6))):
+        for i in range(n):
+            lon = 2 * math.pi * (i + 0.5 * (row % 2)) / n
+            x_ = 0.137 * math.cos(lat0) * math.cos(lon)
+            y_ = 0.150 * math.cos(lat0) * math.sin(lon)
+            z_ = 0.118 * math.sin(lat0)
+            if y_ < -0.03 and lat0 < 0.2:
+                continue
+            o = curl.copy()
+            o.data = curl.data
+            sc.collection.objects.link(o)
+            o.location = (HX + x_, CY + y_, CAP_Z + z_ + 0.012)
+            cl.append(o)
+    for o in sc.objects:
+        o.select_set(o in cl)
+    bpy.context.view_layer.objects.active = cl[0]
+    bpy.ops.object.join()
+    parts.append(bpy.context.active_object)
+    bpy.data.objects.remove(curl, do_unlink=True)
 
 # ---- join and export
+if os.environ.get("MANDORLA_STYLE") == "round":
+    head = ("disc_red", "band_green", "band_blue", "ring", "beads_head", "petals")
+    for o in list(parts):
+        if not o.name.startswith(head):
+            parts.remove(o); bpy.data.objects.remove(o, do_unlink=True)
 for o in parts: print("PART", o.name, sum(len(p.vertices) - 2 for p in o.data.polygons))
 for o in sc.objects: o.select_set(o in parts)
 bpy.context.view_layer.objects.active = parts[0]

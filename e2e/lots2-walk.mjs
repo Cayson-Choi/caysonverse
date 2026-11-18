@@ -299,6 +299,7 @@ async function roomTrip(p, unit, tag) {
       altar_front: [5.7, 1.7, 3.6, 5.7, 2.5, 6.6, 50],
       buddha_face: [5.75, 3.0, 5.0, 5.7, 2.95, 6.4, 28],
       buddha_hands: [5.2, 2.6, 5.0, 5.2, 2.5, 6.4, 30],
+      buddha_lap: [5.7, 2.25, 4.75, 5.7, 1.95, 6.3, 36], // (2026-11-18 v2: the new 본존불 sits lower — its hands and crossed legs at ~2.0 m)
       bodhisattva: [4.6, 1.7, 4.4, 3.55, 2.4, 6.4, 38],
       bodhi_face: [3.9, 2.6, 5.3, 3.55, 3.05, 6.4, 28],
       taenghwa: [5.7, 1.9, 2.4, 5.7, 3.6, 7.2, 55],
