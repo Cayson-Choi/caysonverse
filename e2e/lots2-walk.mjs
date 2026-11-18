@@ -26,6 +26,7 @@ const OUT = arg("out") ?? run.evidence;
 mkdirSync(OUT, { recursive: true });
 const ONLY = (arg("only") ?? "pc,times,phone,before").split(",");
 const ROOMS = arg("rooms") === "none" ? [] : arg("rooms")?.split(",") ?? ["lot_school_class", "lot_library_reading", "lot_chapel_nave", "lot_church_nave", "lot_temple_hall"];
+const PHONE_ROOMS = process.env.CV_PHONE_ROOMS?.split(",") ?? ["lot_church_nave", "lot_chapel_nave"];
 const TIMES = { day: "2026-11-03T12:30", sunset: "2026-11-03T17:15", night: "2026-11-03T21:00" };
 const numbers = { rooms: {}, frames: {} };
 
@@ -289,6 +290,45 @@ async function roomTrip(p, unit, tag) {
   const at = await pos(p);
   run.check(`${tag} ${unit}: standing on the room's arrival spot, facing in`, Math.hypot(at.x - info.inside.arrival.x, at.z - info.inside.arrival.z) < 0.9, at);
   await p.page.screenshot({ path: join(OUT, `${tag}_${unit}_2inside.png`) });
+  // CV_TEMPLE_SHOTS=<dir>: the 대웅전's before/after photo set from fixed photo cameras (window.__cvShot), the room frame's views
+  if (unit === "lot_temple_hall" && process.env.CV_TEMPLE_SHOTS) {
+    const dir = process.env.CV_TEMPLE_SHOTS;
+    mkdirSync(dir, { recursive: true });
+    const V = {
+      hall_wide: [5.7, 1.6, 0.9, 5.7, 2.4, 7.0, 62],
+      altar_front: [5.7, 1.7, 3.6, 5.7, 2.5, 6.6, 50],
+      buddha_face: [5.75, 3.0, 5.0, 5.7, 2.95, 6.4, 28],
+      buddha_hands: [5.2, 2.6, 5.0, 5.2, 2.5, 6.4, 30],
+      bodhisattva: [4.6, 1.7, 4.4, 3.55, 2.4, 6.4, 38],
+      bodhi_face: [3.9, 2.6, 5.3, 3.55, 3.05, 6.4, 28],
+      taenghwa: [5.7, 1.9, 2.4, 5.7, 3.6, 7.2, 55],
+      ceiling: [5.7, 1.5, 1.5, 5.7, 5.0, 4.5, 75],
+      scroll: [3.2, 1.7, 4.6, 1.85, 2.5, 7.3, 45],
+    };
+    // what the sacred pieces' materials are in the drawn room (metal, env map, map sizes)
+    const sacred = await p.page.evaluate(() => {
+      const { scene } = window.__cvThree();
+      const out = {};
+      scene.traverse((o) => {
+        if (!o.isMesh || !/buddha|bodhisattva|taenghwa|scroll|halo/.test((o.parent?.name ?? "") + o.name + (o.parent?.parent?.name ?? ""))) return;
+        for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+          const k = `${o.parent?.parent?.name ?? o.parent?.name}/${o.name}/${m.name}`;
+          out[k] = { metal: m.metalness, rough: m.roughness, env: !!m.envMap, envI: m.envMapIntensity,  mm: !!m.metalnessMap, map: m.map ? [m.map.mipmaps?.[0]?.width ?? m.map.image?.width, m.map.anisotropy] : null, nm: m.normalMap ? (m.normalMap.mipmaps?.[0]?.width ?? m.normalMap.image?.width) : null };
+        }
+      });
+      return out;
+    });
+    writeFileSync(join(dir, `${tag}_sacred_materials.json`), JSON.stringify(sacred, null, 1));
+    await hideHud(p);
+    for (const [name, [x, y, z, tx, ty, tz, fov]] of Object.entries(V)) {
+      await p.page.evaluate(([b, x, y, z, tx, ty, tz, fov]) => { window.__cvShot = { x: b.minX + x, y, z: b.minZ + z, tx: b.minX + tx, ty, tz: b.minZ + tz, fov }; }, [info.bounds, x, y, z, tx, ty, tz, fov]);
+      await sleep(1400);
+      await p.page.screenshot({ path: join(dir, `${tag}_${name}.png`) });
+    }
+    await p.page.evaluate(() => { window.__cvShot = null; });
+    await showHud(p);
+    await sleep(400);
+  }
   // 3. the camera never leaves the room
   const out = await cameraStaysIn(p, info);
   run.check(`${tag} ${unit}: the camera stays inside the walls and under the ceiling all the way round`, out.length === 0, out);
@@ -430,7 +470,7 @@ if (ONLY.includes("phone")) {
     numbers.phoneLots = l;
     if (process.env.CV_NO_TOUR) {
       // (the rooms only: the lightmaps' before/after on the phone)
-      for (const unit of ["lot_church_nave", "lot_chapel_nave"]) await roomTrip(p, unit, "phone");
+      for (const unit of PHONE_ROOMS) await roomTrip(p, unit, "phone");
       await p.ctx.close();
       return;
     }
@@ -455,7 +495,7 @@ if (ONLY.includes("phone")) {
     const lotsWorst = Math.max(...Object.values(load).map((v) => v.lots?.triangles ?? 0));
     run.check("phone: the lots draw at most their shells + the nearest lot's detail + one pool (LOD)", lotsWorst <= 13_200 + 20_000 + 14_000 + 3_700, { lotsWorst, frame: Object.fromEntries(Object.entries(load).map(([k, v]) => [k, [v.triangles, v.calls, v.lots?.triangles, v.lots?.draws]])) });
     // (CV_PHONE_TOUR_ONLY=1: the walk round the six only — the hitch comparison runs)
-    if (!process.env.CV_PHONE_TOUR_ONLY) for (const unit of ["lot_church_nave", "lot_chapel_nave"]) await roomTrip(p, unit, "phone");
+    if (!process.env.CV_PHONE_TOUR_ONLY) for (const unit of PHONE_ROOMS) await roomTrip(p, unit, "phone");
     const l2 = await lots(p);
     run.check("phone: at most two lots in detail", Object.values(l2?.levels ?? {}).filter((v) => v > 0).length <= 2, l2?.levels);
     await p.ctx.close();

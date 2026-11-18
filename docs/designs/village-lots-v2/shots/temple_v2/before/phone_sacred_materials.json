@@ -1,0 +1,134 @@
+{
+ "lotart__lot_temple_hall_taenghwa/lotart__lot_temple_hall_taenghwa/M_taenghwa": {
+  "metal": 1,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   1024,
+   1
+  ],
+  "nm": 512
+ },
+ "Scene/frame/M_pbr_dancheong_wood": {
+  "metal": 0.6,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   1024,
+   8
+  ],
+  "nm": 1024
+ },
+ "Scene/frame001/M_pbr_dancheong_wood": {
+  "metal": 0.6,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   1024,
+   8
+  ],
+  "nm": 1024
+ },
+ "Scene/frame002/M_pbr_dancheong_wood": {
+  "metal": 0.6,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   1024,
+   8
+  ],
+  "nm": 1024
+ },
+ "Scene/frame003/M_pbr_dancheong_wood": {
+  "metal": 0.6,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   1024,
+   8
+  ],
+  "nm": 1024
+ },
+ "Scene/Plane/M_silk_border": {
+  "metal": 0,
+  "rough": 0.75,
+  "env": false,
+  "envI": 1,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/Plane001/M_silk_border": {
+  "metal": 0,
+  "rough": 0.75,
+  "env": false,
+  "envI": 1,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/Plane002/M_silk_border": {
+  "metal": 0,
+  "rough": 0.75,
+  "env": false,
+  "envI": 1,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/Plane003/M_silk_border": {
+  "metal": 0,
+  "rough": 0.75,
+  "env": false,
+  "envI": 1,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "lotstatue__lot_temple_hall_bodhisattva_l/lotstatue__lot_temple_hall_bodhisattva_phone/lotstatue__lot_temple_hall_bodhisattva_mat": {
+  "metal": 1,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   512,
+   1
+  ],
+  "nm": 256
+ },
+ "lotstatue__lot_temple_hall_bodhisattva_r/lotstatue__lot_temple_hall_bodhisattva_phone/lotstatue__lot_temple_hall_bodhisattva_mat": {
+  "metal": 1,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   512,
+   1
+  ],
+  "nm": 256
+ },
+ "lotstatue__lot_temple_hall_buddha/lotstatue__lot_temple_hall_buddha_phone/lotstatue__lot_temple_hall_buddha_mat": {
+  "metal": 1,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   512,
+   1
+  ],
+  "nm": 256
+ }
+}

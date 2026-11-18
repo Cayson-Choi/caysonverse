@@ -73,6 +73,8 @@ def import_sacred():
              "bodhisattva": os.path.join(SACRED_DIR, "bodhisattva", "lotstatue__lot_temple_hall_bodhisattva.glb")}
     for s in temple_room_kit.SACRED:
         x, y, z = s["at"]
+        if "scroll" in s["node"] or s["node"].endswith("_halo"):
+            continue
         if "taenghwa" in s["node"]:
             img = os.path.join(SACRED_DIR, "taenghwa", "taenghwa_color.png")
             if not os.path.exists(img):

@@ -11,3 +11,16 @@
 - 나무 십자가, 십자가의 길 판, 장미창 트레이서리, 납 테·철 띠, 탱화 틀, 대리석·금박 표면 굽기: 이 프로젝트에서 직접 제작
 - 본존불 3D: "Gilt bronze statuette of Sakyamuni Buddha" by dluo — **CC BY 4.0** (https://zenodo.org/records/10225206)
 - 십자고상 3D: "Crucified Christ" from St. Jadwiga's hospital, WirtualneMuzeaMalopolski — CC0 (https://zenodo.org/records/21567941)
+- 대웅전 옆 벽 족자 2점: Cleveland Museum of Art 1918.542 "Tathagata Buddha" (조선, 19세기 후반) — CC0 (https://www.clevelandart.org/art/1918.542)
+- 본존불 광배·두광(불꽃 모양 광배, 연꽃잎 두광): 이 프로젝트에서 직접 모델링 (`docs/designs/village-lots-v2/tools/sacred/build_mandorla.py`); 스캔에 붙어 있던 얇은 광배는 잘라냄
+
+## 2026-11-18 성당·교회 실내 다듬기 (chapel/church pass)
+
+- 성모상(`lotstatue__lot_chapel_nave_mary*.glb`)을 SMK KAS225의 **원본 해상도 스캔**(1.5M 삼각형, 76 MB STL,
+  https://api.smk.dk/api/v1/download-3d/st74cw417_smk21-kas225-bruges-madonna.stl)에서 다시 구웠어요: PC 40,000 삼각형 · 2K 노멀/2K 색, 폰 9,000 삼각형 · 1K. 퍼블릭 도메인(PDM 1.0).
+- 십자가의 길 14처(`lotart__lot_chapel_nave_station_01..14*.glb`): 조반니 도메니코 티에폴로 «십자가의 길» 동판화 14점(1749경), Cooper Hewitt, Smithsonian Design Museum — 퍼블릭 도메인(스미스소니언 오픈액세스 CC0).
+  위키미디어 공용 «Print, Via Crucis - Station I … XIV, ca. 1749 (CH 18328435 … 18328471)»에서 받은 원본(2.6k x 4k)의 그림 부분을 잘라 틀에 넣었어요. 참나무 액자는 직접 제작.
+- 교회 그림 3점(`lotart__lot_church_nave_*.glb`), 모두 퍼블릭 도메인(작가 사후 100년 이상):
+  칼 블로흐 «산상수훈»(1877, 위키미디어 «Carl Bloch - The Sermon on the Mount.jpg»), 렘브란트 «탕자의 귀환»(약 1668, 위키미디어 «Rembrandt Harmensz. van Rijn - The Return of the Prodigal Son.jpg»),
+  하인리히 호프만 «겟세마네의 그리스도»(위키미디어 «Christ in Gethsemane.jpg»). 도금 액자는 직접 제작.
+- 만드는 스크립트: `docs/designs/village-lots-v2/tools/sacred/node/build_framed_art.mjs`(액자·그림 GLB), `tools/patch_room_art.py`(방 GLB에 자리·색유리 밝기 반영).

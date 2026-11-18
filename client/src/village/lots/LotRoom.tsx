@@ -4,14 +4,21 @@ import {
   AdditiveBlending,
   AmbientLight,
   Color,
+  DataTexture,
   DoubleSide,
+  EquirectangularReflectionMapping,
+  HalfFloatType,
+  LinearFilter,
   Group,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  PMREMGenerator,
+  RGBAFormat,
   ShaderMaterial,
   Vector3,
   Vector4,
+  DataUtils,
   type Material,
   type Object3D,
   type Texture,
@@ -99,10 +106,100 @@ function ownTextureBytes(root: Object3D, mobile: boolean): number {
  * the cap only drops the levels above it (no re-encode, no new file); a piece is seen from a few metres, where 1024 /
  * 512 is still 300+ px a metre (the ORM's soft shading the least of it: 256).
  */
-export const SACRED_MAP_MAX = {
+type SacredCap = { color: number; normal: number; orm: number };
+export const SACRED_MAP_MAX: { desktop: SacredCap; mobile: SacredCap } = {
   desktop: { color: 1024, normal: 512, orm: 256 },
   mobile: { color: 1024, normal: 256, orm: 256 },
+};
+
+/**
+ * Rooms whose sacred pieces are the point of the room get a higher cap (owner 2026-11-18: "고해상도로 선명하게"): the 대웅전's 본존불, 협시보살
+ * and 탱화 keep their full maps on a desktop (colour up to 3072 for the 탱화, normal 2048), 1024 / 1024 on a phone (the room's GPU budget has the room: 48 / 14 MB).
+ */
+export const SACRED_MAP_MAX_BY_UNIT: Record<string, { desktop: SacredCap; mobile: SacredCap }> = {
+  lot_temple_hall: {
+    desktop: { color: 3072, normal: 2048, orm: 512 },
+    mobile: { color: 1024, normal: 1024, orm: 256 },
+  },
+};
+
+/**
+ * The gilt statues, the halo and the scroll fittings reflect a small HDR panorama of the hall (128 x 64 half floats, prefiltered once by a
+ * PMREM generator that is kept, never disposed: disposing one in the middle of a room load frees programs under the loader's compile poll,
+ * a TypeError in three's timer). A metal has nothing to reflect in a room without an environment map, so burnished gold read as dry ochre
+ * (owner 2026-11-18: "진짜 입체적으로 … 실제 새것같은 질감"). The first version was an 8-bit panorama (radiance <= 1: the reflections
+ * came out too dark to see even at envMapIntensity 30); this one holds real radiances: the paper doors and lamps at 1.5..3, the lacquered
+ * walls and floor around 0.4..0.8. Only the sacred gilt carries it: the dancheong, the paintings and the room's own surfaces do not.
+ */
+const SACRED_ENV_W = 128;
+const SACRED_ENV_INTENSITY = 0.45;
+const sacredEnvs = new WeakMap<WebGLRenderer, { pm: PMREMGenerator; tex: Texture }>();
+/** The hall seen from the altar, linear radiance per direction (room frame: the door wall toward -z, y up). */
+function hallRadiance(x: number, y: number, z: number): [number, number, number] {
+  if (y > 0.55) {
+    const lamp = Math.sin(Math.atan2(z, x) * 6) > 0.8 && y < 0.9;
+    return lamp ? [3.2, 2.4, 1.4] : [0.10, 0.28, 0.25];
+  }
+  if (y < -0.25) return [0.6, 0.4, 0.22]; // the pine floor
+  if (z < -0.3) return y > 0.12 ? [0.6, 0.85, 0.8] : [1.7, 1.55, 1.3]; // the paper doors toward the visitor (daylight), a blue-green transom
+  return y > 0.0 ? [0.55, 0.14, 0.08] : [0.8, 0.66, 0.46]; // the lacquered walls over the plaster
+}
+function sacredEnv(gl: WebGLRenderer): Texture {
+  const have = sacredEnvs.get(gl);
+  if (have) return have.tex;
+  const w = SACRED_ENV_W;
+  const h = w / 2;
+  const data = new Uint16Array(w * h * 4);
+  for (let j = 0; j < h; j++) {
+    const lat = ((j + 0.5) / h - 0.5) * Math.PI; // row 0 = straight down (flipY false)
+    for (let i = 0; i < w; i++) {
+      const lon = ((i + 0.5) / w - 0.5) * Math.PI * 2;
+      const [r, g, b] = hallRadiance(Math.cos(lat) * Math.cos(lon), Math.sin(lat), Math.cos(lat) * Math.sin(lon));
+      const k = (j * w + i) * 4;
+      data[k] = DataUtils.toHalfFloat(r);
+      data[k + 1] = DataUtils.toHalfFloat(g);
+      data[k + 2] = DataUtils.toHalfFloat(b);
+      data[k + 3] = DataUtils.toHalfFloat(1);
+    }
+  }
+  const eq = new DataTexture(data, w, h, RGBAFormat, HalfFloatType);
+  eq.mapping = EquirectangularReflectionMapping;
+  eq.magFilter = LinearFilter;
+  eq.minFilter = LinearFilter;
+  eq.needsUpdate = true;
+  const pm = new PMREMGenerator(gl);
+  const rt = pm.fromEquirectangular(eq);
+  eq.dispose();
+  sacredEnvs.set(gl, { pm, tex: rt.texture });
+  return rt.texture;
+}
+
+/**
+ * The hero pieces (the statues and the framed prints: what a visitor walks up to and looks at from arm's length) keep their
+ * 2K maps: at the budget caps above a 2048 normal map reached the screen as 512 (the marble's folds and the faces read as
+ * soft clay). A phone keeps 1K colour and normal (the phone files carry 1K maps; the pieces are few).
+ */
+export const SACRED_HERO_MAP_MAX = {
+  desktop: { color: 2048, normal: 2048, orm: 1024 },
+  mobile: { color: 1024, normal: 1024, orm: 512 },
 } as const;
+
+/** The map caps of a sacred piece by its anchor's node name: the hero pieces (statues, framed art) keep more than the rest. */
+export function sacredCaps(node: string, phone: boolean): { color: number; normal: number; orm: number } {
+  const tier = phone ? "mobile" : "desktop";
+  // the saints stand at the side: the budget caps; the 14 stations are small prints seen one or two at a time (768 px a long side is 1.8x the screen)
+  // Mary: the 2K normal map carries the face and the folds; the marble's colour is soft (1K); the crucifix (a wood scan, seen from 3 m+): 1K normal
+  if (node === "lotstatue__lot_chapel_nave_mary") return { ...SACRED_HERO_MAP_MAX[tier], color: 1024, orm: phone ? 256 : 512 };
+  if (node === "lotstatue__lot_chapel_nave_crucifix") return { color: 1024, normal: 1024, orm: 512 };
+  if (node.startsWith("lotart__lot_chapel_nave_station")) return { ...SACRED_MAP_MAX[tier], color: phone ? 512 : 768 };
+  if (node.startsWith("lotart__lot_church_nave_")) return { ...SACRED_MAP_MAX[tier], color: phone ? 768 : 1280 };
+  return SACRED_MAP_MAX[tier];
+}
+
+/** Whether a sacred piece takes anisotropic reads (everything but the glass). */
+export function isSacredHero(node: string): boolean {
+  return /^lot(statue|art)__lot_(chapel|church)_nave_/.test(node);
+}
 
 export { capMips } from "./lotTextures";
 
@@ -148,13 +245,19 @@ interface RoomLights {
   points: Array<[number, number, number, string, number, number]>;
   spots: Array<[number, number, number, number, number, number, string, number]>;
 }
+/**
+ * A per-room colour grade on the lit surfaces (a multiply, linear): the chapel's honey stone under a warm bake and warm lamps read
+ * orange all over (the paintings and the stained glass lost their true colours); a slight cool pull brings the room to a neutral cream.
+ */
+export const ROOM_GRADE: Readonly<Record<string, readonly [number, number, number]>> = { lot_chapel_nave: [0.80, 0.93, 1.18] };
+
 const ROOM_LIGHTS: Record<string, RoomLights> = {
   lot_school_class: { ambient: ["#fff4e6", 0.55, 0.28], points: [[5.2, 3.2, 5, "#fff1dc", 6, 9], [10.4, 3.2, 5, "#fff1dc", 6, 9]], spots: [] },
   lot_library_reading: { fire: [6.7, 0.61, 9.93], ambient: ["#fff0dc", 0.5, 0.24], points: [[4.5, 4.2, 5.5, "#ffd9a6", 7, 9], [9, 4.2, 5.5, "#ffd9a6", 7, 9]], spots: [] },
   lot_chapel_nave: {
     fire: [4.7, 1.6, 11.9],
-    ambient: ["#ffe9d0", 0.6, 0.35],
-    points: [[4.7, 3.9, 5.1, "#ffc98a", 9, 9], [4.7, 3.9, 8.5, "#ffc98a", 9, 9], [4.7, 5.3, 1.4, "#ffd09a", 2.5, 6]],
+    ambient: ["#f3efe9", 0.6, 0.35],
+    points: [[4.7, 3.9, 5.1, "#ffdcb4", 9, 9], [4.7, 3.9, 8.5, "#ffdcb4", 9, 9], [4.7, 5.3, 1.4, "#ffe0b8", 2.5, 6]],
     spots: [[4.7, 7.0, 9.4, 4.7, 2.2, 12.6, "#ffe0b8", 60], [3.2, 5.2, 7.25, 0.6, 1.75, 9.85, "#ffe4c4", 30], [6.2, 5.2, 7.25, 8.8, 1.75, 9.85, "#ffe4c4", 30]],
   },
   lot_church_nave: { fire: [3.9, 1.4, 9.6], ambient: ["#ffe9d0", 0.6, 0.35], points: [[3.9, 3.6, 3.6, "#ffcf96", 7, 8], [3.9, 3.6, 6.9, "#ffcf96", 7, 8]], spots: [[3.9, 5.6, 6.6, 3.9, 3.2, 10.4, "#fff0d8", 40]] },
@@ -447,6 +550,8 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
       if (src.name.startsWith("LM_")) {
         const sm = lotSurfaceMaterial(s, spec, false);
         sm.vertexColors = colours;
+        const grade = ROOM_GRADE[unit];
+        if (grade) sm.color.multiply(new Color(grade[0], grade[1], grade[2]));
         applyLotTextures(sm, bank);
         if (baked && lm) {
           sm.lightMap = lm.day;
@@ -534,12 +639,19 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
           o.visible = false;
           return;
         }
-        const cap = SACRED_MAP_MAX[phone ? "mobile" : "desktop"];
+        const hero = isSacredHero(s.node);
+        // the temple hall has its own (higher) caps per unit; the chapel / church heroes and prints have theirs per node
+        const unitCap = SACRED_MAP_MAX_BY_UNIT[unit];
+        const cap = unitCap ? unitCap[phone ? "mobile" : "desktop"] : sacredCaps(s.node, phone);
+        const aniso = Math.min(16, gl.capabilities.getMaxAnisotropy());
         const out = matsOf(o).map((mat) => {
           let m = mat as MeshStandardMaterial;
           for (const k of ["map", "emissiveMap", "normalMap", "aoMap", "roughnessMap", "metalnessMap"] as const) {
             const t = m[k];
-            if (t) capMips(t, k === "map" || k === "emissiveMap" ? cap.color : k === "normalMap" ? cap.normal : cap.orm);
+            if (!t) continue;
+            capMips(t, k === "map" || k === "emissiveMap" ? cap.color : k === "normalMap" ? cap.normal : cap.orm);
+            // sharp at a slant (a statue seen from the side, a painting along the wall): mips + anisotropic filtering
+            if (unitCap || (hero && (k === "map" || k === "normalMap"))) t.anisotropy = Math.max(t.anisotropy, unitCap ? aniso : Math.min(8, aniso));
           }
           const set = /^M_pbr_(.+)$/.exec(m.name)?.[1];
           if (set) {
@@ -550,6 +662,10 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
             surfaces.push(sm);
             materials.push(sm);
             m = sm;
+          }
+          if (m.name.includes("gilt") || (s.node.startsWith("lotstatue__") && m.metalnessMap)) {
+            m.envMap = sacredEnv(gl);
+            m.envMapIntensity = SACRED_ENV_INTENSITY;
           }
           if (s.mirrorX) m.side = DoubleSide;
           if (s.glass && m.emissiveMap) glass.push({ m, day: s.glass.emissiveIntensity?.day ?? 1.5, night: s.glass.emissiveIntensity?.night ?? 0.15 });
@@ -576,6 +692,7 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
     });
     // every texture on the GPU now, under the entry cover (the first frame inside never waits for an upload)
     const seen = new Set<Texture>();
+    const uploads: Texture[] = [];
     scene.traverse((o) => {
       if (!isMesh(o) || !o.visible) return;
       for (const m of matsOf(o))
@@ -584,14 +701,26 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
           const t = k === "lmNight" ? ((m as MeshStandardMaterial).userData.lmNight as Texture | undefined) : (m as MeshStandardMaterial)[k];
           if (t && !seen.has(t)) {
             seen.add(t);
-            try {
-              gl.initTexture(t);
-            } catch {
-              /* drawn three's way */
-            }
+            uploads.push(t);
           }
         }
     });
+    // (in slices: a 2K normal map is a 5 MB upload, ten of them in one task were one 300 ms frame; a pause of a frame between
+    // every ~3 MB keeps each frame under the cover short)
+    let sliced = 0;
+    for (const t of uploads) {
+      try {
+        gl.initTexture(t);
+      } catch {
+        /* drawn three's way */
+      }
+      const img = (t as Texture & { mipmaps?: Array<{ width: number; height: number }> }).mipmaps?.[0] ?? (t.image as { width?: number; height?: number } | null);
+      sliced += (img?.width ?? 0) * (img?.height ?? 0);
+      if (sliced > 3_000_000) {
+        sliced = 0;
+        await new Promise((r) => setTimeout(r, 16));
+      }
+    }
     const root = new Group();
     root.name = `lotroom__game_${unit}`;
     root.add(scene);

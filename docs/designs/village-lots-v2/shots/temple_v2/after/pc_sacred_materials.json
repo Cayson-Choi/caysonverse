@@ -1,0 +1,404 @@
+{
+ "Scene/Plane/M_scroll_paint": {
+  "metal": 0,
+  "rough": 0.8,
+  "env": false,
+  "envI": 1,
+  "mm": false,
+  "map": [
+   896,
+   16
+  ],
+  "nm": 208
+ },
+ "Scene/Plane_1/M_scroll_lacquer": {
+  "metal": 0,
+  "rough": 0.3799999952316284,
+  "env": false,
+  "envI": 1,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/Plane_2/M_scroll_gilt": {
+  "metal": 0.550000011920929,
+  "rough": 0.3400000035762787,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/Plane_3/M_scroll_cord": {
+  "metal": 0,
+  "rough": 0.6000000238418579,
+  "env": false,
+  "envI": 1,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "lotart__lot_temple_hall_taenghwa/lotart__lot_temple_hall_taenghwa/M_taenghwa": {
+  "metal": 1,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   3072,
+   16
+  ],
+  "nm": 1024
+ },
+ "Scene/bead/M_gilt_frame": {
+  "metal": 0.3499999940395355,
+  "rough": 0.30000001192092896,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/bead001/M_gilt_frame": {
+  "metal": 0.3499999940395355,
+  "rough": 0.30000001192092896,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/bead002/M_gilt_frame": {
+  "metal": 0.3499999940395355,
+  "rough": 0.30000001192092896,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/bead003/M_gilt_frame": {
+  "metal": 0.3499999940395355,
+  "rough": 0.30000001192092896,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/corner/M_gilt_frame": {
+  "metal": 0.3499999940395355,
+  "rough": 0.30000001192092896,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/corner001/M_gilt_frame": {
+  "metal": 0.3499999940395355,
+  "rough": 0.30000001192092896,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/corner002/M_gilt_frame": {
+  "metal": 0.3499999940395355,
+  "rough": 0.30000001192092896,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/corner003/M_gilt_frame": {
+  "metal": 0.3499999940395355,
+  "rough": 0.30000001192092896,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/cornice/M_gilt_frame": {
+  "metal": 0.3499999940395355,
+  "rough": 0.30000001192092896,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/cornice_lac/M_pbr_dancheong_wood": {
+  "metal": 0.6,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   1024,
+   8
+  ],
+  "nm": 1024
+ },
+ "Scene/frame/M_pbr_dancheong_wood": {
+  "metal": 0.6,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   1024,
+   8
+  ],
+  "nm": 1024
+ },
+ "Scene/frame2/M_pbr_dancheong_wood": {
+  "metal": 0.6,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   1024,
+   8
+  ],
+  "nm": 1024
+ },
+ "Scene/frame2001/M_pbr_dancheong_wood": {
+  "metal": 0.6,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   1024,
+   8
+  ],
+  "nm": 1024
+ },
+ "Scene/frame2002/M_pbr_dancheong_wood": {
+  "metal": 0.6,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   1024,
+   8
+  ],
+  "nm": 1024
+ },
+ "Scene/frame2003/M_pbr_dancheong_wood": {
+  "metal": 0.6,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   1024,
+   8
+  ],
+  "nm": 1024
+ },
+ "Scene/frame001/M_pbr_dancheong_wood": {
+  "metal": 0.6,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   1024,
+   8
+  ],
+  "nm": 1024
+ },
+ "Scene/frame002/M_pbr_dancheong_wood": {
+  "metal": 0.6,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   1024,
+   8
+  ],
+  "nm": 1024
+ },
+ "Scene/frame003/M_pbr_dancheong_wood": {
+  "metal": 0.6,
+  "rough": 1,
+  "env": false,
+  "envI": 1,
+  "mm": true,
+  "map": [
+   1024,
+   8
+  ],
+  "nm": 1024
+ },
+ "Scene/Plane/M_silk_border": {
+  "metal": 0,
+  "rough": 0.7200000286102295,
+  "env": false,
+  "envI": 1,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/Plane001/M_silk_border": {
+  "metal": 0,
+  "rough": 0.7200000286102295,
+  "env": false,
+  "envI": 1,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/Plane002/M_silk_border": {
+  "metal": 0,
+  "rough": 0.7200000286102295,
+  "env": false,
+  "envI": 1,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/Plane003/M_silk_border": {
+  "metal": 0,
+  "rough": 0.7200000286102295,
+  "env": false,
+  "envI": 1,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/Sphere/M_gilt_frame": {
+  "metal": 0.3499999940395355,
+  "rough": 0.30000001192092896,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/Sphere001/M_gilt_frame": {
+  "metal": 0.3499999940395355,
+  "rough": 0.30000001192092896,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/Sphere002/M_gilt_frame": {
+  "metal": 0.3499999940395355,
+  "rough": 0.30000001192092896,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/Sphere003/M_gilt_frame": {
+  "metal": 0.3499999940395355,
+  "rough": 0.30000001192092896,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "lotstatue__lot_temple_hall_bodhisattva_l/lotstatue__lot_temple_hall_bodhisattva/lotstatue__lot_temple_hall_bodhisattva_mat": {
+  "metal": 1,
+  "rough": 1,
+  "env": true,
+  "envI": 0.45,
+  "mm": true,
+  "map": [
+   1024,
+   16
+  ],
+  "nm": 2048
+ },
+ "lotstatue__lot_temple_hall_bodhisattva_r/lotstatue__lot_temple_hall_bodhisattva/lotstatue__lot_temple_hall_bodhisattva_mat": {
+  "metal": 1,
+  "rough": 1,
+  "env": true,
+  "envI": 0.45,
+  "mm": true,
+  "map": [
+   1024,
+   16
+  ],
+  "nm": 2048
+ },
+ "lotstatue__lot_temple_hall_buddha/lotstatue__lot_temple_hall_buddha/lotstatue__lot_temple_hall_buddha_mat": {
+  "metal": 1,
+  "rough": 1,
+  "env": true,
+  "envI": 0.45,
+  "mm": true,
+  "map": [
+   2048,
+   16
+  ],
+  "nm": 2048
+ },
+ "Scene/plate/M_gilt_deep": {
+  "metal": 0.8999999761581421,
+  "rough": 0.44999998807907104,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/plate_1/M_gilt": {
+  "metal": 0.8999999761581421,
+  "rough": 0.30000001192092896,
+  "env": true,
+  "envI": 0.45,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/plate_2/M_paint_red": {
+  "metal": 0,
+  "rough": 0.550000011920929,
+  "env": false,
+  "envI": 1,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/plate_3/M_lapis": {
+  "metal": 0,
+  "rough": 0.5,
+  "env": false,
+  "envI": 1,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/plate_4/M_paint_green": {
+  "metal": 0,
+  "rough": 0.550000011920929,
+  "env": false,
+  "envI": 1,
+  "mm": false,
+  "map": null,
+  "nm": null
+ },
+ "Scene/plate_5/M_paint_blue": {
+  "metal": 0,
+  "rough": 0.550000011920929,
+  "env": false,
+  "envI": 1,
+  "mm": false,
+  "map": null,
+  "nm": null
+ }
+}

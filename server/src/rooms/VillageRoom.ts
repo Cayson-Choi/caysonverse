@@ -83,6 +83,8 @@ interface VillageTracking extends Tracking {
    * key maps to an `owner` through the DB (memorial/service.ts); memorial-2 W1/W3 read it with `memorialKeyHash`.
    */
   keyHash: string | null;
+  /** The joining tab's own id (client/src/net/tabId.ts), or null: a fresh join of the same tab replaces its old session (`onJoin`). */
+  tabId: string | null;
 }
 
 /**
@@ -284,7 +286,11 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     player.area = "village";
     this.seatPlayer(client, player); // state + tracking (createTracking below)
     const track = this.tracking.get(client.sessionId);
-    if (track) track.keyHash = result.deviceKeyHash;
+    if (track) {
+      track.keyHash = result.deviceKeyHash;
+      track.tabId = result.tabId;
+    }
+    this.replaceOldSessionsOfTab(client.sessionId, result.tabId);
     client.send(VillageServerMsg.ServerTime, this.serverTime());
     const snapshot = this.busSnapshot(this.wallClock());
     client.send(MessageType.BusState, snapshot);
@@ -360,6 +366,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       busMoveRate: new RateWindow(BUS_MOVE_MAX_PER_SEC),
       busActRate: new RateWindow(BUS_ACT_MAX_PER_SEC),
       keyHash: null,
+      tabId: null,
     };
   }
 
@@ -427,15 +434,36 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
    * its seat until it is back or gone.
    */
   onLeave(client: Client): void {
-    const player = this.state.players.get(client.sessionId);
+    this.freeSession(client.sessionId);
+    super.onLeave(client);
+  }
+
+  /** Everything a session holds besides its Player: the bus place, a bench, the rod, a ride seat. Safe to repeat. */
+  private freeSession(sessionId: string): void {
+    const player = this.state.players.get(sessionId);
     if (player) {
       this.busRiders.delete(player);
       player.busSeat = -1;
     }
-    this.releaseSeat(client.sessionId);
-    this.fishing.leave(client.sessionId);
-    this.coaster.leave(client.sessionId);
-    super.onLeave(client);
+    this.releaseSeat(sessionId);
+    this.fishing.leave(sessionId);
+    this.coaster.leave(sessionId);
+  }
+
+  /**
+   * A tab that joins again (the resilience driver's phase 2: its token reconnect failed, or the page was reloaded after its
+   * phone slept) must not leave its OLD session behind: the old player is a ghost for the whole reconnection window (20 s) - on the
+   * bus, a ride seat or a bench - beside the new avatar of the same person on everyone's screen. The old session goes at once: seat
+   * freed, avatar gone for everyone (the framework's later window expiry finds nothing left to do).
+   */
+  private replaceOldSessionsOfTab(newSessionId: string, tabId: string | null): void {
+    if (tabId === null) return;
+    for (const [sid, track] of [...this.tracking]) {
+      if (sid === newSessionId || track.tabId !== tabId) continue;
+      this.freeSession(sid);
+      this.unseatPlayer(sid);
+      this.clients.find((c) => c.sessionId === sid)?.leave();
+    }
   }
 
   /** The room's bus driver, brought up to `now` (created on first use). */

@@ -60,3 +60,22 @@ Sketchfab에 **CC0로 표시된 박물관 실사 채색 스캔**이 있지만 �
 - Cleveland 1973.85 좌불·1970.13 성모상은 공개 사본을 찾지 못했어요(Cleveland 누리집은 Sketchfab만 연결).
 - "새것 같아야 해"(사장님 2026-11-17): 스캔 색의 때·균열·얼룩을 주변 색으로 메우고(`process_statue.py` "clean"), 고해상도를 살짝 다듬어 노멀·AO의 흠을 줄이고,
   탱화 균열을 메우고 색을 맑게, 색유리 채도를 올렸어요.
+
+## 2026-11-18 대웅전 다시 다듬기 (B3 re-do, 소유자 "허접해 … 고화질로 선명하게 … 진짜 입체적으로")
+- **본존불**: 같은 dluo 스캔(CC BY 4.0, Zenodo 10225206)을 다시 처리했어요 — 스캔 모양이 옆으로 23도 돌아가 있던 것을 바로잡고
+  (`rot_deg [0,0,-67]`), 얇은 사진측량 광배는 잘라내고(`cut`) 그 자리에 **직접 모델링한 광배**(불꽃 테 + 연꽃잎 두광, `build_mandorla.py`)를 둬요.
+  이전에는 스캔을 2만 삼각형·노멀 1K·표시 상한 512로 줄여 얼굴·옷주름이 뭉개졌어요: 이제 4.2만 삼각형, 노멀 4096에서 구워 2048로, 색 2048, 표시 상한 2048
+  (`SACRED_MAP_MAX_BY_UNIT.lot_temple_hall`).
+- **협시보살**: 같은 국보 제200호 금동보살입상 데이터(공공누리 제1유형)를 1.6만 삼각형 + 노멀 4096→2048로, 금속도 0.5로 낮춰(환경맵 없는 방에서 어둡게 보이지 않게) 새 금박으로 구웠어요.
+- **족자 2점**: Cleveland 1918.542 (CC0), `make_scroll.py`(새것 손질) + `build_scroll.py`(옻칠 축·금 마구리·끈·술) — 뒤 벽 좌우, 오른쪽은 거울.
+- **연등**: 스캔·사진 없이 직접 모델링한 연꽃봉오리 연등(두 줄 꽃잎, 능선 있는 꽃잎).
+## 2026-11-18 성당·교회 실내 다듬기
+
+- 성모상: 위 표의 SMK KAS225를 **작은(`_small`) 20 MB 파일 대신 원본 해상도 76 MB STL**(https://api.smk.dk/api/v1/download-3d/st74cw417_smk21-kas225-bruges-madonna.stl, 1.54M 삼각형)에서 `process_statue.py`로 다시 구움:
+  PC 40,000 삼각형 · 2K 노멀 · 2K 색 · 1K ORM, 폰 9,000 삼각형(1K 맵). 작업 파일 `art/sacred/mary_job.json`(저장소에 올리지 않음). 지난번에는 14,000 삼각형이었고, 게다가 `SACRED_MAP_MAX`가 2K 노멀을 512로 깎아 얼굴이 뭉개졌어요:
+  이제 성모상·십자고상은 `sacredCaps`(LotRoom.tsx)에서 2K(폰 1K)를 그대로 써요.
+- 십자가의 길 14처: 티에폴로 동판화 14점(Cooper Hewitt, CC0/PD) → `build_framed_art.mjs`(참나무 액자 + 오목한 그림, KTX2) → `patch_room_art.py`로 방 GLB의 옛 나무 판 자리 위에 걸기(판은 방 메시에 합쳐져 있어 그대로 두고 액자로 덮음).
+- 교회 그림 3점(칼 블로흐 «산상수훈», 렘브란트 «탕자의 귀환», 호프만 «겟세마네의 그리스도», 모두 PD)과 색유리 낮 밝기 조정(성당 2.0→1.05, 장미창 1.8→1.0, 교회 1.1→0.8: 흰색으로 날아가던 색유리가 제 색으로).
+- 출처 주소: 14처 «Print, Via Crucis - Station I…XIV, ca. 1749 (CH 18328435…18328471)» — https://commons.wikimedia.org/wiki/Category:Via_Crucis_by_Giovanni_Domenico_Tiepolo 아닌, 위 «Print, Via Crucis» 14개 파일(Cooper Hewitt 소장, https://collection.cooperhewitt.org/);
+  블로흐 https://commons.wikimedia.org/wiki/File:Carl_Bloch_-_The_Sermon_on_the_Mount.jpg · 렘브란트 https://commons.wikimedia.org/wiki/File:Rembrandt_Harmensz._van_Rijn_-_The_Return_of_the_Prodigal_Son.jpg · 호프만 https://commons.wikimedia.org/wiki/File:Christ_in_Gethsemane.jpg
+- 쓰지 않은 것: 티에폴로 San Polo 성당의 컬러 «Via Crucis» 사진(CC BY-SA 4.0, 사진가 저작권)은 라이선스(SA) 때문에 뺐어요.

@@ -47,6 +47,9 @@ caysonverse가 배포하는 그림·모델·글꼴·디코더의 출처와 라�
 
 | 대웅전 본존불: *Gilt bronze statuette of Sakyamuni Buddha* (10세기, 저장성박물관) 채색 사진측량 3D 스캔 | dluo, Sketchfab 공개 사본 Zenodo https://zenodo.org/records/10225206 (로그인 없음) | **CC BY 4.0** — 표시: "Gilt bronze statuette of Sakyamuni Buddha" by dluo, licensed under CC BY 4.0 (발주자 승인 범위: 브리프의 CC-BY 조항) | `client/public/models/village/lots/sacred/lotstatue__lot_temple_hall_buddha*.glb` — 색 정리·나발 칠·KTX2는 직접. 원본 `art/sacred/src/zenodo/` | 2026-11-17 |
 | 성당 십자고상: *"Crucified Christ" from St. Jadwiga's hospital* (16세기, Museum of the Biecz Land AH/1273) 3D 스캔 | WirtualneMuzeaMalopolski (Małopolska's Virtual Museums), Zenodo https://zenodo.org/records/21567941 | CC0 1.0 | `client/public/models/village/lots/sacred/lotstatue__lot_chapel_nave_crucifix*.glb` — 새 마감 색으로 다시 칠함 | 2026-11-17 |
+| 성당 성모상 고해상도 재작업: SMK KAS225 원본 해상도 스캔(1.5M 삼각형) | 덴마크 국립미술관 SMK Open, https://api.smk.dk/api/v1/download-3d/st74cw417_smk21-kas225-bruges-madonna.stl | 퍼블릭 도메인(Public Domain Mark 1.0) | `lotstatue__lot_chapel_nave_mary*.glb` — PC 40k 삼각형·2K 노멀/색, 폰 9k·1K (`process_statue.py`) | 2026-11-18 |
+| 성당 십자가의 길 14처: 조반니 도메니코 티에폴로 «Via Crucis» 동판화 14점(1749경) | Cooper Hewitt, Smithsonian Design Museum(스미스소니언 오픈액세스 CC0), 위키미디어 공용 «Print, Via Crucis - Station I … XIV, ca. 1749 (CH 18328435 … 18328471)» | 퍼블릭 도메인 / CC0 | `lotart__lot_chapel_nave_station_01..14*.glb` — 그림 부분 잘라 틀에 넣음, 참나무 액자 직접 제작 (`build_framed_art.mjs`) | 2026-11-18 |
+| 교회 그림 3점: 칼 블로흐 «산상수훈», 렘브란트 «탕자의 귀환», 하인리히 호프만 «겟세마네의 그리스도» | 위키미디어 공용 «Carl Bloch - The Sermon on the Mount.jpg», «Rembrandt Harmensz. van Rijn - The Return of the Prodigal Son.jpg», «Christ in Gethsemane.jpg» (모두 Public domain: 작가 사후 100년 이상) | 퍼블릭 도메인 | `lotart__lot_church_nave_*.glb` — 도금 액자 직접 제작 | 2026-11-18 |
 
 ## AI 생성 자산
 

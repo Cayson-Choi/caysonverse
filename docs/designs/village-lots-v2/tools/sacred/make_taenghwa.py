@@ -4,7 +4,7 @@
 
 - removes the written dedication cartouche at the bottom centre (no text in the hall), leaving a plain red panel
 - a gentle "freshly painted" restore: lifts the yellowed silk, a little saturation and contrast (no repainting)
-- writes taenghwa_color.png (2048 wide) + taenghwa_normal.png (faint silk weave and paint relief) + taenghwa_orm.png
+- writes taenghwa_color.png (3072 wide) + taenghwa_normal.png (faint silk weave and paint relief) + taenghwa_orm.png
 """
 import sys, os
 import numpy as np
@@ -43,7 +43,7 @@ im = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
 im = ImageEnhance.Color(im).enhance(1.25)
 im = ImageEnhance.Contrast(im).enhance(1.08)
 im = ImageEnhance.Brightness(im).enhance(1.06)
-w2 = 2048; h2 = int(round(im.size[1] * w2 / im.size[0] / 4) * 4)
+w2 = 3072; h2 = int(round(im.size[1] * w2 / im.size[0] / 4) * 4)
 im = im.resize((w2, h2), Image.LANCZOS)
 im.save(os.path.join(out, "taenghwa_color.png"))
 # normal: silk weave (fine crossed threads) + paint relief from luminance high-pass
