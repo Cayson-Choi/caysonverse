@@ -39,7 +39,7 @@ import {
 import { isTouchDevice } from "../device";
 import { CoasterWorld } from "./CoasterWorld";
 import { CarouselWorld } from "./CarouselWorld";
-import { setParkReady } from "./parkReady";
+import { parkReady, setParkReady } from "./parkReady";
 import { WheelWorld } from "./WheelWorld";
 import { Shops } from "./ParkShops";
 import { ParkMountains, ParkScenery } from "./ParkScenery";
@@ -566,17 +566,32 @@ function useSkyEnv(): Texture {
 }
 
 /** Everything of 케이슨랜드 that stands in the park area (park-local metres). */
+/**
+ * Marks the park ready (parkReady.ts: the loading veil lifts) once it has been drawn: three frames in a row with the park's draw calls on screen.
+ * Mounting is not enough: after it the shaders still compile for a few seconds on a phone and the frames show a bare sky (first-time-player review,
+ * phone). A safety timeout lifts the veil anyway after 30 s.
+ */
+function ParkReadyProbe() {
+  const frames = useRef(0);
+  const born = useRef(performance.now());
+  useFrame(({ gl }) => {
+    if (parkReady()) return;
+    if (gl.info.render.calls > 30) frames.current++;
+    else frames.current = 0;
+    if (frames.current >= 3 || performance.now() - born.current > 30_000) setParkReady(true);
+  });
+  useEffect(() => () => setParkReady(false), []);
+  return null;
+}
+
 export function ParkWorld({ tier }: { tier: VillageTier }) {
   const all = useTexture(ALL_PARK_URLS) as Texture[];
   const [pine] = useTexture([PINE_URL]) as Texture[];
   const env = useSkyEnv();
-  // (this component only renders once everything it and its children suspend on has loaded)
-  useEffect(() => {
-    setParkReady(true);
-    return () => setParkReady(false);
-  }, []);
+  // (the veil lifts in ParkReadyProbe: once the park has really been DRAWN, not merely mounted)
   return (
     <group>
+      <ParkReadyProbe />
       <ParkSky />
       <Ground all={all} />
       <Shops all={all} />
