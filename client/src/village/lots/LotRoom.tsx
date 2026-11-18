@@ -111,8 +111,8 @@ export const SACRED_MAP_MAX: { desktop: SacredCap; mobile: SacredCap } = {
  */
 export const SACRED_MAP_MAX_BY_UNIT: Record<string, { desktop: SacredCap; mobile: SacredCap }> = {
   lot_temple_hall: {
-    desktop: { color: 3072, normal: 2048, orm: 1024 },
-    mobile: { color: 1536, normal: 1024, orm: 512 },
+    desktop: { color: 3072, normal: 2048, orm: 512 },
+    mobile: { color: 1536, normal: 1024, orm: 256 },
   },
 };
 

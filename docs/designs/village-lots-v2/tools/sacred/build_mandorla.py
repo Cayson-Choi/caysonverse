@@ -52,7 +52,7 @@ def half_w(s, k=1.0):
     return WMAX * k * (math.sin(math.pi * min(max(s, 0.0), 1.0)) ** 0.72) * (1.0 - 0.18 * s)
 
 
-def outline(k, z0=Z0, z1=Z1, n=64):
+def outline(k, z0=Z0, z1=Z1, n=48):
     right = [(half_w(i / n, k), z0 + (z1 - z0) * i / n) for i in range(n + 1)]
     left = [(-x, z) for x, z in reversed(right[1:-1])]
     return right + left
@@ -105,7 +105,7 @@ def place_poly(poly, ang, px, pz):
 
 # flame tongues around the outer edge (pointing outward along the outline normal), big and small alternating
 verts_all, faces_all = [], []
-NF = 44
+NF = 30
 samples = []
 for i in range(1, NF):
     s = i / NF
@@ -125,7 +125,7 @@ for idx, (s, x, z, nx, nz) in enumerate(samples):
     ang_to_n = math.atan2(nx, nz)
     ang = ang_to_n * 0.75
     for sgn in (1, -1):
-        poly = flame_poly(L, w, 0.03 * sgn, 0.05 * sgn * (-1), 9)
+        poly = flame_poly(L, w, 0.03 * sgn, 0.05 * sgn * (-1), 7)
         px = x * sgn; pzz = z
         ang_s = ang * sgn
         pp = place_poly([(xx * sgn, zz) for xx, zz in poly], ang_s, px, pzz)
@@ -142,8 +142,8 @@ add_obj("flames", verts_all, faces_all, gold, 0.04, 0.005)
 # ---- inner flame sweeps: a row of small curled flames inside the rim, pointing up along the sides
 v2, f2 = [], []
 for sgn in (1, -1):
-    for j in range(13):
-        s = 0.13 + 0.62 * j / 12
+    for j in range(9):
+        s = 0.13 + 0.62 * j / 8
         xx = half_w(s, 0.74) * sgn; zz = Z0 + (Z1 - Z0) * s
         L = 0.17 + 0.05 * math.sin(j * 1.7)
         poly = flame_poly(L, 0.035, 0.02 * sgn, 0.045 * sgn, 7)
@@ -182,8 +182,8 @@ for r, t in ((0.50, 0.020), (0.44, 0.012), (0.33, 0.010), (0.205, 0.014)):
 bpy.ops.mesh.primitive_uv_sphere_add(segments=8, ring_count=4, radius=0.0145)
 bead = bpy.context.active_object; bead.data.materials.append(gold)
 bd = []
-for i in range(72):
-    t = 2 * math.pi * i / 72
+for i in range(56):
+    t = 2 * math.pi * i / 56
     o = bead.copy(); o.data = bead.data; sc.collection.objects.link(o)
     o.location = (HX + 0.385 * math.cos(t), HY2 - 0.022, HZ + 0.385 * math.sin(t)); bd.append(o)
 for o in bd: o.select_set(True)
@@ -193,7 +193,7 @@ bpy.ops.object.join(); parts.append(bpy.context.active_object); bpy.data.objects
 
 # a ring of lotus petals around the disc edge
 pv, pf = [], []
-NP = 28
+NP = 24
 for i in range(NP):
     t = 2 * math.pi * i / NP
     nx, nz = math.cos(t), math.sin(t)
