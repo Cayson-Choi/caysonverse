@@ -1,6 +1,7 @@
 import { Client, Room } from "@colyseus/sdk";
 // TYPE-ONLY: schema.ts runs @colyseus/schema decorators and must never enter the
 // browser bundle. We only borrow the state's shape for typing the room.
+import { tabId } from "./tabId";
 import type { WorldState } from "@caysonverse/shared/schema";
 import { VILLAGE_ROOM, CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
@@ -45,8 +46,8 @@ export function getActiveRoom(): Room<WorldState> | null {
  * The options the village's `onJoin` reads: nickname, appearance and this browser's device key (memorial stage B: the server
  * keeps only its hash and maps it to the family that owns a cubby; never an admin code).
  */
-function villageJoinOptions(p: VillageJoinParams, deviceKey: string): VillageJoinParams & { deviceKey: string } {
-  return { nickname: p.nickname, appearance: p.appearance, deviceKey };
+function villageJoinOptions(p: VillageJoinParams, deviceKey: string): VillageJoinParams & { deviceKey: string; tabId: string } {
+  return { nickname: p.nickname, appearance: p.appearance, deviceKey, tabId: tabId() };
 }
 
 /**

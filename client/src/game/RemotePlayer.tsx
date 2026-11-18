@@ -593,6 +593,11 @@ export function RemotePlayer({
         dr.z = cp.pos.z;
         noteRemoteDrawn(rec, cp.pos.x, cp.pos.z);
         advancePlayout(rec.playout, rec.snapshots, performance.now());
+        // a rider whose connection dropped (the server keeps the seat for the reconnection window) is drawn as the ghost it is
+        if (rec.connected !== prevConnectedRef.current) {
+          setAvatarOpacity(avatar, rec.connected ? 1 : 0.5);
+          prevConnectedRef.current = rec.connected;
+        }
         if (fadeRef.current > 0) {
           mixer.update(delta);
           fadeRef.current = Math.max(0, fadeRef.current - delta);

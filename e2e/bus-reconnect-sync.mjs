@@ -21,7 +21,12 @@ import { act, joinVillage } from "./lib/village.mjs";
 const arg = (n, d) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3) ?? d;
 const CUT = Number(arg("cut", "5"));
 const AT_END = process.argv.includes("--at-end");
-const run = createRun(AT_END ? "bus-reconnect-sync-end" : "bus-reconnect-sync");
+// --fresh: the reconnection token is gone (a page reloaded after the phone slept...), so the client falls back to a fresh join (phase 2)
+// while the old session still holds its seat in the server's 20 s reconnection window. --no-evict: that fresh join is sent as ANOTHER
+// tab (its tabId rewritten on the wire), i.e. what every build before the tab-id replacement did: the old ghost stays aboard.
+const NO_EVICT = process.argv.includes("--no-evict");
+const FRESH = process.argv.includes("--fresh") || NO_EVICT;
+const run = createRun("bus-reconnect-sync" + (AT_END ? "-end" : "") + (NO_EVICT ? "-noevict" : FRESH ? "-fresh" : ""));
 run.allow("the cut network", /ERR_INTERNET_DISCONNECTED|Network offline|Room connection was closed|reconnect|WebSocket is already in CLOSING/i);
 run.allow("AudioContext (headless audio device)", /AudioContext/);
 const SMALL = { viewport: { width: 640, height: 400 } };
@@ -67,6 +72,21 @@ await run.step("the lap with the cut", async () => {
     // the cut: 20 s into the lap, or (--at-end) when the bus is nearly back at the stop (progress > 0.93)
     if (cutAt === null && (AT_END ? o && o.status === "inTransit" && o.progress > 0.93 : lap > 20000)) {
       cutAt = Date.now();
+      if (FRESH) await R.page.evaluate(() => sessionStorage.removeItem("cv.reconnectToken"));
+      if (NO_EVICT) {
+        await R.page.route(/\/matchmake\//, async (route) => {
+          const req = route.request();
+          let body = req.postData();
+          try {
+            const j = JSON.parse(body ?? "null");
+            if (j && typeof j === "object" && "tabId" in j) {
+              j.tabId = "othertab-" + Math.random().toString(36).slice(2, 12);
+              body = JSON.stringify(j);
+            }
+          } catch {}
+          await route.continue({ postData: body ?? undefined });
+        });
+      }
       await R.ctx.setOffline(true);
       await R.page.evaluate(() => window.__cv.dropConnection()).catch(() => {});
       setTimeout(async () => {
@@ -79,7 +99,7 @@ await run.step("the lap with the cut", async () => {
     const t = Date.now() - t0;
     const mine = m.filter((x) => x.nick === nick);
     rows.push({ t, cut: cutAt ? t - (cutAt - t0) : null, own: o, sameNick: mine.map((x) => ({ sid: x.sid.slice(0, 4), seat: x.busSeat, conn: x.connected, y: views[x.sid]?.y ?? null })) });
-    if (firstTransit && mine.length > 0 && mine.every((x) => x.busSeat < 0) && o && !o.boarded && o.slot < 0 && lap > 30000) offAt ??= Date.now();
+    if (firstTransit && mine.length > 0 && mine.every((x) => x.busSeat < 0) && o && !o.boarded && o.slot < 0 && lap > (FRESH ? 40000 : 30000)) offAt ??= Date.now();
     await sleep(150);
   }
   mkdirSync(run.evidence, { recursive: true });
@@ -88,18 +108,34 @@ await run.step("the lap with the cut", async () => {
 });
 
 await run.step("compare", async () => {
-  // 1) one avatar of R on V's screen at any time after the cut settled (no second, ghost avatar of the same nickname riding)
-  const multi = rows.filter((r) => r.sameNick.length > 1);
-  const aboardGhost = rows.filter((r) => r.sameNick.length > 1 && r.sameNick.some((x) => x.seat >= 0));
-  run.check("V never saw two avatars of R", multi.length === 0, { n: multi.length, first: multi[0] });
-  run.check("V never saw a ghost of R aboard while R stood elsewhere", aboardGhost.length === 0, { n: aboardGhost.length, first: aboardGhost[0] });
+  // 1) one avatar of R on V's screen (no second, ghost avatar of the same nickname riding beside the new one)
+  const longestOf = (pick) => {
+    let best = 0;
+    let from = null;
+    for (const r of rows) {
+      if (pick(r) && from === null) from = r.t;
+      if (!pick(r)) from = null;
+      if (from !== null) best = Math.max(best, r.t - from);
+    }
+    return best;
+  };
+  const twoMs = longestOf((r) => r.sameNick.length > 1);
+  const ghostMs = longestOf((r) => r.sameNick.some((x) => x.seat >= 0) && r.own && r.own.slot < 0 && r.own.status !== "boarding");
+  if (NO_EVICT) {
+    run.check(`the old session stayed aboard as a ghost beside the new avatar (${ghostMs} ms: the bug, reproduced)`, ghostMs > 3000 && ghostMs < 30000, { twoMs, ghostMs });
+  } else if (FRESH) {
+    run.check(`the old session went at once when the same tab joined again (ghost aboard ${ghostMs} ms, two avatars ${twoMs} ms)`, ghostMs <= 1000 && twoMs <= 1000, { twoMs, ghostMs });
+  } else {
+    const multi = rows.filter((r) => r.sameNick.length > 1);
+    run.check("V never saw two avatars of R", multi.length === 0, { n: multi.length, first: multi[0] });
+  }
   // 2) own vs server: longest stretch the rider's own page disagreed with the server (V's mirror of R's session)
   let best = 0;
   let from = null;
   let worst = null;
   for (const r of rows) {
     const mine = r.sameNick[0];
-    const bad = r.own && mine && (r.own.slot >= 0) !== (mine.seat >= 0);
+    const bad = r.own && mine && (r.own.slot >= 0) !== (mine.seat >= 0) && !FRESH;
     if (bad && from === null) from = r;
     if (!bad) from = null;
     if (from && r.t - from.t >= best) {
@@ -107,10 +143,10 @@ await run.step("compare", async () => {
       worst = { from: from.t, to: r.t, own: r.own, mirror: mine };
     }
   }
-  run.check(`R's own state never disagreed with the server for more than 1 s (longest ${best} ms)`, best <= 1000, worst);
+  if (!FRESH) run.check(`R's own state never disagreed with the server for more than 1 s (longest ${best} ms)`, best <= 1000, worst);
   const last = rows.at(-1);
   const me = await pos(R);
-  run.check("R ends standing off the bus on both screens", last.own.slot < 0 && last.sameNick.every((x) => x.seat < 0), last);
+  run.check("R ends standing off the bus on both screens, one avatar", last.own.slot < 0 && last.sameNick.every((x) => x.seat < 0) && last.sameNick.length === 1, last);
   void me;
   run.check("the session id of R", true, { before: sid0, after: (await own(R)).sid });
 });

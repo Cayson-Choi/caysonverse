@@ -13,6 +13,8 @@ export interface JoinOptions {
    * (an old bundle sends none); the raw key is not kept.
    */
   deviceKeyHash: string | null;
+  /** The joining tab's own random id (client/src/net/tabId.ts): a fresh join of the same tab replaces its old session. null from an old bundle. */
+  tabId: string | null;
 }
 
 /** A rejected join, carrying a Korean, user-facing reason. */
@@ -84,5 +86,6 @@ export function validateJoinOptions(options: unknown): JoinOptions | JoinError {
 
   const deviceKeyHash =
     typeof o.deviceKey === "string" && DEVICE_KEY_PATTERN.test(o.deviceKey) ? createHash("sha256").update(o.deviceKey).digest("hex") : null;
-  return { nickname, appearance, deviceKeyHash };
+  const tabId = typeof o.tabId === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(o.tabId) ? o.tabId : null;
+  return { nickname, appearance, deviceKeyHash, tabId };
 }
