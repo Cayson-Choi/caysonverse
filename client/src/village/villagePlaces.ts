@@ -89,12 +89,12 @@ function waterfallPlace(): MapPlace[] {
  * puts a visitor: the button and E are there). 케이슨랜드's gate: to the plaza in front of it.
  */
 const LOT_PLACES: ReadonlyArray<{ lot: LotId; icon: string; name: string; way: readonly Point2[] }> = [
+  { lot: "lot_gate", icon: "🎡", name: "케이슨랜드", way: [p(-14, 20), p(-20, 40), p(-24, 70)] }, // first: the park is a main destination, so its name stays when the map is crowded
   { lot: "lot_school", icon: "🏫", name: "학교", way: [p(16, 12), p(30, 1.2), p(44, 4), p(50, 15)] },
   { lot: "lot_chapel", icon: "⛪", name: "성당", way: [p(10, -20), p(25, -30), p(33, -37)] },
   { lot: "lot_library", icon: "📚", name: "도서관", way: [p(-20, 8), p(-35, 6), p(-44, 12)] },
   { lot: "lot_temple", icon: "🪷", name: "절", way: [p(-10, -20), p(-25, -30), p(-36, -36), p(-48, -34.6)] }, // (round the 석등 on the door's axis)
   { lot: "lot_church", icon: "🔔", name: "교회", way: [p(0, 30), p(0, 44)] },
-  { lot: "lot_gate", icon: "🎡", name: "케이슨랜드", way: [p(-14, 20), p(-20, 40), p(-24, 70)] },
 ];
 
 function lotPlaces(): MapPlace[] {
