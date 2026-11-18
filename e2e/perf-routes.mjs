@@ -392,11 +392,15 @@ const interactionState = () => p.page.evaluate(async () => {
   const me = room?.state?.players?.get(room.sessionId);
   const local = window.__cv.getPos();
   const offered = (await window.__imp("/src/game/interactTargets.ts")).getTargets(local);
+  const button = document.querySelector(".cv-action-btn");
+  const rect = button?.getBoundingClientRect();
+  const hit = rect && document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
   return {
     local: { area: (await window.__imp("/src/village/villageArea.ts")).localArea(), x: local.x, z: local.z, seat: local.seatIndex },
     server: me && { area: me.area, x: me.x, z: me.z, seat: me.seatIndex },
     targets: offered.map((t) => ({ id: t.id, label: t.label })),
-    action: document.querySelector(".cv-action-btn")?.getAttribute("aria-label") ?? null,
+    action: button?.getAttribute("aria-label") ?? null,
+    actionHit: hit && { tag: hit.tagName, css: hit.getAttribute("class"), onButton: button.contains(hit) },
   };
 });
 const waitArea = async (a, ms = 20000) => {
@@ -534,7 +538,8 @@ try {
       throw new Error(`House exit position failed to sync: ${JSON.stringify(await interactionState())}`);
     });
     const exitButton = p.page.locator(".cv-action-btn").and(p.page.getByRole("button", { name: exit.label, exact: true }));
-    await press(p, exitButton);
+    if (p.touch) await exitButton.tap({ timeout: 10000 });
+    else await exitButton.click({ timeout: 10000 });
     await waitArea("village", 20000);
     await waitCoversGone();
     await sleep(2500);
@@ -665,7 +670,7 @@ try {
       throw new Error("Wheel boarding needs the synced player at the open station and its action button");
     }
     console.log(`wheel board: ${JSON.stringify({ pad, state, interaction })}`);
-    if (p.touch) await p.page.locator(".cv-action-btn").and(p.page.getByRole("button", { name: wheel.label, exact: true })).tap();
+    if (p.touch) await p.page.locator(".cv-action-btn").and(p.page.getByRole("button", { name: wheel.label, exact: true })).tap({ timeout: 10000 });
     else await act(p);
     const boardDeadline = Date.now() + 60000;
     do {
