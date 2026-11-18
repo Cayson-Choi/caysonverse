@@ -8,19 +8,30 @@ from mathutils import Vector, Matrix
 
 a = sys.argv[sys.argv.index("--") + 1:]
 OUT = os.path.abspath(a[0])
-HX, HY, HZ = (float(x) for x in a[1:4]) if len(a) >= 4 else (0.0, 0.14, 1.80)
+HX, HY, HZ = (float(x) for x in a[1:4]) if len(a) >= 4 else (0.04, 0.14, 1.80)
 NAME = "lotstatue__lot_temple_hall_buddha_halo"
 BACK = 0.30            # the plate sits this far behind the head axis (Blender +Y = behind the figure)
 for o in list(bpy.data.objects): bpy.data.objects.remove(o, do_unlink=True)
 sc = bpy.context.scene
 random.seed(7)
 
-gold = bpy.data.materials.new("M_gilt"); gold.use_nodes = True
-b = next(n for n in gold.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
-b.inputs["Base Color"].default_value = (0.86, 0.50, 0.10, 1); b.inputs["Metallic"].default_value = 0.35; b.inputs["Roughness"].default_value = 0.30
-gold_dark = bpy.data.materials.new("M_gilt_deep"); gold_dark.use_nodes = True
-b2 = next(n for n in gold_dark.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
-b2.inputs["Base Color"].default_value = (0.50, 0.08, 0.04, 1); b2.inputs["Metallic"].default_value = 0.1; b2.inputs["Roughness"].default_value = 0.5  # cinnabar-lacquered field
+def mat(name, col, metal, rough):
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    bs = next(n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    bs.inputs["Base Color"].default_value = col + (1,)
+    bs.inputs["Metallic"].default_value = metal
+    bs.inputs["Roughness"].default_value = rough
+    return m
+
+
+# the Buddha gilt (process_statue.py: warm gold, metal 0.9): burnished leaf, and a deeper matte leaf for recessed fields
+gold = mat("M_gilt", (0.80, 0.52, 0.16), 0.9, 0.30)
+gold_dark = mat("M_gilt_deep", (0.60, 0.34, 0.09), 0.9, 0.45)
+paint_red = mat("M_paint_red", (0.36, 0.03, 0.02), 0.0, 0.55)
+paint_green = mat("M_paint_green", (0.02, 0.22, 0.13), 0.0, 0.55)
+paint_blue = mat("M_paint_blue", (0.03, 0.07, 0.33), 0.0, 0.55)
+lapis = mat("M_lapis", (0.03, 0.05, 0.22), 0.0, 0.5)
 
 parts = []
 
@@ -105,7 +116,7 @@ def place_poly(poly, ang, px, pz):
 
 # flame tongues around the outer edge (pointing outward along the outline normal), big and small alternating
 verts_all, faces_all = [], []
-NF = 30
+NF = 24
 samples = []
 for i in range(1, NF):
     s = i / NF
@@ -149,13 +160,13 @@ for sgn in (1, -1):
         poly = flame_poly(L, 0.035, 0.02 * sgn, 0.045 * sgn, 7)
         pp = place_poly([(x_ * sgn, z_) for x_, z_ in poly], 0.0, xx, zz)
         base = len(v2); v2 += [(HX + p[0], HY + BACK - 0.03, p[1]) for p in pp]; f2.append(tuple(range(base, base + len(pp))))
-add_obj("inner_flames", v2, f2, gold, 0.03, 0.004)
+# (the inner flame row is replaced by the carved vine)
 
 
 # ---- head halo (두광): a lotus-petal disc around the head, in front of the plate
 def ring_curve(name, r, thick, y, mat, z=None):
     cu = bpy.data.curves.new(name, "CURVE"); cu.dimensions = "3D"; cu.bevel_depth = thick; cu.bevel_resolution = 2; cu.resolution_u = 32
-    sp = cu.splines.new("POLY"); k = 64; sp.points.add(k - 1)
+    sp = cu.splines.new("POLY"); k = 40; sp.points.add(k - 1)
     for i in range(k):
         t = 2 * math.pi * i / k; sp.points[i].co = (r * math.cos(t), 0.0, r * math.sin(t), 1)
     sp.use_cyclic_u = True
@@ -168,14 +179,28 @@ def ring_curve(name, r, thick, y, mat, z=None):
 
 
 HY2 = HY + BACK - 0.05           # head halo plane (in front of the body plate)
-# a cinnabar disc with a gilt boss
-bm = bmesh.new(); bmesh.ops.create_circle(bm, cap_ends=True, radius=0.50, segments=64)
-me = bpy.data.meshes.new("disc"); bm.to_mesh(me); bm.free()
-ob = bpy.data.objects.new("disc", me); sc.collection.objects.link(ob); me.materials.append(gold_dark)
-ob.rotation_euler = (math.pi / 2, 0, 0); ob.location = (HX, HY2 + 0.005, HZ); parts.append(ob)
-bpy.context.view_layer.objects.active = ob
-for o in sc.objects: o.select_set(o is ob)
-m = ob.modifiers.new("s", "SOLIDIFY"); m.thickness = 0.03; bpy.ops.object.modifier_apply(modifier=m.name)
+def annulus(name, r0, r1, y, m_, thick=0.03, seg=64):
+    """a flat ring (a disc when r0 = 0) in the XZ plane, thick toward the viewer"""
+    verts, faces = [], []
+    if r0 > 0:
+        for i in range(seg):
+            t = 2 * math.pi * i / seg
+            verts += [(HX + r0 * math.cos(t), y, HZ + r0 * math.sin(t)), (HX + r1 * math.cos(t), y, HZ + r1 * math.sin(t))]
+        for i in range(seg):
+            j = (i + 1) % seg
+            faces.append((2 * i, 2 * i + 1, 2 * j + 1, 2 * j))
+    else:
+        for i in range(seg):
+            t = 2 * math.pi * i / seg
+            verts.append((HX + r1 * math.cos(t), y, HZ + r1 * math.sin(t)))
+        faces.append(tuple(range(seg)))
+    return add_obj(name, verts, faces, m_, thick, 0.003)
+
+
+# the head halo painted the Korean temple way: a deep-red centre, a green band, a blue band, each edged with gilt lines
+annulus("disc_red", 0, 0.335, HY2 + 0.004, paint_red)
+annulus("band_green", 0.335, 0.435, HY2 + 0.001, paint_green)
+annulus("band_blue", 0.435, 0.505, HY2 - 0.002, paint_blue)
 for r, t in ((0.50, 0.020), (0.44, 0.012), (0.33, 0.010), (0.205, 0.014)):
     ring_curve(f"ring{r}", r, t, HY2 - 0.02, gold)
 # beads between two rings
@@ -211,6 +236,124 @@ for i in range(NP):
         pv.append((HX + px, HY2 - 0.005, HZ + pz))
     pf.append(tuple(range(base, base + len(pts))))
 add_obj("petals", pv, pf, gold, 0.03, 0.005)
+
+# ---- carved arabesque: a lotus vine climbing both sides of the field, with leaves and small blossoms
+def vine(sgn):
+    pts = []
+    n = 44
+    for i in range(n + 1):
+        sp = 0.16 + 0.70 * i / n
+        x = sgn * (half_w(sp, 0.70) - 0.10 + 0.055 * math.sin(i * 0.9))
+        pts.append((HX + x, HY + BACK - 0.03, Z0 + (Z1 - Z0) * sp))
+    cu = bpy.data.curves.new("vine", "CURVE")
+    cu.dimensions = "3D"
+    cu.bevel_depth = 0.011
+    cu.bevel_resolution = 1
+    cu.resolution_u = 2
+    sp_ = cu.splines.new("POLY")
+    sp_.points.add(len(pts) - 1)
+    for i, p_ in enumerate(pts):
+        sp_.points[i].co = (p_[0], p_[1], p_[2], 1)
+    ob = bpy.data.objects.new("vine", cu)
+    sc.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
+    for o in sc.objects:
+        o.select_set(o is ob)
+    bpy.ops.object.convert(target="MESH")
+    ob = bpy.context.active_object
+    ob.data.materials.append(gold)
+    parts.append(ob)
+    return pts
+
+
+leaf_v, leaf_f = [], []
+for sgn in (1, -1):
+    pts = vine(sgn)
+    for i in range(2, len(pts) - 2, 3):
+        x, y, z = pts[i]
+        side = -sgn if (i // 3) % 2 else sgn
+        poly = flame_poly(0.075, 0.028, 0.012 * side, 0.02 * side, 4)
+        pp = place_poly([(xx * side, zz) for xx, zz in poly], 0.54 * side, x - HX, z)
+        base = len(leaf_v)
+        leaf_v += [(HX + q[0], y - 0.004, q[1]) for q in pp]
+        leaf_f.append(tuple(range(base, base + len(pp))))
+add_obj("leaves", leaf_v, leaf_f, gold, 0.02, 0.003)
+bl = []
+for sgn in (1, -1):
+    for sp in (0.30, 0.52, 0.70):
+        x = sgn * (half_w(sp, 0.70) - 0.10)
+        bl.append((HX + x, Z0 + (Z1 - Z0) * sp))
+for (x, z) in bl:
+    bpy.ops.mesh.primitive_cone_add(vertices=10, radius1=0.045, radius2=0.012, depth=0.03, location=(x, HY + BACK - 0.04, z), rotation=(math.pi / 2, 0, 0))
+    o = bpy.context.active_object
+    o.data.materials.append(gold)
+    parts.append(o)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=8, ring_count=4, radius=0.016, location=(x, HY + BACK - 0.058, z))
+    o = bpy.context.active_object
+    o.data.materials.append(gold_dark)
+    parts.append(o)
+
+
+def part(mat_, scale=None):
+    o = bpy.context.active_object
+    o.data.materials.append(mat_)
+    if scale:
+        o.scale = scale
+    parts.append(o)
+    return o
+
+
+# ---- small seated-Buddha medallions: a gilt ring round a tiny meditating figure on a lotus
+def medallion(x, z):
+    y = HY + BACK - 0.04
+    bpy.ops.mesh.primitive_torus_add(major_radius=0.062, minor_radius=0.008, major_segments=20, minor_segments=5, location=(x, y, z), rotation=(math.pi / 2, 0, 0))
+    part(gold)
+    bpy.ops.mesh.primitive_cylinder_add(vertices=14, radius=0.056, depth=0.012, location=(x, y + 0.004, z), rotation=(math.pi / 2, 0, 0))
+    part(paint_red)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=8, ring_count=5, radius=0.013, location=(x, y - 0.012, z + 0.027))
+    part(gold)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=8, ring_count=5, radius=0.024, location=(x, y - 0.012, z + 0.002))
+    part(gold, (1.0, 0.6, 1.1))
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=8, ring_count=4, radius=0.034, location=(x, y - 0.010, z - 0.026))
+    part(gold_dark, (1.0, 0.55, 0.38))
+
+
+for (mx, mz) in ((0.50, 1.30), (-0.50, 1.30), (0.47, 2.20), (-0.47, 2.20), (0.0, 2.55)):
+    medallion(HX + mx, mz)
+
+# ---- the Buddha crown knot and snail-shell curls: the scan own cap is cut away (process_statue.py cut z > 1.79); this is a smooth
+# lapis dome with rows of small curls, sitting where the scan forehead stops
+CAP_Z = 1.78
+CY = HY - 0.03
+bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=12, radius=1.0, location=(HX, CY, CAP_Z))
+part(lapis, (0.137, 0.150, 0.118))
+bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=8, radius=1.0, location=(HX, CY + 0.005, CAP_Z + 0.115))
+part(lapis, (0.068, 0.07, 0.07))
+bpy.ops.mesh.primitive_uv_sphere_add(segments=8, ring_count=5, radius=0.02, location=(HX, CY + 0.005, CAP_Z + 0.19))
+part(gold)
+bpy.ops.mesh.primitive_uv_sphere_add(segments=6, ring_count=4, radius=0.0105)
+curl = bpy.context.active_object
+curl.data.materials.append(lapis)
+cl = []
+for row, (lat0, n) in enumerate(((0.05, 22), (0.40, 18), (0.68, 12), (0.95, 6))):
+    for i in range(n):
+        lon = 2 * math.pi * (i + 0.5 * (row % 2)) / n
+        x_ = 0.137 * math.cos(lat0) * math.cos(lon)
+        y_ = 0.150 * math.cos(lat0) * math.sin(lon)
+        z_ = 0.118 * math.sin(lat0)
+        if y_ < -0.03 and lat0 < 0.2:
+            continue
+        o = curl.copy()
+        o.data = curl.data
+        sc.collection.objects.link(o)
+        o.location = (HX + x_, CY + y_, CAP_Z + z_ + 0.012)
+        cl.append(o)
+for o in sc.objects:
+    o.select_set(o in cl)
+bpy.context.view_layer.objects.active = cl[0]
+bpy.ops.object.join()
+parts.append(bpy.context.active_object)
+bpy.data.objects.remove(curl, do_unlink=True)
 
 # ---- join and export
 for o in parts: print("PART", o.name, sum(len(p.vertices) - 2 for p in o.data.polygons))

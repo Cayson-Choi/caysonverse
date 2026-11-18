@@ -121,6 +121,10 @@ if job.get("cut"):
     for c in job["cut"]:
         # every key is a bound, all ANDed: x_gt / x_lt / y_gt / y_lt / z_gt / z_lt (metres, after normalising)
         def hit(v, c=c):
+            if "outside_r" in c:
+                # a cylinder round a vertical axis: drop what is OUTSIDE radius r (the head's loose halo remnants), above z_gt
+                if not (v.co.z > c.get("z_gt", -1e9)) or math.hypot(v.co.x - c["cx"], v.co.y - c["cy"]) <= c["outside_r"]: return False
+                return True
             for k, lim in c.items():
                 ax = "xyz".index(k[0])
                 if k.endswith("_gt") and not v.co[ax] > lim: return False
@@ -141,6 +145,17 @@ if job.get("cut"):
     big = max(len(c) for c in comps)
     drop = [v for c in comps if len(c) < big * job.get("min_piece_frac", 0.02) for v in c]
     bmesh.ops.delete(bm, geom=drop, context="VERTS")
+    bm.to_mesh(me); bm.free(); me.update()
+if job.get("sliver"):
+    # hair-thin long triangles (a photogrammetry bridge that draws as a light line across the robe): long AND needle-like
+    bm = bmesh.new(); bm.from_mesh(me); bm.faces.ensure_lookup_table()
+    sl = job["sliver"]
+    bad = []
+    for f in bm.faces:
+        le = max(e.calc_length() for e in f.edges)
+        if le > sl["min_edge"] and 2 * f.calc_area() / (le * le) < sl["ratio"]: bad.append(f)
+    rep["slivers_dropped"] = len(bad)
+    bmesh.ops.delete(bm, geom=bad, context="FACES_ONLY")
     bm.to_mesh(me); bm.free(); me.update()
 if job.get("max_edge"):
     # photogrammetry bridges a fold with hair-thin, very long triangles that draw as a light line across the robe: drop faces with an edge
