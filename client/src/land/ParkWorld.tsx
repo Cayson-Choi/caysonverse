@@ -157,7 +157,7 @@ function Ground({ all }: { all: Texture[] }) {
     return [
       [40, -161, 18, 54, "p"], // the promenade
       [161, -112, 368, 12, "p"], // the east-west avenue
-      [-17, -84.5, 12, 67, "g"], // the queue approach (gravel): from the avenue's edge (z -118) to the apron's (z -51), never under it
+      [-17, -78.5, 12, 55, "g"], // the queue approach (gravel): from the avenue's south edge (z -106; the avenue spans -118..-106) to the apron's (z -51), never on or under either
       [-17, -44, 18, 14, "p"], // the queue apron
     ] as const;
   }, []);
