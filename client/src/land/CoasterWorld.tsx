@@ -8,6 +8,7 @@ import { buildTrack, type TrackBuild, type TrackDetail } from "./coasterGeometry
 import { coasterNow } from "./coasterRide";
 import { parkMaterial, pickSet } from "./pbr";
 import { signTexture } from "./canvasTextures";
+import { GeoBuilder, type V3 } from "./geoBuilder";
 
 const DETAIL: TrackDetail = isTouchDevice ? "light" : "full";
 
@@ -98,7 +99,23 @@ function Station({ concrete, pine }: { concrete: ReturnType<typeof pickSet>; pin
     t.needsUpdate = true;
     return new MeshStandardMaterial({ map: t, roughness: 0.78, color: new Color("#e6d3b5") });
   }, [pine]);
-  const base = useMemo(() => parkMaterial(concrete, 8, { color: new Color("#d8d2c8") }), [concrete]);
+  const base = useMemo(() => parkMaterial(concrete, 1, { vertexColors: true, color: new Color("#e6dfd2"), normalScale: 0.7 }), [concrete]);
+  // the platform's two stone-faced walls (the track side and the queue side), built with metre UVs so the concrete keeps its grain
+  // at every size (a stretched unit-box UV smeared it), with a plinth, a cap course and a yellow edge strip
+  const baseGeo = useMemo(() => {
+    const b = new GeoBuilder();
+    const X: V3 = [1, 0, 0];
+    const Y: V3 = [0, 1, 0];
+    const top = STATION_Y + 0.2;
+    b.box([2, 0.5, 0], X, Y, 17, 0.5, 1.1, [0.86, 0.83, 0.78], 2);
+    b.box([2, 0.06, 0], X, Y, 17.08, 0.06, 1.18, [0.62, 0.6, 0.56], 2);
+    b.box([2, 1.02, 0], X, Y, 17.08, 0.04, 1.16, [0.96, 0.94, 0.9], 2);
+    b.box([2, top / 2, -4.1], X, Y, 17, top / 2, 2.7, [0.86, 0.83, 0.78], 2);
+    b.box([2, 0.08, -4.1], X, Y, 17.08, 0.08, 2.78, [0.62, 0.6, 0.56], 2);
+    b.box([2, top - 0.04, -4.1], X, Y, 17.08, 0.04, 2.76, [0.96, 0.94, 0.9], 2);
+    b.box([2, top + 0.005, -1.45], X, Y, 17, 0.012, 0.12, [0.95, 0.78, 0.2], 1);
+    return b.build();
+  }, []);
   const post = useMemo(() => new MeshPhysicalMaterial({ color: "#eee7d8", roughness: 0.45, metalness: 0.15, clearcoat: 0.4 }), []);
   const roof = useMemo(() => new MeshPhysicalMaterial({ color: "#5b60d4", emissive: new Color("#262a78"), emissiveIntensity: 0.4, roughness: 0.5, metalness: 0.2, clearcoat: 0.5, side: DoubleSide }), []);
   const sign = useMemo(() => signTexture(), []);
@@ -107,12 +124,7 @@ function Station({ concrete, pine }: { concrete: ReturnType<typeof pickSet>; pin
   const deckTop = STATION_Y + 0.2;
   return (
     <group>
-      <mesh position={[cx, 0.5, 0]} material={base} castShadow receiveShadow>
-        <boxGeometry args={[34, 1.0, 2.2]} />
-      </mesh>
-      <mesh position={[cx, deckTop / 2, -4.1]} material={base} castShadow receiveShadow>
-        <boxGeometry args={[34, deckTop, 5.4]} />
-      </mesh>
+      <mesh geometry={baseGeo} material={base} castShadow receiveShadow />
       <mesh position={[cx, deckTop + 0.04, -4.1]} material={deck} castShadow receiveShadow>
         <boxGeometry args={[34.2, 0.08, 5.6]} />
       </mesh>

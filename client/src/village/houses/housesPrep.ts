@@ -37,6 +37,7 @@ import {
   ShaderChunk,
   Vector2,
   Vector3,
+  Vector4,
   type Material,
   type Object3D,
   type Texture,
@@ -198,6 +199,64 @@ export function patchHouseLight(m: MeshStandardMaterial, key: string): void {
   m.needsUpdate = true;
 }
 
+/**
+ * Surface character (audit 2026-11-18: "walls are flat colour"). The render and sandstone sets were flattened to a few per cent of
+ * variation (brand-new: no stains) so the vertex-colour pastel read as paint. Per material: `gain` stretches the albedo's own
+ * grain around its mean (`mean`, linear) so the lime-wash trowelling and the sandstone's sand show; `macro` adds a slow
+ * world-space mottle (a few per cent of tint, drifting slightly in hue: each wall a little different, none stained); `foot` darkens
+ * the first metre of wall a touch (the contact shade at the ground); `normal` is the relief's strength.
+ */
+export const HOUSE_SURFACE: Record<string, { mean: number; gain: number; macro: number; foot: number; normal: number }> = {
+  LM_render: { mean: 0.822, gain: 4.2, macro: 0.07, foot: 0.07, normal: 2.2 },
+  LM_stone: { mean: 0.37, gain: 4.5, macro: 0.08, foot: 0, normal: 2.0 },
+  LM_wood: { mean: 0.504, gain: 1.0, macro: 0.05, foot: 0, normal: 2.4 },
+  LM_roof: { mean: 0.16, gain: 1.15, macro: 0.05, foot: 0, normal: 1.4 },
+};
+
+const SURFACE_PARS = /* glsl */ `uniform vec4 uSurf;
+uniform vec2 uSurf2;
+float srfHash( vec3 p ) {
+	p = fract( p * 0.3183099 + vec3( 0.1, 0.2, 0.3 ) );
+	p *= 17.0;
+	return fract( p.x * p.y * p.z * ( p.x + p.y + p.z ) );
+}
+float srfNoise( vec3 x ) {
+	vec3 i = floor( x );
+	vec3 f = fract( x );
+	f = f * f * ( 3.0 - 2.0 * f );
+	return mix( mix( mix( srfHash( i ), srfHash( i + vec3( 1, 0, 0 ) ), f.x ), mix( srfHash( i + vec3( 0, 1, 0 ) ), srfHash( i + vec3( 1, 1, 0 ) ), f.x ), f.y ),
+		mix( mix( srfHash( i + vec3( 0, 0, 1 ) ), srfHash( i + vec3( 1, 0, 1 ) ), f.x ), mix( srfHash( i + vec3( 0, 1, 1 ) ), srfHash( i + vec3( 1, 1, 1 ) ), f.x ), f.y ), f.z );
+}
+void main() {`;
+
+const SURFACE_COLOUR = /* glsl */ `#include <map_fragment>
+{
+	float srL = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+	float srR = srL / uSurf.x;
+	diffuseColor.rgb *= max( 0.15, 1.0 + ( srR - 1.0 ) * uSurf.y ) / max( srR, 0.05 );
+	float srN = srfNoise( vSsWorld * 0.55 ) * 0.65 + srfNoise( vSsWorld * 1.9 ) * 0.35 - 0.5;
+	diffuseColor.rgb *= vec3( 1.0 + srN * uSurf.z * 2.0, 1.0 + srN * uSurf.z * 1.0, 1.0 - srN * uSurf.z * 1.4 );
+	diffuseColor.rgb *= 1.0 - uSurf.w * ( 1.0 - smoothstep( 0.05, 1.0, vSsWorld.y ) ) * step( abs( vSsNormal.y ), 0.5 );
+}`;
+
+/** Layer the surface character on a lit house material (after patchHouseLight: wraps its compile hook). */
+export function enhanceHouseSurface(m: MeshStandardMaterial, name: string): void {
+  const spec = HOUSE_SURFACE[name];
+  if (!spec) return;
+  // DEV before/after sheets: `?surf=off` leaves the stretched-grain and mottle out
+  if (import.meta.env.DEV && typeof location !== "undefined" && new URLSearchParams(location.search).get("surf") === "off") return;
+  const prev = m.onBeforeCompile;
+  const uSurf = { value: new Vector4(spec.mean, spec.gain, spec.macro, spec.foot) };
+  m.onBeforeCompile = (shader, r) => {
+    prev.call(m, shader, r);
+    shader.uniforms.uSurf = uSurf;
+    shader.fragmentShader = shader.fragmentShader.replace("void main() {", SURFACE_PARS).replace("#include <map_fragment>", SURFACE_COLOUR);
+  };
+  const key = m.customProgramCacheKey.bind(m);
+  m.customProgramCacheKey = () => `${key()}|surf-${name}`;
+  m.needsUpdate = true;
+}
+
 export interface HouseMaps {
   map: Texture;
   normalMap: Texture;
@@ -217,8 +276,10 @@ export function houseSurfaceMaterial(source: MeshStandardMaterial, maps: HouseMa
     roughnessMap: maps?.roughnessMap ?? null,
     side: source.side,
   });
-  if (maps) m.normalScale = new Vector2(HOUSE_LOOK.normalScale, -HOUSE_LOOK.normalScale);
+  const ns = HOUSE_SURFACE[source.name]?.normal ?? HOUSE_LOOK.normalScale;
+  if (maps) m.normalScale = new Vector2(ns, -ns);
   patchHouseLight(m, `${maps ? "pbr" : "flat"}${maps?.roughnessMap ? "-r" : ""}`);
+  if (maps?.map) enhanceHouseSurface(m, source.name);
   return m;
 }
 
