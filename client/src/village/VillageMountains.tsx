@@ -5,6 +5,8 @@ import { FileLoader, LinearMipmapLinearFilter, Mesh, RepeatWrapping, SRGBColorSp
 import { LIGHTING } from "../game/sceneLighting";
 import { dayNight } from "./dayNightDriver";
 import { noteMountainsRequested } from "./villageRelease";
+import { OuterGround } from "./OuterGroundMesh";
+import { MOUNTAIN_LIFT } from "./outerGround";
 import { LIGHT_TIER_MAX_TEXTURE, capTextureSize, type VillageNodes, type VillageTier } from "./villageModelPrep";
 import {
   MOUNTAINS_GRID_URL,
@@ -12,7 +14,6 @@ import {
   applyMountains,
   buildMountainGeometry,
   createMountainMaterial,
-  cutFarBackdrop,
   parseMountains,
 } from "./mountains";
 
@@ -70,13 +71,15 @@ export function VillageMountains({ nodes, tier }: { nodes: VillageNodes; tier: V
     mesh.name = "village_mountains";
     mesh.frustumCulled = false; // a ring round the camera: always partly in view
     mesh.renderOrder = -50; // after the dome, before the village (it is opaque: depth sorts the rest)
+    // the rings' feet stand on the outer ground (outerGround.ts TERRAIN_FOOT): lifted so the foot (y 1) meets it at TERRAIN_FOOT
+    mesh.position.y = MOUNTAIN_LIFT;
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
     return { mesh, geometry, material, triangles: (geometry.index?.count ?? 0) / 3 };
   }, [buffer, atlas, nodes, tier, gl]);
 
   useLayoutEffect(() => {
-    const cut = cutFarBackdrop(nodes.root);
+    const cut = { trianglesRemoved: 0, instancesRemoved: 0 };
     if (import.meta.env.DEV) {
       window.__cvMountains = () => ({
         triangles: built.triangles,
@@ -87,7 +90,6 @@ export function VillageMountains({ nodes, tier }: { nodes: VillageNodes; tier: V
     }
     return () => {
       if (import.meta.env.DEV) delete window.__cvMountains;
-      cut.restore();
     };
   }, [nodes, built]);
 
@@ -103,5 +105,10 @@ export function VillageMountains({ nodes, tier }: { nodes: VillageNodes; tier: V
     applyMountains(built.material, dayNight.applied, nodes.sky?.color ?? null, gl.toneMappingExposure);
   });
 
-  return <primitive object={built.mesh} dispose={null} />;
+  return (
+    <>
+      <primitive object={built.mesh} dispose={null} />
+      <OuterGround nodes={nodes} />
+    </>
+  );
 }

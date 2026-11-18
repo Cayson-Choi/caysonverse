@@ -18,6 +18,7 @@ import {
   SRGBColorSpace,
   Texture,
   Vector3,
+  Vector4,
   ClampToEdgeWrapping,
   LinearMipmapLinearFilter,
 } from "three";
@@ -25,7 +26,7 @@ import { coasterTrack } from "@caysonverse/shared/land/coaster";
 import { PARK_PLAZA, PARK_QUEUE_HALL, PARK_SHOPS } from "@caysonverse/shared/village/parkArea";
 import { LIGHTING } from "../game/sceneLighting";
 import { dayNight } from "../village/dayNightDriver";
-import { MOUNTAINS_GRID_URL, MOUNTAINS_TEXTURE_URL, applyMountains, buildMountainGeometry, createMountainMaterial, parseMountains } from "../village/mountains";
+import { type MountainUniforms, MOUNTAINS_GRID_URL, MOUNTAINS_TEXTURE_URL, applyMountains, buildMountainGeometry, createMountainMaterial, parseMountains } from "../village/mountains";
 import { FLAT_SKY_MAPPING } from "../village/villageWater";
 import { GeoBuilder, cross, type V3 } from "./geoBuilder";
 import { parkMaterial, pickSet } from "./pbr";
@@ -182,6 +183,8 @@ function horizonTexture(): CanvasTexture {
   return t;
 }
 
+export const PARK_MOUNTAIN_SCALE = 1.75;
+
 /** The village's own distant ridges (mountains.ts: the same files and look), centred on the park. */
 export function ParkMountains({ tier }: { tier: "high" | "low" }) {
   const buffer = useLoader(FileLoader, MOUNTAINS_GRID_URL, (l) => {
@@ -197,13 +200,17 @@ export function ParkMountains({ tier }: { tier: "high" | "low" }) {
     atlas.minFilter = LinearMipmapLinearFilter;
     atlas.anisotropy = 4;
     atlas.needsUpdate = true;
-    const geometry = buildMountainGeometry(parseMountains(buffer));
+    // the park is 550 m wide: the village's rings are pushed out 1.75x so the foot lies beyond every walkable corner, the two far layers dropped (past the camera's far plane)
+    const geometry = buildMountainGeometry(parseMountains(buffer).slice(0, 2));
     const material = createMountainMaterial(atlas, { map: horizonTexture(), mapping: FLAT_SKY_MAPPING }, tier, LIGHTING.village.toneCurve ?? "neutral");
+    // the haze keeps the village's look at the pushed-out distances
+    (material.userData.mountains as MountainUniforms).uHaze.value.multiply(new Vector4(PARK_MOUNTAIN_SCALE, PARK_MOUNTAIN_SCALE, 1, 1));
     const mesh = new Mesh(geometry, material);
     mesh.name = "park_mountains";
     mesh.frustumCulled = false;
     mesh.renderOrder = -50;
-    mesh.position.set(105, -6, -60);
+    mesh.position.set(105, -1.1, -63);
+    mesh.scale.set(PARK_MOUNTAIN_SCALE, 1.1, PARK_MOUNTAIN_SCALE);
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
     return { mesh, material };

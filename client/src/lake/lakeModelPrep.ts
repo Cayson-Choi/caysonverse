@@ -31,6 +31,7 @@ import {
 } from "three";
 import { LAKE_AREA } from "@caysonverse/shared/village/lakeLayout";
 import { configureLightmap, lightmapMaterial } from "../game/hub/hubModelPrep";
+import { GRASS_VARIATION_PARS } from "../village/grassVariation";
 import { GROUND_GRADE, GROUND_GRADE_NIGHT, liftMaterial, type VillageTier } from "../village/villageModelPrep";
 import type { DayNightState } from "../village/dayNightBlend";
 
@@ -86,11 +87,12 @@ const STRUCT_LIGHT = { nightMap: structuresNightMap, nightBlend: lakeNightBlend,
  * two lawns the same colour at the seam (measured again after the re-bake; east of x ~104 the build's vertex tint moves the lake
  * to the photos' muted olive).
  */
-export const LAKE_GRASS_MATCH = [0.88, 0.93, 0.915] as const;
+export const LAKE_GRASS_MATCH = [0.8, 0.82, 0.55] as const;
 /** The same at night: the lake's night bake is lifted (photos of night fishing are not black), the village's lawn is darker, so the seam showed a step. */
 export const LAKE_GRASS_MATCH_NIGHT = [0.4, 0.46, 0.45] as const;
 
-const FOLIAGE = /^(M_plant|M_bark|M_leaf_)/;
+const NIGHT_YARD = /^LM_(dirt|gravel|mud)$/;
+const FOLIAGE =/^(M_plant|M_bark|M_leaf_)/;
 const HELPER = /^(col__|seat__|spot__|light__|npc__)/;
 
 function materialsOf(m: Mesh): Material[] {
@@ -127,6 +129,11 @@ export function prepareLakeTerrain(root: Object3D, day: Texture, night: Texture 
           (m as MeshBasicMaterial).color.setRGB(grade[0], grade[1], grade[2]);
           if (gn && !graded.some((g) => g.material === m)) graded.push({ material: m as MeshBasicMaterial, day: grade, night: gn });
         }
+        // the bare yard (dirt, gravel, mud) was as bright at night as by day, away from every lamp: it darkens with the night like the lawn
+        if (!grade && NIGHT_YARD.test(m.name) && !graded.some((g) => g.material === m)) {
+          (m as MeshBasicMaterial).color.setRGB(1, 1, 1);
+          graded.push({ material: m as MeshBasicMaterial, day: [1, 1, 1], night: [0.5, 0.53, 0.62] });
+        }
       } else if (FOLIAGE.test(m.name)) {
         liftMaterial(m, LAKE_LIGHT);
       } else if (m.name === "M_ridge") {
@@ -136,6 +143,29 @@ export function prepareLakeTerrain(root: Object3D, day: Texture, night: Texture 
           b.needsUpdate = true;
         }
         if (!hazed.includes(b)) hazed.push(b);
+        if (!b.userData.ridgeTextured) {
+          // the ridge was one flat dark green (final light in COLOR_0, no texture): broad stands of lighter and darker forest and a fine
+          // canopy speckle, by world position, so it reads as wooded hills (the village's forest greens) and not as a plane
+          b.userData.ridgeTextured = true;
+          b.onBeforeCompile = (shader) => {
+            shader.vertexShader = shader.vertexShader
+              .replace("#include <common>", "#include <common>\nvarying vec3 vRidgeWorld;")
+              .replace("#include <project_vertex>", "#include <project_vertex>\nvRidgeWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
+            shader.fragmentShader = shader.fragmentShader
+              .replace("#include <common>", `#include <common>\nvarying vec3 vRidgeWorld;\n${GRASS_VARIATION_PARS}`)
+              .replace(
+                "#include <color_fragment>",
+                `#include <color_fragment>
+{
+  float rb = gvNoise( vRidgeWorld.xz * 0.02 ) * 0.5 + gvNoise( vRidgeWorld.xz * 0.07 + 5.0 ) * 0.3 + gvNoise( vRidgeWorld.xz * 0.35 ) * 0.2;
+  float rs = gvNoise( vRidgeWorld.xz * 1.3 + vRidgeWorld.y * 0.4 );
+  diffuseColor.rgb *= vec3( 0.7 + 0.75 * rb, 0.72 + 0.7 * rb, 0.62 + 0.6 * rb ) * ( 0.85 + 0.3 * rs );
+}`,
+              );
+          };
+          b.customProgramCacheKey = () => "lake-ridge-forest";
+          b.needsUpdate = true;
+        }
       }
     }
   });
