@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Mesh, Raycaster, Vector3, type Camera, type Object3D, type Scene, type Texture, type WebGLRenderer } from "three";
+import { Mesh, Raycaster, Vector3, type Camera, type Material, type Object3D, type Scene, type Texture, type WebGLRenderer } from "three";
 import { CLOSED_AUTO_DOOR, PUBLIC_AUTO_DOOR, stepAutoDoor, type AutoDoorConfig, type AutoDoorState } from "@caysonverse/shared/village/autoDoor";
 import { LOTS_WITH_MODEL, VILLAGE_LOTS, lotDoorPoint, lotLocalToWorld, lotRoomOfDoor, type LotId } from "@caysonverse/shared/village/villageLots";
 import { isTouchDevice } from "../../device";
@@ -13,6 +13,8 @@ import type { VillageTier } from "../villageModelPrep";
 import { disposeLoadedLots, loadLots, type LoadedLot, type LoadedLots } from "./lotsLoader";
 import { applyLotTextures, applyLotsDayNight, disposeLots, lotsMode, pickLotLevels, prepareLots, setLotDoor, showLotLevels, visibleLoad, type LotLevel, type LotNodes } from "./lotsPrep";
 import { LotTextureBank } from "./lotTextures";
+import { floraOld } from "../veg/vegMode";
+import { cutOldPines, makeTemplePines, pineGroundY } from "./templePines";
 import { setLotsDrawn } from "./lotsStore";
 import { doorSwingClearance } from "./lotDoorCheck";
 import { viewState } from "../../game/viewState";
@@ -98,6 +100,31 @@ function freeCache(c: LotsCache): void {
   });
 }
 
+/**
+ * The temple yard's pines: the art file's flat green plates and trunks are cut out of the loader's geometry (copies with a new index)
+ * and real red pines stand in the temple's detail group (so they show with the building, as the old ones did). `?flora=old` (DEV) keeps
+ * the file's own.
+ */
+function dressTempleYard(nodes: LotNodes, tier: VillageTier): void {
+  const detail = nodes.detail.get("lot_temple");
+  if (!detail || floraOld(window.location.search, import.meta.env.DEV)) return;
+  const ground = pineGroundY(detail);
+  const made = makeTemplePines(ground, tier !== "high");
+  if (!made) return;
+  detail.traverse((o) => {
+    const mesh = o as Mesh;
+    if (!mesh.isMesh) return;
+    const cut = cutOldPines(mesh);
+    if (cut) {
+      mesh.geometry = cut;
+      nodes.own.geometries.push(cut);
+    }
+  });
+  detail.add(made.group);
+  nodes.own.geometries.push(...made.geometries);
+  nodes.own.materials.push(...(made.disposables as unknown as Material[]));
+}
+
 function lotsFor(tier: VillageTier, gl: WebGLRenderer): LotsCache {
   if (cache && cache.tier === tier && cache.gl === gl) return cache;
   if (cache) freeCache(cache);
@@ -108,6 +135,7 @@ function lotsFor(tier: VillageTier, gl: WebGLRenderer): LotsCache {
   c.ready = loadLots(LOTS_WITH_MODEL, gl, bank, ctl.signal)
     .then((loaded) => {
       const nodes = prepareLots(loaded.lots, loaded.specs, loaded.own);
+      dressTempleYard(nodes, tier);
       for (const m of nodes.surfaces) applyLotTextures(m, bank);
       bank.takeChanged();
       c.value = { loaded, nodes, loadMs: Math.round(performance.now() - t0) };

@@ -312,9 +312,10 @@ export interface WillowOptions {
 
 export const WILLOW_GROW: WillowOptions = {
   dome: { attractors: 110, rhoMin: 0.55, rhoSpan: 0.5, nodeStep: 0.3, limbFrom: 0.3, sideFrom: 0.15, maxLen: 1.6, reach: 3.2, maxKids: 3, gap: 0.8 },
-  strandStep: 0.6,
-  sprayStep: 0.25,
-  size: 1.1,
+  // denser drooping curtains (owner audit 2026-11-18: wiry from above): strands 0.4 m apart (was 0.6), sprays 0.17 m apart (was 0.25)
+  strandStep: 0.4,
+  sprayStep: 0.17,
+  size: 1.15,
   floor: [0.5, 1.6],
 };
 
