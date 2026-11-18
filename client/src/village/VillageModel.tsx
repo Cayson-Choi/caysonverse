@@ -34,6 +34,7 @@ import { LotsVillagePatch } from "./lots/LotsVillagePatch";
 import { fallsMode, fallsRuntimeFor } from "./falls/fallsConfig";
 import { fallsModelBuilt } from "./falls/fallsLoader";
 import { StreetFurniture } from "./street/StreetFurniture";
+import { GroundLayer } from "./ground/GroundLayer";
 import type { DrawnGap } from "./veg/drawnGap";
 import { LiveSunShadows } from "./LiveSunShadows";
 import { VillageHouses, housesMode } from "./houses/VillageHouses";
@@ -261,6 +262,8 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       <primitive object={nodes.root} dispose={null} />
       {/* The lamp posts and banners: the baked ones out of this clone, the new ones drawn in their places (street/). */}
       {streetMode() === "new" && <StreetFurniture root={nodes.root} tier={tier} />}
+      {/* The lanes to the lots and the crossings' connectors, rebuilt in the ground's own meshes (ground/). */}
+      <GroundLayer root={nodes.root} />
       {/* The ten houses (집 외관 A8): drawn when in, the old ones cut out of this clone then; a failure keeps the old ones. */}
       {houses && (
         <LoadBoundary fallback={null} onReset={clearHousesFiles} notice="집 모습을 새로 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
