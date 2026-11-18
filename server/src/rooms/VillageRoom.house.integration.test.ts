@@ -11,6 +11,7 @@ import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import { HOUSE_PLACES, HOUSE_POLICY, houseFloorArea } from "@caysonverse/shared/village/houseAreas";
 import { ARRIVAL_SPACING_M, SPACING_SLACK_M } from "@caysonverse/shared/village/arrivalSpot";
+import { LOT_ROOMS, lotDoorPoint } from "@caysonverse/shared/village/villageLots";
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
 import type { Player } from "@caysonverse/shared/schema";
 import { rooms, type VillageRoom } from "./index";
@@ -198,6 +199,23 @@ describe("the keypad's way in", () => {
     for (const c of clients) c.send(VillageMsg.Keypad, { buildingId: "house_1", code: "1004" });
     expect(await pollFor(() => players.every((p) => p.area === AREA1))).toBe(true);
     expect(Math.hypot(players[0]!.x - players[1]!.x, players[0]!.z - players[1]!.z)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
+  });
+
+  it.each(["house", "lot"])("returns the second visitor from a crowded %s entrance when the interior fails to load", async (kind) => {
+    const { clients, players, clock } = await crowd(2);
+    const room = LOT_ROOMS[0]!;
+    const area = kind === "house" ? AREA1 : room.area;
+    const pad = kind === "house" ? entry1.pad : lotDoorPoint(room.lot, room.door).pad;
+    for (const [i, p] of players.entries()) {
+      place(p, pad.x, pad.z);
+      if (kind === "house") await keypad(clients[i]!, "house_1", "1004");
+      else clients[i]!.send(VillageMsg.UseDoor);
+      expect(await pollFor(() => p.area === area)).toBe(true);
+    }
+    clock.t += 20_000;
+    clients[1]!.send(VillageMsg.UseDoor, { loadFailed: true });
+    expect(await pollFor(() => players[1]!.area === "village")).toBe(true);
+    expect(players[0]!.area).toBe(area);
   });
 });
 

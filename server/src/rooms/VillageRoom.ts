@@ -14,7 +14,7 @@ import {
   type KeypadResultPayload,
   type ServerTimePayload,
 } from "@caysonverse/shared/village/messages";
-import { VILLAGE_LAYOUT, isHouseArea, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, isHouseArea, isLotArea, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { HOUSE_PLACES, HOUSE_POLICY, houseFloorArea, houseNumberOf, parseHouseFloorArea } from "@caysonverse/shared/village/houseAreas";
 import { houseIsReady } from "@caysonverse/shared/village/housesGeometry";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
@@ -22,7 +22,7 @@ import { arrivalArea, freeSpawnSpot, spreadArrival } from "@caysonverse/shared/v
 import { PlayerRoom, baseTracking, spawnInDisk, type Tracking } from "./PlayerRoom";
 import { validateJoinOptions } from "./joinValidation";
 import { RateWindow } from "./rateLimit";
-import { DOOR_RATE, useDoor, useHouseExit, useStair } from "./villageDoor";
+import { DOOR_RATE, HOUSE_ENTRY_RESCUE_M, useDoor, useHouseExit, useStair } from "./villageDoor";
 import { useLotDoor } from "@caysonverse/shared/village/villageLots";
 import { candleCubby } from "./villageCandle";
 import { memorial } from "../memorial/service";
@@ -65,6 +65,8 @@ const BUS_ACT_MAX_PER_SEC = 6;
 interface VillageTracking extends Tracking {
   /** Sliding-window rate cap for door uses (1 per second). */
   doorRate: RateWindow;
+  /** The assigned entry spot and its nominal door position while a house or lot interior loads. */
+  interiorEntry: { area: string; placed: TransitPoint; nominal: TransitPoint } | null;
   /** Sliding-window rate cap for lighting candles (1 per 5 seconds, Task 9). */
   candleRate: RateWindow;
   /** Whether this session has been accepted onto the current scheduled trip. */
@@ -358,6 +360,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     return {
       ...baseTracking(now),
       doorRate: new RateWindow(DOOR_RATE.count, DOOR_RATE.windowMs),
+      interiorEntry: null,
       candleRate: new RateWindow(CANDLE_RATE.count, CANDLE_RATE.windowMs),
       busBoarded: false,
       busTripId: null,
@@ -827,8 +830,12 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
     // the village's memorial door and the hall's way out (useDoor), or a house's way out to its porch (useHouseExit)
     const loadFailed = payload !== null && typeof payload === "object" && (payload as { loadFailed?: unknown }).loadFailed === true;
+    const entry = track.interiorEntry;
+    const from = loadFailed && entry?.area === player.area && Math.hypot(player.x - entry.placed.x, player.z - entry.placed.z) <= HOUSE_ENTRY_RESCUE_M
+      ? entry.nominal
+      : player;
     // …or a lot building's door and its room's way out (L5v2, villageLots.ts useLotDoor: the same reach and in-front rules)
-    const arrival = useDoor(player.area, player.x, player.z) ?? useHouseExit(player.area, player.x, player.z, loadFailed) ?? useLotDoor(player.area, player.x, player.z) ?? useParkDoor(player.area, player.x, player.z);
+    const arrival = useDoor(player.area, player.x, player.z) ?? useHouseExit(player.area, from.x, from.z, loadFailed) ?? useLotDoor(player.area, from.x, from.z) ?? useParkDoor(player.area, player.x, player.z);
     if (arrival === null) return; // no door within reach → silent drop
 
     const now = this.now();
@@ -837,6 +844,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     // The door's own spot if it is free, else the nearest free one beside it: two visitors through the door in the
     // same second (or one walking in while another still stands at the spawn) never appear inside each other.
     const at = spreadArrival(arrival.area, arrival, this.playersIn(arrival.area, client.sessionId));
+    track.interiorEntry = isLotArea(arrival.area) ? { area: arrival.area, placed: at, nominal: arrival } : null;
     player.x = at.x;
     player.z = at.z;
     player.yaw = at.yaw;
@@ -861,6 +869,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const now = this.now();
     if (!track.doorRate.tryAccept(now)) return;
     const at = spreadArrival(arrival.area, arrival, this.playersIn(arrival.area, client.sessionId));
+    track.interiorEntry = null;
     player.x = at.x;
     player.z = at.z;
     player.yaw = at.yaw;
@@ -958,6 +967,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const area = houseFloorArea(house, 1);
     // The same spread as the hall's door: a visitor coming in after another lands beside them, not inside.
     const at = spreadArrival(area, spot, this.playersIn(area, client.sessionId));
+    track.interiorEntry = { area, placed: at, nominal: spot };
     player.x = at.x;
     player.z = at.z;
     player.yaw = at.yaw;
