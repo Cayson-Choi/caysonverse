@@ -192,7 +192,7 @@ export function sacredCaps(node: string, phone: boolean): { color: number; norma
   if (node === "lotstatue__lot_chapel_nave_mary") return { ...SACRED_HERO_MAP_MAX[tier], color: 1024, orm: phone ? 256 : 512 };
   if (node === "lotstatue__lot_chapel_nave_crucifix") return { color: 1024, normal: 1024, orm: 512 };
   if (node.startsWith("lotart__lot_chapel_nave_station")) return { ...SACRED_MAP_MAX[tier], color: phone ? 512 : 768 };
-  if (node.startsWith("lotart__lot_church_nave_")) return { ...SACRED_MAP_MAX[tier], color: phone ? 768 : 1280 };
+  if (node.startsWith("lotart__lot_church_nave_")) return { ...SACRED_MAP_MAX[tier], color: phone ? 768 : 1024 };
   return SACRED_MAP_MAX[tier];
 }
 
@@ -249,6 +249,59 @@ interface RoomLights {
  * A per-room colour grade on the lit surfaces (a multiply, linear): the chapel's honey stone under a warm bake and warm lamps read
  * orange all over (the paintings and the stained glass lost their true colours); a slight cool pull brings the room to a neutral cream.
  */
+/**
+ * Triangles of a room's small goods that a sacred prop now replaces (room frame boxes [x0, x1, y0, y1, z0, z1]): the chapel's
+ * low-poly flowers (the lilies and roses are real petals now), the church organ's flat pipes. Applied to the `_goods` mesh.
+ */
+export const ROOM_STRIP: Readonly<Record<string, ReadonlyArray<readonly [number, number, number, number, number, number]>>> = {
+  lot_chapel_nave: [
+    [3.85, 4.25, 1.17, 1.95, 12.65, 13.05], [5.15, 5.55, 1.17, 1.95, 12.65, 13.05], // the altar's vases
+    [0.23, 0.53, 1.04, 1.7, 9.5, 9.8], [0.67, 0.97, 1.04, 1.7, 9.5, 9.8], [8.43, 8.73, 1.04, 1.7, 9.5, 9.8], [8.87, 9.17, 1.04, 1.7, 9.5, 9.8], // the side altars'
+    [2.35, 3.15, 1.4, 2.4, 12.15, 12.95], [6.25, 7.05, 1.4, 2.4, 10.85, 11.65], // the urns' arrangements
+  ],
+  lot_church_nave: [[7.3, 7.5, 1.24, 2.8, 7.6, 8.4]],
+};
+
+/** Drops the triangles whose centre is in one of the boxes from a room's goods meshes (a no-op when there are none). */
+export function stripRoomGoods(scene: Object3D, unit: string, origin: { x: number; z: number }): number {
+  const boxes = ROOM_STRIP[unit];
+  if (!boxes) return 0;
+  let dropped = 0;
+  scene.traverse((o) => {
+    if (!isMesh(o) || !o.name.includes("_goods")) return;
+    const g = o.geometry;
+    const idx = g.getIndex();
+    const pos = g.getAttribute("position");
+    if (!idx || !pos) return;
+    g.computeBoundingBox();
+    const ox = g.boundingBox && g.boundingBox.min.x > 100 ? origin.x : 0;
+    const oz = g.boundingBox && g.boundingBox.min.x > 100 ? origin.z : 0;
+    const keep: number[] = [];
+    const groups: Array<{ start: number; count: number; materialIndex: number }> = [];
+    const ranges = g.groups.length ? g.groups.map((r) => ({ start: r.start, end: r.start + r.count, materialIndex: r.materialIndex ?? 0 })) : [{ start: 0, end: idx.count, materialIndex: 0 }];
+    for (const r of ranges) {
+      const first = keep.length;
+      for (let i = r.start; i < r.end; i += 3) {
+        let cx = 0, cy = 0, cz = 0;
+        for (let k = 0; k < 3; k++) {
+          const v = idx.getX(i + k);
+          cx += pos.getX(v); cy += pos.getY(v); cz += pos.getZ(v);
+        }
+        cx = cx / 3 - ox; cy /= 3; cz = cz / 3 - oz;
+        if (boxes.some((bx) => cx >= bx[0] && cx <= bx[1] && cy >= bx[2] && cy <= bx[3] && cz >= bx[4] && cz <= bx[5])) dropped++;
+        else keep.push(idx.getX(i), idx.getX(i + 1), idx.getX(i + 2));
+      }
+      groups.push({ start: first, count: keep.length - first, materialIndex: r.materialIndex });
+    }
+    if (keep.length !== idx.count) {
+      g.setIndex(keep);
+      g.clearGroups();
+      if (ranges.length > 1 || g.groups.length) for (const r of groups) g.addGroup(r.start, r.count, r.materialIndex);
+    }
+  });
+  return dropped;
+}
+
 export const ROOM_GRADE: Readonly<Record<string, readonly [number, number, number]>> = { lot_chapel_nave: [0.80, 0.93, 1.18] };
 
 const ROOM_LIGHTS: Record<string, RoomLights> = {
@@ -496,6 +549,7 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
     const { specs, own, textures } = await loadManifestMaps(manifests, gl, bank, (set) => roomSetFull(unit, set, phone));
     const scene = gltf.scene;
     scene.updateMatrixWorld(true);
+    stripRoomGoods(scene, unit, (extras as { origin?: { x: number; z: number } }).origin ?? { x: 0, z: 0 });
     // the baked light (L6): both maps or none
     let lm: { day: Texture; night: Texture; scale: number; mix: { value: number } } | null = null;
     if (extras.lightmap) {

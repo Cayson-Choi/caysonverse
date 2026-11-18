@@ -158,6 +158,114 @@
    ],
    "yaw": 0,
    "what": "carved oak crown and base rings on the pulpit"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_panels_l1",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_panels.glb",
+   "phone": true,
+   "at": [
+    1.8,
+    0.0,
+    2.2
+   ],
+   "yaw": 0,
+   "what": "raised oak panel mouldings on the pew back and end faces"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_panels_r1",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_panels.glb",
+   "phone": true,
+   "at": [
+    6.0,
+    0.0,
+    2.2
+   ],
+   "yaw": 0,
+   "what": "raised oak panel mouldings on the pew back and end faces"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_panels_l2",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_panels.glb",
+   "phone": true,
+   "at": [
+    1.8,
+    0.0,
+    3.7
+   ],
+   "yaw": 0,
+   "what": "raised oak panel mouldings on the pew back and end faces"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_panels_r2",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_panels.glb",
+   "phone": true,
+   "at": [
+    6.0,
+    0.0,
+    3.7
+   ],
+   "yaw": 0,
+   "what": "raised oak panel mouldings on the pew back and end faces"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_panels_l3",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_panels.glb",
+   "phone": true,
+   "at": [
+    1.8,
+    0.0,
+    5.2
+   ],
+   "yaw": 0,
+   "what": "raised oak panel mouldings on the pew back and end faces"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_panels_r3",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_panels.glb",
+   "phone": true,
+   "at": [
+    6.0,
+    0.0,
+    5.2
+   ],
+   "yaw": 0,
+   "what": "raised oak panel mouldings on the pew back and end faces"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_panels_l4",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_panels.glb",
+   "phone": true,
+   "at": [
+    1.8,
+    0.0,
+    6.7
+   ],
+   "yaw": 0,
+   "what": "raised oak panel mouldings on the pew back and end faces"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_panels_r4",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_panels.glb",
+   "phone": true,
+   "at": [
+    6.0,
+    0.0,
+    6.7
+   ],
+   "yaw": 0,
+   "what": "raised oak panel mouldings on the pew back and end faces"
+  },
+  {
+   "node": "lotprop__lot_church_nave_organ_front",
+   "file": "lots/sacred/lotprop__lot_church_nave_organ_front.glb",
+   "phone": false,
+   "at": [
+    0,
+    0,
+    0
+   ],
+   "yaw": 0,
+   "what": "organ: metal pipes with mouths, case mouldings, keyboard (PC; the old tin pipes are stripped from the goods mesh)"
   }
  ],
  "glassDay": {
