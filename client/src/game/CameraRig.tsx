@@ -93,6 +93,7 @@ import { busSeatUnderRay } from "../village/busSeatPick";
 import { VILLAGE_LAYOUT, cubbyAtPoint, isHouseArea, isLotArea } from "@caysonverse/shared/village/villageLayout";
 import { localArea } from "../village/villageArea";
 import { armHouseUse, houseTapTarget } from "../village/houseTap";
+import { armRide, rideForTap, rideTapSpot } from "../land/rideBoard";
 import { openCubbyAt } from "../village/cubbyCard";
 import { cubbyFocusAnchor, stepCubbyFocus, type FocusPose } from "../village/cubbyFocus";
 import type { Orbit, Pose, SeatState } from "./types";
@@ -469,6 +470,13 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       const houseTap = pick && !pick.blocker && isHouseArea(localArea()) ? houseTapTarget(localArea(), pick.x, pick.y, pick.z) : null;
       if (houseTap) surface = { x: houseTap.x, y: 0, z: houseTap.z, ny: 1 };
       armHouseUse(houseTap ? houseTap.id : null);
+      // A tap on a ride (its platform, queue, station, the wheel's frame) walks to its boarding pad and boards there (rideBoard.ts); any other tap disarms it.
+      const rideTapKey = pick && !pick.blocker && localArea() === "park" ? rideForTap(pick.x, pick.z, pick.ray, pick.distance) : null;
+      if (rideTapKey) {
+        const spot = rideTapSpot(rideTapKey);
+        surface = { x: spot.x, y: 0, z: spot.z, ny: 1 };
+      }
+      armRide(rideTapKey);
       // A click on a seat or (in the hall) on other furniture is no ground, yet means something (round 8 review: a tap on the
       // sofa did nothing): the seat's approach, to sit on arrival, or the floor next to the piece (furnitureClick.ts).
       let sitOn: number | null = seatGoal ? seatTapped : null;
@@ -478,7 +486,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       // slats or through its backrest band to the floor beyond (seatThroughFloor, plaza bench hotfix): that seat; else it stays ground.
       const inHouse = isHouseArea(localArea()) || isLotArea(localArea()); // (a lot building's room: a flat floor too)
       const kindNone = !!surface && surfaceKind(surface, map.geometry.obstacles, activeBounds()) === "none";
-      if (!seatGoal && !houseTap && surface) {
+      if (!seatGoal && !houseTap && !rideTapKey && surface) {
         const remote = new Set(getRemoteSeatIndices());
         const taken = (i: number) => remote.has(i);
         const onFurniture = kindNone || inHouse;
@@ -520,7 +528,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
           view = viewOfRing(plan.x, plan.y, plan.z, cameraNow());
           // a seat clicked was itself in view: its approach (beside or under the camera) need not be; a click on the falls' pool
           // walks to its nearest shore spot wherever that is (W6: on the phone's portrait view it may lie off the screen)
-          const seen = sitOn === null && !houseTap && !toShore ? requireSeen(plan, view) : plan;
+          const seen = sitOn === null && !houseTap && !rideTapKey && !toShore ? requireSeen(plan, view) : plan;
           if (!seen.ok) unseen = plan;
           plan = seen;
         }
