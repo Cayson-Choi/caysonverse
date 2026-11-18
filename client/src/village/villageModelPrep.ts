@@ -388,10 +388,18 @@ const moonlitCast = (light: string) =>
 const LIGHTMAP_TEXEL_FROM = "vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );";
 // `grass`: the west hill's baked lawn has dark rectangles (overlapping unwrap islands, seen as translucent green quads floating on
 // the slope): there the lawn never bakes darker than a shaded lawn.
-const lightmapTexelTo = (grass: boolean) => /* glsl */ `vec4 lightMapTexel = vec4( 0.0, 0.0, 0.0, 1.0 );
+// The fishing lake's lawn bakes darker toward its south and east edges (0.97 near the village down to 0.5-0.7: a ruler-straight step at z 45 and a
+// dark strip round the gazebo against the village lawn's flat 0.9): its baked light never falls below the village lawn's, fading out into the
+// forest floor east of x 168.
+const LAKE_LAWN_LIGHT = /* glsl */ `{
+		float lakeLawnW = 1.0 - smoothstep( 168.0, 186.0, vSsWorld.x );
+		villageRawLight = max( villageRawLight, vec3( 0.985 * lakeLawnW ) );
+	}`;
+const lightmapTexelTo = (grass: boolean, lake = false) => /* glsl */ `vec4 lightMapTexel = vec4( 0.0, 0.0, 0.0, 1.0 );
 	if ( uVillageNight < 0.999 ) {
 		vec3 villageRawLight = texture2D( lightMap, vLightMapUv ).rgb;
-		${grass ? "if ( vSsWorld.x < -80.0 ) villageRawLight = max( villageRawLight, vec3( 0.62 ) );" : ""}
+		${grass && !lake ? "if ( vSsWorld.x < -80.0 ) villageRawLight = max( villageRawLight, vec3( 0.62 ) );" : ""}
+		${lake ? LAKE_LAWN_LIGHT : ""}
 		lightMapTexel.rgb = ssDay( villageRawLight, vLightMapUv ) * uVillageDayTint * ( 1.0 - uVillageNight );
 	}
 	if ( uVillageNight > 0.001 ) {
@@ -460,15 +468,15 @@ export function liftMaterial(
     // another model's own bake (release 2: the lake, the waterfall): its baked sun stays, the live shadows only shade it
     shader.fragmentShader = (own?.foreignBake ? "#define SS_FOREIGN_BAKE\n" : "") + shader.fragmentShader
       .replace("void main() {", foliage ? LIFT_PARS.replace("void main() {", NEAR_FADE_PARS) : LIFT_PARS)
-      .replace(LIGHTMAP_TEXEL_FROM, lightmapTexelTo(vary))
+      .replace(LIGHTMAP_TEXEL_FROM, lightmapTexelTo(vary, vary && !!own))
       .replace("void main() {", ground ? GROUND_PARS : "void main() {")
-      .replace("#include <map_fragment>", ground ? groundMapFragment(catmull, vary, vary && !own) : "#include <map_fragment>")
+      .replace("#include <map_fragment>", ground ? groundMapFragment(catmull, vary, vary && !own, vary && !!own) : "#include <map_fragment>")
       .replace("#include <color_fragment>", LIFT_ALBEDO)
       .replace("#include <aomap_fragment>", LIFT_LIGHT)
       .replace("void main() {", `${SS_FRAGMENT_PARS}${SS_DAY_FUNCTION}void main() {\n${SS_MAIN_TOP}`);
   };
   material.customProgramCacheKey = () =>
-    (foliage ? "village-light-foliage" : ground ? (catmull ? "village-light-ground-smooth" : vary ? "village-light-ground-grass" + (own ? "" : "") : "village-light-ground") : "village-light") + (own ? `-${own.key}` : "");
+    (foliage ? "village-light-foliage" : ground ? (catmull ? "village-light-ground-smooth" : vary ? "village-light-ground-grass" : "village-light-ground") : "village-light") + (own ? `-${own.key}` : "");
   material.needsUpdate = true;
 }
 

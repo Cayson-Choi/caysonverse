@@ -166,7 +166,25 @@ export function prepareLakeTerrain(root: Object3D, day: Texture, night: Texture 
 {
   float rb = gvNoise( vRidgeWorld.xz * 0.02 ) * 0.5 + gvNoise( vRidgeWorld.xz * 0.07 + 5.0 ) * 0.3 + gvNoise( vRidgeWorld.xz * 0.35 ) * 0.2;
   float rs = gvNoise( vRidgeWorld.xz * 1.3 + vRidgeWorld.y * 0.4 );
-  diffuseColor.rgb *= vec3( 0.7 + 0.75 * rb, 0.72 + 0.7 * rb, 0.62 + 0.6 * rb ) * ( 0.85 + 0.3 * rs );
+  // tree crowns: a cellular pattern (about 7 m cells, darker gaps between rounded lit crowns, each crown its own tint), faded to its mean with distance
+  vec2 cp = vRidgeWorld.xz * 0.27;
+  vec2 ci = floor( cp );
+  float d1 = 9.0; float crownTint = 0.5;
+  for ( int j = -1; j <= 1; j ++ ) for ( int i = -1; i <= 1; i ++ ) {
+    vec2 g = ci + vec2( float( i ), float( j ) );
+    vec2 o = vec2( gvHash( g ), gvHash( g + 17.3 ) );
+    float dd = length( g + o - cp );
+    if ( dd < d1 ) { d1 = dd; crownTint = gvHash( g + 41.7 ); }
+  }
+  float crown = 1.0 - smoothstep( 0.15, 0.75, d1 );
+  float farK = smoothstep( 120.0, 420.0, length( cameraPosition - vRidgeWorld ) );
+  float relief = mix( 0.66 + 0.56 * crown, 1.0, farK );
+  vec3 crownCol = mix( vec3( 0.88, 1.0, 0.8 ), vec3( 1.1, 1.0, 0.86 ), crownTint );
+  // the slope's own light (the baked light is flat across a big triangle): sun side lit, the far side shaded
+  vec3 rn = normalize( cross( dFdx( vRidgeWorld ), dFdy( vRidgeWorld ) ) );
+  rn *= sign( rn.y + 1e-4 );
+  float slope = 0.72 + 0.55 * max( dot( rn, normalize( vec3( 0.45, 0.8, 0.35 ) ) ), 0.0 );
+  diffuseColor.rgb *= vec3( 0.7 + 0.75 * rb, 0.72 + 0.7 * rb, 0.62 + 0.6 * rb ) * ( 0.85 + 0.3 * rs ) * relief * mix( crownCol, vec3( 1.0 ), farK ) * mix( slope, 1.0, farK * 0.6 );
 }`,
               );
           };
