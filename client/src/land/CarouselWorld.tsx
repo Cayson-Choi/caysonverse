@@ -1,4 +1,5 @@
 import { compileSafely } from "../game/compileSafely";
+import { BulbHalos } from "./nightGlow";
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
@@ -326,6 +327,7 @@ export function CarouselWorld({ env, all }: { env: Texture; all: Texture[] }) {
           <circleGeometry args={[12.4, 72]} />
         </mesh>
         <instancedMesh frustumCulled={false} ref={bulbRef} args={[bulbGeo, bulbMat, bulbs.length]} />
+        <BulbHalos places={bulbs} size={0.9} strength={0.8} />
       </group>
       {horseParts.map((p, i) => (
         <instancedMesh key={`h${i}`} ref={(r) => { horseRefs.current[i] = r; }} args={[p.geometry, p.material, HORSES]} frustumCulled={false} castShadow receiveShadow />
