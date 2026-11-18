@@ -74,6 +74,8 @@ Sketchfab에 **CC0로 표시된 박물관 실사 채색 스캔**이 있지만 �
 
 본존불 PC·폰 GLB는 프로젝트를 위해 직접 제작했다. 얼굴과 나발, 손, 옷주름, 연꽃잎과 밑면 부조를 Blender에서 모델링했다. 별도의 바탕 메시나 스캔을 사용하지 않았다. 소유자가 제공한 6면 사진은 비례와 형태를 살피는 데 사용했다. 색상·노멀·ORM 텍스처는 절차적으로 생성했다.
 
+가사는 왼쪽 어깨에서 등과 허리로 이어지는 한 장의 천으로 조형했다. 설법인의 검지는 곧게 세우고 엄지와 중지 끝을 연결해 고리를 냈다. 감은 눈은 양끝이 가늘어지는 갈색 눈꺼풀 선으로 표현했다.
+
 `buddha_build.py`는 같은 폴더의 `buddha_head.py`, `buddha_body.py`, `buddha_lap.py`, `buddha_mesh.py`로 두 LOD를 조립한다. Blender 5.3에서 `blender -b -P buddha_build.py -- <build-dir>`로 중간 GLB를 만든 뒤, `node buddha_pack.mjs <build-dir> <sacred-GLB-dir>`로 게임 파일을 만든다. 루트와 이 폴더의 `node/`에서 각각 `npm ci --allow-git=all`로 의존성을 설치한다.
 
 ## 이전 제작 이력 · 2026-11-18 본존불 v2 — 직접 만든 원작 (소유자 "그냥 블렌더로 니가 입체적인 불상을 니가 만들어. 여러 부처님 불상을 찾아보고 비슷하게 만들면 되잖아")

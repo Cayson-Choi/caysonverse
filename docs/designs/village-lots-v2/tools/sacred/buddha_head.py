@@ -145,14 +145,8 @@ def make_features(phone):
         ribbon('Malachite brow',s,brow,'green',n,.0026)
         def lid(t):
             b=sin(pi*t)
-            return (.032+.102*t,1.682+.004*t-.003*b,.0017*b,.0052*b)
-        ribbon('Downcast eye',s,lid,'crease',n,.0027)
-        def pupil(t):
-            b=sin(pi*t)**.68
-            return (.058+.039*t,1.680-.0009*sin(pi*t),.0022*b,.0054*b)
-        ribbon('Iris below upper lid',s,pupil,'pupil',8,.0051)
-        ribbon('Ink at lashes',s,lambda t:(.034+.099*t,1.682+.004*t-.003*sin(pi*t),
-                                             .0020*sin(pi*t),.0011*sin(pi*t)),'pupil',n,.0048)
+            return (.032+.102*t,1.682+.004*t-.003*b,.0013*b,.0035*b*b)
+        ribbon('Closed eyelid crease',s,lid,'crease',n,.0027)
         ribbon('Painted moustache',s,lambda t:(.013+.051*t,1.578-.010*t+.0008*sin(2*pi*t),
                                                 .0022*sin(pi*t)**.65,.0015*sin(pi*t)**.65),'green',n)
         for x,z,rx,rz in [(.061,1.564,.0021,.0023),(.012,1.499,.0024,.003)]:
