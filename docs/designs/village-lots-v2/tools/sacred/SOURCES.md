@@ -92,7 +92,7 @@ Sketchfab에 **CC0로 표시된 박물관 실사 채색 스캔**이 있지만 �
   *Front view of Seokguram from front chamber* (공공누리 제1유형), *Korea-Gyeongju-Seokguram-13*, *…Buddha statue-01/02/05* (CC BY 2.0),
   *Bulguksa gilt-bronze Vairocana* (CC BY-SA 2.0), *Gilt-bronze Seated Amitabha Buddha*, *Gilt-bronze Seated Vairocana Buddha* (국립중앙박물관, 공공누리 제1유형),
   봉정사 *Korea-Andong-Bongjeongsa-Monk praying and Buddha statues-01* (CC BY 3.0), 영탑사 금동약사여래삼존 (퍼블릭 도메인), 조선 15세기 금은 삼존 (Sackler Museum, CC0).
-  비교 시트 `shots/temple_v3/ref_seokguram.jpg`·`ref_gilt_bronze.jpg`에는 공공누리 제1유형 사진 두 장만 출처와 함께 넣었어요.
+  실제 사진과 나란히 놓은 비교 시트는 저장소에 넣지 않아요(공개 저장소).
 - 배운 비례(사진 r02 정면에서 잼): 얼굴 너비 1 : 어깨 ≈ 2.9 : 무릎 ≈ 4.8, 머리(턱까지)/앉은키 ≈ 0.27, 무릎 너비/앉은키 ≈ 0.9 — 새 본존불은 무릎 1.28 m / 앉은키 1.40 m.
 - **2차 손질 (2026-11-18 밤, 사장님 "얼굴을 더 온화한 불상 얼굴로 고치고 몸을 더 둥글고 넉넉하게 방 안 금빛도 살려")**:
   얼굴 — 바탕 머리의 콧방울·입술·광대 흔적을 650번 다듬어 지우고(코는 70%만 남김) 얼굴을 10% 넓힌 둥근 달걀형, 통통한 볼·둥근 턱, 눈썹에서 콧등으로
@@ -113,6 +113,6 @@ Sketchfab에 **CC0로 표시된 박물관 실사 채색 스캔**이 있지만 �
   블로흐 https://commons.wikimedia.org/wiki/File:Carl_Bloch_-_The_Sermon_on_the_Mount.jpg · 렘브란트 https://commons.wikimedia.org/wiki/File:Rembrandt_Harmensz._van_Rijn_-_The_Return_of_the_Prodigal_Son.jpg · 호프만 https://commons.wikimedia.org/wiki/File:Christ_in_Gethsemane.jpg
 - 쓰지 않은 것: 티에폴로 San Polo 성당의 컬러 «Via Crucis» 사진(CC BY-SA 4.0, 사진가 저작권)은 라이선스(SA) 때문에 뺐어요.
 - **3차 — 사장님 참고 사진 (2026-11-18 밤)**: 사장님이 보낸 6면 사진(`art/sacred/ref/owner_buddha_turnaround*.webp`, 저장소에 올리지 않음)을 형태 기준으로 썼어요 —
-  사진 자체는 게임 자산에 들어가지 않고, 비교 시트(`shots/temple_v3/six_views_vs_ref.jpg`, `hand_vs_ref.jpg`, `face_vs_ref.jpg`)에만 나란히 넣었어요.
+  사진 자체는 게임 자산에도 저장소에도 들어가지 않아요(저작권 확인 전 — 나란히 놓은 비교 시트는 저장소 밖에만).
   설법인 손가락(`mudra`), 큰 머리·높은 육계·금 계주·가지런한 검정 나발, 얼굴 칠(초록·빨강 재질), 넓은 몸통과 두꺼운 가사, 둥근 2단 통통한 연꽃 연화대·밑면 12잎 부조,
   밝은 노란 금과 방의 따뜻한 채움빛. 바탕은 여전히 CC0 Human Base Meshes, 나머지는 모두 직접 제작.

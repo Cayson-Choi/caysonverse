@@ -262,7 +262,7 @@
 - **들어갈 때 끊김 (A/B, 같은 설정 `CV_NO_TOUR=1 CV_NO_STREET=1`, 매번 서버 다시 켬, 2회씩)**: 가장 긴 프레임 PC 전 367 / 333 ms → 후 283 / 333 ms, 폰 전 5817 / 167 ms → 후 1467 / 333 ms
   (폰의 첫 회 큰 값은 전·후 모두 나오는 첫 셰이더 준비 — 이 PC는 다른 에이전트와 GPU를 같이 써서 ±). 회귀 없음.
 - **사진**: `shots/temple_v3/` — `before/`·`after/`(lots2-walk `CV_TEMPLE_SHOTS`, PC 1280x800 · 폰 375x812), `compare_{pc,phone}_{altar_front,buddha_face,buddha_hands,buddha_lap,hall_wide}.jpg`,
-  `turntable/`(Blender 렌더: 앞 · 3/4 · 옆 · 얼굴 · 손), `ref_seokguram.jpg`·`ref_gilt_bronze.jpg`(실제 사진 옆에 나란히). 새 본존불은 낮게 앉아 `buddha_hands` 카메라에는 어깨가 나와서
+  `turntable/`(Blender 렌더: 앞 · 3/4 · 옆 · 얼굴 · 손), 실제 사진과 나란히 놓은 시트는 저장소 밖에만 둠(공개 저장소라 남의 사진은 넣지 않음). 새 본존불은 낮게 앉아 `buddha_hands` 카메라에는 어깨가 나와서
   `buddha_lap` 카메라를 더했어요(e2e/lots2-walk.mjs).
 - **솔직한 차이**: 석굴암보다 어깨·가슴이 덜 두툼하고 목이 가늘며, 무릎의 옷자락이 매끈한 덩어리에 가까워요(앞으로 늘어진 옷자락 시도는 방석처럼 보여 뺌). 얼굴은 이상화했지만
   실사 바탕 머리의 흔적(콧방울·입술 모양)이 남아 있어요. 방의 평평한 밝은 빛에서는 금이 밝은 살구빛으로 보여 색을 한 번 더 깊게(AO 섞기) 다듬었어요.
@@ -287,4 +287,4 @@
     방에서 본존불만 환경맵 1.5 + 자기 색 맵으로 약한 따뜻한 채움빛(`SACRED_STATUE_FILL` — 갈색 청동처럼 보이던 그늘을 금박으로).
   - 광배는 그대로(사진에는 없지만 대웅전 구성) — 두광 중심만 새 머리 높이 1.64로. 원하면 빼기 쉬워요(방 GLB의 `_halo` 마커).
   - 등불 셰이더 수정(2차)의 다른 방 확인: 성당·교회·학교 교실 전/후 사진(`shots/temple_v3/rooms_lamp_check.jpg`) — 나무·벽·바닥은 같고, 놋쇠 촛대·샹들리에만 살짝 금속답게.
-  - 사진: `six_views_vs_ref.jpg`(사진 6면 위, 게임 자산 6면 아래), `hand_vs_ref.jpg`, `face_vs_ref.jpg`, `after3/`·`after3_night/`, `compare3_*.jpg`.
+  - 사진: 게임 자산 6면 `turntable/six_*.jpg`(참고 사진과 나란히 놓은 시트는 저장소 밖에만), `after3/`·`after3_night/`, `compare3_*.jpg`.
