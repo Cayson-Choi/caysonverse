@@ -180,8 +180,8 @@ export const GROUND_GRADE: Readonly<Record<string, readonly [number, number, num
  * move toward a cool dark green with the night weight (Task 7A). The plaza's grade is neutral and stays.
  */
 export const GROUND_GRADE_NIGHT: Readonly<Record<string, readonly [number, number, number]>> = {
-  LM_grass: [0.85, 1.0, 1.3],
-  LM_lawn: [0.85, 1.0, 1.3],
+  LM_grass: [0.55, 0.74, 1.05],
+  LM_lawn: [0.55, 0.74, 1.05],
 };
 
 /** The village's own foliage and trunks: their light is in COLOR_0 (no light map). */

@@ -19,6 +19,7 @@ import {
   dropOverview,
   requestRecenter,
   cancelOrbitGoal,
+  zoomSkyBy,
 } from "./viewState";
 import {
   overviewFar,
@@ -93,6 +94,7 @@ import { busSeatUnderRay } from "../village/busSeatPick";
 import { VILLAGE_LAYOUT, cubbyAtPoint, isHouseArea, isLotArea } from "@caysonverse/shared/village/villageLayout";
 import { localArea } from "../village/villageArea";
 import { armHouseUse, houseTapTarget } from "../village/houseTap";
+import { armRide, rideForTap, rideTapSpot } from "../land/rideBoard";
 import { openCubbyAt } from "../village/cubbyCard";
 import { cubbyFocusAnchor, stepCubbyFocus, type FocusPose } from "../village/cubbyFocus";
 import type { Orbit, Pose, SeatState } from "./types";
@@ -469,6 +471,13 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       const houseTap = pick && !pick.blocker && isHouseArea(localArea()) ? houseTapTarget(localArea(), pick.x, pick.y, pick.z) : null;
       if (houseTap) surface = { x: houseTap.x, y: 0, z: houseTap.z, ny: 1 };
       armHouseUse(houseTap ? houseTap.id : null);
+      // A tap on a ride (its platform, queue, station, the wheel's frame) walks to its boarding pad and boards there (rideBoard.ts); any other tap disarms it.
+      const rideTapKey = pick && !pick.blocker && localArea() === "park" ? rideForTap(pick.x, pick.z, pick.ray, pick.distance) : null;
+      if (rideTapKey) {
+        const spot = rideTapSpot(rideTapKey);
+        surface = { x: spot.x, y: 0, z: spot.z, ny: 1 };
+      }
+      armRide(rideTapKey);
       // A click on a seat or (in the hall) on other furniture is no ground, yet means something (round 8 review: a tap on the
       // sofa did nothing): the seat's approach, to sit on arrival, or the floor next to the piece (furnitureClick.ts).
       let sitOn: number | null = seatGoal ? seatTapped : null;
@@ -478,7 +487,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       // slats or through its backrest band to the floor beyond (seatThroughFloor, plaza bench hotfix): that seat; else it stays ground.
       const inHouse = isHouseArea(localArea()) || isLotArea(localArea()); // (a lot building's room: a flat floor too)
       const kindNone = !!surface && surfaceKind(surface, map.geometry.obstacles, activeBounds()) === "none";
-      if (!seatGoal && !houseTap && surface) {
+      if (!seatGoal && !houseTap && !rideTapKey && surface) {
         const remote = new Set(getRemoteSeatIndices());
         const taken = (i: number) => remote.has(i);
         const onFurniture = kindNone || inHouse;
@@ -520,7 +529,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
           view = viewOfRing(plan.x, plan.y, plan.z, cameraNow());
           // a seat clicked was itself in view: its approach (beside or under the camera) need not be; a click on the falls' pool
           // walks to its nearest shore spot wherever that is (W6: on the phone's portrait view it may lie off the screen)
-          const seen = sitOn === null && !houseTap && !toShore ? requireSeen(plan, view) : plan;
+          const seen = sitOn === null && !houseTap && !rideTapKey && !toShore ? requireSeen(plan, view) : plan;
           if (!seen.ok) unseen = plan;
           plan = seen;
         }
@@ -788,6 +797,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
               viewState.ovHeight + delta * CAMERA.ovPinchSpeed,
               fitHeight.current,
             );
+          } else if (viewState.skyLook && viewState.mode === "fp") {
+            zoomSkyBy(Math.exp((pinchPrev - curr) * 0.006)); // fingers apart (curr > prev) = lens in
           } else {
             cancelOrbitGoal(); // the player took the camera back
             applyZoom(orbit, pinchZoomDelta(pinchPrev, curr), ZOOM_BAND);
@@ -816,7 +827,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         viewState.ovCenterZ = c.z;
       } else if (viewState.mode === "fp") {
         cancelOrbitGoal();
-        const gain = dragSpeed();
+        const gain = dragSpeed() * viewState.skyZoom; // zoomed in, a drag turns the view less
         viewState.fpYaw = normalizeAngle(viewState.fpYaw - DRAG_SIGN * dx * gain);
         viewState.fpPitch = clampFpPitch(viewState.fpPitch + DRAG_SIGN * dy * gain, viewState.skyLook);
       } else {
@@ -949,6 +960,11 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
           viewState.ovHeight + e.deltaY * CAMERA.ovZoomSpeed,
           fitHeight.current,
         );
+        return;
+      }
+      // The star finder's sky view: the wheel narrows / widens the lens (never leaves first person).
+      if (viewState.skyLook && viewState.mode === "fp") {
+        zoomSkyBy(Math.exp(Math.max(-300, Math.min(300, e.deltaY)) * 0.0022));
         return;
       }
       // deltaY < 0 = zoom in (toward min → one notch past min enters FP);
@@ -1330,7 +1346,15 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     // away entirely. Continuous in ovT, and restored exactly to the scene's far plane at 0.
     // The over-the-shoulder view against an indoor wall widens a portrait phone's view (cameraShoulder.ts), third person only.
     // In the bus the rider's own lens (riderFov, set above) stays as it is.
-    const fov = baseFov.current + tpSpot.fovAdd * (1 - t) * (1 - ovT) * (1 - fw);
+    // The star finder's zoom (a narrower lens while looking up at the sky; eased, back to 1 when it is closed).
+    viewState.skyFovBase = baseFov.current;
+    const zoomOn = viewState.skyLook && viewState.mode === "fp";
+    if (!zoomOn) viewState.skyZoomGoal = 1;
+    if (viewState.skyZoom !== viewState.skyZoomGoal) {
+      const dz = viewState.skyZoomGoal - viewState.skyZoom;
+      viewState.skyZoom = Math.abs(dz) < 0.002 ? viewState.skyZoomGoal : viewState.skyZoom + dz * (1 - Math.exp(-9 * Math.min(delta, 0.1)));
+    }
+    const fov = (baseFov.current + tpSpot.fovAdd * (1 - t) * (1 - ovT) * (1 - fw)) * viewState.skyZoom;
     if (selfBusRide.slot < 0 && selfRide.slot < 0 && cam.isPerspectiveCamera && Math.abs(cam.fov - fov) > 1e-3) {
       cam.fov = fov;
       cam.updateProjectionMatrix();

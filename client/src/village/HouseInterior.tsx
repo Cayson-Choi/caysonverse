@@ -50,6 +50,7 @@ import {
   patchHouseViewMaterial,
   resetHouseNight,
 } from "./houseNight";
+import { houseFireTime, setHouseHearth } from "./houseFire";
 import { clearHouseCaches, holdHouseFiles, loadHouseTexture, noteHouseRequested } from "./houseRelease";
 
 /**
@@ -120,6 +121,10 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
     };
   }, [n, urls.lightmapNight, wantsLightmap, nightWanted]);
   useEffect(() => () => resetHouseNight(), [n]);
+  useEffect(() => {
+    setHouseHearth(n);
+    return () => setHouseHearth(0);
+  }, [n]);
   // The shared full-size albedos (houseModelPrep HOUSE_TEXTURE_DIR): the GLB's small copies show until they are in.
   useEffect(() => {
     let live = true;
@@ -190,6 +195,7 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
   }, [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useFrame(() => {
+    houseFireTime.value = performance.now() / 1000;
     const night = wantsLightmap || nodes.views.length > 0 || nodes.glows.length > 0 ? hallNightWeight(dayNight.outdoor.night, houseNightMapUniform.value !== null) : 0;
     if (houseNightUniform.value !== night) houseNightUniform.value = night;
   });

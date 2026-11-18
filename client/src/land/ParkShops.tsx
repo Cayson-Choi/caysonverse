@@ -1,4 +1,6 @@
 import { useMemo } from "react";
+import { useFrame } from "@react-three/fiber";
+import { dayNight } from "../village/dayNightDriver";
 import { CanvasTexture, Color, DoubleSide, MeshStandardMaterial, SRGBColorSpace, type Texture } from "three";
 import { PARK_SHOPS, type ParkShop } from "@caysonverse/shared/village/parkArea";
 import { GeoBuilder, type V3 } from "./geoBuilder";
@@ -8,6 +10,9 @@ const X: V3 = [1, 0, 0];
 const Y: V3 = [0, 1, 0];
 
 const SHOP_NAMES: Record<string, string> = { bakery: "빵집", toys: "장난감 가게", tea: "찻집", souvenir: "기념품", candy: "사탕 가게", photo: "사진관" };
+/** The night glow of each shop's windows (× the clock's lights) and its lamp colour. */
+const SHOP_GLOW = [1.5, 1.1, 1.7, 0.9, 1.3, 0.0];
+const SHOP_WARM = ["#ffb35e", "#ffc27a", "#ffa94d", "#ffd08a", "#ff9f55", "#ffb35e"];
 const SHUTTERS: V3[] = [[0.2, 0.42, 0.3], [0.52, 0.24, 0.2], [0.24, 0.36, 0.5], [0.3, 0.45, 0.28]];
 
 /** A hanging shop sign (canvas): the shop's name on a painted board with a gold rim. */
@@ -73,7 +78,7 @@ function addPlainFace(wall: GeoBuilder, s: ParkShop, F: V3, dist: number, latHal
   }
 }
 
-function addShop(wall: GeoBuilder, roof: GeoBuilder, cloth: GeoBuilder, s: ParkShop, shut: V3): void {
+function addShop(wall: GeoBuilder, roof: GeoBuilder, cloth: GeoBuilder, glass: GeoBuilder, s: ParkShop, shut: V3): void {
   const F: V3 = [s.faces, 0, 0];
   const wallH = 4.4;
   const half = s.d / 2;
@@ -100,7 +105,7 @@ function addShop(wall: GeoBuilder, roof: GeoBuilder, cloth: GeoBuilder, s: ParkS
   for (const k of [s.w / 6 + 0.4, s.w / 3 + 1.1]) {
     if (k + 0.9 > s.w / 2) continue;
     wall.box(c(half + 0.05, 2.1, k), F, Y, 0.16, 0.72, 0.84, [0.2, 0.2, 0.22]);
-    wall.box(c(half + 0.12, 2.1, k), F, Y, 0.05, 0.62, 0.72, [0.66, 0.82, 0.95]);
+    glass.box(c(half + 0.12, 2.1, k), F, Y, 0.05, 0.62, 0.72, [0.66, 0.82, 0.95]); // its own mesh: the panes glow at night
     for (const e of [-1, 1]) wall.box(c(half + 0.16, 2.1, k + e * 0.76), F, Y, 0.1, 0.74, 0.07, [0.95, 0.94, 0.9]);
     for (const y of [-1, 1]) wall.box(c(half + 0.16, 2.1 + y * 0.7, k), F, Y, 0.1, 0.07, 0.84, [0.95, 0.94, 0.9]);
     wall.box(c(half + 0.17, 2.1, k), F, Y, 0.06, 0.62, 0.025, [0.95, 0.94, 0.9]);
@@ -151,13 +156,20 @@ function addShop(wall: GeoBuilder, roof: GeoBuilder, cloth: GeoBuilder, s: ParkS
 
 /** The promenade's six storybook shop fronts: real plaster PBR, half-timbering, deep reveals, shutters, flower boxes, awnings, signs. */
 export function Shops({ all }: { all: Texture[] }) {
-  const { wallGeo, roofGeo, clothGeo } = useMemo(() => {
+  const { wallGeo, roofGeo, clothGeo, glassGeos } = useMemo(() => {
     const w = new GeoBuilder();
     const r = new GeoBuilder();
     const cl = new GeoBuilder();
-    PARK_SHOPS.forEach((s, i) => addShop(w, r, cl, s, SHUTTERS[i % SHUTTERS.length]!));
-    return { wallGeo: w.build(), roofGeo: r.build(), clothGeo: cl.build() };
+    const gl = PARK_SHOPS.map(() => new GeoBuilder());
+    PARK_SHOPS.forEach((s, i) => addShop(w, r, cl, gl[i]!, s, SHUTTERS[i % SHUTTERS.length]!));
+    return { wallGeo: w.build(), roofGeo: r.build(), clothGeo: cl.build(), glassGeos: gl.map((g) => g.build()) };
   }, []);
+  // the shop windows light up with the night, each a little different (a warm lamp, a dimmer one, one shop with its light out)
+  const glassMats = useMemo(() => SHOP_GLOW.map((k, i) => ({ k, mat: new MeshStandardMaterial({ color: "#b9d4ee", roughness: 0.2, emissive: new Color(SHOP_WARM[i % SHOP_WARM.length]!), emissiveIntensity: 0 }) })), []);
+  useFrame(() => {
+    const l = dayNight.applied.lights;
+    for (const g of glassMats) g.mat.emissiveIntensity = l * g.k;
+  });
   const wallMat = useMemo(() => parkMaterial(pickSet(all, "Plaster003"), 0.7, { vertexColors: true, normalScale: 1.0, color: new Color("#ffffff") }), [all]);
   const roofMat = useMemo(() => parkMaterial(pickSet(all, "RoofingTiles013A"), 1, { color: new Color("#e29a7c"), normalScale: 1.0 }), [all]);
   const clothMat = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: DoubleSide }), []);
@@ -172,6 +184,9 @@ export function Shops({ all }: { all: Texture[] }) {
   return (
     <group>
       <mesh geometry={wallGeo} material={wallMat} castShadow receiveShadow />
+      {glassGeos.map((g, i) => (
+        <mesh key={i} geometry={g} material={glassMats[i % glassMats.length]!.mat} />
+      ))}
       <mesh geometry={roofGeo} material={roofMat} castShadow receiveShadow />
       <mesh geometry={clothGeo} material={clothMat} castShadow />
       {signs.map(({ s, mat }) => (

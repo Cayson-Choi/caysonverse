@@ -8,6 +8,9 @@ import { CAROUSEL_SEATS, carouselAt } from "./carousel";
 import { WHEEL_RIDE_CYCLES, WHEEL_SEATS, boardingSeatsOfWheel, wheelAt, wheelSeatAtPlatform } from "./wheel";
 import { CAROUSEL_PAD, COASTER_BOARD_REACH_M, COASTER_QUEUE_PAD, WHEEL_PAD } from "../village/parkArea";
 
+/** How far (m) past a ride's boarding pad the "board" prompt is offered: the press walks to the pad and boards (client/src/land/rideBoard.ts). */
+export const RIDE_PROMPT_RANGE_M = 45;
+
 export const RIDE = { coaster: 1, carousel: 2, wheel: 3 } as const;
 export type RideKey = keyof typeof RIDE;
 export type RideStatusName = "unloading" | "boarding" | "gate" | "riding";
@@ -49,4 +52,13 @@ export function rideByKey(key: unknown): RideDef | null {
 }
 export function rideById(id: number): RideDef | null {
   return RIDES.find((r) => r.id === id) ?? null;
+}
+
+/**
+ * ms until the ride next takes riders (0 while it is boarding now): for the "다음 탑승까지 N초" countdown and a reserved seat's wait. Scans the
+ * schedule in 500 ms steps (at most `maxMs`, default 6 min); null when it does not open within that.
+ */
+export function msUntilBoarding(ride: RideDef, nowMs: number, maxMs = 360_000): number | null {
+  for (let dt = 0; dt <= maxMs; dt += 500) if (ride.statusAt(nowMs + dt).status === "boarding") return dt;
+  return null;
 }

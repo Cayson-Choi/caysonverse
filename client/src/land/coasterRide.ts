@@ -39,7 +39,10 @@ export const landPose = { x: 0, z: 0 };
 export const selfRide = { slot: -1, ride: 0 };
 
 /** Why the last boarding was refused, and when (for the HUD). */
-export const rideNotice: { reason: "closed" | "full" | "busy" | "aloft" | null; at: number } = { reason: null, at: 0 };
+export const rideNotice: { reason: "closed" | "full" | "busy" | "aloft" | "reserved" | "far" | null; at: number } = { reason: null, at: 0 };
+
+/** The ride I reserved a seat in (pressed "board" outside its window: the server seats me when it next loads), and when. */
+export const rideReserved: { key: "coaster" | "carousel" | "wheel" | null; at: number } = { key: null, at: 0 };
 
 export type RideComfort = 0 | 1 | 2; // 0 = off (steady camera), 1 = gentle, 2 = full
 const COMFORT_KEY = "cv.rideComfort";
