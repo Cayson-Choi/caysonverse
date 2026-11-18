@@ -114,7 +114,11 @@ describe("the fishing clips and the rod carrier's arm", () => {
       expect(b).toBeLessThanOrEqual(1);
     }
     expect(rodBend({ ...v, phase: FISH_PHASE.waiting }, 1)).toBe(0);
-    expect(rodBend({ ...v, phase: FISH_PHASE.fighting }, 1)).toBeGreaterThan(0.5);
+    // the fight: the rod bends with the line's tension (fishReel bits 8..14), more while the angler pulls
+    const tight = { ...v, phase: FISH_PHASE.fighting, reel: 128 | (80 << 8) };
+    const slack = { ...v, phase: FISH_PHASE.fighting, reel: 0 };
+    expect(rodBend(tight, 1)).toBeGreaterThan(0.6);
+    expect(rodBend(tight, 1)).toBeGreaterThan(rodBend(slack, 1) + 0.3);
   });
   it("the rod folds to 1.15 m and opens to 3.6 m", () => {
     const rod = createRod();

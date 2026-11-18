@@ -15,6 +15,7 @@ import { REEL_S, HANG_END_S, catchState, reelProgress, releasePoint, skimming, u
 import { setHookPoint } from "./fishHooks";
 import { lakeRipple, lakeSplash } from "./lakeFx";
 import { cameraProbe } from "../game/cameraProbe";
+import { fightPromptOf } from "./fishFightView";
 
 /** Past this distance from the camera an angler's fish is drawn with the LOD1 model. */
 const FAR_M = 22;
@@ -141,6 +142,8 @@ export function createCatchRig(sid: string): CatchRig {
   let wake: Mesh | null = null;
   /** The fight's progress, smoothed (the wire sends it four times a second). */
   let reelK = 0;
+  /** The fight's last command seen on this screen: at every switch to "run" the fish splashes (a run out). */
+  let lastFightKind: string | null = null;
   let splashT = 0;
   const cs: CatchState = { stage: "none", k: 0, wriggle: 0, beat: 0 };
   const under: Pt3 & { yaw: number } = { x: 0, y: 0, z: 0, yaw: 0 };
@@ -317,6 +320,11 @@ export function createCatchRig(sid: string): CatchRig {
           if (view.phase === FISH_PHASE.fighting) reelK += (reelProgress(view) - reelK) * Math.min(1, delta * 2.2);
           else if (view.phase !== FISH_PHASE.lifting) reelK = 0;
           if (!underPos(view, view.phase === FISH_PHASE.lifting ? Math.min(t, REEL_S) : t, under, reelK)) break;
+          if (view.phase === FISH_PHASE.fighting) {
+            const fk = fightPromptOf(view, t * 1000)?.kind ?? null;
+            if (fk === "run" && lastFightKind === "pull") lakeSplash(under.x, LAKE_WATER_Y, under.z, 10, 0.9 + len);
+            lastFightKind = fk;
+          } else lastFightKind = null;
           const surf = cs.stage === "surface";
           const skim = !surf && skimming(view, t);
           // dragged in: the body just under the surface, its back and dorsal fin out of the water

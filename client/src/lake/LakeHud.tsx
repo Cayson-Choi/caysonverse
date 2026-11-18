@@ -17,6 +17,9 @@ import { biteWindowMs } from "@caysonverse/shared/village/fishing";
 import { expireLakeUi, useLakeStore } from "./lakeStore";
 import { LakeCards } from "./LakeCards";
 import { LakePierCue } from "./LakePierCue";
+import { LakeFight } from "./LakeFight";
+import { fightPromptOf } from "./fishFightView";
+import { playFightCue } from "./fightSfx";
 import { carriesHandItem } from "./fishingRig";
 import { backToFishing, catchCamera, fishingCamera, liftCamera, restoreCamera } from "./lakeCamera";
 import "./lake.css";
@@ -26,6 +29,12 @@ let recordedCast = "";
 
 /** The HUD reads the schema this often (ms): a bite must turn the button red at once. */
 const POLL_MS = 80;
+
+/** The fight prompt changed on screen (the command, its grace, the meters to 2 %): a re-render. */
+function sameFight(a: LakeContext["fight"], b: LakeContext["fight"]): boolean {
+  if (!a || !b) return a === b;
+  return a.kind === b.kind && a.inGrace === b.inGrace && a.index === b.index && a.held === b.held && Math.round(a.tension * 50) === Math.round(b.tension * 50) && Math.round(a.progress * 50) === Math.round(b.progress * 50);
+}
 
 function sameCtx(a: LakeContext | null, b: LakeContext): boolean {
   if (!a) return false;
@@ -43,7 +52,9 @@ function sameCtx(a: LakeContext | null, b: LakeContext): boolean {
     x.sig === y.sig &&
     x.seq === y.seq &&
     x.kind === y.kind &&
-    x.cm === y.cm
+    x.cm === y.cm &&
+    sameFight(a.fight ?? null, b.fight ?? null) &&
+    a.lostWhy === b.lostWhy
   );
 }
 
@@ -60,6 +71,9 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
   const layout = useTouchHudLayout();
   const vp = useTouchViewport();
   const holdingRef = useRef(false);
+  /** The key / pointer is physically down (even while it was not yet the hold button: pressed to strike and never let go, owner 2026-11-19). */
+  const keyDownRef = useRef(false);
+  const pointerDownRef = useRef(false);
   const [shake, setShake] = useState(0);
   const lastRod = useRef(0);
   const lastPhase = useRef(0);
@@ -94,6 +108,8 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
       onChair: view.rod > 0 && !seatedAtSpot && chairSpot >= 0,
       seatedAtSpot,
       seatedNoRod: view.rod === 0 && chairSpot >= 0,
+      fight: fightPromptOf(view, elapsedSince(view.at)),
+      lostWhy: view.phase === FISH_PHASE.missed ? store.getState().personal.lostWhy : undefined,
     };
     // rod rented / returned: a line of words
     // the held item (손에 드는 것) is left with the shop while the rod is out, and given back with the rod (fishingRig.stowHandItem)
@@ -123,6 +139,8 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
       const spot = LAKE_FISHING_SPOTS[view.spot];
       if (spot) backToFishing(spot.yaw);
     }
+    if (lastPhase.current === FISH_PHASE.fighting && view.phase !== FISH_PHASE.fighting) markFightCoach();
+    if (view.phase === FISH_PHASE.missed && lastPhase.current === FISH_PHASE.fighting && store.getState().personal.lostWhy === "snap") playFightCue("snap");
     lastPhase.current = view.phase;
     // the fishing camera: seated at a spot -> over the shoulder toward the float; standing up -> where it was
     if (view.spot >= 0 && lastSpot.current < 0) {
@@ -246,9 +264,11 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
     // seated at a spot, E does what Space does (cast, pull, hold: UX 2026-11-16) — one key for every fishing step
     const isFishKey = (code: string) => code === "Space" || code === "KeyE";
     const onDown = (e: KeyboardEvent): void => {
-      if (!isFishKey(e.code) || e.repeat || isUiCaptured()) return;
+      if (!isFishKey(e.code) || isUiCaptured()) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      keyDownRef.current = true;
+      if (e.repeat) return;
       const sp = specRef.current;
       if (!sp || sp.key !== "Space" || !sp.enabled) return;
       e.preventDefault();
@@ -260,6 +280,7 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
       } else perform(sp.action);
     };
     const onUp = (e: KeyboardEvent): void => {
+      if (isFishKey(e.code)) keyDownRef.current = false;
       if (isFishKey(e.code) && holdingRef.current) {
         holdingRef.current = false;
         sendHold(false);
@@ -278,13 +299,31 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
     };
   }, [perform]);
 
-  // a hold that is no longer the button (the fish was landed, the phase moved on) is let go of
+  // the pointer (finger / mouse) is down anywhere: tracked so a press that began before the fight counts when the fight starts
+  useEffect(() => {
+    const up = (): void => {
+      pointerDownRef.current = false;
+    };
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  }, []);
+
+  // a hold that is no longer the button (the fish was landed, the phase moved on) is let go of; and a key / finger that is ALREADY down
+  // when the hold button appears (pressed to strike, never let go: owner 2026-11-19, "누르고 있어도 항상 놓치기만") is a hold from that moment
+  const holdButton = !!(spec && spec.hold && spec.enabled);
   useEffect(() => {
     if (holdingRef.current && !(spec && spec.hold)) {
       holdingRef.current = false;
       sendHold(false);
+    } else if (holdButton && !holdingRef.current && (keyDownRef.current || pointerDownRef.current)) {
+      holdingRef.current = true;
+      sendHold(true);
     }
-  }, [spec]);
+  }, [spec, holdButton]);
 
   if (!ctx) return null;
   const inZone = inLakeZone(pose.x, pose.z);
@@ -324,6 +363,9 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
           shake={shake}
           progress={store.getState().personal.progress}
           onPress={() => perform(spec.action)}
+          onPointer={(down) => {
+            pointerDownRef.current = down;
+          }}
           onHold={(down) => {
             if (down === holdingRef.current) return;
             holdingRef.current = down;
@@ -331,9 +373,30 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
           }}
         />
       )}
+      {ctx.fight && <LakeFight fight={ctx.fight} touch={isTouchDevice} firstTime={!coachSeenFight()} />}
       <LakeCards card={card} />
     </>
   );
+}
+
+/** The fight's one-line tutorial is shown until the first fight is over (this device, once). */
+const FIGHT_COACH_KEY = "cv-lake-fight-coach";
+let fightCoachSeen = false;
+function coachSeenFight(): boolean {
+  if (fightCoachSeen) return true;
+  try {
+    return localStorage.getItem(FIGHT_COACH_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function markFightCoach(): void {
+  fightCoachSeen = true;
+  try {
+    localStorage.setItem(FIGHT_COACH_KEY, "1");
+  } catch {
+    // private mode: the tutorial shows again next page load
+  }
 }
 
 function forEachAnglerSpots(me: string, out: Set<number>): void {
@@ -365,6 +428,7 @@ function LakeButton({
   progress,
   onPress,
   onHold,
+  onPointer,
 }: {
   spec: LakeButtonSpec;
   rect: { x: number; y: number; w: number; h: number } | null;
@@ -372,6 +436,7 @@ function LakeButton({
   progress: number | undefined;
   onPress: () => void;
   onHold: (down: boolean) => void;
+  onPointer: (down: boolean) => void;
 }) {
   const ring = spec.hold ? Math.round((progress ?? 0) * 100) : 0;
   return (
@@ -389,6 +454,7 @@ function LakeButton({
       onContextMenu={(e) => e.preventDefault()}
       onPointerDown={(e) => {
         e.preventDefault();
+        onPointer(true);
         if (!spec.enabled) return;
         if (e.pointerType === "mouse" && e.button !== 0) return;
         if (spec.hold) {

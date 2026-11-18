@@ -179,10 +179,14 @@ export interface FishingStatePayload {
   signal: FishSignal | null;
   windowOpensInMs: number | null;
   windowClosesInMs: number | null;
-  /** In `fighting`: the progress of the hold (ms), what it needs (ms) and whether the server counts the button as down. */
+  /** In `fighting`: how close the fish is (holdMs of holdNeedMs = 1000: 0..1000) and whether the server counts the button as down. */
   holdMs: number;
   holdNeedMs: number;
   holdDown: boolean;
+  /** In `fighting`: the line tension 0..1000 (snaps at 1000). */
+  fightTension?: number;
+  /** After a lost fight: why ("snap" the line broke, "escape" it was never pulled in, "idle"). */
+  lostWhy?: "none" | "snap" | "escape" | "idle";
   lastResult: FishingResultKind;
   /** The fish, from `hooked` on (a landed or released fish stays until the next stage `ready`). */
   catch: FishCatchPayload | null;
