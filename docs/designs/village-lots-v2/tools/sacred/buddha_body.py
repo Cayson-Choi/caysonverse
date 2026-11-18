@@ -223,26 +223,27 @@ def sweep(surf, stations, sides, samples, preferred=(1, 0, 0), pads=False):
 
 
 def hands(phone, s):
-    # Little, ring and index fingers. The third finger curls forward, meeting
-    # the thumb at the pad and leaving a through-hole visible in profile.
+    # Little, ring and index rise from the web in steps. The index leans
+    # forward in profile while the middle curls down to the rising thumb pad.
     fingers = [
         [(-.359, -.343, 1.257, .019, .022), (-.367, -.344, 1.306, .018, .020),
          (-.366, -.342, 1.350, .015, .017), (-.362, -.350, 1.387, .013, .015),
          (-.360, -.352, 1.396, .006, .006), (-.359, -.353, 1.398, .002, .002)],
         [(-.331, -.340, 1.272, .022, .024), (-.333, -.336, 1.326, .020, .021),
-         (-.332, -.325, 1.380, .017, .018), (-.325, -.331, 1.431, .015, .016),
-         (-.323, -.333, 1.440, .008, .007), (-.322, -.334, 1.443, .002, .002)],
-        [(-.252, -.341, 1.271, .022, .024), (-.248, -.341, 1.327, .020, .022),
-         (-.249, -.328, 1.389, .018, .019), (-.252, -.322, 1.446, .016, .017),
-         (-.254, -.324, 1.460, .008, .009), (-.255, -.325, 1.463, .002, .002)],
-        [(-.296, -.342, 1.272, .022, .024), (-.295, -.345, 1.325, .020, .022),
-         (-.289, -.365, 1.349, .0185, .019), (-.280, -.391, 1.339, .017, .018),
-         (-.273, -.406, 1.320, .015, .016), (-.270, -.408, 1.315, .007, .008)],
+         (-.332, -.330, 1.374, .018, .019), (-.326, -.335, 1.420, .016, .017),
+         (-.324, -.337, 1.433, .010, .010), (-.323, -.338, 1.437, .002, .002)],
+        [(-.252, -.341, 1.271, .023, .025), (-.248, -.344, 1.332, .021, .023),
+         (-.249, -.354, 1.397, .020, .021), (-.251, -.368, 1.461, .017, .018),
+         (-.252, -.370, 1.474, .011, .012), (-.252, -.371, 1.479, .002, .002)],
+        [(-.298, -.342, 1.272, .022, .024), (-.299, -.347, 1.320, .021, .022),
+         (-.295, -.366, 1.353, .019, .020), (-.289, -.389, 1.357, .018, .019),
+         (-.279, -.409, 1.345, .016, .017), (-.271, -.416, 1.334, .013, .014),
+         (-.266, -.418, 1.327, .006, .007)],
         [(-.295, -.334, 1.169, .011, .012), (-.280, -.348, 1.189, .032, .024),
          (-.255, -.359, 1.220, .032, .028),
-         (-.234, -.372, 1.253, .024, .026), (-.233, -.394, 1.286, .021, .020),
-         (-.252, -.412, 1.309, .017, .017), (-.270, -.410, 1.315, .013, .013),
-         (-.275, -.407, 1.318, .005, .006)]
+         (-.232, -.372, 1.253, .025, .026), (-.228, -.393, 1.286, .021, .022),
+         (-.243, -.410, 1.310, .018, .019), (-.262, -.418, 1.323, .016, .017),
+         (-.270, -.416, 1.332, .012, .013), (-.275, -.414, 1.338, .005, .006)]
     ]
     for f in fingers:
         sweep(s, f, 8 if phone else 12, 8 if phone else 13, pads=True)
@@ -277,182 +278,173 @@ def hands(phone, s):
     return hand
 
 
-# A wave section through hanging cloth: a wide sloping face rolls into a
-# rounded, protruding lip and returns sharply into its own shadow.
-PLEAT = [(0, .0, .0), (.17, -.17, -.04), (.44, .04, .0), (.70, .64, .10),
-         (.82, 1., .08), (.93, .29, -.22), (1., .0, .0)]
+# Each column follows a fold from the breast around the left arm and back.
+# The low point of each swag moves towards the elbow as the fabric opens.
+DRAPE = [
+    # turn     hem    first  second  third  fourth   neckline
+    (.000,    .674,  .775,  .859,   .947,  1.015,    1.064),
+    (.046,    .674,  .779,  .864,   .959,  1.038,    1.087),
+    (.096,    .683,  .802,  .897,  1.009,  1.115,    1.218),
+    (.145,    .691,  .819,  .920,  1.048,  1.196,    1.407),
+    (.183,    .626,  .745,  .848,   .969,  1.140,    1.446),
+    (.220,    .497,  .609,  .731,   .866,  1.059,    1.451),
+    (.255,    .430,  .521,  .646,   .804,  1.084,    1.453),
+    (.282,    .427,  .507,  .652,   .860,  1.218,    1.453),
+    (.306,    .427,  .542,  .785,  1.082,  1.349,    1.451),
+    (.337,    .428,  .893, 1.186,  1.331,  1.409,    1.448),
+    (.361,    .429, 1.274, 1.350,  1.395,  1.425,    1.443),
+    (.390,    .430, 1.009, 1.173,  1.282,  1.359,    1.404),
+    (.428,    .431,  .684,  .882,  1.060,  1.176,    1.270),
+    (.495,    .431,  .553,  .733,   .900,  1.045,    1.157),
+    (.592,    .433,  .546,  .710,   .862,   .997,    1.091),
+    (.680,    .465,  .574,  .715,   .859,   .986,    1.085),
+    (.758,    .626,  .693,  .798,   .902,   .995,    1.080),
+    (.838,    .690,  .797,  .876,   .952,  1.018,    1.081),
+    (.918,    .683,  .787,  .866,   .945,  1.012,    1.071),
+    (1.00,    .674,  .775,  .859,   .947,  1.015,    1.064),
+]
 
-
-def fold_profile(cycles):
-    return interpolate(PLEAT, cycles % 1)
-
-
-# Heights of the six hanging arcs. Read columns from the hem toward the neck,
-# and rows clockwise from the sternum across the draped arm to the bare flank.
-# On the outer arm the arcs are slung between two high points. On the back
-# their rear attachment rises almost vertically in a long cascade.
-COURSES = [
-    (0.00, .740,.787,.846,.912,.973,1.039,1.111),
-    (.065, .754,.812,.869,.931,.996,1.070,1.141),
-    (.124, .800,.866,.943,1.035,1.117,1.194,1.251),
-    (.175, .775,.869,.984,1.109,1.235,1.339,1.403),
-    (.207, .615,.771,.923,1.080,1.232,1.362,1.428),
-    (.247, .459,.574,.705,.835,.988,1.193,1.438),
-    (.288, .441,.518,.624,.768,.960,1.244,1.434),
-    (.330, .439,.562,.735,.951,1.157,1.337,1.410),
-    (.362, .449,.727,.930,1.105,1.221,1.302,1.348),
-    (.403, .447,.633,.816,.974,1.093,1.202,1.287),
-    (.500, .441,.544,.665,.797,.944,1.080,1.178),
-    (.586, .447,.545,.665,.799,.933,1.044,1.114),
-    (.674, .478,.604,.718,.826,.919,1.008,1.095),
-    (.750, .663,.743,.815,.892,.962,1.032,1.082),
-    (.835, .770,.815,.865,.921,.979,1.035,1.086),
-    (.904, .752,.804,.853,.909,.968,1.031,1.102),
-    (.955, .733,.779,.836,.900,.964,1.029,1.108),
-    (1.00, .740,.787,.846,.912,.973,1.039,1.111)
+# Horizontal sections of the hanging cloth clear the resting arm and spread
+# onto the lap. A single continuous profile also turns over the shoulder.
+CLOTH_SECTIONS = [
+    # height, left reach, right reach, front depth, back depth, centre Y
+    (.400, .561, .553, .420, .402, .015),
+    (.460, .569, .556, .421, .412, .016),
+    (.550, .551, .525, .385, .397, .018),
+    (.640, .499, .439, .299, .348, .019),
+    (.720, .433, .295, .201, .274, .020),
+    (.800, .388, .233, .170, .222, .021),
+    (.900, .371, .238, .168, .203, .022),
+    (1.00, .366, .255, .184, .193, .023),
+    (1.10, .357, .279, .200, .193, .021),
+    (1.18, .353, .295, .209, .196, .017),
+    (1.26, .352, .319, .198, .195, .019),
+    (1.31, .342, .327, .185, .188, .024),
+    (1.35, .321, .325, .171, .174, .025),
+    (1.38, .291, .296, .153, .158, .025),
+    (1.41, .237, .234, .134, .142, .024),
+    (1.44, .153, .150, .115, .122, .022),
+    (1.46, .118, .117, .106, .109, .022),
+    (1.48, .115, .115, .105, .109, .022),
 ]
 
 
-def cloth_base(phi, t):
-    q = phi / TAU % 1
-    heights = interpolate(COURSES, q)
-    z = interpolate(list(enumerate(heights)), t * 6)[0]
+def cloth_section(z, phi):
+    left, right, front, back, center = interpolate(CLOTH_SECTIONS, z)
     sn, cs = sin(phi), cos(phi)
-    shoulder = max(sn, 0)
-    if z >= .715:
-        p = chest_point(z, phi)
-        rx = p.x
-        ry = p.y - .022
-    else:
-        width, front_depth, back_depth = interpolate([
-            (.42, .556, .446, .424), (.50, .562, .425, .422),
-            (.59, .549, .372, .394), (.67, .446, .250, .315),
-            (.715, .218, .149, .176)], z)
-        rx = width * sn
-        ry = -(front_depth if cs > 0 else back_depth) * cs
-    sleeve = interpolate([(.42, .025), (.57, .018), (.68, .043), (.78, .126),
-                          (.93, .128), (1.10, .096), (1.23, .060), (1.32, .034),
-                          (1.38, .016), (1.45, .0)], z)[0]
-    rx += sleeve * shoulder ** 2.3
-    ry -= .046 * shoulder ** 3 * exp(-((z - .95) / .20) ** 2)
-    # The back of the throw fans out onto the cushion. Keep it in front
-    # of the seat surface at its hem so the long folds terminate visibly.
-    rear = max(-cs, 0)
-    ry += rear * (.027 + .032 * shoulder) * max(0, 1 - t * 2.2)
-    return Vector((rx + .009 * sn, .022 + ry - .009 * cs, z))
-
-
-def cloth(phi, t):
-    p = cloth_base(phi, t)
-    dt = cloth_base(phi, min(1, t + .003)) - cloth_base(phi, max(0, t - .003))
-    da = cloth_base(phi + .002, t) - cloth_base(phi - .002, t)
-    normal = da.cross(dt).normalized()
-    shoulder = max(sin(phi), 0)
-    crest, tuck = fold_profile(6 * t + .045 * sin(phi * 2) * sin(pi * t))
-    depth = .019 + .022 * shoulder ** 2 + .014 * max(-cos(phi), 0)
-    # Narrow fluting travels over the crown of the shoulder and spreads
-    # down its front and rear. The broad lower courses continue underneath.
-    crown = smooth((t - .60) / .35) * shoulder ** 3
-    fluting, _ = fold_profile(6 * t + .14 * cos(phi) + .5)
-    depth *= 1 - .15 * crown
-    edge = .006 * exp(-((1 - t) / .012) ** 2)
-    return p + normal * (depth * crest + .011 * crown * fluting + edge) + dt.normalized() * (.55 * depth * tuck)
+    width = mix(right, left, smooth((sn + .45) / .95))
+    depth = front if cs >= 0 else back
+    return Vector((width * sn, center - depth * cs, z))
 
 
 def mantle(phone):
-    s = Surface()
-    n, m = (52, 40) if phone else (96, 74)
-    rows = [s.ring(cloth(TAU * j / n, k / m) for j in range(n)) for k in range(m + 1)]
+    surf = Surface()
+    # Keep the edge loops on the actual ridges and in their troughs at both
+    # LODs. A broad convex face returns underneath each rounded lip.
+    profile = [(0, 1.), (.11, .80), (.30, .29), (.54, -.06),
+               (.73, -.12), (.84, .12), (.94, .78)]
+    if phone:
+        profile = [profile[i] for i in (0, 2, 4, 5)]
+    n = 39 if phone else 87
+    courses = len(DRAPE[0]) - 2
+    # Extra rows follow a narrow fold just outside the neckline. It rolls
+    # over the shoulder and flattens out as it reaches the sternum.
+    samples = [(k, t, r) for k in range(courses) for t, r in profile]
+    samples = [entry for entry in samples if entry[0] < courses - 1 or entry[1] < .73]
+    samples.extend((courses - 1, t, r) for t, r in
+                   ((.73, -.1), (.82, .0), (.875, .9), (.91, .75), (.956, .0), (1., 1.)))
+    if not phone:
+        # The first course fans from the lotus to the back shoulder. Retain
+        # its curved silhouette even where one face of the fold is very wide.
+        samples.extend((0, t, r) for t, r in ((.20, .56), (.42, .07), (.64, -.11)))
+        samples.sort()
+    rows = [[] for _ in samples]
+    normals = [[], []]
+    # Repeat the end stations so that even the tangent at the centre-front
+    # seam is shared between its two sides.
+    periodic = [(DRAPE[-2][0] - 1, *DRAPE[-2][1:]), *DRAPE,
+                (DRAPE[1][0] + 1, *DRAPE[1][1:])]
+    meridians = [(0, 0), (.11, .091), (.25, .183), (.40, .275), (.54, .349),
+                 (.64, .406), (.74, .492), (.83, .615), (.93, .847), (1, 1)]
+    for j in range(n):
+        turn, = interpolate(meridians, j / n)
+        phi = TAU * turn
+        heights = interpolate(periodic, turn)
+        sleeve = max(0, sin(phi))
+        back = max(0, -cos(phi))
+        depth = .009 + .018 * sleeve + .015 * back
+        # Where the cloth gathers behind the shoulder the spacing shrinks.
+        # Reduce the relief there so neighbouring ridges stay separate.
+        gather = exp(-((turn - .36) / .047) ** 2)
+        depth *= 1 - .63 * gather
+        for i, (row, (course, t, relief)) in enumerate(zip(rows, samples)):
+            z = mix(heights[course], heights[course + 1], t)
+            p = cloth_section(z, phi)
+            dz = cloth_section(z + .001, phi) - cloth_section(z - .001, phi)
+            da = cloth_section(z, phi + .002) - cloth_section(z, phi - .002)
+            normal = da.cross(dz).normalized()
+            # The lower folds die into the tie at the bare flank. The top
+            # course retains the roll of its narrow woven selvedge.
+            flank = max(0, -sin(phi)) * max(0, cos(phi))
+            weight = (1 - .76 * flank) * (.84 + .16 * sin(pi * (course+t)/courses))
+            if course == courses - 1 and .73 <= t < 1:
+                # Away from the shoulder this becomes the smooth face of the hem.
+                plain = smooth((t - .73) / .27)
+                relief = mix(plain, relief, sleeve ** 2)
+            # At the anterior shoulder the gathered cloth runs lengthwise.
+            # The waist and elbow swags fade into these continuous pleats.
+            seam = .149 + .028 * ((z - 1.12) / .36) ** 2
+            d = turn - seam
+            ends = smooth((z - .69) / .15) * (1 - smooth((z - 1.405) / .046))
+            if course == courses - 1:
+                ends *= 1 - smooth((t - .84) / .16)
+            waist = depth * weight * relief * (1 - .90 * ends * exp(-(d / .053) ** 4))
+            long_fold = (.017 * exp(-((d + .012) / .017) ** 2)
+                         - .003 * exp(-((d - .008) / .010) ** 2)
+                         + .014 * exp(-((d - .029) / .014) ** 2))
+            row.append(surf.pt(p + normal * (waist + ends * long_fold)))
+            if i == 0 or i == len(rows) - 1:
+                normals[int(i > 0)].append((normal, dz.normalized()))
     for a, b in zip(rows, rows[1:]):
-        s.strip(a, b)
-    # A sewn, rounded selvedge rolls over a real return on the inside.
-    for end, sign in [(0, 1), (-1, -1)]:
-        ring = rows[end]
-        for inset, dz in [(.004, .003), (.011, .004), (.017, .0), (.020, -.010)]:
-            pts = []
-            for j in range(n):
-                a = TAU * j / n
-                p = Vector(s.points[rows[end][j]])
-                pts.append(p + Vector((-inset * sin(a), inset * cos(a), -sign * dz)))
-            new = s.ring(pts)
-            s.strip(ring, new)
-            ring = new
-    return s.finish("Mantle with hanging concentric folds", "gold")
-
-
-def shoulder_throw(phone):
-    # A second long strip of the kasaya crosses the acromion. Its gathers run
-    # *along* the cloth, turning continuously from the chest onto the back.
-    path = [
-        (0, .61,1.02,.10,.16), (.14,.62,1.06,.36,.37),
-        (.28,.67,1.13,.64,.62), (.39,.79,1.19,.87,.78),
-        (.46,1.04,1.32,.978,.868), (.50,1.57,1.57,.994,.891),
-        (.54,2.11,1.82,.976,.868), (.63,2.27,1.96,.858,.78),
-        (.76,2.39,2.04,.621,.53), (.90,2.48,2.09,.336,.245),
-        (1,2.47,2.13,.095,.03)]
-    s = Surface()
-    count, lanes = (30, 17) if phone else (60, 32)
-    rows = []
-    for i in range(count + 1):
-        length = i / count
-        a0, a1, t0, t1 = interpolate(path, length)
-        pts = []
-        for j in range(lanes + 1):
-            v = j / lanes
-            phi = mix(a0, a1, v)
-            t = mix(t0, t1, v)
-            t += .014 * sin(pi * v) * sin(TAU * length)
-            p = cloth_base(phi, t)
-            dt = cloth_base(phi, t + .001) - cloth_base(phi, t - .001)
-            da = cloth_base(phi + .001, t) - cloth_base(phi - .001, t)
-            normal = da.cross(dt).normalized()
-            folded, tuck = fold_profile(3.1 * v + .112 * sin(pi * length) + .13)
-            fray = min(smooth(length / .12), smooth((1 - length) / .12))
-            raised = .012 + fray * (.016 + .014 * folded)
-            # Both short ends taper and turn back towards the mantle below.
-            pts.append(p + normal * raised + dt.normalized() * (.006 * tuck))
-        rows.append(s.ring(pts))
-    for a,b in zip(rows,rows[1:]):
-        s.strip(a,b,False)
-    border = (rows[0] + [row[-1] for row in rows[1:]] + list(reversed(rows[-1][:-1]))
-              + [row[0] for row in reversed(rows[1:-1])])
-    # Hidden return of the selvage. Cap behind the entire folded panel using
-    # a parallel grid, avoiding planar triangles cutting across its long arch.
-    inner_rows = []
-    for row in rows:
-        inner_rows.append(s.ring((x * .952, .022 + (y - .022) * .952, z - .005)
-                                 for x,y,z in [s.points[idx] for idx in row]))
-    for a,b in zip(inner_rows,inner_rows[1:]):
-        s.strip(a,b,False)
-    inner_border = (inner_rows[0] + [row[-1] for row in inner_rows[1:]]
-                    + list(reversed(inner_rows[-1][:-1])) + [row[0] for row in reversed(inner_rows[1:-1])])
-    s.strip(border, inner_border)
-    return s.finish("Long shoulder pleats", "gold")
+        surf.strip(a, b)
+    # Round the hems back towards the supporting surface with two loops.
+    for edge, directions, sign in ((rows[0], normals[0], -1), (rows[-1], normals[1], 1)):
+        previous = edge
+        for inset, along in ((.005, .0035), (.019, .001)):
+            ring = surf.ring(Vector(surf.points[idx]) - inset * normal + sign * along * tangent
+                             for idx, (normal, tangent) in zip(edge, directions))
+            surf.strip(previous, ring)
+            previous = ring
+    return surf.finish("Kasaya over left shoulder and waist", "cloth")
 
 
 def sleeve_cuff(phone):
     s = Surface()
-    n, m = (16, 17) if phone else (36, 28)
-    stations = [(0, .156, -.278, .755, .060, .054), (.15, .194, -.252, .763, .069, .061),
-                (.40, .264, -.195, .788, .079, .074), (.64, .326, -.117, .835, .085, .086),
-                (.85, .340, -.056, .904, .077, .082), (1, .327, -.019, .972, .069, .068)]
+    n = 14 if phone else 24
+    stations = [(0, .150, -.280, .755, .059, .053), (.2, .204, -.244, .767, .067, .060),
+                (.45, .271, -.183, .795, .079, .070), (.67, .317, -.115, .834, .082, .080),
+                (.84, .327, -.056, .884, .072, .073), (1, .304, -.007, .951, .057, .059)]
+    # The loops trace two turned folds from the inside wrist towards the
+    # elbow. Sampling their actual crests keeps the reflected strips continuous.
+    rolls = [(0, .006), (.032, .008), (.072, -.001), (.15, -.002),
+             (.25, .005), (.32, .012), (.355, .008), (.40, -.003),
+             (.49, -.003), (.60, .004), (.69, .014), (.73, .010),
+             (.78, -.002), (.87, -.002), (1, 0)]
+    if phone:
+        rolls = [rolls[k] for k in (0,2,5,7,10,12,14)]
     rows = []
-    for i in range(m + 1):
-        t = i / m
-        x, y, z, width, depth = interpolate(stations, t)
-        p = Vector((x, y, z))
-        tangent = (Vector(interpolate(stations, min(1, t + .005))[:3])
-                   - Vector(interpolate(stations, max(0, t - .005))[:3])).normalized()
-        normal = tangent.cross(Vector((0, 0, 1))).normalized()
-        binormal = tangent.cross(normal)
+    for u, relief in rolls:
         pts = []
         for j in range(n):
             a = TAU * j / n
-            crest, tuck = fold_profile(3.6 * t + .38 * sin(a - 1.2))
-            edge = .008 * exp(-(t / .035) ** 2)
-            o = .011 * crest + edge
-            pts.append(p + normal * (cos(a) * (width + o)) + binormal * (sin(a) * (depth + o))
-                       + tangent * (.012 * tuck + .016 * cos(a) * (1 - t) ** 4))
+            t = u + .14 * sin(a - .6) * sin(pi * u)
+            x, y, z, width, depth = interpolate(stations, t)
+            tangent = (Vector(interpolate(stations, min(1, t + .004))[:3])
+                       - Vector(interpolate(stations, max(0, t - .004))[:3])).normalized()
+            normal = tangent.cross(Vector((0, 0, 1))).normalized()
+            binormal = tangent.cross(normal)
+            pts.append(Vector((x, y, z)) + normal * (cos(a) * (width + relief))
+                       + binormal * (sin(a) * (depth + relief)))
         rows.append(s.ring(pts))
     for a, b in zip(rows, rows[1:]):
         s.strip(a, b)
@@ -463,7 +455,7 @@ def sleeve_cuff(phone):
     s.strip(inner, deep)
     s.cap(deep)
     s.cap(rows[-1])
-    return s.finish("Turned cuff on the resting forearm", "gold")
+    return s.finish("Turned cuff on the resting forearm", "cloth")
 
 
 def feet(phone):
@@ -543,10 +535,10 @@ def join_wrist(body, hand):
 def build_body(phone):
     from buddha_lap import build_lap
     torso, palm = torso_and_arm(phone)
-    objects = [torso, hands(phone, palm), mantle(phone), shoulder_throw(phone), sleeve_cuff(phone), feet(phone)]
+    objects = [torso, hands(phone, palm), mantle(phone), sleeve_cuff(phone), feet(phone)]
     # Each error-based reduction operates within one carving. Reserve more
     # faces for the finger pads and for lips that silhouette against the back.
-    limits = (490, 1030, 1280, 305, 210, 300) if phone else (1360, 3270, 5820, 1170, 790, 970)
+    limits = (490, 1030, 1585, 210, 300) if phone else (1360, 3270, 6990, 790, 970)
     for obj, limit in zip(objects, limits):
         count = sum(len(f.vertices) - 2 for f in obj.data.polygons)
         if count > limit:

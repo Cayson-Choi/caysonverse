@@ -177,7 +177,9 @@ def build(output, lod):
     seat = next(o for o in bpy.context.scene.objects if o.type == "MESH" and o not in figures)
     limit = 9950 if phone else 39900
     figure_count = sum(triangles(o.data) for o in figures)
-    reduce_to(seat, min(3100 if phone else 10300, max(1700, limit - figure_count)))
+    # Keep each lotus carving at its established resolution. Reallocating its
+    # triangles when the figure changes would also move the outer petal tips.
+    reduce_to(seat, 1747 if phone else 8329)
     # Edge collapses on the underside may put a vertex below the bearing ring.
     # Keep the lotus flat on the unchanged room anchor on both devices.
     for v in seat.data.vertices:
