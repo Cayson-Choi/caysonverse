@@ -84,6 +84,21 @@ describe("VillageCoaster (server rules)", () => {
     expect(r.sent.filter((s) => s.type === VillageServerMsg.RideNotice).every((s) => (s.msg as { reason: string }).reason === "reserved")).toBe(true);
     expect(r.sent.length).toBe(3);
   });
+  it("the first riders get the front row (seats 0 and 1), reserved or not", () => {
+    const r = rig();
+    r.add("p");
+    r.add("q");
+    r.add("late");
+    r.setNow(T0 + COASTER_DWELL_MS + 5000); // out: both reserve
+    r.send("p", VillageMsg.RideBoard);
+    r.send("q", VillageMsg.RideBoard);
+    r.setNow(T0 + COASTER_CYCLE_MS + COASTER_UNLOAD_MS + 1000);
+    r.coaster.tick();
+    expect(r.players.get("p")!.rideSeat).toBe(0);
+    expect(r.players.get("q")!.rideSeat).toBe(1);
+    r.send("late", VillageMsg.RideBoard); // boarding now: the next free seat, the second row
+    expect(r.players.get("late")!.rideSeat).toBe(2);
+  });
   it("a reserved rider is seated automatically when the station next loads, and not if they walked away", () => {
     const r = rig();
     r.add("stay");
@@ -198,8 +213,8 @@ describe("VillageCoaster (server rules)", () => {
     const r = rig();
     const a = r.add("a");
     const pa = r.players.get("a")!;
-    pa.x = 211;
-    pa.z = -130.8;
+    pa.x = 205;
+    pa.z = -128.2;
     r.setNow(WHEEL_T0 + 5000);
     r.send("a", VillageMsg.RideBoard, { ride: "wheel" });
     expect(pa.rideId).toBe(3);
@@ -208,8 +223,8 @@ describe("VillageCoaster (server rules)", () => {
     for (const sid of ["b", "c", "d", "e"]) {
       r.add(sid);
       const p = r.players.get(sid)!;
-      p.x = 211;
-      p.z = -130.8;
+      p.x = 205;
+      p.z = -128.2;
       r.send(sid, VillageMsg.RideBoard, { ride: "wheel" });
     }
     const seated = [...r.players.values()].filter((p) => p.rideSeat >= 0);

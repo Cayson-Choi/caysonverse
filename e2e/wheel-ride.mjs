@@ -101,10 +101,10 @@ await run.step("join", async () => {
 });
 
 await run.step("board", async () => {
-  await goTo(A, 211, -130.8, 1.5);
+  await goTo(A, 205, -128.2, 1.5);
   await goTo(B, 214, -129, 2.5);
   const at = await pos(A);
-  run.check("A stands at the wheel pad", Math.hypot(at.x - 211, at.z + 130.8) < 5, at);
+  run.check("A stands at the wheel pad", Math.hypot(at.x - 205, at.z + 128.2) < 5, at);
   const t0 = Date.now();
   let st = await probe(A);
   while (st.status !== "boarding" && Date.now() - t0 < 60000 * SLOW) {

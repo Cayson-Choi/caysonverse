@@ -131,6 +131,7 @@ await run.step("board", async () => {
   await goTo(A, 40, -120, 2);
   await goTo(A, -17, -112, 2);
   await goTo(A, -17, -50, 1.5);
+  await goTo(B, -15, -50, 2.5); // B waits beside A at the gate: the second rider
   const at = await pos(A);
   run.check("A stands at the queue gate", Math.hypot(at.x + 17, at.z + 46) < 6, at);
   await run.shot(A, "01-queue-gate.png");
@@ -168,7 +169,19 @@ await run.step("board", async () => {
   const seated = await until(async () => (await probe(A)).slot >= 0, 8000);
   run.check("A boards: the server gives a seat", seated);
   const me = await probe(A);
-  run.check("A's seat is 0 (the front car, the first free seat)", me.slot === 0, { slot: me.slot });
+  run.check("A's seat is 0 (the front row of the front car, the first free seat)", me.slot === 0, { slot: me.slot });
+  const carOf = (slot) => A.page.evaluate(async (slot) => (await window.__imp("/land/coaster.ts")).seatCar(slot), slot);
+  const carA = await carOf(me.slot);
+  run.check("a lone rider sits in the FRONT car (nothing ahead but the track)", carA.car === 0, carA);
+  await act(B);
+  const bSeated = await until(async () => (await probe(B)).slot >= 0, 8000);
+  const meB = await probe(B);
+  run.check("the second rider gets the other front seat (seat 1, front car, right side)", bSeated && meB.slot === 1 && (await carOf(meB.slot)).car === 0, { slot: meB.slot });
+  await run.shot(A, "02b-front-row-first-person.png");
+  await run.shot(B, "02c-B-other-front-seat.png");
+  // B gets off again (the rest of the run watches A from B's own view)
+  await B.page.locator("[data-testid=coaster-leave]").click().catch(() => {});
+  await until(async () => (await probe(B)).slot < 0, 6000);
   await sleep(1500);
   const bsee = await remotes(B);
   const a = bsee.find((r) => r.nickname === A.nick);

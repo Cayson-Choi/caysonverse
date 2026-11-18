@@ -159,11 +159,11 @@ export function WheelWorld({ env, all }: { env: Texture; all: Texture[] }) {
       {gondolaParts.map((p, i) => (
         <instancedMesh key={`g${i}`} ref={(r) => { gondolaRefs.current[i] = r; }} args={[p.geometry, p.material, WHEEL_N]} frustumCulled={false} dispose={null} castShadow={!p.material.transparent} renderOrder={p.material.transparent ? 2 : 0} />
       ))}
-      <mesh position={[WHEEL_SITE.x + 1.0, 2.1, WHEEL_SITE.z + 10.4]} material={signMat}>
+      <mesh position={[WHEEL_SITE.x + 7.5, 2.1, WHEEL_SITE.z + 9.6]} material={signMat}>
         <planeGeometry args={[4.2, 1.05]} />
       </mesh>
       {[-1, 1].map((s) => (
-        <mesh key={s} position={[WHEEL_SITE.x + 1.0 + s * 2.0, 0.95, WHEEL_SITE.z + 10.35]} material={postMat}>
+        <mesh key={s} position={[WHEEL_SITE.x + 7.5 + s * 2.0, 0.95, WHEEL_SITE.z + 9.55]} material={postMat}>
           <cylinderGeometry args={[0.07, 0.07, 1.9, 8]} />
         </mesh>
       ))}

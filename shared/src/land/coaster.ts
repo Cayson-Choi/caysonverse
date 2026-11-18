@@ -577,11 +577,12 @@ export function coasterBoardingOpen(nowMs: number): boolean {
 }
 
 /**
- * Which car (0 = the front) and which side (0 = left, 1 = right) seat `seat` is. The first riders sit in the SECOND car (so the view ahead
- * has a car's padded seat backs and headrests in it, as on a real ride); the front car is the last to fill.
+ * Which car (0 = the front) and which side (0 = left, 1 = right) seat `seat` is. Seats fill from the FRONT (owner 2026-11-18: "맨 앞자리에 앉도록"):
+ * seats 0 and 1 are the front row of the front car (a lone rider sees the open track ahead), then row by row to the back. The server hands out
+ * the lowest free seat, and a reserved seat (자리 맡기) is given the same way when the ride next loads.
  */
 export function seatCar(seat: number): { car: number; side: 0 | 1 } {
-  return { car: (Math.floor(seat / 2) + 1) % COASTER_CARS, side: (seat % 2) as 0 | 1 };
+  return { car: Math.floor(seat / 2) % COASTER_CARS, side: (seat % 2) as 0 | 1 };
 }
 
 /** Arc length of car `car`'s centre when the head is at `s`. */

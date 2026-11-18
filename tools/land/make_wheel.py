@@ -85,18 +85,22 @@ W.export("wheel_rotor.glb", 50.0)
 # ═════════════════════════════ the fixed frame ═════════════════════════════
 F = Builder(STEEL)
 LEG_X = 11.0
-ZN, ZS = -2.75, 4.9  # the two A-frames: the north one close behind the rims, the south one beyond the gondolas (which hang at z 2.3..4.1)
+ZN, ZS = -2.75, 5.7  # the two A-frames: the north one close behind the rims, the south one beyond the gondolas (which hang at z 2.3..4.1)
 for z in (ZN, ZS):
     for sx in (-1, 1):
         F.cyl(f"leg_{z}_{sx}", (sx * LEG_X, 0.2, z), (sx * 0.9, HUB_Y - 0.6, z), 0.62, 0.42, "ws_steel", 14)
         F.box(f"foot_{z}_{sx}", (1.9, 0.5, 1.9), (sx * LEG_X, 0.25, z), "ws_stone", 0.05, 2)
         F.cyl(f"foot_collar_{z}_{sx}", (sx * LEG_X, 0.5, z), (sx * LEG_X, 1.4, z), 0.75, 0.62, "ws_indigo", 14)
     for h in (6.0, 12.0, 18.0):
+        if z == ZS and h < 8:
+            continue  # (the south frame carries no low bar: nothing crosses the platform or a gondola window line)
         t = h / (HUB_Y - 0.6)
         x = LEG_X + (0.9 - LEG_X) * t
         F.cyl(f"brace_{z}_{h}", (-x, h, z), (x, h, z), 0.18, 0.18, "ws_steel", 8)
     for sx in (-1, 1):
         for (h0, h1) in ((0.6, 6.0), (6.0, 12.0), (12.0, 18.0)):
+            if z == ZS and h0 < 6:
+                continue
             t0, t1 = h0 / (HUB_Y - 0.6), h1 / (HUB_Y - 0.6)
             x0 = LEG_X + (0.9 - LEG_X) * t0
             x1 = LEG_X + (0.9 - LEG_X) * t1
@@ -107,33 +111,41 @@ for z in (ZN, ZS):
 for sx in (-1, 1):
     F.cyl(f"tie_foot_{sx}", (sx * LEG_X, 0.9, ZN), (sx * LEG_X, 0.9, ZS), 0.16, 0.16, "ws_steel", 8)
     F.cyl(f"tie_mid_{sx}", (sx * 6.2, 12.0, ZN), (sx * 6.2, 12.0, ZS), 0.12, 0.12, "ws_steel_dark", 6)
-# the boarding platform on the east side, level with the gondola's floor, next to the cabin's east end: plinth, plank deck, rails, steps on the south side
-DECK_Y = 0.95
-PX0, PX1, PZ0, PZ1 = 2.1, 10.0, 0.9, 5.5
+# the boarding platform on the SOUTH side of the bottom gondola (its door faces south): the deck is flush with the cabin floor (top 0.96 m), 0.2 m from the
+# cabin's plinth, spans the whole door, and never reaches into the cabin's swept path (the cabin hangs at z 2.46 .. 4.34 of the wheel's own plane).
+DECK_Y = 0.96
+PX0, PX1, PZ0, PZ1 = -3.4, 3.4, 4.55, 8.7
 cx, cz = (PX0 + PX1) / 2, (PZ0 + PZ1) / 2
 F.box("plat_base", (PX1 - PX0, DECK_Y - 0.1, PZ1 - PZ0), (cx, (DECK_Y - 0.1) / 2, cz), "ws_stone", 0.04, 2)
 F.box("plat_deck", (PX1 - PX0, 0.1, PZ1 - PZ0), (cx, DECK_Y - 0.05, cz), "ws_wood", 0.02, 2)
-F.box("plat_trim", (PX1 - PX0 + 0.3, 0.08, PZ1 - PZ0 + 0.3), (cx, DECK_Y - 0.1, cz), "ws_gold", 0.02, 2)
-for i in range(9):
-    x = PX0 + 0.3 + i * 0.9
-    for z in (PZ0 + 0.1, PZ1 - 0.1):
-        if z > 3 and 5.0 < x < 8.6:
-            continue  # the opening to the steps
-        F.cyl(f"rail_post_{i}_{z}", (x, DECK_Y, z), (x, DECK_Y + 1.0, z), 0.04, 0.04, "ws_gold", 6)
-        F.ellipsoid(f"rail_ball_{i}_{z}", (x, DECK_Y + 1.05, z), (0.07, 0.07, 0.07), "ws_gold", seg=6, rings=4)
-F.cyl("rail_top_n", (PX0 + 0.3, DECK_Y + 1.0, PZ0 + 0.1), (PX1 - 0.3, DECK_Y + 1.0, PZ0 + 0.1), 0.03, 0.03, "ws_gold", 6)
-F.cyl("rail_top_s1", (PX0 + 0.3, DECK_Y + 1.0, PZ1 - 0.1), (5.0, DECK_Y + 1.0, PZ1 - 0.1), 0.03, 0.03, "ws_gold", 6)
-F.cyl("rail_top_s2", (8.6, DECK_Y + 1.0, PZ1 - 0.1), (PX1 - 0.3, DECK_Y + 1.0, PZ1 - 0.1), 0.03, 0.03, "ws_gold", 6)
-F.cyl("rail_top_e", (PX1 - 0.3, DECK_Y + 1.0, PZ0 + 0.1), (PX1 - 0.3, DECK_Y + 1.0, PZ1 - 0.1), 0.03, 0.03, "ws_gold", 6)
-F.box("steps_a", (3.4, 0.25, 0.9), (6.8, 0.65, PZ1 + 0.45), "ws_stone", 0.02, 1)
-F.box("steps_b", (3.4, 0.25, 0.9), (6.8, 0.38, PZ1 + 1.35), "ws_stone", 0.02, 1)
-F.box("steps_c", (3.4, 0.25, 0.9), (6.8, 0.13, PZ1 + 2.25), "ws_stone", 0.02, 1)
-F.cyl("lamp_post", (PX1 - 0.4, DECK_Y, cz), (PX1 - 0.4, DECK_Y + 3.2, cz), 0.07, 0.05, "ws_indigo", 8)
-F.ellipsoid("lamp_globe", (PX1 - 0.4, DECK_Y + 3.4, cz), (0.28, 0.28, 0.28), "ws_lamp", seg=10, rings=8)
+F.box("plat_trim", (PX1 - PX0 + 0.2, 0.08, PZ1 - PZ0 + 0.2), (cx, DECK_Y - 0.1, cz), "ws_gold", 0.02, 2)
+RAIL_Y = DECK_Y + 1.0
+
+
+def rail_run(name, p0, p1, n):
+    for i in range(n + 1):
+        t = i / n
+        x, z = p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t
+        F.cyl(f"{name}_post_{i}", (x, DECK_Y, z), (x, RAIL_Y, z), 0.04, 0.04, "ws_gold", 6)
+        F.ellipsoid(f"{name}_ball_{i}", (x, RAIL_Y + 0.05, z), (0.07, 0.07, 0.07), "ws_gold", seg=6, rings=4)
+    F.cyl(f"{name}_top", (p0[0], RAIL_Y, p0[1]), (p1[0], RAIL_Y, p1[1]), 0.03, 0.03, "ws_gold", 6)
+
+
+rail_run("rail_w", (PX0 + 0.08, PZ0 + 0.08), (PX0 + 0.08, PZ1 - 0.08), 4)
+rail_run("rail_e", (PX1 - 0.08, PZ0 + 0.08), (PX1 - 0.08, PZ1 - 0.08), 4)
+rail_run("rail_nw", (PX0 + 0.08, PZ0 + 0.08), (-2.4, PZ0 + 0.08), 1)  # the cabin side is open across the door's width (|x| < 2.35)
+rail_run("rail_ne", (2.4, PZ0 + 0.08), (PX1 - 0.08, PZ0 + 0.08), 1)
+rail_run("rail_sw", (PX0 + 0.08, PZ1 - 0.08), (-1.8, PZ1 - 0.08), 2)  # the steps' opening
+rail_run("rail_se", (1.8, PZ1 - 0.08), (PX1 - 0.08, PZ1 - 0.08), 2)
+F.box("steps_a", (3.4, 0.26, 0.9), (0, 0.6, PZ1 + 0.45), "ws_stone", 0.02, 1)
+F.box("steps_b", (3.4, 0.26, 0.9), (0, 0.34, PZ1 + 1.35), "ws_stone", 0.02, 1)
+F.box("steps_c", (3.4, 0.26, 0.9), (0, 0.1, PZ1 + 2.25), "ws_stone", 0.02, 1)
+F.cyl("lamp_post", (PX1 - 0.4, DECK_Y, PZ1 - 0.4), (PX1 - 0.4, DECK_Y + 3.2, PZ1 - 0.4), 0.07, 0.05, "ws_indigo", 8)
+F.ellipsoid("lamp_globe", (PX1 - 0.4, DECK_Y + 3.4, PZ1 - 0.4), (0.28, 0.28, 0.28), "ws_lamp", seg=10, rings=8)
 F.export("wheel_frame.glb", 50.0)
 
 # ═════════════════════════════ a gondola ═════════════════════════════
-# Origin = the pivot on the wheel's rim line. The cabin hangs 3.2 m SOUTH of the wheel plane on an arm (the rim trusses are then behind the
+# Origin = the pivot on the wheel's rim line. The cabin hangs 3.4 m SOUTH of the wheel plane on an arm (the rim trusses are then behind the
 # riders, never across the window line), its long side facing south (open glass), one four-seat bench along its north wall.
 G = Builder({
     "g_gold": (GOLD, 0.85, 0.3, 0.5, 0.1),
@@ -145,7 +157,7 @@ G = Builder({
     "g_glass": ((0.85, 0.93, 1.0), 0.0, 0.05),
     "g_lamp": ((1.0, 0.92, 0.7), 0.0, 0.3, 0.0, 0.1, (1.0, 0.8, 0.45)),
 })
-CZ = 3.2  # the cabin's centre, south of the pivot
+CZ = 3.4  # the cabin's centre, south of the pivot (its roof then stays 0.24 m south of the rim's bulbs)
 GX, GZ = 2.0, 0.9  # half sizes (x along the wheel plane, z across)
 TOP = -0.75
 FLOOR = -3.1
@@ -171,15 +183,15 @@ for (nm, size, loc) in (
 G.box("wall_n", (2 * GX - 0.1, H_GLASS, 0.06), (0, (TOP + FLOOR) / 2, CZ - GZ), "g_indigo", 0.02, 2)
 for x in (-1.0, 1.0):
     G.box(f"panel_frame_{x}", (1.6, 1.5, 0.03), (x, FLOOR + 1.35, CZ - GZ + 0.04), "g_gold", 0.02, 2)
-G.box("door_handle", (0.06, 0.22, 0.04), (GX + 0.06, FLOOR + 1.15, CZ), "g_gold", 0.01, 1)
+G.box("door_handle", (0.22, 0.06, 0.04), (0.9, FLOOR + 1.15, CZ + GZ + 0.04), "g_gold", 0.01, 1)
 # the roof: a gable (ridge along x), gilt ridge and finials, a lantern globe
 for sz in (-1, 1):
-    G.box(f"roof_{sz}", (2 * GX + 0.5, 0.09, 1.5), (0, TOP + 0.38, CZ + sz * 0.72), "g_indigo", 0.02, 2, rot_x=sz * 24.0)
+    G.box(f"roof_{sz}", (2 * GX + 0.5, 0.09, 1.1), (0, TOP + 0.38, CZ + sz * 0.5), "g_indigo", 0.02, 2, rot_x=sz * 24.0)
 G.cyl("ridge", (-GX - 0.25, TOP + 0.75, CZ), (GX + 0.25, TOP + 0.75, CZ), 0.07, 0.07, "g_gold", 8)
 for sx in (-1, 1):
     G.ellipsoid(f"finial_{sx}", (sx * (GX + 0.3), TOP + 0.78, CZ), (0.1, 0.1, 0.1), "g_gold", seg=8, rings=6)
-G.cyl("eave_s", (-GX - 0.25, TOP + 0.02, CZ + GZ + 0.25), (GX + 0.25, TOP + 0.02, CZ + GZ + 0.25), 0.05, 0.05, "g_gold", 6)
-G.cyl("eave_n", (-GX - 0.25, TOP + 0.02, CZ - GZ - 0.25), (GX + 0.25, TOP + 0.02, CZ - GZ - 0.25), 0.05, 0.05, "g_gold", 6)
+G.cyl("eave_s", (-GX - 0.25, TOP + 0.02, CZ + GZ + 0.12), (GX + 0.25, TOP + 0.02, CZ + GZ + 0.12), 0.05, 0.05, "g_gold", 6)
+G.cyl("eave_n", (-GX - 0.25, TOP + 0.02, CZ - GZ - 0.12), (GX + 0.25, TOP + 0.02, CZ - GZ - 0.12), 0.05, 0.05, "g_gold", 6)
 G.ellipsoid("lantern_globe", (0, TOP + 0.95, CZ), (0.17, 0.17, 0.17), "g_lamp", seg=10, rings=8)
 # the hanger: an arm from the pivot out over the cabin, two rods down to the roof ridge
 G.cyl("arm", (0, 0.0, 0), (0, 0.0, CZ), 0.09, 0.09, "g_gold", 8)
@@ -190,7 +202,7 @@ G.ellipsoid("pivot_ring", (0, 0.0, 0), (0.17, 0.17, 0.17), "g_gold", seg=10, rin
 # the cabin's own light and bulbs along the eaves
 G.ellipsoid("cabin_bulb", (0, TOP - 0.2, CZ), (0.12, 0.12, 0.12), "g_lamp", seg=8, rings=6)
 for k in range(9):
-    G.ellipsoid(f"eave_bulb_{k}", (-GX + k * (2 * GX / 8), TOP - 0.02, CZ + GZ + 0.2), (0.06, 0.06, 0.06), "g_lamp", seg=6, rings=4)
+    G.ellipsoid(f"eave_bulb_{k}", (-GX + k * (2 * GX / 8), TOP - 0.02, CZ + GZ + 0.1), (0.06, 0.06, 0.06), "g_lamp", seg=6, rings=4)
 # the bench: a velvet cushion and a low back along the north wall, gold buttons
 G.box("bench_base", (2 * GX - 0.2, 0.4, 0.5), (0, FLOOR + 0.26, CZ - 0.5), "g_wood", 0.02, 1)
 G.box("cushion", (2 * GX - 0.2, 0.14, 0.52), (0, FLOOR + 0.5, CZ - 0.5), "g_velvet", 0.04, 2)

@@ -81,7 +81,7 @@ export function rideForTap(x: number, z: number, ray?: TapRay | null, distance =
     if (py < 0 || py > 50) continue;
     if (py <= 14 && Math.hypot(px - CAROUSEL_CENTER.x, pz - CAROUSEL_CENTER.z) <= CAROUSEL_RADIUS + 1.5) return "carousel";
     // the wheel: a slab 4.4 m thick in z (the rims and spokes) with the A-frames, and its platform
-    if (Math.abs(px - WHEEL_SITE.x) <= 23 && pz >= WHEEL_SITE.z - 3.5 && pz <= WHEEL_SITE.z + 6) return "wheel";
+    if (Math.abs(px - WHEEL_SITE.x) <= 23 && pz >= WHEEL_SITE.z - 3.5 && pz <= WHEEL_SITE.z + 12) return "wheel";
   }
   return null;
 }

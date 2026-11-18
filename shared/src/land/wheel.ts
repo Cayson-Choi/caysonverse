@@ -28,8 +28,8 @@ const MOVE_S = (WHEEL_STEP_MS - WHEEL_GATE_END_MS) / 1000;
 /** The gondola's floor and seats, in its own frame (y down from the pivot): the same numbers as tools/land/make_wheel.py. */
 export const GONDOLA_FLOOR_Y = -3.04;
 export const GONDOLA_SEAT_Y = -2.53;
-/** The cabin's centre lies this far south of the pivot (m); its bench runs along the north wall: seat k at x = (k - 1.5) * 0.75, z = CZ - 0.5, facing south. */
-export const GONDOLA_CZ = 3.2;
+/** The cabin's centre lies this far south of the pivot (m; 3.4 keeps the roof's north edge 0.24 m clear of the south rim's bulbs); its bench runs along the north wall: seat k at x = (k - 1.5) * 0.75, z = CZ - 0.5, facing south. */
+export const GONDOLA_CZ = 3.4;
 export const GONDOLA_SEAT_DZ = -0.5;
 export const GONDOLA_SEAT_DX = 0.75;
 
