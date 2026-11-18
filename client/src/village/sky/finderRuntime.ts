@@ -337,7 +337,12 @@ export function finderFrame(camera: PerspectiveCamera, dt: number, width: number
   }
   if (st.open !== rt.wasOpen) {
     rt.wasOpen = st.open;
-    if (!st.open) rt.revealId = null;
+    rt.lastLook = -Infinity;
+    if (!st.open) {
+      rt.revealId = null;
+      rt.cardRect = null;
+      rt.cardBottom = 0;
+    }
   }
   if (rt.revealId && st.foundNow !== rt.revealId) rt.revealId = null; // "다음 별자리" pressed
 
