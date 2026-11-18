@@ -159,6 +159,8 @@ const probe = () =>
           y: +w.y.toFixed(2),
           z: +w.z.toFixed(2),
           s: +o.parent.scale.x.toFixed(3),
+          // which way its back points (owner 2026-11-18: held up belly-up): the fish's +Y (back) and +Z (nose) in the world
+          up: +new o.position.constructor(0, 1, 0).applyQuaternion(o.getWorldQuaternion(new o.quaternion.constructor())).y.toFixed(2),
           onScreen: Math.abs(n.x) < 0.95 && Math.abs(n.y) < 0.95 && n.z < 1,
         });
       }
@@ -233,6 +235,10 @@ await run.step("casts: the catch from the strike to the release", async () => {
     const shownFish = shown.map((x) => ({ k: x.k, f: x.probe?.fish.find((f) => f.vis), hands: x.probe?.hands ?? [] }));
     run.check(`cast ${n}: the fish shown is on the screen`, shownFish.length > 0 && shownFish.every((x) => x.f?.onScreen), shownFish.slice(0, 2));
     run.check(`cast ${n}: the fish shown is drawn at least 0.5 m long (readable beside the chibi)`, shownFish.length > 0 && shownFish.every((x) => (x.f?.s ?? 0) >= 0.5), shownFish.map((x) => x.f?.s));
+    // owner 2026-11-18: "뒤집힌 게 아니고 안 뒤집힌 상태로": while shown the fish's back is up (settled frames; the flapping rolls it a little)
+    // (the first shown frames are the ease from the hanging hold into the show: judged on the last ones)
+    const upShown = shown.slice(-3).map((x) => x.probe?.fish.find((f) => f.vis)?.up);
+    run.check(`cast ${n}: the fish shown has its back up (not belly-up)`, upShown.length > 0 && upShown.every((u) => u !== undefined && u > 0.6), upShown);
     if (!FIRST_PERSON) {
       const gap = (x) => Math.min(...x.hands.map((h) => Math.hypot(h.x - x.f.x, h.y - x.f.y, h.z - x.f.z)));
       // from the third shown frame (the first ones are the 0.35 s ease from the one-hand hold into the arms)

@@ -118,6 +118,23 @@ export function fpNarrow(cam: Camera): number {
   return Math.max(0.3, Math.min(1, aspect / 1.6));
 }
 
+/**
+ * Turn `q` about the fish's nose axis `nose` (world) so that the fish's flank faces `toward` (world). The model is nose +Z, back +Y,
+ * so its +X flank is the fish's LEFT (looking from the tail to the nose) and, with the back up, a nose pointing to the viewer's
+ * right shows the viewer the -X flank. Asking for the wrong flank turns the fish belly-up (owner 2026-11-18: "물고기가 뒤집혀 있어").
+ * `flank` = +1 for the +X flank, -1 for the -X flank.
+ */
+export function rollFlankToward(q: Quaternion, nose: Vector3, toward: Vector3, flank: 1 | -1): Quaternion {
+  const n = nose.clone().normalize();
+  const f = new Vector3(flank, 0, 0).applyQuaternion(q);
+  const to = toward.clone().addScaledVector(n, -toward.dot(n)); // toward, without the part along the nose
+  if (to.lengthSq() < 1e-8) return q;
+  to.normalize();
+  const fp = f.addScaledVector(n, -f.dot(n)).normalize();
+  const ang = Math.atan2(fp.clone().cross(to).dot(n), fp.dot(to));
+  return q.premultiply(new Quaternion().setFromAxisAngle(n, ang));
+}
+
 export function createCatchRig(sid: string): CatchRig {
   let fish: FishModel | null = null;
   let shadow: Mesh | null = null;
@@ -406,7 +423,10 @@ export function createCatchRig(sid: string): CatchRig {
             if (cs.stage === "toHand" || cs.stage === "hand") {
               const grip = at(0.17, -0.07 + len * 0.12, 0.55 + len * 0.45);
               const hang = camUp.clone().addScaledVector(right, Math.sin(t * 3.1) * 0.22).addScaledVector(fwd, -0.18 + Math.cos(t * 2.4) * 0.12).normalize();
-              lookAlong(hang, Math.sin(t * 6) * 0.35 + 0.9, tq);
+              // held by the head, hanging: the flank toward the camera (the back toward the viewer's right), a little swing
+              lookAlong(hang, 0, tq);
+              rollFlankToward(tq, hang, fwd.clone().negate(), 1);
+              tq.premultiply(new Quaternion().setFromAxisAngle(hang, Math.sin(t * 6) * 0.12));
               target = grip.clone().addScaledVector(hang, -0.45 * len);
               fpHands(i, grip, null, cs.stage === "toHand" ? cs.k : 1, camUp, fwd, at);
             } else {
@@ -414,11 +434,10 @@ export function createCatchRig(sid: string): CatchRig {
               target = at(0, -0.16 - len * 0.12, dist);
               const nose = right.clone().addScaledVector(fwd, -0.15).normalize();
               lookAlong(nose, 0, tq);
-              // the flank toward the camera: roll so the fish's +X (its right flank) faces back at the camera
-              const flank = new Vector3(1, 0, 0).applyQuaternion(tq);
-              const toCam = fwd.clone().negate();
-              const ang = Math.atan2(flank.clone().cross(toCam).dot(nose), flank.dot(toCam));
-              tq.premultiply(new Quaternion().setFromAxisAngle(nose, ang + Math.sin(t * 6) * 0.08));
+              // the flank toward the camera, BACK UP (owner 2026-11-18: shown belly-up before): with the nose to the viewer's right the
+              // viewer sees the fish's -X flank when the back is up
+              rollFlankToward(tq, nose, fwd.clone().negate(), -1);
+              tq.premultiply(new Quaternion().setFromAxisAngle(nose, Math.sin(t * 6) * 0.08));
               // the hands: one under the head end, one under the tail end
               const axis = new Vector3(0, 0, 1).applyQuaternion(tq);
               // under the belly, never over the fish (a small fish between two fists was hidden)
@@ -430,7 +449,13 @@ export function createCatchRig(sid: string): CatchRig {
             target = i.handL.getWorldPosition(new Vector3()).add(new Vector3(0, -0.04, 0));
             // held by the head, hanging, swinging a little
             const hang = new Vector3(Math.sin(t * 3.1) * 0.25, 1, Math.cos(t * 2.4) * 0.2).normalize();
-            lookAlong(hang, Math.sin(t * 6) * 0.3, tq);
+            lookAlong(hang, 0, tq);
+            // the flank toward the front of the avatar (side on to whoever looks at it), a little swing
+            const bodyFwd = i.body ? i.body.getWorldDirection(new Vector3()) : new Vector3(0, 0, 1);
+            bodyFwd.y = 0;
+            if (bodyFwd.lengthSq() < 1e-4) bodyFwd.set(0, 0, 1);
+            rollFlankToward(tq, hang, bodyFwd.normalize(), 1);
+            tq.premultiply(new Quaternion().setFromAxisAngle(hang, Math.sin(t * 6) * 0.12));
             target.addScaledVector(hang, -0.42 * len);
           } else if (i.handL && i.handR) {
             // 품에 안기 (owner 2026-11-17): the fish taken in the arms, held against the chest — head up toward the right shoulder,
@@ -457,9 +482,8 @@ export function createCatchRig(sid: string): CatchRig {
             const nose = side.clone().multiplyScalar(Math.cos(tilt)).add(new Vector3(0, Math.sin(tilt), 0)).normalize();
             lookAlong(nose, 0, tq);
             // the flank toward the front (the fish shown off), a little roll with its flapping
-            const flank = new Vector3(1, 0, 0).applyQuaternion(tq);
-            const ang = Math.atan2(flank.clone().cross(fwd).dot(nose), flank.dot(fwd));
-            tq.premultiply(new Quaternion().setFromAxisAngle(nose, ang + Math.sin(t * 5) * 0.12));
+            rollFlankToward(tq, nose, fwd, 1);
+            tq.premultiply(new Quaternion().setFromAxisAngle(nose, Math.sin(t * 5) * 0.12));
           }
           if (!target) break;
           // the blend from the line into the hand
