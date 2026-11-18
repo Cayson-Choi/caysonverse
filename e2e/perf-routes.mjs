@@ -387,16 +387,28 @@ const dragOrbit = async (dx, steps = 30) => {
   }
 };
 const areaNow = () => p.page.evaluate(async () => (await window.__imp("/src/village/villageArea.ts")).localArea());
+const interactionState = () => p.page.evaluate(async () => {
+  const room = (await window.__imp("/src/net/connection.ts")).getRoom();
+  const me = room?.state?.players?.get(room.sessionId);
+  const local = window.__cv.getPos();
+  const offered = (await window.__imp("/src/game/interactTargets.ts")).getTargets(local);
+  return {
+    local: { area: (await window.__imp("/src/village/villageArea.ts")).localArea(), x: local.x, z: local.z, seat: local.seatIndex },
+    server: me && { area: me.area, x: me.x, z: me.z, seat: me.seatIndex },
+    targets: offered.map((t) => ({ id: t.id, label: t.label })),
+    action: document.querySelector(".cv-action-btn")?.getAttribute("aria-label") ?? null,
+  };
+});
 const waitArea = async (a, ms = 20000) => {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
     if ((await areaNow()) === a) return;
     await sleep(120);
   }
-  throw new Error(`never reached area ${a}`);
+  throw new Error(`never reached ${a}: ${JSON.stringify(await interactionState())}`);
 };
 const waitCoversGone = () =>
-  p.page.waitForFunction(() => window.__perf.covered === 0, null, { timeout: 30000 }).catch(() => {});
+  p.page.waitForFunction(() => window.__perf.covered === 0, null, { timeout: 30000 });
 const tapButton = async (b) => {
   if (p.touch) await p.page.touchscreen.tap(b.x + b.w / 2, b.y + b.h / 2);
   else await p.page.mouse.click(b.x + b.w / 2, b.y + b.h / 2);
@@ -507,16 +519,30 @@ try {
     await walkAndWait(p, 365.3, -4.9, 20000, 0.8);
     await dragOrbit(PHONE_DEV ? 250 : 400);
     await sleep(1500);
-    // out: the way-out pad inside the front door (e2e/village-house.mjs)
-    await walkAndWait(p, 365.3, -0.9, 20000, 0.5);
-    await sleep(400);
-    await act(p);
+    const pad = await p.page.evaluate(async () => (await window.__imp("/village/houseAreas.ts")).HOUSE_PLACES[1].exitPad);
+    const at = await walkAndWait(p, pad.x, pad.z, 20000, 0.5);
+    const state = await interactionState();
+    console.log(`house exit: pad (${pad.x}, ${pad.z}), ${JSON.stringify(state)}`);
+    const exit = state.targets.find((t) => t.id === "house_exit");
+    if (Math.hypot(at.x - pad.x, at.z - pad.z) >= 0.5 || !exit) throw new Error("House exit pad or its action was not reached");
+    // The door checks the synced position. Wait for our last movement to register before using the HUD.
+    await p.page.waitForFunction(async ({ x, z, radius, area }) => {
+      const room = (await window.__imp("/src/net/connection.ts")).getRoom();
+      const me = room?.state?.players?.get(room.sessionId);
+      return me?.area === area && Math.hypot(me.x - x, me.z - z) <= radius;
+    }, pad, { polling: 250, timeout: 10000 }).catch(async () => {
+      throw new Error(`House exit position failed to sync: ${JSON.stringify(await interactionState())}`);
+    });
+    const exitButton = p.page.locator(".cv-action-btn").and(p.page.getByRole("button", { name: exit.label, exact: true }));
+    await press(p, exitButton);
     await waitArea("village", 20000);
     await waitCoversGone();
     await sleep(2500);
   });
 
   await phase("lake", async () => {
+    const area = await areaNow();
+    if (area !== "village") throw new Error(`Lake route started in ${area}`);
     for (const [x, z] of [[0, 14], [40, 0], [80, -9], [100, -12]]) await walkAndWait(p, x, z, 40000, 2);
     await walkAndWait(p, 102, -14.6, 20000, 1);
     await sleep(800);
@@ -568,11 +594,13 @@ try {
     throw new Error(`Waypoint (${x}, ${z}) missed at (${at.x}, ${at.z})`);
   };
   const enterPark = async () => {
+    const area = await areaNow();
+    if (area !== "village" && area !== "park") throw new Error(`Park gate route started in ${area}`);
     if ((await pos(p)).seatIndex >= 0) {
       await p.page.evaluate(() => window.__cv.stand());
       await sleep(1500);
     }
-    if ((await areaNow()) === "park") return;
+    if (area === "park") return;
     const g = await p.page.evaluate(async () => (await window.__imp("/village/parkArea.ts")).parkGateDoor().pad);
     if ((await pos(p)).x > 75) {
       for (const [x, z] of [[80, -9], [40, 0]]) await walkWithDetour(x, z, 1.5);
