@@ -39,6 +39,7 @@ import type { VillageTier } from "../village/villageModelPrep";
 import { lakeFloatParts, loadLakeGear } from "./lakeProps";
 import { LakeSigns } from "./LakeSigns";
 import { LakeShopInterior } from "./LakeShopInterior";
+import { LakeShore } from "./LakeShore";
 import { CAST_S, floatPose, scatter, tugIndex, type FloatPose, type Pt } from "./lakeFloat";
 import { elapsedSince, forEachAngler, selfId } from "./lakeNet";
 import { FISH_PHASE, type FishView } from "./lakeProtocol";
@@ -151,6 +152,8 @@ function LakeGlb({ tier, pose }: { tier: VillageTier; pose: Pose }) {
     <>
       <primitive object={dressed.terrain} dispose={null} />
       <primitive object={dressed.facilities} dispose={null} />
+      {/* the shallows and the shore: the bed's real depth for the water, the wet bank, reeds and lily pads (LakeShore.tsx) */}
+      <LakeShore terrain={dressed.terrain} water={water} tier={tier} />
       <LakeShopInterior />
       {/* the rental's shopkeeper behind the office window (owner 2026-11-16): npc.glb waits in a Suspense of its own; a failed one is no shopkeeper */}
       <LoadBoundary fallback={null} onReset={clearNpcCache} notice="대여점 주인 모습을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">

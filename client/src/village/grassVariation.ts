@@ -18,7 +18,7 @@ vec4 gvVary( sampler2D tex, vec2 uv, vec3 w, vec4 base ) {
   // never less than a third of the second sample: a tile edge (a faint line every tile) is halved and its twin lies elsewhere
   vec4 c = mix( base, other, 0.35 + blend * 0.4 );
   float m = gvNoise( w.xz * 0.011 ) * 0.6 + gvNoise( w.xz * 0.043 + 9.0 ) * 0.4;
-  c.rgb *= vec3( 0.80 + 0.40 * m, 0.84 + 0.32 * m, 0.78 + 0.34 * m );
+  c.rgb *= vec3( 0.86 + 0.28 * m, 0.88 + 0.24 * m, 0.85 + 0.26 * m );
   return c;
 }
 `;

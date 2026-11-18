@@ -10,7 +10,7 @@ import { CASCADES, CREEK_RECT, centreZ, type CreekGrid, type GroundSource } from
 const inRect = (x: number, z: number): boolean => x >= CREEK_RECT.x0 && x <= CREEK_RECT.x1 && z >= CREEK_RECT.z0 && z <= CREEK_RECT.z1;
 
 /** The ground triangles that dip into the channel (any corner lower than 1 cm below the lawn), as an indexed geometry, 1.2 cm up. */
-export function bankGeometry(sources: readonly GroundSource[]): BufferGeometry | null {
+export function bankGeometry(sources: readonly GroundSource[], inside: (x: number, z: number) => boolean = inRect): BufferGeometry | null {
   const pos: number[] = [];
   const idx: number[] = [];
   for (const src of sources) {
@@ -35,7 +35,7 @@ export function bankGeometry(sources: readonly GroundSource[]): BufferGeometry |
       if (Math.min(ya, yb, yc) > -0.01) continue;
       const cx = (p[a * 3]! + p[b * 3]! + p[c * 3]!) / 3;
       const cz = (p[a * 3 + 2]! + p[b * 3 + 2]! + p[c * 3 + 2]!) / 3;
-      if (!inRect(cx, cz)) continue;
+      if (!inside(cx, cz)) continue;
       idx.push(take(a), take(b), take(c));
     }
   }
