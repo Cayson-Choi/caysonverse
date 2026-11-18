@@ -66,6 +66,8 @@ export const MAX_SKIP_MS = 3000;
 export const GEOMETRY_BYTES_PER_FRAME = 4 * 1024 * 1024;
 /** The same on a touch device (a phone's CPU copies them several times slower: a 4 MB frame cost ~100 ms at 4x). */
 export const GEOMETRY_BYTES_PER_FRAME_TOUCH = 1.5 * 1024 * 1024;
+/** VeilFrameThrottle registers its renderer while the loading veil covers its village. */
+export const renderersBehindLoadingVeil = new WeakSet<WebGLRenderer>();
 const geometryBytesPerFrame = (): number =>
   typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0 ? GEOMETRY_BYTES_PER_FRAME_TOUCH : GEOMETRY_BYTES_PER_FRAME;
 /** DEV `?gatelog=1`: time every draw and log the slow ones and program switches (stats.mismatches). Off: the draw path as in production. */
@@ -170,15 +172,11 @@ export function installProgramGate(
   let lastRender: { scene: Scene; camera: Camera } | null = null;
   const ownRender = gl as WebGLRenderer & { render: WebGLRenderer["render"] };
   const originalRender = ownRender.render;
-  let lastRenderAt = -1e9;
   ownRender.render = function (this: WebGLRenderer, scene, camera) {
     const r = { scene: scene as Scene, camera };
-    // a frame after a long gap (the loading veil draws the scene a few times a second: VeilFrameThrottle): nobody watches
-    // a frame rate there, so new geometry is not rationed (otherwise it took many seconds and objects were forced)
     if (renders.length === 0) {
-      const at = now();
-      if (at - lastRenderAt > 150) geometryBudget = Infinity;
-      lastRenderAt = at;
+      if (renderersBehindLoadingVeil.has(gl)) geometryBudget = Infinity;
+      else if (geometryBudget === Infinity) geometryBudget = perFrameBytes;
     }
     renders.push(r);
     try {

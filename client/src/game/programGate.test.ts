@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { BufferGeometry, DataTexture, Float32BufferAttribute, Mesh, MeshStandardMaterial, PerspectiveCamera, Scene, type WebGLRenderer } from "three";
-import { MAX_SKIP_MS, installProgramGate, variantOf } from "./programGate";
+import { GEOMETRY_BYTES_PER_FRAME, MAX_SKIP_MS, installProgramGate, renderersBehindLoadingVeil, variantOf } from "./programGate";
 
 /** A stand-in renderer: `compile` gives the material a program that becomes ready when `ready` says so. */
 function fakeRenderer(parallel = true) {
@@ -28,6 +28,40 @@ const rbd = (gl: WebGLRenderer, ...a: unknown[]) => (gl.renderBufferDirect as un
 const flushTimers = () => new Promise((r) => setTimeout(r, 0));
 
 describe("programGate", () => {
+  it("keeps the upload budget on a slow visible frame and lifts it under the loading veil", () => {
+    const f = fakeRenderer();
+    const scene = new Scene();
+    const camera = new PerspectiveCamera();
+    const material = new MeshStandardMaterial();
+    const ready = { isReady: () => true };
+    const props = f.gl.properties.get(material) as { currentProgram?: typeof ready };
+    props.currentProgram = ready;
+    const bytes = GEOMETRY_BYTES_PER_FRAME;
+    for (const name of ["first", "second"]) {
+      const geometry = new BufferGeometry();
+      geometry.setAttribute("position", new Float32BufferAttribute(new Float32Array(3 * Math.floor(bytes / 12)), 3));
+      const mesh = new Mesh(geometry, material);
+      mesh.name = name;
+      scene.add(mesh);
+    }
+    f.gl.render = (root) => root.children.forEach((obj) => {
+      const mesh = obj as Mesh;
+      rbd(f.gl, camera, scene, mesh.geometry, material, mesh, null);
+    });
+    let t = 0;
+    const gate = installProgramGate(f.gl, () => t);
+    // Start the clock with an empty frame, then present both geometries after a 200 ms visible hitch.
+    f.gl.render(new Scene(), camera);
+    t = 200;
+    f.gl.render(scene, camera);
+    expect(f.drawn).toEqual(["first"]);
+    renderersBehindLoadingVeil.add(f.gl);
+    f.gl.render(scene, camera);
+    expect(f.drawn).toEqual(["first", "first", "second"]);
+    renderersBehindLoadingVeil.delete(f.gl);
+    gate.uninstall();
+  });
+
   it("holds an object back until its program is ready, compiling it after the frame", async () => {
     const f = fakeRenderer();
     let t = 0;
