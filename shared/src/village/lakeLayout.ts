@@ -334,12 +334,7 @@ export function lakeTerrainColliders(): readonly AABB[] {
 /** Provisional benches' box (visual 1.86 long x 0.6 deep; backed). */
 const BENCH_BOX = { along: 1.86, deep: 0.6 } as const;
 /** A fishing chair's footprint (m): about 0.5 x 0.5, seat 0.46 m up (parts_cafe.py's chair is 0.42 wide). */
-/**
- * halfWidth: the seat's half width. The chair was widened by 0.27 m each side (owner 2026-11-19: skirts and robes, 0.46..0.49 m each side
- * seated, went through the arm rests): tools/widen_chair_export.py moves the two halves of mesh_fishing_chair apart, the arm rests' inner edge is
- * now 0.47 m from the middle.
- */
-const CHAIR = { halfWidth: 0.48, backBehind: 0.26, frontEdge: 0.21, seatTop: 0.46 } as const;
+const CHAIR = { halfWidth: 0.21, backBehind: 0.26, frontEdge: 0.21, seatTop: 0.46 } as const;
 /**
  * The sitter goes this much further forward on the chair than the bare torso needs (owner 2026-11-19: "캐릭터 옷이 의자를 살짝 뚫고 나오네",
  * a pink dress and an orange top went through the backrest). Measured from character.glb seated (Sit_Chair_Idle) with every outfit: the

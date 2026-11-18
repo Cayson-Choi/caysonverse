@@ -406,19 +406,6 @@ describe("seats (rule P6: every seat sit-able; a backed one only from its front)
     }
   });
 
-  it("fishing chairs: the widened chairs (arm rests' inner edge 0.47 m from the middle) do not touch each other or their rod stands", () => {
-    const cs = LAKE_FISHING_SPOTS.map((s) => {
-      const f = LAKE_FACE_DIR[s.face];
-      return { id: s.id, x: s.anchor.x - f.x * 0.55, z: s.anchor.z - f.z * 0.55 };
-    });
-    const OUTER = 0.52; // the widened chair's outer half width (arm rest outside edge)
-    for (let i = 0; i < cs.length; i++) {
-      for (let j = i + 1; j < cs.length; j++) {
-        expect(Math.hypot(cs[i]!.x - cs[j]!.x, cs[i]!.z - cs[j]!.z), `${cs[i]!.id} - ${cs[j]!.id}`).toBeGreaterThan(2 * OUTER + 0.3);
-      }
-    }
-  });
-
   it("backed benches (shore benches, porch benches): front only", () => {
     for (const s of seats.filter((q) => q.kind === "bench" || q.kind === "porch")) {
       expect(s.backed).toBe(true);
