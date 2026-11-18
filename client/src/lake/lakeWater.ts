@@ -9,7 +9,7 @@
 // baked panorama (lake_refl_day / _night, equirect seen from the lake's middle) read with a mip bias that grows toward the
 // middle, so it is never a mirror, and the bake's light map (UV1) puts the trees' and the structures' shadows on the water.
 
-import { Color, DataTexture, LinearFilter, LinearMipmapLinearFilter, RepeatWrapping, SRGBColorSpace, ShaderMaterial, UniformsLib, UniformsUtils, Vector3, Vector4, type Texture } from "three";
+import { Color, DataTexture, LinearFilter, LinearMipmapLinearFilter, RepeatWrapping, SRGBColorSpace, ShaderMaterial, UniformsLib, UniformsUtils, Vector2, Vector3, Vector4, type Texture } from "three";
 import { makeRippleTexture } from "../village/villageWater";
 import { waveTexture } from "./lakeWaves";
 import { LAKE_LAMPS, LAKE_SHOP, LAKE_SHORE, distToPolygonEdge, insidePolygon } from "@caysonverse/shared/village/lakeLayout";
@@ -17,8 +17,11 @@ import { LAKE_LAMPS, LAKE_SHOP, LAKE_SHORE, distToPolygonEdge, insidePolygon } f
 export const RIPPLE_SLOTS = 32;
 export const LAMP_SLOTS = 12;
 
-/** Design 4.2: shallow #5d6b3a, deep #26331f. */
-export const LAKE_WATER_COLORS = { shallow: "#5d6b3a", deep: "#26331f" } as const;
+/**
+ * Design 4.2 had shallow #5d6b3a, deep #26331f: with a real depth the shallows read as clear brown-green over the pebbles and the
+ * middle as a deep bottle green, not the black-green plane of the first version (owner 2026-11-18).
+ */
+export const LAKE_WATER_COLORS = { shallow: "#6f9455", deep: "#1b4d47" } as const;
 
 const VERTEX = /* glsl */ `
 #include <common>
@@ -78,6 +81,11 @@ uniform float uLights;
 uniform float uTint;
 uniform vec4 uBasin;
 uniform vec4 uDebug;
+// lake v3: the bed's height map (R, over uBedRange) read back from the ground mesh: the real depth of the water (0 = off)
+uniform sampler2D uBed;
+uniform vec4 uBedBox;
+uniform vec2 uBedRange;
+uniform float uBedOn;
 #ifdef USE_LAKE_COLOR
 uniform sampler2D uReflDay;
 uniform sampler2D uReflNight;
@@ -171,21 +179,33 @@ void main() {
   vec3 lm = texture2D( uLm, vLmUv ).rgb;
   if ( uLmNightOn > 0.5 ) lm = mix( lm, texture2D( uLmNight, vLmUv ).rgb * 2.2, uNight );
   float shade = mix( clamp( dot( lm, vec3( 0.2126, 0.7152, 0.0722 ) ) * 1.6, 0.25, 1.25 ), 1.0, uDebug.x );
-  // murky green-brown: the shallows lighter and greener, deeper and darker toward the middle
-  float deepMix = clamp( 0.65 * data.r + 0.55 * data.b, 0.0, 1.0 );
-  vec3 body = mix( uShallow, uDeep, smoothstep( 0.0, 0.9, deepMix ) ) * uTint * shade;
-  // softened reflections: a muted panorama, a little less in the shallows (the bank shows through), never a mirror
-  float reflAmt = clamp( fres * 0.95 + 0.14, 0.0, 0.82 ) * mix( 0.8, 1.0, data.b ) * ( 1.0 - uDebug.z );
+  // lake v3 (owner 2026-11-18, "검은 평면"): the depth is the real one, the water's surface over the bed the ground mesh says (uBed):
+  // clear brown-green at the shallows with the pebble bed showing through, deeper and greener toward the middle, a soft waterline
+  // with a thin lace of foam that laps. Without the map (the greybox) the shore distance stands in for it.
+  float bedD = data.r * 3.5;
+  if ( uBedOn > 0.5 ) {
+    vec2 buv = ( vWorld.xz - uBedBox.xy ) * uBedBox.zw;
+    float bedY = mix( uBedRange.x, uBedRange.y, texture2D( uBed, clamp( buv, 0.0, 1.0 ) ).r );
+    bedD = vWorld.y - bedY + chop.x * 0.03 + chop.y * 0.02;
+  }
+  float absorb = 1.0 - exp( - max( bedD, 0.0 ) * 1.25 );
+  float deepMix = smoothstep( 0.1, 2.4, bedD ) * 0.8 + 0.2 * data.b;
+  vec3 body = mix( uShallow, uDeep, deepMix ) * uTint * shade * ( 1.0 + 0.1 * ( chop.x + chop.y ) );
+  // softened reflections: a muted panorama, much less in the clear shallows (the bed shows through), never a mirror
+  float reflAmt = clamp( fres * 0.95 + 0.14, 0.0, 0.82 ) * mix( 0.8, 1.0, data.b ) * ( 1.0 - uDebug.z ) * mix( 0.35, 1.0, smoothstep( 0.0, 1.0, bedD ) );
   float glint = pow( max( dot( R, normalize( uSunDir ) ), 0.0 ), 260.0 );
   vec3 col = mix( body, refl * 0.9, reflAmt );
   col += uSunColor * glint * 1.6 * ( 1.0 - uNight ) * shade;
-  // lake v2: the lapping at the bank — a thin pale line of wet foam that comes and goes with the small waves
+  // the lapping at the bank: a thin pale lace along the waterline that comes and goes with the small waves, and a touch of foam
+  // where the water is nearly nothing
+  float foam = 0.0;
   {
-    float dS = data.g > 0.0 ? ( 1.0 - data.g ) * 3.0 : 3.0;
     float along = vWorld.x * 0.61 + vWorld.z * 0.47;
-    float edge = 0.18 + 0.12 * sin( uTime * 1.25 + along ) + 0.05 * sin( uTime * 2.7 + along * 2.3 );
-    float foam = exp( - pow( ( dS - edge ) / 0.09, 2.0 ) ) * ( 0.6 + 0.4 * gust );
-    col = mix( col, vec3( 0.62, 0.62, 0.55 ) * uTint * shade, 0.22 * foam * ( 1.0 - 0.6 * uNight ) );
+    float lap = 0.05 + 0.045 * sin( uTime * 1.25 + along ) + 0.02 * sin( uTime * 2.7 + along * 2.3 );
+    float lace = smoothstep( 0.2, 0.7, texture2D( uWaves, p * 0.85 + uTime * vec2( 0.021, -0.012 ) ).g );
+    foam = exp( - pow( ( bedD - lap ) / 0.045, 2.0 ) ) * mix( 0.25, 1.0, lace ) * ( 0.6 + 0.4 * gust );
+    foam = max( foam, ( 1.0 - smoothstep( 0.0, 0.04, bedD ) ) * 0.4 * lace );
+    col = mix( col, vec3( 0.78, 0.82, 0.76 ) * uTint * shade, 0.5 * foam * ( 1.0 - 0.5 * uNight ) );
   }
   #else
   vec3 refl = mix( uHorizon, uZenith, pow( ry, 0.6 ) );
@@ -204,7 +224,9 @@ void main() {
     vec2 to = L.xy - vWorld.xz;
     float along = dot( to, vdir );
     float across = length( to - vdir * along );
-    float streak = exp( - ( across * across ) / ( 0.5 + 0.02 * abs( along ) ) ) * exp( - abs( along ) * 0.06 );
+    // a lamp's reflection lies between the lamp and the viewer: only water NEARER the viewer than the lamp (along < 0) shows it. The
+    // old symmetric streak also ran past the lamp and from lamps behind the camera: pillars of light on the water with no lamp in sight
+    float streak = exp( - ( across * across ) / ( 0.5 + 0.02 * abs( along ) ) ) * exp( - abs( along ) * 0.06 ) * ( 1.0 - smoothstep( -1.5, 0.3, along ) );
     glow += vec3( 1.0, 0.72, 0.38 ) * max( L.w, 0.0 ) * streak * ( 0.35 + 0.65 * fres );
     }
   }
@@ -213,6 +235,13 @@ void main() {
   #ifdef USE_LAKE_COLOR
   // the shallows (g) let the muddy bank show through
   float alpha = mix( mix( 0.97, 0.80, clamp( data.g, 0.0, 1.0 ) ), 1.0, uDebug.y );
+  if ( uBedOn > 0.5 ) {
+    // clear over the shallows (the bed shows), dense toward the middle; the edge is where the depth reaches nothing
+    alpha = clamp( 0.1 + 0.88 * absorb, 0.0, 0.97 );
+    alpha *= smoothstep( -0.03, 0.06, bedD );
+    alpha = mix( alpha, 0.95, foam * 0.75 * smoothstep( -0.03, 0.03, bedD ) );
+    if ( alpha < 0.01 ) discard;
+  }
   #else
   float alpha = mix( 0.90, 0.98, smoothstep( 0.0, 0.5, depth ) );
   #endif
@@ -274,6 +303,8 @@ export interface LakeWater {
   update(timeS: number, day: LakeDayLook): void;
   /** The quality tier (PC: the swell and the third chop layer). */
   setTier(tier: "high" | "low"): void;
+  /** The bed's height map (waterBed.ts bedTexture) over `rect`: the real depth. null turns it off (the shore distance stands in). */
+  setBed(bed: { texture: Texture; rect: { x0: number; z0: number; x1: number; z1: number }; range: readonly [number, number] } | null): void;
   dispose(): void;
 }
 
@@ -329,6 +360,10 @@ export function createLakeWater(opts: { depthAttr?: boolean; ripple?: DataTextur
         uShoreDist: { value: null },
         uShoreBox: { value: new Vector4(0, 0, 1, 1) },
         uDebug: { value: new Vector4(0, 0, 0, 0) },
+        uBed: { value: null },
+        uBedBox: { value: new Vector4(0, 0, 1, 1) },
+        uBedRange: { value: new Vector2(-4, 1) },
+        uBedOn: { value: 0 },
       },
     ]),
     vertexShader: VERTEX,
@@ -370,6 +405,15 @@ export function createLakeWater(opts: { depthAttr?: boolean; ripple?: DataTextur
     },
     setTier(tier) {
       material.uniforms.uHq!.value = tier === "low" ? 0 : 1;
+    },
+    setBed(bed) {
+      const u = material.uniforms;
+      u.uBedOn!.value = bed ? 1 : 0;
+      u.uBed!.value = bed ? bed.texture : null;
+      if (bed) {
+        (u.uBedBox!.value as Vector4).set(bed.rect.x0, bed.rect.z0, 1 / (bed.rect.x1 - bed.rect.x0), 1 / (bed.rect.z1 - bed.rect.z0));
+        (u.uBedRange!.value as Vector2).set(bed.range[0], bed.range[1]);
+      }
     },
     update(t, day) {
       timeNow = t;

@@ -381,7 +381,7 @@ const POOL_RINGS = /* glsl */ `vec2 fallsQ = vWorldPos.xz - uImpact;
   vec2 extra = fallsDir * ( cos( fallsR * 9.0 - uTime * ${f6(wrapOmega(4.2))} ) * 0.24 * fallsEnv + cos( fallsR * 3.4 - uTime * ${f6(wrapOmega(1.7))} ) * 0.14 * fallsEnv2 ) * fallsAa + fallsChurn;`;
 
 /** The depth tint: the clear shallow rim (pebbles show through) to the dark olive-teal middle (W2's colours). */
-const POOL_BODY = /* glsl */ `vec3 body = mix( vec3( 0.10, 0.20, 0.12 ), vec3( 0.010, 0.055, 0.040 ), sqrt( clamp( vFallsDepth, 0.0, 1.0 ) ) ) * ( 0.8 + 0.2 * pow( cosT, 0.8 ) ) * ( 1.0 + 0.12 * ( g.x + g.y ) );`;
+const POOL_BODY = /* glsl */ `vec3 body = mix( vec3( 0.16, 0.30, 0.19 ), vec3( 0.03, 0.13, 0.13 ), sqrt( clamp( vFallsDepth, 0.0, 1.0 ) ) ) * ( 0.8 + 0.2 * pow( cosT, 0.8 ) ) * ( 1.0 + 0.12 * ( g.x + g.y ) );`;
 
 /** W2's opacity (A: 0.12 at the rim, pebbles visible, .. 0.95 once ~0.65 m deep), raised by the reflection at grazing angles. */
 const POOL_ALPHA = /* glsl */ `float alpha = mix( vFallsAlpha, 1.0, F * 0.7 );`;
@@ -399,7 +399,15 @@ const POOL_FOAM = /* glsl */ `vec4 fallsFa = texture2D( uNoise, fallsQ * 0.16 - 
   col = mix( col, vec3( 0.78, 0.82, 0.82 ) * uTint + uLampColor * uLamp * 0.08, fallsFoam * 0.8 );
   alpha = mix( alpha, 1.0, fallsFoam * 0.8 );`;
 
-const POOL_VERTEX_HEAD = "varying float vFallsDepth;\nvarying float vFallsAlpha;\nvoid main() {";
+/**
+ * The outlet's southern end (z -58, where the village's feeder stream takes over) ends in a straight cut; the water thins out over its
+ * last 1.5 m, and the feeder thins in over its first 2 m (villageWater.ts, CREEK), so the two overlap as one stream running out of the
+ * pool over the gravel instead of two surfaces butted at a line.
+ */
+const OUTLET_END = /* glsl */ `col *= uTint;
+  alpha *= 1.0 - smoothstep( ${f6(FALLS.site.maxZ - 1.6)}, ${f6(FALLS.site.maxZ - 0.1)}, vWorldPos.z );`;
+
+const POOL_VERTEX_HEAD ="varying float vFallsDepth;\nvarying float vFallsAlpha;\nvoid main() {";
 
 /** One replacement that must change the shader (a village water shader that moved would otherwise go unnoticed). */
 function mustReplace(source: string, from: string, to: string): string {
@@ -424,7 +432,7 @@ export function patchPool(vertex: string, fragment: string, outlet: boolean): { 
   f = mustReplace(f, "vec2 extra = vec2( 0.0 );", outlet ? "vec2 extra = vec2( 0.0 ); vec2 fallsQ = vec2( 0.0 ); float fallsR = 0.0; vec2 fallsDir = vec2( 0.0 );" : POOL_RINGS);
   f = mustReplace(f, "vec3 body = mix( uDeep, shallow, pow( cosT, 0.8 ) ) * ( 1.0 + 0.12 * ( g.x + g.y ) );", POOL_BODY);
   f = mustReplace(f, "float alpha = mix( uAlpha.x, uAlpha.y, F );", POOL_ALPHA);
-  f = mustReplace(f, "col *= uTint;", outlet ? "col *= uTint;" : POOL_FOAM);
+  f = mustReplace(f, "col *= uTint;", outlet ? OUTLET_END : POOL_FOAM);
   return { vertex: v, fragment: f };
 }
 
