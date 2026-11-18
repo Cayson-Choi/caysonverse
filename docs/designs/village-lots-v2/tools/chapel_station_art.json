@@ -183,8 +183,9 @@
    "what": "Station 14 of the Cross (framed print, CC0 Cooper Hewitt), right wall"
   },
   {
-   "node": "lotprop__lot_chapel_nave_altar_cloth",
-   "file": "lots/sacred/lotprop__lot_chapel_nave_altar_cloth.glb",
+   "node": "lotprop__lot_chapel_nave_props",
+   "file": "lots/sacred/lotprop__lot_chapel_nave_props.glb",
+   "phoneFile": "lots/sacred/lotprop__lot_chapel_nave_props_phone.glb",
    "phone": true,
    "at": [
     0,
@@ -192,103 +193,7 @@
     0
    ],
    "yaw": 0,
-   "what": "draped linen altar cloth with a gold hem over the altar"
-  },
-  {
-   "node": "lotprop__lot_chapel_nave_flowers_altar_l",
-   "file": "lots/sacred/lotprop__lot_chapel_nave_flowers_white_tall.glb",
-   "phone": false,
-   "at": [
-    4.05,
-    1.18,
-    12.85
-   ],
-   "yaw": 0.3,
-   "what": "lilies and roses with real petals (PC; the old low-poly flowers are stripped from the goods mesh)"
-  },
-  {
-   "node": "lotprop__lot_chapel_nave_flowers_altar_r",
-   "file": "lots/sacred/lotprop__lot_chapel_nave_flowers_white_tall.glb",
-   "phone": false,
-   "at": [
-    5.35,
-    1.18,
-    12.85
-   ],
-   "yaw": 2.1,
-   "what": "lilies and roses with real petals (PC; the old low-poly flowers are stripped from the goods mesh)"
-  },
-  {
-   "node": "lotprop__lot_chapel_nave_flowers_mary_l",
-   "file": "lots/sacred/lotprop__lot_chapel_nave_flowers_pink_low.glb",
-   "phone": false,
-   "at": [
-    0.38,
-    1.05,
-    9.65
-   ],
-   "yaw": 1.0,
-   "what": "lilies and roses with real petals (PC; the old low-poly flowers are stripped from the goods mesh)"
-  },
-  {
-   "node": "lotprop__lot_chapel_nave_flowers_mary_r",
-   "file": "lots/sacred/lotprop__lot_chapel_nave_flowers_pink_low.glb",
-   "phone": false,
-   "at": [
-    0.82,
-    1.05,
-    9.65
-   ],
-   "yaw": 4.0,
-   "what": "lilies and roses with real petals (PC; the old low-poly flowers are stripped from the goods mesh)"
-  },
-  {
-   "node": "lotprop__lot_chapel_nave_flowers_saint_l",
-   "file": "lots/sacred/lotprop__lot_chapel_nave_flowers_white_low.glb",
-   "phone": false,
-   "at": [
-    8.58,
-    1.05,
-    9.65
-   ],
-   "yaw": 2.5,
-   "what": "lilies and roses with real petals (PC; the old low-poly flowers are stripped from the goods mesh)"
-  },
-  {
-   "node": "lotprop__lot_chapel_nave_flowers_saint_r",
-   "file": "lots/sacred/lotprop__lot_chapel_nave_flowers_white_low.glb",
-   "phone": false,
-   "at": [
-    9.02,
-    1.05,
-    9.65
-   ],
-   "yaw": 5.0,
-   "what": "lilies and roses with real petals (PC; the old low-poly flowers are stripped from the goods mesh)"
-  },
-  {
-   "node": "lotprop__lot_chapel_nave_flowers_urn_l",
-   "file": "lots/sacred/lotprop__lot_chapel_nave_flowers_urn.glb",
-   "phone": false,
-   "at": [
-    2.75,
-    1.49,
-    12.55
-   ],
-   "yaw": 0.7,
-   "what": "lilies and roses with real petals (PC; the old low-poly flowers are stripped from the goods mesh)"
-  },
-  {
-   "node": "lotprop__lot_chapel_nave_flowers_urn_r",
-   "file": "lots/sacred/lotprop__lot_chapel_nave_flowers_urn.glb",
-   "phone": false,
-   "at": [
-    6.65,
-    1.49,
-    11.25
-   ],
-   "yaw": 3.3,
-   "what": "lilies and roses with real petals (PC; the old low-poly flowers are stripped from the goods mesh)"
+   "what": "the room's small carved and flower props merged into one file (one mesh per material, instances baked in room metres)"
   }
  ],
  "glassDay": {
@@ -298,5 +203,8 @@
   "rose": 1.0,
   "grisaille": 0.8,
   "apse": 0.8
- }
+ },
+ "remove": [
+  "lotprop__lot_chapel_nave_"
+ ]
 }

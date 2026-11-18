@@ -39,9 +39,9 @@ function petal(o, base, a, t, L, W, c, k = 0, shape = 0.8) {
     const w = W * Math.pow(Math.sin(Math.PI * Math.pow(u, shape) * 0.97 + 0.03), 0.9) * (0.35 + 0.65 * Math.min(1, u * 2.2));
     const x = (v * 2 - 1) * w;
     return xf([x, L * u, c * (x / Math.max(W, 1e-3)) ** 2 * 0.6 + k * u * u * L], a, t, base);
-  }, 4, 3);
+  }, 3, 2);
 }
-function tube(o, p0, p1, r0, r1, seg = 5) {
+function tube(o, p0, p1, r0, r1, seg = 4) {
   const d = norm(sub(p1, p0));
   const up = Math.abs(d[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
   const s = norm(cross(d, up)), t = cross(d, s);
@@ -98,9 +98,9 @@ async function bouquet(name, { vase, h, nL, nR, rose: roseKind, r0, base }) {
   const root = doc.createNode(name);
   scene.addChild(root);
   const mats = {
-    white: doc.createMaterial("M_petal_white").setBaseColorFactor([0.97, 0.96, 0.93, 1]).setRoughnessFactor(0.7).setMetallicFactor(0).setDoubleSided(true),
-    tint: doc.createMaterial("M_petal_tint").setBaseColorFactor(base).setRoughnessFactor(0.65).setMetallicFactor(0).setDoubleSided(true),
-    leaf: doc.createMaterial("M_leaf").setBaseColorFactor([0.16, 0.36, 0.14, 1]).setRoughnessFactor(0.55).setMetallicFactor(0).setDoubleSided(true),
+    white: doc.createMaterial("M_petal_white").setBaseColorFactor([0.97, 0.96, 0.93, 1]).setRoughnessFactor(0.7).setMetallicFactor(0).setEmissiveFactor([0.22, 0.22, 0.21]).setDoubleSided(true),
+    tint: doc.createMaterial("M_petal_tint").setBaseColorFactor(base).setRoughnessFactor(0.65).setMetallicFactor(0).setEmissiveFactor(base.slice(0, 3).map((c) => c * 0.2)).setDoubleSided(true),
+    leaf: doc.createMaterial("M_leaf").setBaseColorFactor([0.16, 0.36, 0.14, 1]).setRoughnessFactor(0.55).setMetallicFactor(0).setEmissiveFactor([0.03, 0.08, 0.03]).setDoubleSided(true),
     brass: doc.createMaterial("M_vase_brass").setBaseColorFactor([0.85, 0.66, 0.3, 1]).setRoughnessFactor(0.35).setMetallicFactor(0.5).setDoubleSided(true),
     gold: doc.createMaterial("M_stamen").setBaseColorFactor([0.9, 0.62, 0.16, 1]).setRoughnessFactor(0.6).setMetallicFactor(0),
   };

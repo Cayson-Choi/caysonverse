@@ -45,7 +45,7 @@ function alongX(build) {
   return t;
 }
 function merge(o, t) { const b = o.pos.length / 3; o.pos.push(...t.pos); o.nor.push(...t.nor); o.uv.push(...t.uv); for (const i of t.idx) o.idx.push(i + b); }
-function sphere(o, cx, cy, cz, r, seg = 12) {
+function sphere(o, cx, cy, cz, r, seg = 8) {
   const b = o.pos.length / 3;
   for (let i = 0; i <= seg; i++) for (let j = 0; j <= seg; j++) {
     const th = (Math.PI * i) / seg, ph = (2 * Math.PI * j) / seg;
@@ -78,14 +78,14 @@ function write(name, geo, tint, set = "wood_oak") {
   prism(o, 0, D / 2 + 0.004, 0.035, 0.012, 0.004, 0.05, 1.75);
   merge(o, alongX((t) => prism(t, BAR_Y, D / 2 + 0.004, 0.035, 0.012, 0.004, -0.45, 0.45)));
   // a boss where the beams meet
-  sphere(o, 0, BAR_Y, D / 2 + 0.006, 0.05, 14);
+  sphere(o, 0, BAR_Y, D / 2 + 0.006, 0.05, 10);
   await write("lotprop__lot_church_nave_cross_carved", o, [1, 0.93, 0.82, 1], "wood_pine_natural");
 }
 // a pew's oak cap: a 2.6 m top rail (7 cm x 12 cm, chamfered) and a post with a ball finial at each end (the pew faces +Z, its back at z = -0.3)
 {
   const o = { pos: [], nor: [], uv: [], idx: [] };
   merge(o, alongX((t) => prism(t, 1.0, -0.30, 0.07, 0.12, 0.02, -1.3, 1.3)));
-  for (const x of [-1.3, 1.3]) { prism(o, x, -0.2, 0.09, 0.09, 0.012, 0, 1.0); sphere(o, x, 1.06, -0.2, 0.05, 14); prism(o, x, -0.3, 0.09, 0.09, 0.012, 0, 1.0); }
+  for (const x of [-1.3, 1.3]) { prism(o, x, -0.2, 0.09, 0.09, 0.012, 0, 1.0); sphere(o, x, 1.06, -0.2, 0.05, 8); prism(o, x, -0.3, 0.09, 0.09, 0.012, 0, 1.0); }
   await write("lotprop__lot_church_nave_pew_cap", o, [0.74, 0.52, 0.32, 1]);
 }
 
