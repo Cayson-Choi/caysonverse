@@ -159,6 +159,8 @@ const probe = () =>
           y: +w.y.toFixed(2),
           z: +w.z.toFixed(2),
           s: +o.parent.scale.x.toFixed(3),
+          // which way its back points (owner 2026-11-18: held up belly-up): the fish's +Y (back) and +Z (nose) in the world
+          up: +new o.position.constructor(0, 1, 0).applyQuaternion(o.getWorldQuaternion(new o.quaternion.constructor())).y.toFixed(2),
           onScreen: Math.abs(n.x) < 0.95 && Math.abs(n.y) < 0.95 && n.z < 1,
         });
       }
@@ -182,7 +184,9 @@ async function frames(dir, n, gap, untilShown = false) {
   for (let k = 0; k < (untilShown ? 160 : n); k++) {
     const v = await view();
     probes.push({ k, phase: v.name, probe: await probe() });
-    await p.page.screenshot({ path: join(dir, `f${String(k).padStart(3, "0")}.jpg`), type: "jpeg", quality: 70 });
+    // a screenshot is the slow part (a loaded machine took seconds: the short landed phase slipped between two frames and the
+    // show was never sampled): shoot every third frame, and the landed ones; the probes (cheap) are taken every time
+    if (v.name === "landed" || k % 3 === 0 || !untilShown) await p.page.screenshot({ path: join(dir, `f${String(k).padStart(3, "0")}.jpg`), type: "jpeg", quality: 70 });
     if (untilShown) {
       if (v.name === "landed") shownFrames++;
       if (shownFrames >= 6 || ["releasing", "ready", "missed"].includes(v.name)) break;
@@ -233,10 +237,14 @@ await run.step("casts: the catch from the strike to the release", async () => {
     const shownFish = shown.map((x) => ({ k: x.k, f: x.probe?.fish.find((f) => f.vis), hands: x.probe?.hands ?? [] }));
     run.check(`cast ${n}: the fish shown is on the screen`, shownFish.length > 0 && shownFish.every((x) => x.f?.onScreen), shownFish.slice(0, 2));
     run.check(`cast ${n}: the fish shown is drawn at least 0.5 m long (readable beside the chibi)`, shownFish.length > 0 && shownFish.every((x) => (x.f?.s ?? 0) >= 0.5), shownFish.map((x) => x.f?.s));
+    // owner 2026-11-18: "뒤집힌 게 아니고 안 뒤집힌 상태로": while shown the fish's back is up (settled frames; the flapping rolls it a little)
+    // (the first shown frames are the ease from the hanging hold into the show: judged on the last ones)
+    const upShown = shown.slice(-4).map((x) => x.probe?.fish.find((f) => f.vis)?.up);
+    run.check(`cast ${n}: the fish shown has its back up (not belly-up)`, upShown.length > 0 && upShown.at(-1) > 0.85 && upShown.every((u) => u !== undefined && u > 0.3), upShown);
     if (!FIRST_PERSON) {
       const gap = (x) => Math.min(...x.hands.map((h) => Math.hypot(h.x - x.f.x, h.y - x.f.y, h.z - x.f.z)));
       // from the third shown frame (the first ones are the 0.35 s ease from the one-hand hold into the arms)
-      const settled = shownFish.slice(2);
+      const settled = shownFish.slice(-3); // (the ease from the hanging hold takes ~0.45 s: judged on the last frames)
       run.check(`cast ${n}: the fish shown is held in the hands (a hand within 0.4 m of it, once settled)`, settled.length > 0 && settled.every((x) => x.f && x.hands.length > 0 && gap(x) < 0.4), shownFish.map((x) => x.f && x.hands.length ? +gap(x).toFixed(2) : null));
       const lifted = probes.filter((x) => x.phase === "lifting" && x.probe?.fish.some((f) => f.vis && f.onScreen && f.y > 0.2));
       run.check(`cast ${n}: the fish is seen coming up out of the water on the line (on screen, above the water)`, lifted.length > 0, lifted.length);

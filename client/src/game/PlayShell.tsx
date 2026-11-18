@@ -41,7 +41,7 @@ import { startJumpSync } from "../net/jumpSync";
 import { isTouchDevice } from "../device";
 import { getRenderProfile } from "./renderProfile";
 import { releaseAllUiCapture } from "./uiCapture";
-import { resetViewMode, toggleViewMode, toggleOverview, viewState } from "./viewState";
+import { resetViewMode, setViewToggler, toggleViewMode, toggleOverview, viewState } from "./viewState";
 import { bindNametagMode } from "./settingsBridge";
 import { useCoachStore } from "../stores/coachStore";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -275,6 +275,10 @@ export function PlayShell(p: PlayShellProps) {
   const toggleViewUnlessMap = () => {
     if (viewState.mode !== "ov") toggleViewMode(orbit);
   };
+  // the bus's ride panel has its own "1인칭 / 3인칭으로 보기" button (VillageScene TransitRideHud): it toggles through this one
+  useEffect(() => setViewToggler(() => {
+    if (viewState.mode !== "ov") toggleViewMode(orbit);
+  }), [orbit]);
 
   return (
     <>

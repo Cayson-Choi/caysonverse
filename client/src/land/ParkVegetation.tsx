@@ -13,6 +13,9 @@ import type { Bush } from "../village/veg/shrubs";
 import type { TreeSpec } from "../village/veg/treeSkeleton";
 import { circuitGround, taken } from "./ParkScenery";
 
+/** A phone draws the park's trees to 380 m and its bushes to 170 m (the tier's bands go to 600 and 300): the wheel's top sees the whole park. */
+export const PHONE_FAR_RANGE = { trees: 380, bush: 170 } as const;
+
 const rngOf = (seed: number) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 
 /**
@@ -147,6 +150,7 @@ export function ParkVegetation() {
       parkTrees: specs.trees,
       parkBushes: specs.bushes,
       farThin: isTouchDevice ? 0.12 : 0.4,
+      farRange: isTouchDevice ? PHONE_FAR_RANGE : undefined,
       parkBeds: flowerBeds.beds,
       parkCards: flowerBeds.cards,
       makeWorker: () => new Worker(new URL("../village/veg/crownWorker.ts", import.meta.url), { type: "module" }),

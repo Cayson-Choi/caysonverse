@@ -16,6 +16,8 @@
  *   hall      to the memorial's door, in, a walk inside, out again
  *   house     to house 1, the keypad (1004), in, out
  *   lake      to the lake, rent the rod, sit at a fishing chair, cast once, get up
+ *   wheel     (after park) one whole ride on the 하늘 등불 바퀴
+ *   park      (after lake) to the gate, into Caysonland, along the promenade to the carousel and the wheel and back
  *   bus       to the stop; boards if the boarding window is open and the bus leaves within --bus-wait s, rides a lap
  *
  * Verdict (exit 1 on failure): after the warm-up (--warmup, default 4 s after the vegetation veil lifts), no frame
@@ -531,6 +533,78 @@ try {
     await sleep(9000);
     await dragOrbit(PHONE_DEV ? 250 : 400);
     await sleep(2000);
+  });
+
+  // click-move inside the park with the click planner's detour round the park's solids (as e2e/wheel-ride.mjs goTo)
+  const parkGo = async (x, z, tol = 2.5) => {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await p.page.evaluate(
+        async ([x, z]) => {
+          const plan = await window.__imp("/src/game/clickPlan.ts");
+          const move = await window.__imp("/src/game/clickMove.ts");
+          const am = await window.__imp("/src/game/activeMap.ts");
+          const P = window.__cv.getPos();
+          const via = plan.findDetour(P.x, P.z, x, z, am.getActiveMap().geometry.obstacles, am.activeBounds(), undefined, { ratio: 6, slack: 40, margin: 40 });
+          move.setClickTarget(x, z, 0, via ?? undefined);
+        },
+        [x, z],
+      );
+      await sleep(400);
+      const t0 = Date.now();
+      while (Date.now() - t0 < 120000 && (await p.page.evaluate(() => window.__cvClickTarget?.() ?? null)) !== null) await sleep(150);
+      await sleep(300);
+      const at = await pos(p);
+      if (Math.hypot(at.x - x, at.z - z) < tol) return at;
+    }
+    return pos(p);
+  };
+  const enterPark = async () => {
+    if ((await pos(p)).seatIndex >= 0) {
+      await p.page.evaluate(() => window.__cv.stand());
+      await sleep(1500);
+    }
+    if ((await areaNow()) === "park") return;
+    const g = await p.page.evaluate(async () => (await window.__imp("/village/parkArea.ts")).parkGateDoor().pad);
+    for (const [x, z] of [[80, -9], [40, 0]]) await walkAndWait(p, x, z, 60000, 1.5);
+    const at = await parkGo(g.x, g.z - 0.5, 1.0);
+    console.log(`park gate: at ${JSON.stringify(at)} pad ${JSON.stringify(g)}`);
+    await act(p);
+    await waitArea("park", 20000);
+    await waitCoversGone();
+    await sleep(3000);
+  };
+
+  await phase("park", async () => {
+    await enterPark();
+    // the promenade, the carousel, the wheel, back across the park (park-local metres)
+    for (const [x, z] of [[40, -150], [60, -125], [110, -119], [160, -125], [211, -131], [260, -100], [200, -60]]) {
+      await parkGo(x, z, 3);
+      await dragOrbit(PHONE_DEV ? 200 : 300, 20);
+      await sleep(800);
+    }
+    await sleep(2000);
+  });
+
+  // one whole ride on the 하늘 등불 바퀴 (the top is where the whole park is in view)
+  await phase("wheel", async () => {
+    await enterPark();
+    await parkGo(211, -130.8, 1.5);
+    const st = () =>
+      p.page.evaluate(async () => {
+        const w = await window.__imp("/land/wheel.ts");
+        const m = await window.__imp("/land/coasterRide.ts");
+        const clock = await window.__imp("/src/village/villageClock.ts");
+        return { status: w.wheelAt(clock.villageClock.liveMs()).status, slot: m.selfRide.slot };
+      });
+    const t0 = Date.now();
+    while ((await st()).status !== "boarding" && Date.now() - t0 < 60000) await sleep(500);
+    await act(p);
+    const t1 = Date.now();
+    while ((await st()).slot < 0 && Date.now() - t1 < 8000) await sleep(200);
+    run.check("wheel: boarded", (await st()).slot >= 0);
+    const t2 = Date.now();
+    while ((await st()).slot >= 0 && Date.now() - t2 < 220000) await sleep(500);
+    await sleep(2500);
   });
 
   await phase("bus", async () => {

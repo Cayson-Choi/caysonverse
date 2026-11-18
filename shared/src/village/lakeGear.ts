@@ -6,8 +6,8 @@ export const LAKE_GEAR_GLB_HASH = "6c87365a";
 export const LAKE_GEAR_MAX_BYTES = 250 * 1024;
 
 export const LAKE_FISH_PATH = "/models/lake/lake_fish.glb";
-export const LAKE_FISH_GLB_HASH = "712dd772";
-export const LAKE_FISH_MAX_BYTES = 900 * 1024;
+export const LAKE_FISH_GLB_HASH = "0aeb1dcb";
+export const LAKE_FISH_MAX_BYTES = 1000 * 1024;
 
 /**
  * lake_gear.glb 뿌리 노드(씬 맨 위 3개). 셋 다 원점 = 쥐는 점, 노드 자체 변환은 항등.

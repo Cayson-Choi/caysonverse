@@ -88,7 +88,6 @@ import {
   INDOOR_SELF_HIDE_DISTANCE,
   INDOOR_SELF_SHOW_DISTANCE,
   MODEL_FACING_OFFSET,
-  SELF_CAMERA_HIDE_DISTANCE,
   SELF_COVER_FADE_DISTANCE,
   SELF_COVER_FADE_OPACITY,
   SELF_COVER_SHOW_DISTANCE,
@@ -98,7 +97,8 @@ import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
 import { getTransitRenderPose, useTransitState } from "../net/transitSync";
-import { busWalk, busCamState, busSeatGoal, busSeatPreferred, selfBusRide } from "./busRide";
+import { busWalk, busCamState, busSeatGoal, busSeatPreferred, busWalkGoal, selfBusRide } from "./busRide";
+import { SELF_GAP, SELF_GAP_OUTDOOR, SELF_HEAD_CENTRE, selfGap, stepSelfGapHidden } from "./selfGap";
 import { selfRide } from "../land/coasterRide";
 import { busRiderPoints, takenBusSpots } from "./remoteStore";
 import {
@@ -298,6 +298,10 @@ export function LocalPlayer({
   const selfFadeRef = useRef(createSelfFade());
   /** Hidden because the camera is right at the head indoors (see the per-frame visibility below). */
   const closeHiddenRef = useRef(false);
+  /** The third-person camera within 0.6 m of the own head and body (selfGap.ts): the body is hidden, with its hysteresis. */
+  const gapHiddenRef = useRef(false);
+  /** The floor-tap walk in the bus (busWalkGoal): where the rider was when it last moved, and when (a rider in the way stops it). */
+  const busGoalProgressRef = useRef({ ahead: 0, right: 0, at: 0 });
   const coverFadeRef = useRef(false);
   useEffect(() => {
     const group = groupRef.current;
@@ -364,6 +368,12 @@ export function LocalPlayer({
       () => gaitRef.current,
       () => sessionId,
     );
+    // e2e (bus-controls): the own avatar's group, to measure how near the camera is to the head and whether the body is drawn
+    // and the live orbit (`__cv.getOrbit` hands out a copy): the e2e sets a zoom / tilt to sample the camera at
+    if (import.meta.env.DEV) {
+      (window as unknown as { __cvSelfGroup?: () => Group | null }).__cvSelfGroup = () => groupRef.current;
+      (window as unknown as { __cvOrbitLive?: () => typeof orbit }).__cvOrbitLive = () => orbit;
+    }
     return () => {
       removeHook();
       // Stop the clips this look actually plays (the resolved names, e.g. *_LongSkirt): the objects resolved above.
@@ -627,6 +637,7 @@ export function LocalPlayer({
   /** Off the bus: on the ground where the server put me down (outside the door), Idle, the seat state as synced. */
   function endRide(): void {
     busWalk.valid = false;
+    busWalkGoal.active = false;
     busDrawRef.current.init = false;
     busDrawRef.current.kind = "none";
     busCamState.active = false;
@@ -680,13 +691,16 @@ export function LocalPlayer({
     // Hide immediately on FP entry because the mode flips before the blend reaches HIDE_BLEND. In TP, also hide when
     // a wall or shelter has shortened the spring arm into the avatar's head.
     const indoorTp = viewState.mode === "tp" && getActiveMap().cameraLimit !== undefined;
-    // Outdoors a wall or shelter that has shortened the spring arm into the avatar's head hides it (SELF_CAMERA_HIDE_DISTANCE).
-    const cameraInsideSelf =
-      !indoorTp &&
-      viewState.mode === "tp" &&
-      viewState.blend < HIDE_BLEND &&
-      cameraProbe.distance > 0 &&
-      cameraProbe.distance < SELF_CAMERA_HIDE_DISTANCE;
+    // Anywhere (the bus stop with the parked bus behind, a wall, a room): a third-person camera the spring arm or a wall has pushed
+    // within 0.6 m of the own head and body (0.9 m outdoors) would show the inside of the head or fill the screen with it (owner
+    // 2026-11-18). The body is hidden instead — measured from the drawn camera to the avatar's head-and-body capsule (selfGap.ts),
+    // not from the zoom the player asked for.
+    gapHiddenRef.current = stepSelfGapHidden(
+      gapHiddenRef.current,
+      selfGap(cameraProbe.x, cameraProbe.y, cameraProbe.z, group.position.x, group.position.z, group.position.y + SELF_HEAD_CENTRE),
+      getActiveMap().cameraLimit === undefined ? SELF_GAP_OUTDOOR : SELF_GAP,
+    );
+    const cameraInsideSelf = viewState.mode === "tp" && viewState.blend < HIDE_BLEND && gapHiddenRef.current;
     // A memorial cubby's close-up (cubbyFocus.ts) puts the lens at the cubby's height in front of it, where the own body may
     // stand: hidden while the close-up is more than a third of the way in.
     const inCloseUp = cubbyFocusWeight() > 0.33;
@@ -802,7 +816,7 @@ export function LocalPlayer({
           wasFpBeforeRideRef.current = viewState.mode === "fp";
           // bus v3 QA: boarding looks FORWARD (the windscreen and both rows of side windows), not at the rear seats
           orbit.yaw = Math.PI;
-          orbit.pitch = 0.6; // the player's zoom stays as they set it (owner 2026-11-16)
+          orbit.pitch = 0.3; // the third person's aim: a little down the aisle (the player's zoom stays as they set it, owner 2026-11-16)
           enterFp(Math.PI); // the look yaw is bus-relative: PI looks to the front (BUS_VIEW_YAW.front)
           viewState.fpPitch = 0.05;
           busWalk.ahead = selfBusRide.ahead;
@@ -881,6 +895,49 @@ export function LocalPlayer({
             }
           }
         }
+        // Owner 2026-11-18 ("버스안에서 이동이 잘 안되고"): a click or a tap on the cabin's floor (busWalkGoal) walks there — down the
+        // aisle's middle first, across once level with the spot — like the village's click-to-walk. A key or the stick takes over; a
+        // rider in the way (no progress for a moment) or 12 s end it.
+        if (busWalkGoal.active && busSeatGoal.index < 0 && !suspended) {
+          const nowG = performance.now();
+          const prog = busGoalProgressRef.current;
+          if (moving || nowG - busWalkGoal.at > 12000) busWalkGoal.active = false;
+          else {
+            // down the aisle's middle while the spot is still ahead or behind, across to it once level (the seats' rows are solid)
+            const level = Math.abs(busWalkGoal.ahead - busWalk.ahead) < 0.12;
+            const tA = busWalkGoal.ahead;
+            const tR = level ? busWalkGoal.right : 0;
+            const dA = tA - busWalk.ahead;
+            const dR = tR - busWalk.right;
+            const len = Math.hypot(dA, dR);
+            const left = Math.hypot(busWalkGoal.ahead - busWalk.ahead, busWalkGoal.right - busWalk.right);
+            if (left < 0.06) {
+              busWalkGoal.active = false;
+              sendBusMove(busWalk.ahead, busWalk.right, busWalk.yaw);
+              busSendRef.current.at = nowG;
+              busSendRef.current.moving = false;
+            } else if (len > 1e-4) {
+              if (Math.hypot(busWalk.ahead - prog.ahead, busWalk.right - prog.right) > 0.02) {
+                prog.ahead = busWalk.ahead;
+                prog.right = busWalk.right;
+                prog.at = nowG;
+              } else if (nowG - prog.at > 700 && nowG - busWalkGoal.at > 700) busWalkGoal.active = false; // blocked (a rider, a seat)
+              const stepLen = Math.min(len, moveSpeed(false) * delta);
+              const next = stepInCabin(busWalk, { ahead: busWalk.ahead + (dA / len) * stepLen, right: busWalk.right + (dR / len) * stepLen }, BUS_WALK_RADIUS, busStepTmp, busRiderPoints(busOthersTmp));
+              const mA = next.ahead - busWalk.ahead;
+              const mR = next.right - busWalk.right;
+              busWalk.ahead = next.ahead;
+              busWalk.right = next.right;
+              if (delta > 0) groundSpeedBus = Math.hypot(mA, mR) / delta;
+              const fx = Math.sin(bus.yaw);
+              const fz = Math.cos(bus.yaw);
+              movedBusX = mA * fx - mR * fz;
+              movedBusZ = mA * fz + mR * fx;
+              if (!inFp && groundSpeedBus > 0.05) busWalk.yaw = normalizeYaw(stepYaw(busWalk.yaw + bus.yaw, bus.yaw + Math.atan2(-mR, mA), TURN_SPEED * delta) - bus.yaw);
+              seatWalk = groundSpeedBus > 0.05;
+            }
+          }
+        }
         if (moving && !suspended) {
           busSeatPreferred.index = -1; // walking off by hand: the tapped seat is no longer the one offered
           const dirW = worldDirection(intent, bus.yaw + rel);
@@ -943,7 +1000,7 @@ export function LocalPlayer({
         // tap on my own seat is nothing.
         if (busSeatGoal.index === placeNow.index) busSeatGoal.index = -1;
         busSeatPreferred.index = -1;
-        if ((moving || busSeatGoal.index >= 0) && !suspended && (!busStandSentRef.current || performance.now() - standAtRef.current > STAND_RETRY_MS)) {
+        if ((moving || busSeatGoal.index >= 0 || busWalkGoal.active) && !suspended && (!busStandSentRef.current || performance.now() - standAtRef.current > STAND_RETRY_MS)) {
           sendBusStand();
           busStandSentRef.current = true;
           standAtRef.current = performance.now();
@@ -994,7 +1051,9 @@ export function LocalPlayer({
       group.rotation.y = rp.yaw + MODEL_FACING_OFFSET;
       busCamState.avatar = group;
       busCamState.avatar = group;
-      group.visible = !busCamState.firstPerson; // first person (the camera all the way in) is the rider's own eye
+      // first person (the camera all the way in) is the rider's own eye; a third-person lens the cabin pushed within 0.6 m of the head
+      // hides the body too (transitCamera.ts busSelfHidden): never the inside of the head on the screen
+      group.visible = !busCamState.firstPerson && !busCamState.selfHidden;
       pose.x = rp.x;
       pose.z = rp.z;
       pose.yaw = rp.yaw;

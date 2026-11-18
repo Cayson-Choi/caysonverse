@@ -12,6 +12,10 @@ import { GeoBuilder, type V3 } from "./geoBuilder";
 
 const DETAIL: TrackDetail = isTouchDevice ? "light" : "full";
 
+/** The car parts a phone drops for far cars (by material name in the car GLB), and how near (m) a car must be to keep them. */
+const CAR_SMALL_PARTS: ReadonlySet<string> = new Set(["car_rubber", "car_dark", "car_chrome", "car_pad"]);
+const CAR_DETAIL_M = 70;
+
 export const CAR_URL = "/models/land/coaster_car.glb";
 export const CAR_AO_URL = "/models/land/coaster_car_ao.webp";
 
@@ -41,15 +45,29 @@ function Train({ env, ao }: { env: Texture; ao: Texture }) {
   const m = useMemo(() => new Matrix4(), []);
   const f = useMemo(() => emptyFrame(), []);
   const track = useMemo(() => coasterTrack(), []);
-  useFrame(() => {
+  // a phone draws a car's small parts (wheels, undercarriage, chrome, pads: ~45 of its ~60 k triangles for the train) only for the cars within
+  // CAR_DETAIL_M of the camera: the wheel's top sees the whole park, where they are specks. The first nNear instances of those meshes are drawn.
+  const small = useMemo(() => parts.map((p) => CAR_SMALL_PARTS.has(p.material.name)), [parts]);
+  useFrame(({ camera }) => {
     const now = coasterNow();
+    let nNear = 0;
     for (let i = 0; i < COASTER_CARS; i++) {
       frameAt(track, carArc(now.s, i), f);
       // car space: +x is the car's LEFT (a right-handed basis: left x up = forward), +z forward
       m.set(-f.rx, f.ux, f.tx, f.x, -f.ry, f.uy, f.ty, f.y, -f.rz, f.uz, f.tz, f.z, 0, 0, 0, 1);
-      for (const mesh of refs.current) mesh?.setMatrixAt(i, m);
+      const near = !isTouchDevice || Math.hypot(f.x - camera.position.x, f.y - camera.position.y, f.z - camera.position.z) < CAR_DETAIL_M;
+      refs.current.forEach((mesh, k) => {
+        if (!mesh) return;
+        if (!small[k]) mesh.setMatrixAt(i, m);
+        else if (near) mesh.setMatrixAt(nNear, m);
+      });
+      if (near) nNear++;
     }
-    for (const mesh of refs.current) if (mesh) mesh.instanceMatrix.needsUpdate = true;
+    refs.current.forEach((mesh, k) => {
+      if (!mesh) return;
+      if (small[k]) mesh.count = nNear;
+      mesh.instanceMatrix.needsUpdate = true;
+    });
   });
   return (
     <group>

@@ -14,8 +14,8 @@ ATLAS_W, ATLAS_H = 2048, 768
 EYE_X, EYE_Y = 400, 192
 BARB_X, BARB_Y = 64, 192
 NRAY = 24
-FCW, FBH = 256, 48
-FIN_W, FIN_H = 1024, 432
+FCW, FBH = 384, 96          # v3: wider rays (16 px each)
+FIN_W, FIN_H = 1536, 864
 
 
 def cell_origin(i):
@@ -305,14 +305,14 @@ PAINT = {
     "crucian_carp": dict(ramp=[(0, "#3e3c22"), (0.22, "#6e6634"), (0.45, "#ab9a56"), (0.7, "#cfc088"), (1, "#e8e0c4")],
                          scale_rim=0.32, scale_sheen=12, pore="#3a3622", op_edge="#2a2618", lip="#a89c70", orbit="#4a4630",
                          iris="#c8a64a", iris_out="#8a7a3a",
-                         fin=dict(A=CARP_FIN("#a49c6c", "#8a8460", "#5a5638"), B=("#a49c6c", "#7e7856", "#5a5638"), C=("#c8bc8a", "#b0a678", "#7a7250"))),
+                         fin=dict(A=CARP_FIN("#8a7040", "#6a5430", "#3e2e14"), B=("#8a7040", "#74583a", "#3e2e14"), C=("#a8764a", "#b4784a", "#6a4020"))),
     "bluegill": dict(ramp=[(0, "#3a4426"), (0.25, "#5c6a34"), (0.5, "#8a8c46"), (0.72, "#c49a3a"), (1, "#e88a2e")],
                      marks=[vbars(7, "#3a3a46", 0.38, 0.32, 0.92, 0.022, 0.25, 0.95, 0.01),
                             region("#e47a24", 0.45, 0.12, 0.6, 0.0, 0.32), ear_flap(),
                             cheek_lines("#4a6a9a", 0.45, (0.15, 0.038, 0.033), 3, 0.1, -0.35, 0.014)],
                      scale_rim=0.22, scale_sheen=10, pore="#2c3020", op_edge="#1e2214", lip="#7a7a50", orbit="#2a3018",
                      iris="#2a2a26", iris_out="#9a4a2a", pupil=0.5,
-                     fin=dict(A=("#6a6a4a", "#4a4a36", "#2a2a20", "spiny"), B=("#6c6a4c", "#4c4a3a", "#2c2c22"), C=("#b0a070", "#c8bc90", "#7a6a4a")),
+                     fin=dict(A=("#6a6a4a", "#4a4a36", "#2a2a20", "spiny"), B=("#6c6a4c", "#4c4a3a", "#2c2c22"), C=("#8c7c48", "#a89868", "#5a4a2a")),
                      finmarks=dict(B=[finspot("#101010", 0.7, 0.0, 0.25, 0.05, 0.6)])),
     "minnow": dict(ramp=[(0, "#4a5a58"), (0.25, "#6e7e80"), (0.5, "#b4bcbc"), (0.75, "#dcdcd6"), (1, "#f2f0ea")],
                    marks=[vbars(10, "#3a8a9a", 0.62, 0.3, 0.95, 0.018, 0.22, 0.8, 0.008),
@@ -320,22 +320,22 @@ PAINT = {
                           region("#e8a090", 0.3, 0.0, 0.25, 0.1, 0.5)],
                    scale_rim=0.2, scale_sheen=10, pore="#3a4a4a", op_edge="#3a3a40", lip="#c09890", orbit="#6a6a70",
                    iris="#d8d0b0", iris_out="#c88a3a",
-                   fin=dict(A=("#8a8a8a", "#d8b0a0", "#5a5a5a"), B=("#a8a8a0", "#c8c4b8", "#7a7a70"), C=("#e89070", "#f0c0a0", "#c86a4a"))),
+                   fin=dict(A=("#8a8a8a", "#d8b0a0", "#5a5a5a"), B=("#a8a8a0", "#c8c4b8", "#7a7a70"), C=("#dc8060", "#e8a888", "#b05a3a"))),
     "prussian_carp": dict(ramp=[(0, "#3c4034"), (0.22, "#646650"), (0.45, "#a4a28a"), (0.7, "#c8c6b2"), (1, "#e8e6da")],
                           scale_rim=0.3, scale_sheen=12, pore="#3a3a2c", op_edge="#2a2a20", lip="#a8a490", orbit="#4a4a3a",
                           iris="#d8c070", iris_out="#9a8a50",
-                          fin=dict(A=CARP_FIN("#9a9686", "#6a685c", "#4a4840"), B=("#8a8678", "#4e4c44", "#3a3a32"), C=("#c8b8a8", "#b8a698", "#7a706a"))),
+                          fin=dict(A=CARP_FIN("#8a7a50", "#665634", "#3e3018"), B=("#85744c", "#6a5436", "#3e3018"), C=("#b0825a", "#bc7e52", "#704626"))),
     "bass": dict(ramp=[(0, "#2c3a1e"), (0.22, "#4c5c30"), (0.45, "#8a9460"), (0.62, "#c6caa4"), (1, "#eef0e4")],
                  marks=[band("#1e2814", 0.62, [(0.3, 0.045), (0.55, 0.035), (0.8, 0.02), (1.03, 0.005)], 0.017, 0.3, 1.03, 0.6, 77),
                         blotches("#26301a", 0.3, 0.32, 18, 11, 0.62, 0.3), cheek_lines("#2a321c", 0.4, (0.13, 0.046, 0.021), 2, 0.17, -0.12, 0.016)],
                  scale_rim=0.18, scale_sheen=8, pore="#20281a", op_edge="#1a2210", lip="#56603a", orbit="#2a321c",
                  iris="#7a3a1e", iris_out="#c8642a", pupil=0.5,
-                 fin=dict(A=("#6a7448", "#4a5434", "#2e3620", "spiny"), B=("#76804e", "#5a643c", "#3a4228"), C=("#a0a476", "#c8c8a8", "#7a7e58"))),
+                 fin=dict(A=("#6a7448", "#4a5434", "#2e3620", "spiny"), B=("#76804e", "#5a643c", "#3a4228"), C=("#868a54", "#a4a878", "#565a38"))),
     "carp": dict(ramp=[(0, "#3c3018"), (0.22, "#6a5426"), (0.45, "#a8843a"), (0.68, "#c8aa5e"), (1, "#e8d8a4")],
                  marks=[region("#c8a070", 0.25, 0.25, 1.0, 0.0, 0.18)],
                  scale_rim=0.5, scale_sheen=18, pore="#3a2a12", op_edge="#2a2010", lip="#b89878", orbit="#4a3a20",
                  iris="#d0a840", iris_out="#8a6a2a",
-                 fin=dict(A=CARP_FIN("#6a5a38", "#3e3424", "#2a2214"), B=("#6a5a3a", "#5a3a2a", "#2a2214"), C=("#b8784a", "#a85a32", "#6a3a1a"))),
+                 fin=dict(A=CARP_FIN("#7a6a3a", "#52442a", "#2e2412"), B=("#7a6a3c", "#7a4a2c", "#2e2412"), C=("#c27a40", "#c4623a", "#7a3a1a"))),
     "korean_bullhead": dict(ramp=[(0, "#3a3010"), (0.25, "#6a5a1e"), (0.5, "#c0a038"), (0.72, "#d8c060"), (1, "#ece0a8")],
                             marks=[blotches("#2a220c", 0.75, 0.42, 26, 21, 0.3, 0.12),
                                    vbars(3, "#2a220c", 0.55, 0.45, 0.95, 0.04, 0.35, 1.0, 0.02),

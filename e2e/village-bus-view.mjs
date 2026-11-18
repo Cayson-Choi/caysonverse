@@ -85,6 +85,8 @@ const avatarShare = () =>
     const { camera } = window.__cvThree();
     const g = m.busCamState.avatar;
     if (!g) return { share: null };
+    // a hidden body (the lens too near the head: transitCamera.ts busSelfHidden) is not on the screen at all
+    if (!g.visible) return { share: 0, hidden: true };
     camera.updateMatrixWorld();
     let x0 = 9, x1 = -9, y0 = 9, y1 = -9, n = 0;
     g.traverse((o) => {

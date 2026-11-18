@@ -4,6 +4,7 @@ import { Plane, Vector3, Vector4 } from "three";
 import type { BuiltAvatar } from "./characterAvatar";
 import { clipAvatar, enableBenchClipping } from "./benchClip";
 import { activePostChain } from "./QualityEffects";
+import { programSettled } from "./compileSafely";
 
 /** Two planes in the bench clip's form (intersection) that clip nothing: every point is in front of both. */
 const NOTHING: Plane[] = [new Plane(new Vector3(0, 1, 0), 1e6), new Plane(new Vector3(0, 1, 0), 1e6)];
@@ -26,7 +27,7 @@ export function useBenchClipWarmUp(avatar: BuiltAvatar, when: () => boolean): vo
     if (warmed || ++frames.current < AFTER_FRAMES || !when()) return;
     // not while the scene's own shaders are still compiling: this pass waits for every program in flight (a slow phone's
     // arrival compiles a hundred), so it goes once they are done (still under the veil)
-    if (gl.info.programs?.some((p) => (p as unknown as { isReady?: () => boolean | null }).isReady?.() === false)) return;
+    if (gl.info.programs?.some((p) => !programSettled(p as unknown as { isReady(): boolean | null; program?: unknown; usedTimes?: number }))) return;
     warmed = true;
     const before = gl.info.programs?.length ?? 0;
     enableBenchClipping(gl);

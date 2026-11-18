@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BUS_SEATS, busLocalToWorld, cabinFloorAt, seatApproachPoint } from "@caysonverse/shared/village/busCabin";
-import { busSeatUnderRay } from "./busSeatPick";
+import { BUS_SEATS, busLocalToWorld, cabinBlocked, cabinFloorAt, seatApproachPoint } from "@caysonverse/shared/village/busCabin";
+import { busFloorUnderRay, busSeatUnderRay } from "./busSeatPick";
 
 const bus = { x: 30, z: -8, yaw: 2.1 };
 
@@ -29,5 +29,30 @@ describe("busSeatUnderRay: a tap or a click on a bus seat (bus v3, owner 2026-11
     expect(busSeatUnderRay(bus, ...Object.values(rayAt(eye, { ahead: 0.2, right: 0, h: 0.34 })) as [never, never])).toBe(-1);
     expect(busSeatUnderRay(bus, ...Object.values(rayAt(eye, { ahead: 0.5, right: 0, h: 3.15 })) as [never, never])).toBe(-1);
     expect(busSeatUnderRay(bus, ...Object.values(rayAt(eye, { ahead: 0.5, right: 3, h: 2.2 })) as [never, never])).toBe(-1);
+  });
+});
+
+describe("busFloorUnderRay: a tap or a click on the cabin's floor walks there (owner 2026-11-18)", () => {
+  const eye = { ahead: 0.5, right: 0, h: 2.3 };
+  const at = (to: { ahead: number; right: number; h: number }) => {
+    const { origin, dir } = rayAt(eye, to);
+    return busFloorUnderRay(bus, origin, dir);
+  };
+  it("a ray at the aisle's floor gives that spot", () => {
+    for (const a of [-3, -1.5, 1.8, 3]) {
+      const p = at({ ahead: a, right: 0, h: cabinFloorAt(a) });
+      expect(p).not.toBeNull();
+      expect(p!.ahead).toBeCloseTo(a, 3);
+      expect(Math.abs(p!.right)).toBeLessThan(1e-3);
+      expect(cabinBlocked(p!.ahead, p!.right)).toBe(false);
+    }
+  });
+  it("a spot under a seat is moved across to the aisle at its row; the ceiling or outside the cabin is nothing", () => {
+    const s = BUS_SEATS[0]!;
+    const p = at({ ahead: s.ahead, right: s.right, h: s.floor });
+    expect(p).not.toBeNull();
+    expect(cabinBlocked(p!.ahead, p!.right)).toBe(false);
+    expect(at({ ahead: 0.5, right: 0, h: 3.15 })).toBeNull();
+    expect(at({ ahead: 0.5, right: 3, h: 0.34 })).toBeNull(); // out of a window, the ground beside the bus
   });
 });
