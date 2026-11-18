@@ -7,6 +7,7 @@
 import { RIDES, rideByKey, type RideKey } from "@caysonverse/shared/land/rides";
 import { CAROUSEL_CENTER, CAROUSEL_RADIUS } from "@caysonverse/shared/land/carousel";
 import { WHEEL_SITE } from "@caysonverse/shared/land/wheel";
+import { MOON_BOAT_SITE } from "@caysonverse/shared/land/moonBoat";
 import { PARK_PLATFORM, PARK_QUEUE_HALL } from "@caysonverse/shared/village/parkArea";
 
 /** A tap's armed board stays armed this long (ms): the walk across the whole park (the coaster from the wheel is 250 m). */
@@ -44,6 +45,8 @@ export function rideTapZone(x: number, z: number): RideKey | null {
   if (Math.hypot(x - CAROUSEL_CENTER.x, z - CAROUSEL_CENTER.z) <= CAROUSEL_RADIUS + 3) return "carousel";
   // the wheel: its frame spans x +-24 about the hub, from the north feet to the south steps and the platform
   if (Math.abs(x - WHEEL_SITE.x) <= 24 && z >= WHEEL_SITE.z - 6 && z <= WHEEL_SITE.z + 12) return "wheel";
+  // the moon boat: its A-frames and the swing lane, the platform and its steps east of it
+  if (x >= MOON_BOAT_SITE.x - 6 && x <= MOON_BOAT_SITE.x + 12 && Math.abs(z - MOON_BOAT_SITE.z) <= 11) return "moonboat";
   const q = PARK_QUEUE_HALL;
   if (x >= q.minX - 2 && x <= q.maxX + 2 && z >= q.minZ - 2 && z <= q.maxZ + 2) return "coaster";
   const p = PARK_PLATFORM;
@@ -82,6 +85,8 @@ export function rideForTap(x: number, z: number, ray?: TapRay | null, distance =
     if (py <= 14 && Math.hypot(px - CAROUSEL_CENTER.x, pz - CAROUSEL_CENTER.z) <= CAROUSEL_RADIUS + 1.5) return "carousel";
     // the wheel: a slab 4.4 m thick in z (the rims and spokes) with the A-frames, and its platform
     if (Math.abs(px - WHEEL_SITE.x) <= 23 && pz >= WHEEL_SITE.z - 3.5 && pz <= WHEEL_SITE.z + 12) return "wheel";
+    // the moon boat: the hull and its frame
+    if (px >= MOON_BOAT_SITE.x - 6 && px <= MOON_BOAT_SITE.x + 8 && Math.abs(pz - MOON_BOAT_SITE.z) <= 11) return "moonboat";
   }
   return null;
 }

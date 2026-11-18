@@ -26,8 +26,8 @@ if (outArg) run.evidence = outArg.slice("--out=".length);
 mkdirSync(run.evidence, { recursive: true });
 
 const NOON = "2026-11-03T12:30";
-const NAMES = { coaster: "별똥별 급행", carousel: "달빛 회전목마", wheel: "하늘 등불 바퀴" };
-const PADS = { coaster: { x: -17, z: -46 }, carousel: { x: 110, z: -119 }, wheel: { x: 205, z: -128.2 } };
+const NAMES = { coaster: "별똥별 급행", carousel: "달빛 회전목마", wheel: "하늘 등불 바퀴", moonboat: "달배" };
+const PADS = { coaster: { x: -17, z: -46 }, carousel: { x: 110, z: -119 }, wheel: { x: 205, z: -128.2 }, moonboat: { x: -82.1, z: -140 } };
 const report = [];
 
 async function until(fn, ms, step = 150) {
@@ -269,6 +269,9 @@ await run.step("carousel: the park panel's go button", async () => {
 });
 await run.step("wheel: the panel's go button", async () => {
   await tryRide("wheel", "pill", [], null);
+});
+await run.step("moonboat: the panel's go button", async () => {
+  await tryRide("moonboat", "pill", [], null);
 });
 await run.step("coaster: the panel's go button", async () => {
   await tryRide("coaster", "pill", [], null);

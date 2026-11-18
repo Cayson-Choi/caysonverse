@@ -12,6 +12,7 @@ import { villageClock } from "../village/villageClock";
 import { boardRide } from "./rideBoardWalk";
 import { useParkReady } from "./parkReady";
 import { wheelSeatPose } from "@caysonverse/shared/land/wheel";
+import { MOON_DWELL_MS } from "@caysonverse/shared/land/moonBoat";
 
 const NOTICE_TEXT = {
   closed: "지금은 탈 수 없어요. 다음 출발을 기다려 주세요.",
@@ -112,7 +113,7 @@ export function CoasterHud() {
   const now = def ? def.statusAt(wall) : coasterNow();
   const secs = Math.max(0, Math.ceil(now.departsInMs / 1000));
   const noticeFresh = rideNotice.reason !== null && performance.now() - rideNotice.at < 4500;
-  const icon = def?.key === "carousel" ? "🎠" : def?.key === "wheel" ? "🎡" : "🎢";
+  const icon = def?.key === "carousel" ? "🎠" : def?.key === "wheel" ? "🎡" : def?.key === "moonboat" ? "🌙" : "🎢";
   const isCoaster = !def || def.key === "coaster";
   const waitMs = def && now.status !== "boarding" ? msUntilBoarding(def, wall) : null;
   const waitSecs = waitMs === null ? null : Math.max(1, Math.ceil(waitMs / 1000));
@@ -152,7 +153,7 @@ export function CoasterHud() {
           const od = Math.hypot(landPose.x - r.pad.x, landPose.z - r.pad.z);
           return (
             <button key={r.key} type="button" data-testid={`ride-go-${r.key}`} style={{ ...btn, marginTop: 4, width: "100%", fontSize: 12, textAlign: "left" }} onClick={() => boardRide(r.key, landPose.x, landPose.z)}>
-              {r.key === "carousel" ? "🎠" : r.key === "wheel" ? "🎡" : "🎢"} {r.name} · {Math.round(od)}m · {od > 45 ? "걸어가서 타기" : "타기"}
+              {r.key === "carousel" ? "🎠" : r.key === "wheel" ? "🎡" : r.key === "moonboat" ? "🌙" : "🎢"} {r.name} · {Math.round(od)}m · {od > 45 ? "걸어가서 타기" : "타기"}
             </button>
           );
         })}
@@ -178,7 +179,7 @@ export function CoasterHud() {
                 ? `${Math.round(wheelSeatPose(selfRide.slot, wall).y)}m 높이 · 한 바퀴 돌면 내려요`
                 : "승강장이에요 · 내릴 수 있어요"
               : now.status === "riding"
-                ? `${Math.max(0, Math.round((now.phase - (isCoaster ? COASTER_DWELL_MS : CAROUSEL_DWELL_MS)) / 1000))}초 · ${isCoaster ? "안전바를 잡고 있어요" : "말이 오르내려요"}`
+                ? `${Math.max(0, Math.round((now.phase - (isCoaster ? COASTER_DWELL_MS : def?.key === "moonboat" ? MOON_DWELL_MS : CAROUSEL_DWELL_MS)) / 1000))}초 · ${isCoaster ? "안전바를 잡고 있어요" : def?.key === "moonboat" ? "배가 점점 크게 흔들려요" : "말이 오르내려요"}`
                 : now.status === "gate"
                   ? `곧 출발해요 (${secs}초)`
                   : "출발을 기다리는 중이에요"}

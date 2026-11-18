@@ -255,7 +255,7 @@ export interface RideNoticePayload {
   reason: "closed" | "full" | "busy" | "aloft" | "reserved" | "far";
 }
 
-/** Client → server: get on the ride `ride` ("coaster" | "carousel" | "wheel"; absent = the coaster, an older client). */
+/** Client → server: get on the ride `ride` ("coaster" | "carousel" | "wheel" | "moonboat"; absent = the coaster, an older client). */
 export interface RideBoardPayload {
   ride?: string;
 }

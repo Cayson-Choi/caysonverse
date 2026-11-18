@@ -244,4 +244,26 @@ describe("VillageCoaster (server rules)", () => {
     expect(pa.rideSeat).toBe(-1);
     void a;
   });
+  it("the moon boat: 32 seats filled front row first, a rider is put off when the cycle ends", () => {
+    const r = rig();
+    const MB_T0 = 20 * 130_000 + 8000; // 8 s into a cycle: boarding
+    r.setNow(MB_T0);
+    for (let i = 0; i < 33; i++) {
+      r.add(`m${i}`);
+      const p = r.players.get(`m${i}`)!;
+      p.x = -82.1;
+      p.z = -140;
+      r.send(`m${i}`, VillageMsg.RideBoard, { ride: "moonboat" });
+    }
+    const p0 = r.players.get("m0")!;
+    expect(p0.rideId).toBe(4);
+    expect(p0.rideSeat).toBe(0);
+    expect(r.players.get("m3")!.rideSeat).toBe(3);
+    expect(r.players.get("m31")!.rideSeat).toBe(31);
+    expect(r.players.get("m32")!.rideSeat).toBe(-1); // full
+    r.setNow(20 * 130_000 + 130_000 + 300);
+    r.coaster.tick();
+    expect(p0.rideSeat).toBe(-1);
+    expect(p0.rideId).toBe(0);
+  });
 });

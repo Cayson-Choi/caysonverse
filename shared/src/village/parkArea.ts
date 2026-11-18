@@ -43,6 +43,9 @@ export const COASTER_BOARD_REACH_M = 6;
 export const CAROUSEL_PAD = Object.freeze({ x: 110, z: -119, radius: 3 });
 /** The wheel's boarding pad: on the grass at the foot of the platform steps (the rider is lifted into the gondola; the avatar never walks on the deck). */
 export const WHEEL_PAD = Object.freeze({ x: 205, z: -128.2, radius: 3 });
+/** The 달배's site (axle over its middle; the 달토끼 숲, the park's west) and its boarding pad: on the grass at the foot of its platform steps, east of the hull (shared/src/land/moonBoat.ts, moonBoatGeometry.ts). */
+export const MOON_BOAT_SITE_AT = Object.freeze({ x: -95, z: -140 });
+export const MOON_BOAT_PAD = Object.freeze({ x: -82.1, z: -140, radius: 3 });
 
 /** The village side: the gate lot's door pad and where you stand coming out (world metres, from the gate lot). */
 export function parkGateDoor() {
@@ -131,7 +134,7 @@ function buildTrees(): ParkTree[] {
     const q = PARK_QUEUE_HALL;
     if (x > q.minX - 8 && x < q.maxX + 8 && z > q.minZ - 8 && z < q.maxZ + 8) return false;
     if (Math.hypot(x - PARK_EXIT_PAD.x, z - PARK_EXIT_PAD.z) < 14) return false;
-    if (Math.hypot(x - 110, z + 135) < 30 || Math.hypot(x - 205, z + 135) < 34) return false; // the ride plots (the carousel's, the wheel's) stay open
+    if (Math.hypot(x - 110, z + 135) < 30 || Math.hypot(x - 205, z + 135) < 34 || Math.hypot(x - MOON_BOAT_SITE_AT.x - 4, z - MOON_BOAT_SITE_AT.z) < 28) return false; // the ride plots (the carousel's, the wheel's) stay open
     return true;
   };
   // groves: clusters of trees with open lawn between them (lawns stay open beside the paths, the plaza and the ride plots)
@@ -238,6 +241,11 @@ function buildSolids(): AABB[] {
   // the wheel: the four feet of its A-frames and the boarding platform's deck
   for (const sx of [-1, 1]) for (const dz of [-2.75, 5.7]) out.push(box(205 + sx * 11 - 1, 205 + sx * 11 + 1, -140 + dz - 1, -140 + dz + 1));
   out.push(box(205 - 3.5, 205 + 3.5, -140 + 4.45, -140 + 8.8)); // the platform's deck (the steps south of it are walked on)
+  // the moon boat: the swing's lane under the hull, the four feet of its A-frames and the boarding deck (the steps east of it are walked on up to the pad)
+  const M = MOON_BOAT_SITE_AT;
+  out.push(box(M.x - 2.9, M.x + 2.9, M.z - 11, M.z + 11));
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) out.push(box(M.x + sx * 3.9 - 1, M.x + sx * 3.9 + 1, M.z + sz * 9.5 - 1, M.z + sz * 9.5 + 1));
+  out.push(box(M.x + 3.0, M.x + 7.9, M.z - 4.3, M.z + 4.3));
   for (const t of PARK_TROUGHS) out.push(box(t.x0, t.x1, t.z0, t.z1));
   for (const p of PARK_PLANTERS) out.push(box(p.x - p.w / 2, p.x + p.w / 2, p.z - p.d / 2, p.z + p.d / 2));
   for (const b of PARK_BINS) out.push(box(b.x - 0.3, b.x + 0.3, b.z - 0.3, b.z + 0.3));
