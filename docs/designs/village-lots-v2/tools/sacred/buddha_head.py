@@ -4,6 +4,7 @@ from math import atan2, cos, exp, pi, sin, sqrt
 import bpy
 from mathutils import Vector
 from buddha_mesh import mat
+from buddha_pigment import brow_height, eyelid_height
 
 
 def surface(name, vertices, faces, material):
@@ -48,75 +49,123 @@ def cap(fs,n,length):
     fs.extend((tuple(reversed(range(n))),tuple(range(length-n,length))))
 
 
-# z, half width, forehead/chin and rear profile.
+# z, half width, front and rear. The hairline is at 1.787 m. In the
+# front elevation 86 parts of cheek width span 93 parts of exposed face.
 SKULL=[
-    (1.439,.030,-.030,.082),(1.451,.065,-.080,.107),
-    (1.468,.099,-.127,.139),(1.491,.121,-.146,.154),
-    (1.518,.139,-.150,.167),(1.546,.149,-.149,.176),
-    (1.578,.154,-.153,.184),(1.613,.159,-.163,.188),
-    (1.646,.162,-.169,.192),(1.680,.162,-.166,.195),
-    (1.712,.165,-.170,.200),(1.749,.166,-.173,.201),
+    (1.430,.031,-.041,.080),(1.442,.062,-.089,.106),
+    (1.454,.085,-.127,.128),(1.474,.105,-.152,.146),
+    (1.494,.122,-.161,.155),(1.518,.135,-.159,.166),
+    (1.545,.146,-.160,.176),(1.580,.151,-.163,.183),
+    (1.614,.155,-.169,.188),(1.644,.157,-.176,.192),
+    (1.669,.158,-.178,.195),(1.707,.158,-.183,.198),
+    (1.749,.161,-.184,.201),
     (1.790,.163,-.170,.198),(1.822,.153,-.158,.190),
     (1.855,.131,-.132,.165),(1.888,.081,-.078,.124),(1.901,.013,-.008,.047)]
+
+
+def eye_line(x):
+    t=max(0., min(1., (abs(x)-.031)/.099))
+    return eyelid_height(t, sin(pi*t))
+
+
+def lip_line(x):
+    t=min(1., abs(x)/.0435)
+    return 1.548 + .0029*t*t - .0014*exp(-(t/.23)**2)
+
+
+# Depth of the dorsal ridge above the central facial plane. The short
+# return beneath the tip leads directly into the projecting philtrum.
+NOSE = [(1.551,0.),(1.564,.005),(1.573,.009),(1.577,.012),
+        (1.580,.020),(1.583,.031),(1.587,.041),(1.593,.0465),
+        (1.598,.0465),(1.607,.042),(1.630,.030),
+        (1.654,.019),(1.678,.011),(1.702,.008),(1.720,.003),(1.745,0.)]
 
 
 def relief(x,z):
     a=abs(x)
     def g(u,v,w,h):
-        return exp(-((a-u)/w)**2-((z-v)/h)**2)
-    lid=1.685+.007*(a-.078)/.055
-    return (.017*g(0,1.669,.020,.064)+.022*g(0,1.632,.021,.040)
-            +.025*g(0,1.612,.024,.019)+.024*g(.021,1.610,.012,.014)+.009*g(0,1.600,.009,.014)
-            +.010*g(.080,1.650,.049,.040)+.010*g(.107,1.645,.034,.052)
-            -.008*g(.074,1.699,.054,.031)+.016*g(.079,lid+.008,.044,.015)
-            +.007*g(.071,lid-.009,.044,.012)+.012*g(.076,1.720,.060,.017)
-            +.008*g(.016,1.702,.017,.031)+.010*g(0,1.570,.066,.034)
-            +.006*g(.010,1.586,.006,.016)+.008*g(0,1.556,.045,.011)+.014*g(0,1.506,.059,.025))
+        across=exp(-((x-u)/w)**2)
+        if u:
+            across+=exp(-((x+u)/w)**2)
+        return across*exp(-((z-v)/h)**2)
+    tip=exp(-((z-1.589)/.013)**2)
+    # The columella drops below the two alae. Stagger their lower profiles
+    # so a side light resolves two nares and a rounded tip between them.
+    midline=.006*exp(-(a/.012)**2-((z-1.582)/.020)**2)
+    ridge=profile(NOSE,z+midline)[0]*exp(-(a/(.019+.004*tip+.005*exp(-((z-1.69)/.05)**2)))**2)
+    t=max(0.,min(1.,(a-.031)/.099))
+    arc=sin(pi*t)
+    lid=eye_line(x)
+    fold=lid+.006+.019*arc
+    brow=brow_height(t,arc)
+    orbit=exp(-((a-.078)/.053)**4)
+    # A raised brow overhangs the socket. The domed upper lid rolls
+    # forward into the lash, then the lower lid turns up to meet it.
+    socket=orbit*(.016*exp(-((z-brow)/.012)**2)
+                  -.014*exp(-((z-brow+.012)/.012)**2))
+    lids=arc*(.019*exp(-((z-lid-.009)/.013)**2)
+              -.004*exp(-((z-fold)/.004)**2)
+              -.003*exp(-((z-lid+.003)/.004)**2)
+              +.007*exp(-((z-lid+.011)/.007)**2))
+    seam=lip_line(x)
+    lip_width=exp(-(a/.039)**4)
+    return (ridge + .020*g(.022,1.593,.011,.015) + socket + lids
+            + .018*g(.125,1.670,.032,.029)
+            + .023*g(.083,1.616,.063,.059) + .012*g(.089,1.566,.062,.061)
+            + .016*g(0,1.565,.043,.027) + .003*g(.009,1.569,.007,.012)
+            + lip_width*(.012*exp(-((z-seam-.0045)/.0050)**2)
+                         + .013*exp(-((z-seam+.0048)/.0053)**2))
+            + .010*g(0,1.488,.069,.031))
 
 
 def fy(x,z):
     w,f,b=profile(SKULL,z)
     q=min(.99999,abs(x)/w)
     c=.5*(f+b)
-    return c-(c-f)*(1-q*q)**.42-relief(x,z)*(1-q*q)**.65
+    return c-(c-f)*(1-q*q)**.54-relief(x,z)*(1-q*q)**.65
 
 
 def make_face(phone):
-    front=([0,.08,.155,.26,.40,.58,.80,1.03,1.29,pi/2] if phone else
-           [0,.045,.085,.13,.175,.225,.285,.355,.435,.52,.615,.72,.84,.965,1.10,1.245,1.40,pi/2])
-    back=4 if phone else 7
+    front=([0,.065,.132,.20,.285,.42,.57,.74,.94,1.18,pi/2] if phone else
+           [0,.038,.074,.11,.15,.19,.235,.29,.355,.435,.52,.625,.74,.87,1.01,1.17,1.36,pi/2])
+    back=3 if phone else 5
     half=front+[pi/2+pi/2*k/back for k in range(1,back+1)]
     angles=half+[-a for a in reversed(half[1:-1])]
-    zs=[1.439,1.455,1.478,1.505,1.530,1.550,1.564,1.581,1.597,1.604,1.612,1.622,
-        1.638,1.658,1.678,1.688,1.704,1.722,1.747,1.777,1.811,1.850,1.885,1.901]
+    zs=[1.430,1.443,1.457,1.474,1.490,1.513,1.531,1.543,1.548,1.553,1.563,1.577,
+        1.581,1.584,1.588,1.593,1.605,1.627,1.647,1.660,1.669,1.681,1.696,1.716,1.739,1.768,1.798,1.832,1.88,1.901]
     if not phone:
-        zs=sorted(zs+[1.467,1.492,1.518,1.541,1.556,1.573,1.588,1.600,1.608,
-                      1.617,1.630,1.648,1.669,1.683,1.696,1.713,1.734,1.762])
+        zs=sorted(zs+[1.437,1.451,1.466,1.502,1.524,1.538,1.558,1.569,1.574,1.590,
+                      1.599,1.615,1.637,1.654,1.665,1.675,1.689,1.707,1.726,1.752,1.781])
     vs,fs=[],[]
     for z in zs:
         w,f,b=profile(SKULL,z)
         for a in angles:
             x=w*sin(a)
-            y=fy(x,z) if cos(a)>.0001 else (f+b)/2-(b-f)/2*cos(a)
-            vs.append((x,y,z))
+            height=z
+            if cos(a)>.0001:
+                # Carry the dense muzzle and eyelid loops along their actual
+                # contours so the low LOD keeps a lip seam and a lower lid.
+                height+=(lip_line(x)-1.548)*exp(-(x/.053)**4-((z-1.548)/.019)**2)
+                height+=(eye_line(x)-1.669)*exp(-((abs(x)-.084)/.062)**4-((z-1.669)/.021)**2)
+                y=fy(x,height)
+            else:
+                y=(f+b)/2-(b-f)/2*cos(a)
+            vs.append((x,y,height))
     connect(fs,len(angles),len(zs))
     cap(fs,len(angles),len(vs))
     # Remove surfaces fully hidden inside the hair shell in both game LODs.
     buried=[z>hair_floor(a)+.018 for z in zs for a in angles]
     fs=[f for f in fs if not all(buried[i] for i in f)]
-    surface('Oval with integrated eyelids, nose and chin',vs,fs,'skin')
-
-
-def ribbon(name,side,fn,material,n,offset=.0018):
-    vs,fs=[],[]
-    for i in range(n+1):
-        x,z,above,below=fn(i/n)
-        for dz in (-below,above):
-            vs.append((side*x,fy(x,z+dz)-offset,z+dz))
-    for i in range(n):
-        f=(2*i,2*i+2,2*i+3,2*i+1)
-        fs.append(f if side>0 else tuple(reversed(f)))
-    surface(name,vs,fs,material)
+    obj=surface('Oval with integrated eyelids, nose and lips',vs,fs,'skin')
+    # Only the front gets the planar pigment island. The nape and underside
+    # retain their original gold even where their projected UVs would overlap.
+    pigment=mat('skin').copy()
+    pigment.name='Face pigment'
+    obj.data.materials.append(pigment)
+    for polygon in obj.data.polygons:
+        _,f,b=profile(SKULL,polygon.center.z)
+        if polygon.center.y<(f+b)/2 and len(polygon.vertices)==4:
+            polygon.material_index=1
 
 
 def bead(name,center,radii,material,n=12,rings=5):
@@ -136,47 +185,9 @@ def bead(name,center,radii,material,n=12,rings=5):
     return surface(name,vs,fs,material)
 
 
-def make_features(phone):
-    n=7 if phone else 14
-    for s in [-1,1]:
-        def brow(t):
-            b=sin(pi*t)**.69
-            return (.023+.109*t,1.717+.020*sin(pi*t)**.94+.004*t,.0061*b,.0033*b)
-        ribbon('Malachite brow',s,brow,'green',n,.0026)
-        def lid(t):
-            b=sin(pi*t)
-            return (.032+.102*t,1.682+.004*t-.003*b,.0013*b,.0035*b*b)
-        ribbon('Closed eyelid crease',s,lid,'crease',n,.0027)
-        ribbon('Painted moustache',s,lambda t:(.013+.051*t,1.578-.010*t+.0008*sin(2*pi*t),
-                                                .0022*sin(pi*t)**.65,.0015*sin(pi*t)**.65),'green',n)
-        for x,z,rx,rz in [(.061,1.564,.0021,.0023),(.012,1.499,.0024,.003)]:
-            bead('Brush stipple',(s*x,fy(x,z)-.001,z),(rx,.0017,rz),'green',5,3)
-        ribbon('Nostril',s,lambda t:(.013+.013*t,1.603+.0014*sin(pi*t),.0013*sin(pi*t),
-                                     .0012*sin(pi*t)),'crease',5,.0033)
-    bead('Urna',(0,fy(0,1.731)-.0018,1.731),(.0061,.005,.0072),'pearl',8 if phone else 12,4)
-    for upper in (True,False):
-        vs,fs=[],[]
-        nr=2 if phone else 4
-        for j in range(nr):
-            u=j/(nr-1)
-            for k in range(2*n+1):
-                v=k/n-1
-                x=.048*v
-                fall=max(0,1-v*v)
-                seam=1.562+.0026*v*v-.001*cos(2*pi*v)
-                h=(.010+.006*exp(-((abs(v)-.35)/.23)**2))*fall**.85 if upper else -.0125*fall**.88
-                z=seam+u*h
-                lift=(.002+.006*sin(pi*u)**.65+.003*(1-u))*fall
-                vs.append((x,fy(x,z)-lift-.0014,z))
-        w=2*n+1
-        for j in range(nr-1):
-            for k in range(w-1):
-                a=j*w+k
-                f=(a,a+1,a+1+w,a+w)
-                fs.append(f if upper else tuple(reversed(f)))
-        surface('Vermilion lip',vs,fs,'lips')
-    ribbon('Smile',1,lambda t:(.092*(t-.5),1.562+.0026*(2*t-1)**2-.001*cos(2*pi*(2*t-1)),
-                                .0006*sin(pi*t),.0008*sin(pi*t)),'crease',n*2,.0087)
+def make_urna(phone):
+    z=1.718
+    bead('Urna',(0,fy(0,z)-.001,z),(.0050,.0039,.0059),'pearl',8 if phone else 12,4)
 
 
 EAR=[(1.466,.159,.007,.043,.008),(1.473,.160,.020,.043,.021),
@@ -333,5 +344,5 @@ def make_hair(phone):
 def build_head(phone=False):
     make_face(phone)
     make_ears(phone)
-    make_features(phone)
+    make_urna(phone)
     make_hair(phone)

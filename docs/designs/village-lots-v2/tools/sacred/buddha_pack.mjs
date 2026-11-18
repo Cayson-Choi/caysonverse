@@ -1,5 +1,7 @@
 /** Finish the original hall Buddha after the Blender build.
- * node buddha_pack.mjs <build-directory> <sacred-GLB-directory>
+ * node buddha_pack.mjs <build-directory> <sacred-GLB-directory> [--preserve-from <prior-GLB-directory>]
+ * For a face revision, pass the shipped pair's directory to --preserve-from.
+ * It can also be the destination. Both LODs are built before either file is replaced.
  * Uses the locked KTX2 settings from sacred/node. The room loader needs the meshopt
  * extension's core fallback. Both paths carry the same faces and vertex attributes.
  */
@@ -8,10 +10,13 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MeshoptEncoder, MeshoptDecoder } from "meshoptimizer";
+import { preserveSurroundingStatue } from "./buddha_preserve.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const [work, destination] = process.argv.slice(2);
-if (!work || !destination) throw new Error("Expected build directory and sacred GLB directory");
+const [work, destination, flag, seedDirectory, ...extra] = process.argv.slice(2);
+if (!work || !destination || (flag && (flag !== "--preserve-from" || !seedDirectory)) || extra.length) {
+  throw new Error("Expected build directory, sacred GLB directory and optional --preserve-from <directory>");
+}
 const align = (n) => Math.ceil(n / 4) * 4;
 await Promise.all([MeshoptEncoder.ready, MeshoptDecoder.ready]);
 
@@ -67,10 +72,18 @@ function compressGeometry(file) {
   return Buffer.concat([header, jsonPadded, binaryHeader, ...chunks]);
 }
 
+const packed = new Map();
 for (const lod of ["pc", "phone"]) {
+  const name = "lotstatue__lot_temple_hall_buddha" + (lod === "phone" ? "_phone" : "");
+  let model = path.resolve(work, lod + ".glb");
+  if (seedDirectory) {
+    const graft = path.join(work, lod + "-face.glb");
+    await preserveSurroundingStatue(path.join(seedDirectory, name + ".glb"), model, graft);
+    model = graft;
+  }
   const ktx = path.join(work, lod + "-ktx.glb");
   execFileSync(process.execPath, [path.join(here, "node", "ktx2_glb.mjs"),
-    path.resolve(work, lod + ".glb"), ktx, "2048", "all", "2048"], {stdio: "inherit"});
-  const name = "lotstatue__lot_temple_hall_buddha" + (lod === "phone" ? "_phone" : "");
-  writeFileSync(path.join(destination, name + ".glb"), compressGeometry(ktx));
+    model, ktx, "2048", "all", "2048"], {stdio: "inherit"});
+  packed.set(path.join(destination, name + ".glb"), compressGeometry(ktx));
 }
+for (const [file, bytes] of packed) writeFileSync(file, bytes);

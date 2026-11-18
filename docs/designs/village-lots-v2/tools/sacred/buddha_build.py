@@ -11,6 +11,7 @@ from mathutils.bvhtree import BVHTree
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from buddha_mesh import FINISHES, build_lotus
+from buddha_pigment import face_patch
 
 NAME = "lotstatue__lot_temple_hall_buddha"
 KEYS = tuple(FINISHES)
@@ -70,33 +71,60 @@ def local_access(mesh):
     return access
 
 
+def face_visibility(xs, zs):
+    """Skylight reaching the sculpt, sampled on the frontal pigment island."""
+    from buddha_head import SKULL, fy, profile
+
+    # In the hall the face receives a uniform fill. The gilding underpaint
+    # carries the soft contact shadows of the actual brow, lids and nostrils.
+    step = .0025
+    x = np.arange(-.18, .1801, step)
+    z = np.arange(1.420, 1.8201, step)
+    height = np.array([[-fy(i,j) for i in x] for j in z])
+    margin = 16
+    padded = np.pad(height, margin, mode="edge")
+    blocked = np.zeros_like(height)
+    for dx, dz, weight in ((0,1,.44), (-1,1,.17), (1,1,.17),
+                           (-1,0,.09), (1,0,.09), (0,-1,.04)):
+        horizon = np.zeros_like(height)
+        for n in (1,2,4,7,11,margin):
+            row, col = margin+n*dz, margin+n*dx
+            neighbor = padded[row:row+len(z), col:col+len(x)]
+            slope = (neighbor-height)/(n*step*math.hypot(dx,dz))
+            np.maximum(horizon, slope, out=horizon)
+        blocked += weight*np.arctan(horizon)*(2/math.pi)
+    # The side rolls into the original gilt at the ear. Keep the planar
+    # island's cut edge invisible, even at the narrowest part of the jaw.
+    width = np.array([profile(SKULL,j)[0] for j in z])[:,None]
+    fade = np.clip((width-np.abs(x))/.030, 0, 1)
+    visibility = 1-.69*blocked*fade**2*(3-2*fade)
+    rows = np.array([np.interp(xs,x,row) for row in visibility])
+    return np.array([np.interp(zs,z,col) for col in rows.T]).T
+
+
 def dress(mesh, output, lod):
     access = local_access(mesh)
-    # Thin warm bole is visible in the recesses under burnished leaf. Carry the
-    # subtle underpainting through the flat frontal light of the actual hall.
-    skin_tone = list(access)
-    for vertex in mesh.vertices:
-        x,y,z = vertex.co
-        if 1.438 < z < 1.805 and y < -.068:
-            a = abs(x)
-            def wash(cx,cz,wx,wz):
-                return math.exp(-((a-cx)/wx)**2-((z-cz)/wz)**2)
-            recess = (.49*wash(.079,1.705,.043,.012) + .32*wash(.076,1.676,.040,.009)
-                      + .43*wash(.026,1.615,.011,.023) + .31*wash(.012,1.598,.024,.007)
-                      + .29*wash(.020,1.543,.036,.008) + .29*wash(.020,1.454,.095,.016))
-            skin_tone[vertex.index] = max(.05, access[vertex.index]-recess)
-    skin_tile = KEYS.index("skin")
-    tile_indices = [KEYS.index(m.name) for m in mesh.materials]
+    tiles = {key:i for i,key in enumerate(KEYS)}
+    face_limit = .180
+    chin, crown = 1.420, 1.820
     uv = mesh.uv_layers.new(name="Leaf and pigment")
     for p in mesh.polygons:
-        tile = tile_indices[p.material_index]
+        finish = mesh.materials[p.material_index].name
         for k in p.loop_indices:
             index = mesh.loops[k].vertex_index
             x,y,z = mesh.vertices[index].co
-            # A palette atlas parametrized by local occlusion and tooling phase.
+            if finish == "Face pigment":
+                u = .5 + x/(2*face_limit)
+                v = min(.997, max(.003, (z-chin)/(crown-chin)))
+                uv.data[k].uv = (.5 + .5*u, v)
+                continue
+            tile = tiles[finish]
             phase = .50 + .47*math.sin(7*x + 6*y + 9*z + .6*math.sin(5*y - 4*z))
-            tone = skin_tone[index] if tile == skin_tile else access[index]
-            uv.data[k].uv = ((tile%4 + .06 + .88*tone)/4,
+            tone = access[index]
+            if finish == "skin" and 1.438 < z < 1.805 and y < -.068:
+                # Retain the wash beneath the jaw on the original neck.
+                tone = max(.05, tone-.29*math.exp(-((abs(x)-.020)/.095)**2-((z-1.454)/.016)**2))
+            uv.data[k].uv = ((tile%4 + .06 + .88*tone)/8,
                              (tile//4 + .06 + .88*phase)/2)
     for layer in list(mesh.uv_layers):
         if layer.name != "Leaf and pigment":
@@ -113,14 +141,17 @@ def dress(mesh, output, lod):
     shader = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
 
     def texture(kind, tile_size):
-        h, w = tile_size*2, tile_size*4
+        # The left half keeps the original gilt palette. The right half is
+        # a spatial face island, 1024 square for desktop pigment, 512 on phones.
+        tile_height = tile_size*2 if kind == "color" else tile_size
+        h, w = tile_height*2, tile_size*8
         arr = np.ones((h,w,4), dtype=np.float32)
-        v,u = np.mgrid[:tile_size,:tile_size] / (tile_size-1)
+        v,u = np.ogrid[0:1:tile_height*1j, 0:1:tile_size*1j]
         ao = np.clip((u-.06)/.88, 0, 1)
         wave = np.sin(11*v + .4*np.sin(18*u)) * np.sin(9*u+5*v)
         for i, key in enumerate(KEYS):
             color, rough, metal = FINISHES[key]
-            patch = arr[(i//4)*tile_size:(i//4+1)*tile_size,(i%4)*tile_size:(i%4+1)*tile_size]
+            patch = arr[(i//4)*tile_height:(i//4+1)*tile_height,(i%4)*tile_size:(i%4+1)*tile_size]
             if kind == "color":
                 for channel, value in enumerate(color):
                     # Subtle warm reflected light remains in leaf recesses.
@@ -136,6 +167,15 @@ def dress(mesh, output, lod):
                 patch[:,:,0] = .5 + strength*wave
                 patch[:,:,1] = .5 + strength*np.sin(31*v+11*u)
                 patch[:,:,2] = 1
+        x = ((np.arange(w//2)+.5)/(w//2)*2 - 1)*face_limit
+        z = chin + (np.arange(h)+.5)/h*(crown-chin)
+        face = face_patch(kind, x[None,:], z[:,None])
+        if kind == "color":
+            # Apply visibility in linear light, then return to sRGB storage.
+            light = face_visibility(x,z)[:,:,None]
+            linear = np.where(face <= .04045, face/12.92, ((face+.055)/1.055)**2.4)*light
+            face = np.where(linear <= .0031308, 12.92*linear, 1.055*linear**(1/2.4)-.055)
+        arr[:,w//2:,:3] = face
         image = bpy.data.images.new(kind, w, h, alpha=False, float_buffer=False)
         image.colorspace_settings.name = "sRGB" if kind == "color" else "Non-Color"
         image.pixels.foreach_set(arr.ravel())
