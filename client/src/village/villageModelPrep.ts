@@ -1,5 +1,5 @@
 import { versionedUrl } from "./modelUrl";
-import { GROUND_SMOOTH_MATERIAL, GROUND_GRAIN_MATERIALS, GROUND_PARS, groundGrainTexture, groundMapFragment } from "./groundDetail";
+import { GRASS_MATERIALS, GROUND_SMOOTH_MATERIAL, GROUND_GRAIN_MATERIALS, GROUND_PARS, groundGrainTexture, groundMapFragment } from "./groundDetail";
 import {
   Box3,
   BufferGeometry,
@@ -386,8 +386,22 @@ const moonlitCast = (light: string) =>
  * read only while it counts (the weight is a uniform: the branch is coherent), so a daytime frame costs one fetch.
  */
 const LIGHTMAP_TEXEL_FROM = "vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );";
-const LIGHTMAP_TEXEL_TO = /* glsl */ `vec4 lightMapTexel = vec4( 0.0, 0.0, 0.0, 1.0 );
-	if ( uVillageNight < 0.999 ) lightMapTexel.rgb = ssDay( texture2D( lightMap, vLightMapUv ).rgb, vLightMapUv ) * uVillageDayTint * ( 1.0 - uVillageNight );
+// `grass`: the west hill's baked lawn has dark rectangles (overlapping unwrap islands, seen as translucent green quads floating on
+// the slope): there the lawn never bakes darker than a shaded lawn.
+// The fishing lake's lawn bakes darker toward its south and east edges (0.97 near the village down to 0.5-0.7: a ruler-straight step at z 45 and a
+// dark strip round the gazebo against the village lawn's flat 0.9): its baked light never falls below the village lawn's, fading out into the
+// forest floor east of x 168.
+const LAKE_LAWN_LIGHT = /* glsl */ `{
+		float lakeLawnW = 1.0 - smoothstep( 184.0, 198.0, vSsWorld.x );
+		villageRawLight = max( villageRawLight, vec3( 0.985 * lakeLawnW ) );
+	}`;
+const lightmapTexelTo = (grass: boolean, lake = false) => /* glsl */ `vec4 lightMapTexel = vec4( 0.0, 0.0, 0.0, 1.0 );
+	if ( uVillageNight < 0.999 ) {
+		vec3 villageRawLight = texture2D( lightMap, vLightMapUv ).rgb;
+		${grass && !lake ? "if ( vSsWorld.x < -80.0 ) villageRawLight = max( villageRawLight, vec3( 0.62 ) );" : ""}
+		${lake ? LAKE_LAWN_LIGHT : ""}
+		lightMapTexel.rgb = ssDay( villageRawLight, vLightMapUv ) * uVillageDayTint * ( 1.0 - uVillageNight );
+	}
 	if ( uVillageNight > 0.001 ) {
 		vec3 villageNightLight = texture2D( uVillageNightMap, vLightMapUv ).rgb;
 		villageNightLight *= ${moonlitCast("villageNightLight")} * ssNightShade();
@@ -432,7 +446,9 @@ export function liftMaterial(
   const foliage = FOLIAGE_MATERIALS.includes(material.name) && material.name !== "M_bark";
   if (foliage) material.userData[NEAR_FADE_KEY] = (FOLIAGE_NEAR_FADE[0] + FOLIAGE_NEAR_FADE[1]) / 2;
   // The ground materials get the close-up sharpening (groundDetail.ts): a smoothed tap on the plaza atlas, a fine grain on all.
-  const ground = !own && GROUND_GRAIN_MATERIALS.includes(material.name);
+  const ground = GROUND_GRAIN_MATERIALS.includes(material.name) && (!own || material.name === "LM_grass");
+  // the lawns also get the anti-tiling and macro tint of grassVariation.ts (the village and the lake share one grass)
+  const vary = ground && GRASS_MATERIALS.includes(material.name);
   const catmull = material.name === GROUND_SMOOTH_MATERIAL;
   material.onBeforeCompile = (shader) => {
     if (ground) {
@@ -452,15 +468,15 @@ export function liftMaterial(
     // another model's own bake (release 2: the lake, the waterfall): its baked sun stays, the live shadows only shade it
     shader.fragmentShader = (own?.foreignBake ? "#define SS_FOREIGN_BAKE\n" : "") + shader.fragmentShader
       .replace("void main() {", foliage ? LIFT_PARS.replace("void main() {", NEAR_FADE_PARS) : LIFT_PARS)
-      .replace(LIGHTMAP_TEXEL_FROM, LIGHTMAP_TEXEL_TO)
+      .replace(LIGHTMAP_TEXEL_FROM, lightmapTexelTo(vary, vary && !!own))
       .replace("void main() {", ground ? GROUND_PARS : "void main() {")
-      .replace("#include <map_fragment>", ground ? groundMapFragment(catmull) : "#include <map_fragment>")
+      .replace("#include <map_fragment>", ground ? groundMapFragment(catmull, vary, vary && !own, vary && !!own) : "#include <map_fragment>")
       .replace("#include <color_fragment>", LIFT_ALBEDO)
       .replace("#include <aomap_fragment>", LIFT_LIGHT)
       .replace("void main() {", `${SS_FRAGMENT_PARS}${SS_DAY_FUNCTION}void main() {\n${SS_MAIN_TOP}`);
   };
   material.customProgramCacheKey = () =>
-    (foliage ? "village-light-foliage" : ground ? (catmull ? "village-light-ground-smooth" : "village-light-ground") : "village-light") + (own ? `-${own.key}` : "");
+    (foliage ? "village-light-foliage" : ground ? (catmull ? "village-light-ground-smooth" : vary ? "village-light-ground-grass" : "village-light-ground") : "village-light") + (own ? `-${own.key}` : "");
   material.needsUpdate = true;
 }
 

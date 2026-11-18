@@ -50,6 +50,7 @@ export function trimGeometry(
   tx: number,
   tz: number,
   mode: "wholly" | "centre",
+  alsoCentreIn?: SeamRect,
 ): { geometry: BufferGeometry; removed: number } | null {
   const pos = geo.getAttribute("position") as BufferAttribute | undefined;
   if (!pos) return null;
@@ -71,7 +72,9 @@ export function trimGeometry(
       const ax = pos.getX(a) + tx, az = pos.getZ(a) + tz;
       const bx = pos.getX(b) + tx, bz = pos.getZ(b) + tz;
       const cx = pos.getX(c) + tx, cz = pos.getZ(c) + tz;
-      const drop = mode === "wholly" ? inside(ax, az) && inside(bx, bz) && inside(cx, cz) : inside((ax + bx + cx) / 3, (az + bz + cz) / 3);
+      const mx = (ax + bx + cx) / 3;
+      const mz = (az + bz + cz) / 3;
+      const drop = (alsoCentreIn !== undefined && inRect(alsoCentreIn, mx, mz)) || (mode === "wholly" ? inside(ax, az) && inside(bx, bz) && inside(cx, cz) : inside(mx, mz));
       if (drop) removed++;
       else kept.push(a, b, c);
     }
@@ -89,6 +92,13 @@ export function trimGeometry(
   return { geometry: out, removed };
 }
 
+/**
+ * The village lawn's triangles that only straddle the lake zone's edge stayed ("wholly" inside drops none of them) and slope up to 0.8 m over the
+ * lake lawn near its south-east corner: a lighter / darker wedge cut across the meadow. A village lawn triangle whose centre is in the lake
+ * lawn's footprint goes too (the lake ground covers it).
+ */
+const VILLAGE_LAWN = /^village_lm_[0-9]+_[0-9]+$/;
+const LAKE_LAWN: SeamRect = { minX: 95.5, maxX: 190, minZ: -70, maxZ: 46.5 };
 const m4 = new Matrix4();
 const ZERO = new Matrix4().makeScale(0, 0, 0);
 
@@ -126,7 +136,8 @@ export function patchVillage(root: Object3D, seam: LakeSeam = DEFAULT_SEAM): Vil
       return;
     }
     const geo = mesh.geometry;
-    const t = trimGeometry(geo, mesh.matrixWorld.elements[12], mesh.matrixWorld.elements[14], WATER.test(mesh.name) ? "centre" : "wholly");
+    const lawn = VILLAGE_LAWN.test(mesh.name) && !Array.isArray(mesh.material) && mesh.material.name === "LM_grass" ? LAKE_LAWN : undefined;
+    const t = trimGeometry(geo, mesh.matrixWorld.elements[12], mesh.matrixWorld.elements[14], WATER.test(mesh.name) ? "centre" : "wholly", lawn);
     if (!t) return;
     mesh.geometry = t.geometry;
     stats.meshes++;

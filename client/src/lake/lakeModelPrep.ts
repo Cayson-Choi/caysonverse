@@ -33,6 +33,7 @@ import {
 } from "three";
 import { LAKE_AREA } from "@caysonverse/shared/village/lakeLayout";
 import { configureLightmap, lightmapMaterial } from "../game/hub/hubModelPrep";
+import { GRASS_VARIATION_PARS } from "../village/grassVariation";
 import { GROUND_GRADE, GROUND_GRADE_NIGHT, liftMaterial, type VillageTier } from "../village/villageModelPrep";
 import type { DayNightState } from "../village/dayNightBlend";
 
@@ -88,11 +89,12 @@ const STRUCT_LIGHT = { nightMap: structuresNightMap, nightBlend: lakeNightBlend,
  * two lawns the same colour at the seam (measured again after the re-bake; east of x ~104 the build's vertex tint moves the lake
  * to the photos' muted olive).
  */
-export const LAKE_GRASS_MATCH = [0.88, 0.93, 0.915] as const;
+export const LAKE_GRASS_MATCH = [0.8, 0.82, 0.55] as const;
 /** The same at night: the lake's night bake is lifted (photos of night fishing are not black), the village's lawn is darker, so the seam showed a step. */
 export const LAKE_GRASS_MATCH_NIGHT = [0.4, 0.46, 0.45] as const;
 
-const FOLIAGE = /^(M_plant|M_bark|M_leaf_)/;
+const NIGHT_YARD = /^LM_(dirt|gravel|mud)$/;
+const FOLIAGE =/^(M_plant|M_bark|M_leaf_)/;
 const HELPER = /^(col__|seat__|spot__|light__|npc__)/;
 
 function materialsOf(m: Mesh): Material[] {
@@ -126,6 +128,13 @@ export function prepareLakeTerrain(root: Object3D, day: Texture, night: Texture 
       if (m.name.startsWith("LM_")) {
         lightmapMaterial(m, day);
         liftMaterial(m, LAKE_LIGHT);
+        if (m.name === "LM_grass") {
+          // the village lawn's triangles that straddle the lake zone's edge lie under / over the lake lawn at the same height (y 0): they showed
+          // through as a straight seam and a wedge (the village's darker light). The lake lawn is drawn over them.
+          m.polygonOffset = true;
+          m.polygonOffsetFactor = -2;
+          m.polygonOffsetUnits = -4;
+        }
         const village = GROUND_GRADE[m.name];
         const grade = village && m.name === "LM_grass" ? ([village[0]! * LAKE_GRASS_MATCH[0], village[1]! * LAKE_GRASS_MATCH[1], village[2]! * LAKE_GRASS_MATCH[2]] as const) : village;
         const gnVillage = GROUND_GRADE_NIGHT[m.name];
@@ -133,6 +142,11 @@ export function prepareLakeTerrain(root: Object3D, day: Texture, night: Texture 
         if (grade) {
           (m as MeshBasicMaterial).color.setRGB(grade[0], grade[1], grade[2]);
           if (gn && !graded.some((g) => g.material === m)) graded.push({ material: m as MeshBasicMaterial, day: grade, night: gn });
+        }
+        // the bare yard (dirt, gravel, mud) was as bright at night as by day, away from every lamp: it darkens with the night like the lawn
+        if (!grade && NIGHT_YARD.test(m.name) && !graded.some((g) => g.material === m)) {
+          (m as MeshBasicMaterial).color.setRGB(1, 1, 1);
+          graded.push({ material: m as MeshBasicMaterial, day: [1, 1, 1], night: [0.5, 0.53, 0.62] });
         }
       } else if (FOLIAGE.test(m.name)) {
         liftMaterial(m, LAKE_LIGHT);
@@ -143,6 +157,47 @@ export function prepareLakeTerrain(root: Object3D, day: Texture, night: Texture 
           b.needsUpdate = true;
         }
         if (!hazed.includes(b)) hazed.push(b);
+        if (!b.userData.ridgeTextured) {
+          // the ridge was one flat dark green (final light in COLOR_0, no texture): broad stands of lighter and darker forest and a fine
+          // canopy speckle, by world position, so it reads as wooded hills (the village's forest greens) and not as a plane
+          b.userData.ridgeTextured = true;
+          b.onBeforeCompile = (shader) => {
+            shader.vertexShader = shader.vertexShader
+              .replace("#include <common>", "#include <common>\nvarying vec3 vRidgeWorld;")
+              .replace("#include <project_vertex>", "#include <project_vertex>\nvRidgeWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
+            shader.fragmentShader = shader.fragmentShader
+              .replace("#include <common>", `#include <common>\nvarying vec3 vRidgeWorld;\n${GRASS_VARIATION_PARS}`)
+              .replace(
+                "#include <color_fragment>",
+                `#include <color_fragment>
+{
+  float rb = gvNoise( vRidgeWorld.xz * 0.02 ) * 0.5 + gvNoise( vRidgeWorld.xz * 0.07 + 5.0 ) * 0.3 + gvNoise( vRidgeWorld.xz * 0.35 ) * 0.2;
+  float rs = gvNoise( vRidgeWorld.xz * 1.3 + vRidgeWorld.y * 0.4 );
+  // tree crowns: a cellular pattern (about 7 m cells, darker gaps between rounded lit crowns, each crown its own tint), faded to its mean with distance
+  vec2 cp = vRidgeWorld.xz * 0.27;
+  vec2 ci = floor( cp );
+  float d1 = 9.0; float crownTint = 0.5;
+  for ( int j = -1; j <= 1; j ++ ) for ( int i = -1; i <= 1; i ++ ) {
+    vec2 g = ci + vec2( float( i ), float( j ) );
+    vec2 o = vec2( gvHash( g ), gvHash( g + 17.3 ) );
+    float dd = length( g + o - cp );
+    if ( dd < d1 ) { d1 = dd; crownTint = gvHash( g + 41.7 ); }
+  }
+  float crown = 1.0 - smoothstep( 0.15, 0.75, d1 );
+  float farK = smoothstep( 120.0, 420.0, length( cameraPosition - vRidgeWorld ) );
+  float relief = mix( 0.66 + 0.56 * crown, 1.0, farK );
+  vec3 crownCol = mix( vec3( 0.88, 1.0, 0.8 ), vec3( 1.1, 1.0, 0.86 ), crownTint );
+  // the slope's own light (the baked light is flat across a big triangle): sun side lit, the far side shaded
+  vec3 rn = normalize( cross( dFdx( vRidgeWorld ), dFdy( vRidgeWorld ) ) );
+  rn *= sign( rn.y + 1e-4 );
+  float slope = 0.72 + 0.55 * max( dot( rn, normalize( vec3( 0.45, 0.8, 0.35 ) ) ), 0.0 );
+  diffuseColor.rgb *= vec3( 0.7 + 0.75 * rb, 0.72 + 0.7 * rb, 0.62 + 0.6 * rb ) * ( 0.85 + 0.3 * rs ) * relief * mix( crownCol, vec3( 1.0 ), farK ) * mix( slope, 1.0, farK * 0.6 );
+}`,
+              );
+          };
+          b.customProgramCacheKey = () => "lake-ridge-forest";
+          b.needsUpdate = true;
+        }
       }
     }
   });

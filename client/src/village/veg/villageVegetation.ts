@@ -498,6 +498,41 @@ function claimCards(cards: readonly Card[], refs: readonly BakedCard[], tol = 0.
   return out;
 }
 
+/**
+ * The boundary rows (trees and shrubs within 9 m of the walk bounds) were one tree and one bush copied at an even spacing: an obvious
+ * repeating row. Each one now gets its own size (0.75-1.4x), a turn about its trunk, a nudge along the row, and one in seven is left
+ * out. Deterministic (the same village every load); everything inside the village is untouched.
+ */
+export function varyBoundaryRow(xfs: readonly Matrix4[], edge = 86): Matrix4[] {
+  let seed = 20261118;
+  const rnd = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+  const out: Matrix4[] = [];
+  const p = new Vector3();
+  const q = new Quaternion();
+  const sc = new Vector3();
+  const turn = new Quaternion();
+  for (const m of xfs) {
+    m.decompose(p, q, sc);
+    if (Math.max(Math.abs(p.x), Math.abs(p.z)) < edge) {
+      out.push(m);
+      continue;
+    }
+    const keep = rnd();
+    const size = 0.75 + rnd() * 0.65;
+    const yaw = rnd() * Math.PI * 2;
+    const nudge = (rnd() - 0.5) * 2.4;
+    if (keep < 1 / 7) continue;
+    const alongX = Math.abs(p.z) > Math.abs(p.x);
+    p.x += alongX ? nudge : 0;
+    p.z += alongX ? 0 : nudge;
+    turn.setFromAxisAngle(new Vector3(0, 1, 0), yaw);
+    q.premultiply(turn);
+    sc.multiplyScalar(size);
+    out.push(new Matrix4().compose(p, q, sc));
+  }
+  return out;
+}
+
 /** The world matrices of an instanced mesh's instances. */
 function instanceMatrices(mesh: InstancedMesh): Matrix4[] {
   mesh.updateWorldMatrix(true, false);
@@ -879,10 +914,10 @@ export class VillageVegetation {
       barkOrchard: findInstanced(root, "inst__orchard_0"),
     };
     const xfs = {
-      street_green: inst.street_green ? instanceMatrices(inst.street_green) : [],
+      street_green: inst.street_green ? varyBoundaryRow(instanceMatrices(inst.street_green)) : [],
       street_cherry: inst.street_cherry ? instanceMatrices(inst.street_cherry) : [],
-      orchard: inst.orchard ? instanceMatrices(inst.orchard) : [],
-      shrub: inst.shrub ? instanceMatrices(inst.shrub) : [],
+      orchard: inst.orchard ? varyBoundaryRow(instanceMatrices(inst.orchard)) : [],
+      shrub: inst.shrub ? varyBoundaryRow(instanceMatrices(inst.shrub)) : [],
     };
     if (await step("skeletons")) return v.abandon();
 

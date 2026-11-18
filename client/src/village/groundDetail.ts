@@ -1,3 +1,4 @@
+import { GRASS_VARIATION_PARS } from "./grassVariation";
 import { DataTexture, LinearMipmapLinearFilter, LinearFilter, RGBAFormat, RepeatWrapping, UnsignedByteType, type Texture } from "three";
 
 /**
@@ -23,6 +24,8 @@ export const GRAIN_SIZE = 256;
 export const GRAIN_TILE_TEXELS = 32;
 /** The materials that get the grain (the ground ones), and the one that also gets the smooth-tap filter (the unique-mapped atlas). */
 export const GROUND_GRAIN_MATERIALS: readonly string[] = ["LM_plaza", "LM_grass", "LM_lawn", "LM_stone", "LM_concrete", "LM_wood"];
+/** The lawns: they also get the anti-tiling (grassVariation.ts). */
+export const GRASS_MATERIALS: readonly string[] = ["LM_grass", "LM_lawn"];
 export const GROUND_SMOOTH_MATERIAL = "LM_plaza";
 
 /** A seamless value noise (4 octaves) as RGBA bytes, mean 0.5. Deterministic. */
@@ -76,7 +79,8 @@ export function groundGrainTexture(): Texture {
   return t;
 }
 
-export const GROUND_PARS = /* glsl */ `uniform sampler2D uVillageGrain;
+export const GROUND_PARS = /* glsl */ `${GRASS_VARIATION_PARS}
+uniform sampler2D uVillageGrain;
 uniform float uVillageGrainAmount;
 // A Catmull-Rom filter (nine bilinear fetches), clamped to the range of the four texels it interpolates between: a magnified
 // edge is a smooth, crisp curve instead of a bilinear stair-step, and the clamp takes away the dark fringe an unclamped
@@ -116,8 +120,30 @@ vec4 villageSmoothTap( sampler2D tex, vec2 uv, vec2 gx, vec2 gy ) {
 }
 void main() {`;
 
+/**
+ * The west hill's upper slopes show bare earth and stone patches through the grass, broken up by noise (by height: the baked hill is
+ * large flat triangles, so a slope-driven blend would show their facets).
+ */
+const ROCK_BLEND = /* glsl */ `{
+  float gHigh = smoothstep( 6.0, 26.0, vSsWorld.y ) * smoothstep( -60.0, -90.0, vSsWorld.x );
+  float gRock = gHigh * smoothstep( 0.38, 0.62, gvNoise( vSsWorld.xz * 0.21 + 2.0 ) * 0.65 + gvNoise( vSsWorld.xz * 0.9 ) * 0.35 );
+  vec3 gEarth = vec3( 0.38, 0.32, 0.23 ) * ( 0.65 + 0.7 * gvNoise( vSsWorld.xz * 2.3 ) );
+  sampledDiffuseColor.rgb = mix( sampledDiffuseColor.rgb, gEarth, gRock * 0.7 );
+}`;
+
+/** The lake lawn's vertex tint dims toward its south / east edge (0.75-0.8): divided out there so it meets the village lawn with no strip. */
+const LAKE_VERTEX_FLATTEN = /* glsl */ `#ifdef USE_COLOR
+  {
+    float lakeVcW = 1.0 - smoothstep( 184.0, 198.0, vSsWorld.x );
+    sampledDiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.97 ) / max( vColor.rgb, vec3( 0.5 ) ), lakeVcW );
+  }
+#endif
+  // and its west edge (x 98, where the village lawn takes over) is 5 % greener than the village lawn: eased in over 30 m
+  sampledDiffuseColor.rgb *= mix( vec3( 0.975, 0.86, 1.0 ), vec3( 1.0 ), smoothstep( 98.0, 128.0, vSsWorld.x ) );
+`;
+
 /** `#include <map_fragment>` for a ground material: optional smooth-tap where magnified, then the grain. */
-export const groundMapFragment = (catmull: boolean): string => /* glsl */ `#ifdef USE_MAP
+export const groundMapFragment = (catmull: boolean, vary = false, rock = false, lake = false): string => /* glsl */ `#ifdef USE_MAP
 {
   vec2 gdx = dFdx( vMapUv );
   vec2 gdy = dFdy( vMapUv );
@@ -133,6 +159,9 @@ export const groundMapFragment = (catmull: boolean): string => /* glsl */ `#ifde
     float g = textureGrad( uVillageGrain, gUv, gUx, gUy ).r + textureGrad( uVillageGrain, gUv * 2.9 + 0.31, gUx * 2.9, gUy * 2.9 ).r - 1.0;
     sampledDiffuseColor.rgb *= 1.0 + g * uVillageGrainAmount * magnified;
   }
+  ${vary ? "sampledDiffuseColor = gvVary( map, vMapUv, vSsWorld, sampledDiffuseColor );" : ""}
+  ${rock ? ROCK_BLEND : ""}
+  ${lake ? LAKE_VERTEX_FLATTEN : ""}
   diffuseColor *= sampledDiffuseColor;
 }
 #endif`;

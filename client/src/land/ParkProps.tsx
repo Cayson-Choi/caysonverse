@@ -3,6 +3,7 @@ import { CanvasTexture, Color, DoubleSide, MeshStandardMaterial, SRGBColorSpace,
 import { PARK_BINS, PARK_KIOSK, PARK_LAMPS, PARK_PLANTERS } from "@caysonverse/shared/village/parkArea";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 import { parkMaterial, pickSet } from "./pbr";
+import { Booth, type BoothSpec } from "./ParkBooth";
 
 const X: V3 = [1, 0, 0];
 const Y: V3 = [0, 1, 0];
@@ -43,18 +44,6 @@ function bannerTexture(): CanvasTexture {
 export function ParkProps({ all }: { all: Texture[] }) {
   const geo = useMemo(() => {
     const b = new GeoBuilder();
-    // the kiosk: a plinth, a plastered body with a service window and counter, a striped awning, a tiled hip roof, a lantern
-    const k = PARK_KIOSK;
-    b.box([k.x, 0.2, k.z], X, Y, k.w / 2 + 0.1, 0.2, k.d / 2 + 0.1, [0.6, 0.58, 0.54], 2);
-    b.box([k.x, 1.7, k.z], X, Y, k.w / 2, 1.5, k.d / 2, [0.95, 0.9, 0.78], 2);
-    b.box([k.x, 1.85, k.z + k.d / 2 + 0.02], X, Y, 1.2, 0.55, 0.05, [0.12, 0.1, 0.1]); // the service window, dark
-    b.box([k.x, 1.25, k.z + k.d / 2 + 0.3], X, Y, 1.4, 0.06, 0.32, [0.5, 0.33, 0.2]); // the counter shelf
-    for (let i = 0; i < 9; i++) b.box([k.x - 1.6 + i * 0.4, 2.7, k.z + k.d / 2 + 0.55], X, [0, 0.9553, -0.2955], 0.2, 0.025, 0.7, i % 2 ? [0.97, 0.94, 0.88] : [0.3, 0.34, 0.8]); // awning stripes
-    for (const e of [-1, 1]) b.cylinder([k.x + e * 1.8, 0.2, k.z + k.d / 2 + 0.95], [k.x + e * 1.8, 2.55, k.z + k.d / 2 + 0.95], 0.04, 0.04, 6, [0.92, 0.9, 0.84]);
-    b.box([k.x, 3.35, k.z], X, Y, k.w / 2 + 0.5, 0.12, k.d / 2 + 0.5, [0.45, 0.24, 0.2]);
-    b.box([k.x, 3.75, k.z], X, Y, k.w / 2 - 0.4, 0.14, k.d / 2 - 0.4, [0.5, 0.27, 0.22]);
-    b.box([k.x, 4.0, k.z], X, Y, 0.9, 0.1, 0.9, [0.55, 0.3, 0.24]);
-    b.cylinder([k.x, 4.1, k.z], [k.x, 4.9, k.z], 0.05, 0.05, 6, [0.2, 0.2, 0.24]);
     // litter bins: a barrel in dark green with a domed lid and a band
     for (const bin of PARK_BINS) {
       b.cylinder([bin.x, 0.05, bin.z], [bin.x, 0.95, bin.z], 0.3, 0.34, 12, [0.16, 0.34, 0.24]);
@@ -80,8 +69,13 @@ export function ParkProps({ all }: { all: Texture[] }) {
     return b.build();
   }, [posts]);
   const armMat = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.3 }), []);
+  const kiosk = useMemo<BoothSpec>(
+    () => ({ x: PARK_KIOSK.x, z: PARK_KIOSK.z, w: PARK_KIOSK.w, d: PARK_KIOSK.d, kind: "snack", plaster: "#f4e2c2", tile: "#ffb99a", title: "별빛 간식", sub: "SNACKS · DRINKS", stripes: [[0.3, 0.34, 0.8], [0.97, 0.94, 0.88]] }),
+    [],
+  );
   return (
     <group>
+      <Booth all={all} spec={kiosk} />
       <mesh geometry={geo} material={stone} castShadow receiveShadow />
       <mesh geometry={armGeo} material={armMat} castShadow />
       {posts.map((l) => (

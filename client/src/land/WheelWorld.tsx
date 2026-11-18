@@ -5,6 +5,8 @@ import { CanvasTexture, Color, Euler, Group, InstancedMesh, Matrix4, MeshStandar
 import { WHEEL_HUB_Y, WHEEL_N, WHEEL_R, WHEEL_SITE, WHEEL_STEP, wheelAt, wheelPivot, wheelSway, type WheelState } from "@caysonverse/shared/land/wheel";
 import { villageClock } from "../village/villageClock";
 import { partsOf } from "./CarouselWorld";
+import { parkMaterial, pickSet } from "./pbr";
+import { projectMetreUV } from "./parkShapes";
 
 export const WHEEL_ROTOR_URL = "/models/land/wheel_rotor.glb";
 export const WHEEL_FRAME_URL = "/models/land/wheel_frame.glb";
@@ -63,12 +65,29 @@ function rimBulbs(): [number, number, number][] {
 }
 
 /** The 하늘 등불 바퀴: the fixed frame and boarding platform, the rotor turning with the shared clock, ten glass lantern gondolas hanging and swinging, bulbs. */
-export function WheelWorld({ env }: { env: Texture }) {
+export function WheelWorld({ env, all }: { env: Texture; all: Texture[] }) {
   const rotor = useGLTF(WHEEL_ROTOR_URL);
   const frame = useGLTF(WHEEL_FRAME_URL);
   const gondola = useGLTF(WHEEL_GONDOLA_URL);
   const rotorParts = useMemo(() => partsOf(rotor.scene, env), [rotor, env]);
-  const frameParts = useMemo(() => partsOf(frame.scene, env), [frame, env]);
+  const frameParts = useMemo(() => {
+    // the plain-colour stone base, its stairs and the boarding deck get real surfaces: the concrete's grain and the planks' grain, UVs in
+    // metres from each face's own plane (the GLB has none), so nothing stretches
+    const parts = partsOf(frame.scene, env);
+    return parts.map((p) => {
+      if (p.material.name === "ws_stone") {
+        const geometry = projectMetreUV(p.geometry, 2);
+        const material = parkMaterial(pickSet(all, "Concrete034"), 1, { color: new Color("#f0e8da"), normalScale: 0.8 });
+        return { geometry, material };
+      }
+      if (p.material.name === "ws_wood") {
+        const geometry = projectMetreUV(p.geometry, 1.2);
+        const material = parkMaterial(pickSet(all, "WoodFloor051"), 1, { color: new Color("#d6b48a"), normalScale: 0.8 });
+        return { geometry, material };
+      }
+      return p;
+    });
+  }, [frame, env, all]);
   const gondolaParts = useMemo(() => partsOf(gondola.scene, env), [gondola, env]);
   const rotorRef = useRef<Group>(null);
   const root = useRef<Group>(null);
