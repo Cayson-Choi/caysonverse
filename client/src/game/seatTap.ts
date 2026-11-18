@@ -171,6 +171,10 @@ const GRID = 0.05;
 const CLEAR_WANTED = 0.3;
 /** How far round the goal (m) the seat must still be the one offered: a tap-walk stops up to ARRIVE_DIST short of it. */
 const ROBUST_STEPS = [0.4, 0.3, 0.2, 0.1, 0] as const;
+const APPROACH_RINGS = ROBUST_STEPS.map((radius) => Array.from({ length: 16 }, (_, i) => ({
+  dx: radius * Math.cos((i * Math.PI) / 8),
+  dz: radius * Math.sin((i * Math.PI) / 8),
+})));
 
 interface CachedGoal {
   bounds: Bounds;
@@ -216,23 +220,26 @@ export function seatApproachGoal(seats: readonly Seat[], index: number, allObsta
       const x = Math.round((s.x + dx) * 1000) / 1000;
       const z = Math.round((s.z + dz) * 1000) / 1000;
       if (!isFreeSpot(x, z, obstacles, bounds) || !offered(x, z)) continue;
-      let robust = -1;
-      for (let k = 0; k < ROBUST_STEPS.length && robust < 0; k++) {
-        const rr = ROBUST_STEPS[k];
-        let ok = true;
-        for (let a = 0; a < 16 && ok; a++) {
-          const px = x + rr * Math.cos((a * Math.PI) / 8);
-          const pz = z + rr * Math.sin((a * Math.PI) / 8);
-          if (isFreeSpot(px, pz, obstacles, bounds) && !offered(px, pz)) ok = false;
-        }
-        if (ok) robust = k;
-      }
       let clear = 0;
       while (clear < CLEAR_WANTED && isFreeSpot(x, z, obstacles, bounds, PLAYER_RADIUS + clear + GRID)) clear += GRID;
-      const score = -robust * 1000 + clear * 100 - Math.hypot(x - s.standX, z - s.standZ);
-      if (score > bestScore) {
-        bestScore = score;
-        best = { x, z };
+      const standDistance = Math.hypot(x - s.standX, z - s.standZ);
+      for (let k = 0; k < APPROACH_RINGS.length; k++) {
+        const score = -k * 1000 + clear * 100 - standDistance;
+        if (score <= bestScore) break; // every smaller ring scores lower; this point cannot improve the goal
+        let ok = true;
+        for (const { dx, dz } of APPROACH_RINGS[k]) {
+          const px = x + dx;
+          const pz = z + dz;
+          if (!offered(px, pz) && isFreeSpot(px, pz, obstacles, bounds)) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) {
+          bestScore = score;
+          best = { x, z };
+          break;
+        }
       }
     }
   }
