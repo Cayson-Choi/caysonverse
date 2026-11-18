@@ -1,3 +1,4 @@
+import { groundOld } from "../village/ground/groundMode";
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
@@ -7,9 +8,11 @@ import {
   CircleGeometry,
   Color,
   CylinderGeometry,
+  DoubleSide,
   ExtrudeGeometry,
   Float32BufferAttribute,
   InstancedMesh,
+  LatheGeometry,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
@@ -17,11 +20,13 @@ import {
   PMREMGenerator,
   Scene,
   RepeatWrapping,
-  RingGeometry,
   Shape,
   SphereGeometry,
   SRGBColorSpace,
   Texture,
+  Vector2,
+  RingGeometry,
+  BufferGeometry,
 } from "three";
 import {
   COASTER_QUEUE_PAD,
@@ -109,6 +114,52 @@ function ParkSky() {
 
 // ───────────────────────────────────────── ground ─────────────────────────────────────────
 
+/** A brass bar set into the paving: a ring from radius r0 to r1 with bevelled shoulders (never a flat painted disc). */
+function brassInlay(r0: number, r1: number): BufferGeometry {
+  if (groundOld()) return new RingGeometry(r0, r1, 64);
+  const pts = [new Vector2(r0, 0), new Vector2(r0 + 0.025, 0.014), new Vector2(r1 - 0.025, 0.014), new Vector2(r1, 0)];
+  return new LatheGeometry(pts, 96).rotateX(Math.PI / 2); // the meshes are laid with rotation-x -90 deg
+}
+
+type PadRect = readonly [number, number, number, number, string];
+
+/** The kerb's boxes: a 14 cm x 8 cm granite bar along every pad's edge and round the plaza, in 2 m pieces, left out where another pad lies. */
+function parkKerb(pads: readonly PadRect[], plaza: { x: number; z: number; radius: number }): BufferGeometry {
+  const b = new GeoBuilder();
+  const colour: V3 = [0.62, 0.6, 0.55];
+  const insideOther = (x: number, z: number, skip: number): boolean =>
+    pads.some((p, i) => i !== skip && Math.abs(x - p[0]) < p[2] / 2 + 0.3 && Math.abs(z - p[1]) < p[3] / 2 + 0.3) ||
+    (skip !== -1 && Math.hypot(x - plaza.x, z - plaza.z) < plaza.radius + 0.3);
+  pads.forEach(([cx, cz, w, d], i) => {
+    const pieces = (len: number): number => Math.max(1, Math.round(len / 2));
+    for (const sgn of [-1, 1]) {
+      // the two long edges / the two short ends, in pieces
+      const nx = pieces(w);
+      for (let k = 0; k < nx; k++) {
+        const x = cx - w / 2 + ((k + 0.5) * w) / nx;
+        const z = cz + (sgn * (d + 0.14)) / 2;
+        if (!insideOther(x, z, i)) b.box([x, 0.04, z], X, Y, w / nx / 2 + 0.01, 0.04, 0.07, colour);
+      }
+      const nz = pieces(d);
+      for (let k = 0; k < nz; k++) {
+        const z = cz - d / 2 + ((k + 0.5) * d) / nz;
+        const x = cx + (sgn * (w + 0.14)) / 2;
+        if (!insideOther(x, z, i)) b.box([x, 0.04, z], [0, 0, 1], Y, d / nz / 2 + 0.01, 0.04, 0.07, colour);
+      }
+    }
+  });
+  const seg = 72;
+  for (let k = 0; k < seg; k++) {
+    const a = ((k + 0.5) / seg) * Math.PI * 2;
+    const r = plaza.radius + 0.07;
+    const x = plaza.x + Math.cos(a) * r;
+    const z = plaza.z + Math.sin(a) * r;
+    if (pads.some((p) => Math.abs(x - p[0]) < p[2] / 2 + 0.3 && Math.abs(z - p[1]) < p[3] / 2 + 0.3)) continue;
+    b.box([x, 0.04, z], [-Math.sin(a), 0, Math.cos(a)], Y, (Math.PI * 2 * r) / seg / 2 + 0.02, 0.04, 0.07, colour);
+  }
+  return b.build();
+}
+
 function Ground({ all }: { all: Texture[] }) {
   const grass = useMemo(() => {
     // the village lawn's own set (Poly Haven leafy_grass), graded green-gold like the village lawn (GROUND_GRADE LM_grass: sunny, lime; the raw albedo is dry straw)
@@ -120,16 +171,17 @@ function Ground({ all }: { all: Texture[] }) {
     return m;
   }, [all]);
   const plazaGeo = useMemo(() => new CircleGeometry(PARK_PLAZA.radius, 64), []);
-  const ring = useMemo(() => new RingGeometry(PARK_PLAZA.radius - 0.4, PARK_PLAZA.radius, 64), []);
-  const inlay = useMemo(() => new RingGeometry(9.2, 10.2, 64), []);
-  const gold = useMemo(() => new MeshStandardMaterial({ color: "#d9a93a", roughness: 0.35, metalness: 0.5, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 }), []);
-  const padRing = useMemo(() => new RingGeometry(COASTER_QUEUE_PAD.radius - 0.35, COASTER_QUEUE_PAD.radius, 48), []);
+  // the brass inlays are set into the paving, not painted on it: a 1.2 cm bevelled bar, a darker joint either side
+  const ring = useMemo(() => brassInlay(PARK_PLAZA.radius - 0.4, PARK_PLAZA.radius), []);
+  const inlay = useMemo(() => brassInlay(9.2, 10.2), []);
+  const gold = useMemo(() => new MeshStandardMaterial({ color: "#c79a38", roughness: 0.42, metalness: 0.35, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 }), []);
+  const padRing = useMemo(() => brassInlay(COASTER_QUEUE_PAD.radius - 0.35, COASTER_QUEUE_PAD.radius), []);
   const pads = useMemo(() => {
     // paths as rectangles on the ground: [cx, cz, w, d, material key]
     return [
       [40, -161, 18, 54, "p"], // the promenade
       [161, -112, 368, 12, "p"], // the east-west avenue
-      [-17, -81, 12, 74, "g"], // the queue approach (gravel)
+      [-17, -84.5, 12, 67, "g"], // the queue approach (gravel): from the avenue's edge (z -118) to the apron's (z -51), never under it
       [-17, -44, 18, 14, "p"], // the queue apron
     ] as const;
   }, []);
@@ -153,6 +205,10 @@ function Ground({ all }: { all: Texture[] }) {
       <planeGeometry args={[w, d]} />
     </mesh>
   ));
+  // a granite kerb (14 cm wide, 8 cm over the paving) round every paved pad and the plaza, so none is a sticker on the lawn; where two paved
+  // pads meet the kerb stops (no kerb across a crossing)
+  const kerbGeo = useMemo(() => (groundOld() ? new BufferGeometry() : parkKerb(pads.filter((p) => p[4] === "p"), PARK_PLAZA)), [pads]);
+  const kerbMat = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 }), []);
   const plazaMat = useMemo(() => parkMaterial(setsPave, (PARK_PLAZA.radius * 2) / 3, { color: new Color("#e9dfd2"), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }), [setsPave]);
   return (
     <group>
@@ -160,6 +216,7 @@ function Ground({ all }: { all: Texture[] }) {
         <planeGeometry args={[1700, 1500]} />
       </mesh>
       {rects}
+      <mesh geometry={kerbGeo} material={kerbMat} receiveShadow castShadow />
       <mesh rotation-x={-Math.PI / 2} position={[PARK_PLAZA.x, 0.04, PARK_PLAZA.z]} geometry={plazaGeo} material={plazaMat} receiveShadow />
       <mesh rotation-x={-Math.PI / 2} position={[PARK_PLAZA.x, 0.06, PARK_PLAZA.z]} geometry={ring} material={gold} />
       <mesh rotation-x={-Math.PI / 2} position={[PARK_PLAZA.x, 0.06, PARK_PLAZA.z]} geometry={inlay} material={gold} />

@@ -1,3 +1,4 @@
+import { laneClearance } from "../ground/groundPaths";
 import {
   Box3,
   BufferAttribute,
@@ -1255,7 +1256,7 @@ export class VillageVegetation {
         const s = new Vector3().setFromMatrixScale(m).x;
         return { x: m.elements[12]!, y: m.elements[13]!, z: m.elements[14]!, h: variantBush.h * s, r: variantBush.r * s, seed: (Math.abs(Math.sin(m.elements[12]! * 3.1 + m.elements[14]! * 1.7)) * 1e4) % 1, cards: [] };
       }),
-    ];
+    ].filter((b) => options.parkBushes?.includes(b) || laneClearance(b.x, b.z) > b.r * 0.5); // none left standing on a lane the ground paths redrew (ground/groundPaths.ts)
     // which bush each one is: the plaza planters' and the memorial roof's clipped boxwood balls; elsewhere (the
     // houses' porch corners, the lanes and plots) about half are azalea mounds (some in flower under the April cherries)
     const speciesOfBush = (b: Bush): BushSpecies => (b.y > 2 || bushInPlanter(b) || b.seed < 0.5 ? "boxwood" : "azalea");

@@ -64,15 +64,20 @@
       "metal": false
     },
     "LM_temple_ground": {
-      "pbr": "dirt_path",
+      "pbr": "gravel",
       "repeatMeters": [
         1,
         1
       ],
-      "tileMeters": 3.0,
+      "tileMeters": 1.6,
+      "albedoGain": [
+        1.35,
+        1.22,
+        1.0
+      ],
       "vertexColor": true,
       "roughnessScale": 1.0,
-      "normalScale": 0.6,
+      "normalScale": 1.0,
       "metal": false
     },
     "LM_temple_pine": {
