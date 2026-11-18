@@ -29,8 +29,6 @@ import {
   BufferGeometry,
 } from "three";
 import {
-  COASTER_QUEUE_PAD,
-  PARK_EXIT_PAD,
   PARK_LAMPS,
   PARK_PLATFORM,
   PARK_PLAZA,
@@ -169,7 +167,6 @@ function Ground({ all }: { all: Texture[] }) {
   const ring = useMemo(() => brassInlay(PARK_PLAZA.radius - 0.4, PARK_PLAZA.radius), []);
   const inlay = useMemo(() => brassInlay(9.2, 10.2), []);
   const gold = useMemo(() => new MeshStandardMaterial({ color: "#c79a38", roughness: 0.42, metalness: 0.35, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 }), []);
-  const padRing = useMemo(() => brassInlay(COASTER_QUEUE_PAD.radius - 0.35, COASTER_QUEUE_PAD.radius), []);
   const pads = useMemo(() => {
     // paths as rectangles on the ground: [cx, cz, w, d, material key]
     return [
@@ -212,7 +209,6 @@ function Ground({ all }: { all: Texture[] }) {
       <mesh rotation-x={-Math.PI / 2} position={[PARK_PLAZA.x, 0.04, PARK_PLAZA.z]} geometry={plazaGeo} material={plazaMat} receiveShadow />
       <mesh rotation-x={-Math.PI / 2} position={[PARK_PLAZA.x, 0.06, PARK_PLAZA.z]} geometry={ring} material={gold} />
       <mesh rotation-x={-Math.PI / 2} position={[PARK_PLAZA.x, 0.06, PARK_PLAZA.z]} geometry={inlay} material={gold} />
-      <mesh rotation-x={-Math.PI / 2} position={[COASTER_QUEUE_PAD.x, 0.07, COASTER_QUEUE_PAD.z]} geometry={padRing} material={gold} />
     </group>
   );
 }
@@ -385,10 +381,6 @@ function GateArch({ all }: { all: Texture[] }) {
         <planeGeometry args={[5.6, 1.4]} />
       </mesh>
       <mesh geometry={starGeo} material={gold} position={[40, 12.2, CZ - 0.2]} scale={1.2} />
-      <mesh position={[PARK_EXIT_PAD.x, 0.05, PARK_EXIT_PAD.z]} rotation-x={-Math.PI / 2}>
-        <ringGeometry args={[PARK_EXIT_PAD.radius - 0.3, PARK_EXIT_PAD.radius, 40]} />
-        <meshStandardMaterial color="#d9a93a" roughness={0.4} metalness={0.5} />
-      </mesh>
     </group>
   );
 }
