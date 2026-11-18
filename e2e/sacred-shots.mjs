@@ -12,7 +12,7 @@ import { act } from "./lib/village.mjs";
 const arg = (k, d) => process.argv.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3) ?? d;
 const OUT = arg("out", "shots");
 const DEVICE = arg("device", "pc");
-const ROOMS = arg("rooms", "lot_chapel_nave,lot_church_nave").split(",");
+const ROOMS = arg("rooms", "lot_chapel_nave,lot_church_nave").split(",").filter((r) => r !== "none");
 mkdirSync(OUT, { recursive: true });
 const run = createRun("sacred-shots");
 
@@ -71,6 +71,8 @@ await P.page.waitForFunction(() => !!window.__cv?.getPos, null, { timeout: 30000
 await P.page.waitForFunction(() => !!window.__cvLots, null, { timeout: 180000 * SLOW });
 await sleep(2500);
 if (process.env.CV_PLAZA) {
+  await P.page.waitForFunction(() => !document.body.innerText.includes("케이슨 마을로 가는 중"), null, { timeout: 120000 * SLOW }).catch(() => {});
+  await sleep(3000);
   for (const [name, v] of Object.entries({ plaza: [0, 38, 52, 18, 0, -18, 62], chapel_street: [30, 2.2, -12, 48.5, 7, -37, 55], church_street: [-30, 2.2, -12, -48, 7, -37, 55] })) {
     await P.page.evaluate(([x, y, z, tx, ty, tz, fov]) => { window.__cvShot = { x, y, z, tx, ty, tz, fov }; }, v);
     await sleep(2500);
