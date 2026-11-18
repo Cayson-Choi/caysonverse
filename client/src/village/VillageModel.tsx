@@ -1,4 +1,6 @@
 import { CreekPatch } from "./creek/CreekPatch";
+import { TemplePond } from "./pond/TemplePond";
+import { FallsSeam } from "./falls/FallsSeam";
 import { Suspense, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, useTexture } from "@react-three/drei";
@@ -277,6 +279,10 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       <LakeVillagePatch root={nodes.root} />
       {/* The creek, redone: see-through water, wet banks, river stones, cascades and reeds (creek/CreekPatch.tsx). */}
       <CreekPatch nodes={nodes} tier={tier} />
+      {/* The temple's lotus pond: real shallow water over a pebble bed, lotus leaves and blooms (pond/TemplePond.tsx). */}
+      <TemplePond nodes={nodes} tier={tier} />
+      {/* The falls' outlet meets the feeder stream: a stone riffle and reeds over the join (falls/FallsSeam.tsx). */}
+      <FallsSeam tier={tier} />
       {/* The lot buildings (L5) take the old plot signs and posts out of this clone once they are drawn (lots/LotsVillagePatch.tsx). */}
       <LotsVillagePatch root={nodes.root} />
       {/* The memorial roof, the cafe parasols, the pavilion roof, the plaza seats and the fountain crescent get real surfaces (exteriorDress.ts). */}

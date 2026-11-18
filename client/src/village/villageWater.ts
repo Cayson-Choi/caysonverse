@@ -469,6 +469,8 @@ void main() {
       col = mix( col, vec3( 0.80, 0.86, 0.86 ), fm * 0.92 );
       alpha = mix( alpha, 1.0, fm * 0.9 );
       alpha *= edge;
+      // the feeder's first two metres thin in (it starts at the falls pool's outlet, z -58, whose water thins out: fallsMaterials OUTLET_END)
+      alpha *= mix( 1.0, smoothstep( -58.0, -56.0, vWorldPos.z ), step( vWorldPos.x, -95.0 ) );
       if ( alpha < 0.01 ) discard;
     }
   }
