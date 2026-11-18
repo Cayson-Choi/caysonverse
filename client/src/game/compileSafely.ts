@@ -22,14 +22,8 @@ export function compileSafely(
     const check = () => {
       for (const m of materials) {
         const program = (gl.properties.get(m) as { currentProgram?: { isReady(): boolean | null; program?: unknown } }).currentProgram;
-        let ready = true;
-        try {
-          // (a program released meanwhile — its material freed, three's destroy() clears `program` — is never asked: a deleted object)
-          ready = !program || ("program" in program && program.program === undefined) || program.isReady() !== false;
-        } catch {
-          ready = true; // a lost context, a freed program: nothing left to wait for
-        }
-        if (ready) materials.delete(m);
+        // (a program released meanwhile — its material freed, three's destroy() clears `program` — is never asked: a deleted object)
+        if (programSettled(program)) materials.delete(m);
       }
       if (materials.size === 0) resolve(scene);
       else setTimeout(check, 10);
@@ -37,4 +31,19 @@ export function compileSafely(
     if (gl.extensions.has("KHR_parallel_shader_compile")) check();
     else setTimeout(check, 10);
   });
+}
+
+/**
+ * Whether a three program is still ready to be asked about: false for one three has released (its GL object deleted, or about to
+ * be) — asking a deleted program for its status is the "glGetProgramiv: Program object expected" GL warning. A released program
+ * counts as settled (`true`): nothing is left to wait for. `ready` is the program's own `isReady()` (null: no program yet).
+ */
+export function programSettled(program: { isReady(): boolean | null; program?: unknown; usedTimes?: number } | null | undefined): boolean {
+  if (!program) return true;
+  if (("program" in program && program.program === undefined) || program.usedTimes === 0) return true;
+  try {
+    return program.isReady() !== false;
+  } catch {
+    return true; // a lost context
+  }
 }

@@ -1,6 +1,6 @@
 import { groundOld } from "../village/ground/groundMode";
 import { Suspense, useEffect, useMemo, useRef } from "react";
-import { useFrame, useThree } from "@react-three/fiber";
+import { useFrame, useLoader, useThree } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
 import {
   BackSide,
@@ -23,6 +23,7 @@ import {
   SphereGeometry,
   SRGBColorSpace,
   Texture,
+  TextureLoader,
   Vector2,
   RingGeometry,
   BufferGeometry,
@@ -53,9 +54,15 @@ import { parkSkyTexture } from "./parkSkyTexture";
 import { ALL_PARK_URLS, featherTexture, parkMaterial, pickSet } from "./pbr";
 import { addBellRoof, addHedge, addLathe } from "./parkShapes";
 import { boxwoodTextures } from "./boxwoodTexture";
+import { PARK_MARBLE_URL_HI, PARK_MARBLE_URL_LO, PARK_PINE_URL_HI, PARK_PINE_URL_LO, useParkAssets } from "./parkAssets";
+import { parkMount } from "./parkMount";
 
-const MARBLE_URL = (isTouchDevice ? "/textures/houses/lo/" : "/textures/houses/hi/") + "T_h_stone.webp";
-const PINE_URL = (isTouchDevice ? "/textures/houses/lo/" : "/textures/houses/hi/") + "T_h_wood_pine.webp";
+const MARBLE_URL = isTouchDevice ? PARK_MARBLE_URL_LO : PARK_MARBLE_URL_HI;
+const PINE_URL = isTouchDevice ? PARK_PINE_URL_LO : PARK_PINE_URL_HI;
+
+/** Built once per page (a suspended or re-mounted park must not paint the sky or grow the terrain again: ~100-300 ms each on a phone). */
+let skyCache: Texture | null = null;
+let terrainCache: BufferGeometry | null = null;
 const X: V3 = [1, 0, 0];
 const Y: V3 = [0, 1, 0];
 
@@ -67,7 +74,7 @@ const setRepeat = (m: MeshStandardMaterial, rx: number, ry: number): void => {
 function ParkSky() {
   const ref = useRef<Mesh>(null);
   const geo = useMemo(() => new SphereGeometry(1450, 48, 24), []);
-  const map = useMemo(() => parkSkyTexture(), []);
+  const map = useMemo(() => (skyCache ??= parkSkyTexture()), []);
   useFrame(({ camera }) => {
     ref.current?.position.copy(camera.position);
   });
@@ -144,7 +151,7 @@ function Ground({ all }: { all: Texture[] }) {
     m.customProgramCacheKey = () => "park-grass-variation";
     return m;
   }, [all]);
-  const terrain = useMemo(() => buildParkTerrain(), []);
+  const terrain = useMemo(() => (terrainCache ??= buildParkTerrain()), []);
   const plazaGeo = useMemo(() => new CircleGeometry(PARK_PLAZA.radius, 64), []);
   // the brass inlays are set into the paving, not painted on it: a 1.2 cm bevelled bar, a darker joint either side
   const ring = useMemo(() => brassInlay(PARK_PLAZA.radius - 0.4, PARK_PLAZA.radius), []);
@@ -566,26 +573,31 @@ function useSkyEnv(): Texture {
 
 /** Everything of 케이슨랜드 that stands in the park area (park-local metres). */
 export function ParkWorld({ tier }: { tier: VillageTier }) {
-  const all = useTexture(ALL_PARK_URLS) as Texture[];
-  const [pine] = useTexture([PINE_URL]) as Texture[];
+  useParkAssets(isTouchDevice);
+  const all = useLoader(TextureLoader, ALL_PARK_URLS) as Texture[];
+  const pine = useLoader(TextureLoader, PINE_URL) as Texture;
   const env = useSkyEnv();
+  useEffect(() => {
+    parkMount.set(true);
+    return () => parkMount.set(false);
+  }, []);
   return (
     <group>
       <ParkSky />
       <Ground all={all} />
       <Shops all={all} />
       <GateArch all={all} />
-      <QueueHall all={all} pine={pine!} />
+      <QueueHall all={all} pine={pine} />
       <Fountain all={all} env={env} />
       <ParkVegetation />
       <Lamps />
-      <Beds pine={pine!} all={all} />
+      <Beds pine={pine} all={all} />
       <ParkProps all={all} />
       <ParkScenery all={all} />
       <Suspense fallback={null}>
         <ParkMountains tier={tier === "high" ? "high" : "low"} />
       </Suspense>
-      <CoasterWorld all={all} pine={pine!} env={env} />
+      <CoasterWorld all={all} pine={pine} env={env} />
       <CarouselWorld env={env} all={all} />
       <WheelWorld env={env} all={all} />
     </group>

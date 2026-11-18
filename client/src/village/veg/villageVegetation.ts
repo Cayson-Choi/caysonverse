@@ -459,6 +459,8 @@ export interface BuildOptions {
   parkBushes?: readonly Bush[];
   /** 케이슨랜드: the share of each crown's clusters the far level keeps (the tier's `thin` scaled by it; the kept ones grow to cover), for a park of many trees. */
   farThin?: number;
+  /** 케이슨랜드 on a phone: the farthest distance (m) the tree and bush layers are drawn to (the tier's last band is cut to it): what is past it is a speck on a small screen, and from the wheel's top it is every far tree of the park. */
+  farRange?: { trees: number; bush: number };
   /** 케이슨랜드: the flower beds (village flowerPlacement `Bed`s, boxes) and a planting card in each (`parkCards`): planted with the village's flowers. */
   parkBeds?: readonly Bed[];
   parkCards?: readonly Card[];
@@ -721,6 +723,12 @@ export class VillageVegetation {
       const k = options.farThin;
       const thin = <T extends { thin: number; thinScale: number }>(c: T): T => ({ ...c, thin: c.thin * k, thinScale: c.thinScale / Math.sqrt(k) });
       (v as unknown as { cfg: VegTierConfig }).cfg = { ...v.cfg, cherry: thin(v.cfg.cherry), green: thin(v.cfg.green) };
+    }
+    if (options.farRange) {
+      const r = options.farRange;
+      const cap = <T extends { far: readonly number[] }>(c: T, to: number): T => ({ ...c, far: c.far.map((f, i) => (i === c.far.length - 1 ? Math.min(f, to) : f)) });
+      const cur = (v as unknown as { cfg: VegTierConfig }).cfg;
+      (v as unknown as { cfg: VegTierConfig }).cfg = { ...cur, cherry: cap(cur.cherry, r.trees), green: cap(cur.green, r.trees), bush: cap(cur.bush, r.bush) };
     }
     // the crowns' workers start loading now, while the flowers are laid out (crownGrow.ts)
     const grower = createCrownGrower(options.makeWorker);

@@ -79,6 +79,8 @@ import { houseOpen } from "./keypadText";
 import { liveSunEnabled } from "./sunShadows";
 import { MapPlaces } from "./MapPlaces";
 import { ParkWorld } from "../land/ParkWorld";
+import { preloadPark } from "../land/parkAssets";
+import { parkGateDoor } from "@caysonverse/shared/village/parkArea";
 import { CoasterHud } from "../land/CoasterHud";
 import { sendRideBoard } from "../net/connection";
 import { landPose } from "../land/coasterRide";
@@ -150,6 +152,20 @@ function LandPoseProbe({ pose }: { pose: Pose }) {
   useFrame(() => {
     landPose.x = pose.x;
     landPose.z = pose.z;
+  });
+  return null;
+}
+
+/**
+ * Starts 케이슨랜드's downloads (its models and textures, all at once) when the player comes within PARK_PRELOAD_M of the gate, so the
+ * park has arrived by the time the door's curtain closes (parkAssets.ts). Nothing is held for a player who stays away.
+ */
+const PARK_PRELOAD_M = 70;
+function ParkPreloader({ pose }: { pose: Pose }) {
+  const gate = parkGateDoor().pad;
+  useFrame(() => {
+    if (localArea() !== "village") return;
+    if (Math.hypot(pose.x - gate.x, pose.z - gate.z) < PARK_PRELOAD_M) preloadPark(isTouchDevice);
   });
   return null;
 }
@@ -514,6 +530,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <GuideNpcs area={area} />
           <VillageDoors pose={pose} />
           <LandPoseProbe pose={pose} />
+          <ParkPreloader pose={pose} />
           {(area === "village" || area === "park") && <StarSky tier={tier} />}
           <VeilFrameThrottle active={area === "village"} />
         </>
