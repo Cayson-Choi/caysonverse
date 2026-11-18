@@ -335,6 +335,17 @@ export function lakeTerrainColliders(): readonly AABB[] {
 const BENCH_BOX = { along: 1.86, deep: 0.6 } as const;
 /** A fishing chair's footprint (m): about 0.5 x 0.5, seat 0.46 m up (parts_cafe.py's chair is 0.42 wide). */
 const CHAIR = { halfWidth: 0.21, backBehind: 0.26, frontEdge: 0.21, seatTop: 0.46 } as const;
+/**
+ * The sitter goes this much further forward on the chair than the bare torso needs (owner 2026-11-19: "캐릭터 옷이 의자를 살짝 뚫고 나오네",
+ * a pink dress and an orange top went through the backrest). Measured from character.glb seated (Sit_Chair_Idle) with every outfit: the
+ * bulkiest top / coat reaches 0.738 m behind the root at back height and the fattest skirt 0.68 m at seat height; the chair's back
+ * panel face (build_chair: z -0.208 at its lower edge, leaning back) and uprights are 0.208 m behind the chair's centre, i.e. 0.668 m
+ * behind the old root: the bare torso (0.71) was already inside it. With the gap the face is 0.768 m behind the root, 3 cm clear of
+ * the bulkiest top; the butt (0.40 to 0.50 m behind the root) still rests on the seat (its front edge is 0.36 m behind the root) and
+ * the hanging calves (0.22 m behind the root) stay clear of the front edge. The pier-edge chairs then have the root 1 cm past the deck's
+ * edge (the avatar's own width is far more than that).
+ */
+export const CHAIR_BODY_GAP = 0.1;
 /** Picnic table: top 0.9 wide x 2.4 long; benches 0.4 deep, centres 0.95 either side, seat 0.45 up. */
 const PICNIC = { topX: 0.9, length: 2.4, benchCentre: 0.95, benchDeep: 0.4, seatTop: 0.45 } as const;
 /** Pavilion benches: one 1.9 x 0.45 m board in the middle of each side, 2.55 m from the centre; posts at the corners. */
@@ -595,7 +606,8 @@ function chairSeat(spot: LakeFishingSpot, obstacles: readonly AABB[]): LakeSeat 
   const f = LAKE_FACE_DIR[spot.face];
   // the chair stands 0.55 m inside the edge (its centre), facing out
   const centre = { x: spot.anchor.x - f.x * 0.55, z: spot.anchor.z - f.z * 0.55 };
-  const root = { x: round(centre.x + f.x * (CHAIR.frontEdge + SIT_ROOT_AHEAD), 1000), z: round(centre.z + f.z * (CHAIR.frontEdge + SIT_ROOT_AHEAD), 1000) };
+  const rootAhead = CHAIR.frontEdge + SIT_ROOT_AHEAD + CHAIR_BODY_GAP;
+  const root = { x: round(centre.x + f.x * rootAhead, 1000), z: round(centre.z + f.z * rootAhead, 1000) };
   const side = { x: Math.cos(spot.yaw), z: -Math.sin(spot.yaw) }; // the chair's right
   let stand: LakePoint | null = null;
   outer: for (const back of [0.7, 0.9, 0.5]) {
@@ -609,7 +621,7 @@ function chairSeat(spot: LakeFishingSpot, obstacles: readonly AABB[]): LakeSeat 
     }
   }
   if (!stand) throw new Error(`lake seat ${spot.id}: no clear get-up spot beside the chair`);
-  const approachEdge = round(SIT_ROOT_AHEAD + CHAIR.frontEdge + CHAIR.backBehind, 1000);
+  const approachEdge = round(SIT_ROOT_AHEAD + CHAIR_BODY_GAP + CHAIR.frontEdge + CHAIR.backBehind, 1000);
   return {
     id: `chair_${spot.id}`,
     kind: "fishing_chair",
@@ -623,7 +635,7 @@ function chairSeat(spot: LakeFishingSpot, obstacles: readonly AABB[]): LakeSeat 
     standX: stand.x,
     standZ: stand.z,
     seatY: CHAIR.seatTop,
-    frontEdge: SIT_ROOT_AHEAD,
+    frontEdge: round(SIT_ROOT_AHEAD + CHAIR_BODY_GAP, 1000),
     approachEdge,
     beside: { lateral: round(CHAIR.halfWidth + PLAYER_RADIUS - 0.05, 1000), edge: round(approachEdge + 0.35, 1000) },
   };
