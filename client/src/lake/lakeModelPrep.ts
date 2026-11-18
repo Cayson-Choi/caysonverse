@@ -19,7 +19,7 @@
 // Everything here works on CLONES of the cached glTF scenes; the materials are the loader's, changed idempotently.
 
 import { groundOld } from "../village/ground/groundMode";
-import { wornEdges } from "./lakeTrailEdge";
+import { clipAtSidewalk, wornEdges } from "./lakeTrailEdge";
 import {
   BufferAttribute,
   BufferGeometry,
@@ -123,6 +123,8 @@ export function prepareLakeTerrain(root: Object3D, day: Texture, night: Texture 
       // the trail and the office's yard: a worn, ragged edge instead of a hard-cut sticker (lakeTrailEdge.ts)
       const worn = wornEdges(mesh.geometry);
       if (worn) mesh.geometry = worn;
+      // the trail's mouth: lake.glb's dirt starts 0.5 m on the ring's cobble; it ends flush against the sidewalk's stone band instead
+      if (mesh.material.name === "LM_dirt") mesh.geometry = clipAtSidewalk(mesh.geometry) ?? mesh.geometry;
     }
     for (const m of materialsOf(mesh)) {
       if (m.name.startsWith("LM_")) {

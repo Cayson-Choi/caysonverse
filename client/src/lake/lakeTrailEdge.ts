@@ -7,7 +7,7 @@
 // vertices are moved a little along the outline's normal (noise, never at the sidewalk's end), and the vertex colour (which the
 // light-mapped material multiplies into the albedo) goes from the packed centre to a grass-tinted rim over the outer two rings.
 
-import { BufferAttribute, BufferGeometry } from "three";
+import { BufferAttribute, BufferGeometry, Uint16BufferAttribute, Uint32BufferAttribute } from "three";
 
 /** The rim's colour factor (× the albedo, linear): dirt mixed with grass roots, darker and greener. */
 export const RIM_TINT: readonly [number, number, number] = [0.5, 0.64, 0.3];
@@ -17,6 +17,14 @@ export const CENTRE_TINT: readonly [number, number, number] = [1.08, 1.06, 1.0];
 export const RIM_WANDER: readonly [number, number] = [-0.1, 0.32];
 /** The trail's mouth at the sidewalk: vertices nearer than this x (m) keep their place (the paving's curb cuts the dirt there). */
 export const MOUTH_X = 40.5;
+/**
+ * Where the dirt must stop at the ring's sidewalk: the radius (m from the village centre) of the outer face of the flat stone band
+ * that edges the walk (village.glb LM_stone, x 38.8..39.0 at z 1). lake.glb's dirt starts at x 38.5, i.e. 0.5 m ON the cobble and across
+ * the band (the dirt lies 2-3 cm higher), a tongue of dirt on the paving with hard straight sides.
+ */
+export const MOUTH_R = 39.02;
+/** A vertex this close (m) inside the circle counts as on it (the cut is a chord, a re-cut must not cut again). */
+const CUT_SLACK = 0.03;
 
 const hash = (x: number, z: number): number => {
   const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453;
@@ -148,4 +156,80 @@ export function wornEdges(geo: BufferGeometry): BufferGeometry | null {
   out.computeBoundingBox();
   out.computeBoundingSphere();
   return out;
+}
+
+// ───────────────────────────────────────────── the mouth, cut clean ─────────────────────────────────────────────
+
+/**
+ * A copy of the trail's geometry with everything nearer the village centre than `r` cut away (triangles clipped exactly on the
+ * circle, every attribute interpolated), so the dirt ends flush against the sidewalk's stone band and never lies on the paving.
+ * Returns the same geometry when nothing is inside, `null` when it has no index / position.
+ */
+export function clipAtSidewalk(geo: BufferGeometry, r = MOUTH_R): BufferGeometry | null {
+  const idx = geo.getIndex();
+  const pos = geo.getAttribute("position") as BufferAttribute | undefined;
+  if (!idx || !pos) return null;
+  const f = (i: number): number => Math.hypot(pos.getX(i), pos.getZ(i)) - r; // >= 0: kept
+  let any = false;
+  for (let k = 0; k < idx.count; k++) if (f(idx.getX(k)) < -CUT_SLACK) any = true;
+  if (!any) return geo;
+  const names = Object.keys(geo.attributes);
+  const attrs = names.map((n) => geo.getAttribute(n) as BufferAttribute);
+  // new vertices as attribute rows: [source a, source b, t] (a + (b - a) * t)
+  const extra: Array<[number, number, number]> = [];
+  const cache = new Map<string, number>();
+  const cutVertex = (a: number, b: number): number => {
+    const key = a < b ? `${a}_${b}` : `${b}_${a}`;
+    const hit = cache.get(key);
+    if (hit !== undefined) return hit;
+    const fa = f(a);
+    const fb = f(b);
+    const t = fa / (fa - fb);
+    extra.push([a, b, t]);
+    const id = pos.count + extra.length - 1;
+    cache.set(key, id);
+    return id;
+  };
+  const out: number[] = [];
+  for (let t = 0; t < idx.count; t += 3) {
+    const v = [idx.getX(t), idx.getX(t + 1), idx.getX(t + 2)];
+    const keep = v.map((i) => f(i) >= -CUT_SLACK);
+    const n = keep.filter(Boolean).length;
+    if (n === 3) out.push(...v);
+    else if (n === 0) continue;
+    else if (n === 1) {
+      const k = keep.indexOf(true);
+      const a = v[k];
+      const b = v[(k + 1) % 3];
+      const c = v[(k + 2) % 3];
+      out.push(a, cutVertex(a, b), cutVertex(a, c));
+    } else {
+      const k = keep.indexOf(false);
+      const a = v[k]; // the one inside
+      const b = v[(k + 1) % 3];
+      const c = v[(k + 2) % 3];
+      const ab = cutVertex(b, a);
+      const ac = cutVertex(c, a);
+      out.push(b, c, ac, b, ac, ab);
+    }
+  }
+  const total = pos.count + extra.length;
+  const res = new BufferGeometry();
+  names.forEach((name, ai) => {
+    const src = attrs[ai];
+    const arr = new (src.array.constructor as new (n: number) => Float32Array)(total * src.itemSize);
+    arr.set(src.array as ArrayLike<number>, 0);
+    extra.forEach(([a, b, t], e) => {
+      for (let c = 0; c < src.itemSize; c++) {
+        const va = src.array[a * src.itemSize + c]!;
+        const vb = src.array[b * src.itemSize + c]!;
+        arr[(pos.count + e) * src.itemSize + c] = va + (vb - va) * t;
+      }
+    });
+    res.setAttribute(name, new BufferAttribute(arr, src.itemSize, src.normalized));
+  });
+  res.setIndex(total > 65535 ? new Uint32BufferAttribute(out, 1) : new Uint16BufferAttribute(out, 1));
+  res.computeBoundingBox();
+  res.computeBoundingSphere();
+  return res;
 }
