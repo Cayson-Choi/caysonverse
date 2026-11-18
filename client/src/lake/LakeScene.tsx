@@ -40,6 +40,7 @@ import { lakeFloatParts, loadLakeGear } from "./lakeProps";
 import { LakeSigns } from "./LakeSigns";
 import { LakeShopInterior } from "./LakeShopInterior";
 import { LakeShore } from "./LakeShore";
+import { floraOld, installLakeFlora } from "./lakeFlora";
 import { CAST_S, floatPose, scatter, tugIndex, type FloatPose, type Pt } from "./lakeFloat";
 import { elapsedSince, forEachAngler, selfId } from "./lakeNet";
 import { FISH_PHASE, type FishView } from "./lakeProtocol";
@@ -126,6 +127,14 @@ function LakeGlb({ tier, pose }: { tier: VillageTier; pose: Pose }) {
     return { terrain, facilities, ...t, ...f };
   }, [gltf, structs, lmDay, lmNight, sLmDay, sLmNight, tier]);
   useEffect(() => () => disposeLake(dressed), [dressed]);
+  // the forest, willows, reeds and grass drawn again as real branching trees and card bunches on the file's own places (lakeFlora.ts)
+  const flora = useMemo(() => (floraOld(window.location.search, import.meta.env.DEV) ? null : installLakeFlora(dressed.terrain, tier)), [dressed, tier]);
+  useEffect(() => {
+    if (!flora) return;
+    dressed.terrain.add(flora.group);
+    return () => flora.dispose();
+  }, [flora, dressed]);
+  useFrame(({ camera }) => flora?.update(camera.position));
   const look = useMemo<LakeWaterLook>(
     () => ({ reflDay: reflDay!, reflNight: reflNight!, lightmap: lmDay!, lightmapNight: lmNight!, lamps: dressed.lampHeads.map((p) => ({ x: p.x, z: p.z })) }),
     [reflDay, reflNight, lmDay, lmNight, dressed],

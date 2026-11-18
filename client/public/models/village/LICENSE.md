@@ -85,3 +85,10 @@ Poly Haven CC0 1.0 자산으로 만든 것입니다(2026-11-16 Poly Haven API로
 | bark_brown_02 | https://polyhaven.com/a/bark_brown_02 | 과수원 나무 껍질 `bark_plum_*`, 바크 칩 |
 | brown_mud | https://polyhaven.com/a/brown_mud | 화단 흙 바탕 `soil_*` |
 | rock_boulder_dry | https://polyhaven.com/a/rock_boulder_dry | 사각 화분 테두리 `stone_*` |
+
+## 호수 숲·버드나무·갈대, 절 소나무 (식생 개선, 2026-11-18)
+
+호수의 숲(자작나무·참나무·너도밤나무)·버드나무와 절 마당의 소나무는 코드로 가지를 뻗어 만든 3D 나무(`client/src/village/veg/treeKit.ts`)이고, 줄기·가지의 껍질은
+위 표의 **기존 Poly Haven CC0 1.0 껍질 사진을 그대로 다시 씁니다**(새로 내려받은 것 없음). 자작나무·너도밤나무는 `bark_smooth_*`
+(japanese_hackberry_bark), 참나무와 소나무(붉은 갈색으로 물들임)는 `bark_plates_*`(japanese_zelkova_bark), 버드나무는 `bark_willow_*`(bark_willow)입니다.
+잎·솔잎·갈대·부들·풀 그림(`client/src/village/veg/leafAtlas.ts`)은 스크립트가 직접 그린 것(절차적)이고, 저작권이 걸린 사진을 쓰지 않았습니다.

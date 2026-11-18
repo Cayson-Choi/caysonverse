@@ -7,3 +7,8 @@ export function vegModeFrom(search: string, dev: boolean): VegMode {
   const v = new URLSearchParams(search).get("veg");
   return v === "old" || v === "both" ? v : "new";
 }
+
+/** `?flora=old` in a DEV build: the lake forest, temple pines and orchard as the files drew them (before / after shots of the 2026-11-18 vegetation pass). */
+export function floraOld(search: string, dev: boolean): boolean {
+  return dev && new URLSearchParams(search).get("flora") === "old";
+}
