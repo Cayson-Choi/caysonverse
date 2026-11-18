@@ -1,7 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { ARRIVE_BUILD_MS, doorFade, FADE_IN_MS, FADE_OUT_MS } from "./doorFadeModel";
-import { localArea, subscribeLocalArea } from "./villageArea";
-import { parkMount } from "../land/parkMount";
+import { doorFade, FADE_IN_MS, FADE_OUT_MS } from "./doorFadeModel";
+import { subscribeLocalArea } from "./villageArea";
 
 const covered = () => doorFade.covered();
 /** Frames drawn in the new place before the curtain opens (the mount, its first heavy frame, one clean one). */
@@ -20,37 +19,19 @@ export function DoorFade() {
   // mounts on the area change (the village's whole tree on the way out of a room: its first frame there took
   // 1.3–1.6 s on a PC, L5v2 release-4 run), so the curtain waits out ARRIVE_FRAMES frames: that long frame is
   // spent behind the black, not on a half-open view that stops dead.
-  // On the way into 케이슨랜드 the curtain also waits for the park's tree to mount (its assets arrive and its geometry is built in
-  // one heavy frame after the area changes: spent behind the black, not on a half-open view that stops dead).
   useEffect(() => {
     let raf = 0;
-    let offPark: (() => void) | null = null;
-    const stopWaiting = (): void => {
-      offPark?.();
-      offPark = null;
-    };
     const off = subscribeLocalArea(() => {
       cancelAnimationFrame(raf);
-      stopWaiting();
-      const arrive = (): void => {
-        stopWaiting();
-        let left = ARRIVE_FRAMES;
-        const step = () => {
-          if (--left <= 0) doorFade.arrived();
-          else raf = requestAnimationFrame(step);
-        };
-        raf = requestAnimationFrame(step);
+      let left = ARRIVE_FRAMES;
+      const step = () => {
+        if (--left <= 0) doorFade.arrived();
+        else raf = requestAnimationFrame(step);
       };
-      if (localArea() === "park" && !parkMount.isMounted() && doorFade.covered()) {
-        doorFade.hold(ARRIVE_BUILD_MS);
-        offPark = parkMount.subscribe(() => {
-          if (parkMount.isMounted()) arrive();
-        });
-      } else arrive();
+      raf = requestAnimationFrame(step);
     });
     return () => {
       cancelAnimationFrame(raf);
-      stopWaiting();
       off();
       doorFade.reset();
     };

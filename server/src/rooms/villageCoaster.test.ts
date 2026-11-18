@@ -73,7 +73,7 @@ describe("VillageCoaster (server rules)", () => {
     r.send("a", VillageMsg.RideBoard); // already aboard: nothing changes
     expect(r.players.get("a")!.rideSeat).toBe(0);
   });
-  it("refuses outside the boarding window (unloading, gate, riding) and says why", () => {
+  it("outside the boarding window (unloading, gate, riding) reserves the seat instead of refusing silently", () => {
     const r = rig();
     r.add("a");
     for (const t of [T0 + 1000, T0 + COASTER_DWELL_MS - 3000, T0 + COASTER_DWELL_MS + 5000]) {
@@ -81,8 +81,22 @@ describe("VillageCoaster (server rules)", () => {
       r.send("a", VillageMsg.RideBoard);
       expect(r.players.get("a")!.rideSeat).toBe(-1);
     }
-    expect(r.sent.filter((s) => s.type === VillageServerMsg.RideNotice).every((s) => (s.msg as { reason: string }).reason === "closed")).toBe(true);
+    expect(r.sent.filter((s) => s.type === VillageServerMsg.RideNotice).every((s) => (s.msg as { reason: string }).reason === "reserved")).toBe(true);
     expect(r.sent.length).toBe(3);
+  });
+  it("a reserved rider is seated automatically when the station next loads, and not if they walked away", () => {
+    const r = rig();
+    r.add("stay");
+    r.add("gone");
+    r.setNow(T0 + COASTER_DWELL_MS + 5000); // the train is out
+    r.send("stay", VillageMsg.RideBoard);
+    r.send("gone", VillageMsg.RideBoard);
+    expect(r.players.get("stay")!.rideSeat).toBe(-1);
+    r.players.get("gone")!.x = 60; // wandered off
+    r.setNow(T0 + COASTER_CYCLE_MS + COASTER_UNLOAD_MS + 1000); // next cycle, boarding
+    r.coaster.tick();
+    expect(r.players.get("stay")!.rideSeat).toBeGreaterThanOrEqual(0);
+    expect(r.players.get("gone")!.rideSeat).toBe(-1);
   });
   it("refuses a seated, bus or fishing player (busy) and a full train (full)", () => {
     const r = rig();
@@ -98,7 +112,7 @@ describe("VillageCoaster (server rules)", () => {
     r.add("late");
     r.send("late", VillageMsg.RideBoard);
     expect(r.players.get("late")!.rideSeat).toBe(-1);
-    expect((r.sent.at(-1)!.msg as { reason: string }).reason).toBe("full");
+    expect((r.sent.at(-1)!.msg as { reason: string }).reason).toBe("reserved"); // no seat now: waits for the next load
     // seats are unique
     const seats = [...r.players.values()].map((p) => p.rideSeat).filter((s) => s >= 0);
     expect(new Set(seats).size).toBe(COASTER_SEATS);
@@ -109,6 +123,7 @@ describe("VillageCoaster (server rules)", () => {
     r.players.get("far")!.z = -120; // the plaza: out of reach
     r.send("far", VillageMsg.RideBoard);
     expect(r.players.get("far")!.rideSeat).toBe(-1);
+    expect((r.sent.at(-1)!.msg as { reason: string }).reason).toBe("far");
     r.add("village");
     r.players.get("village")!.area = "village";
     r.send("village", VillageMsg.RideBoard);

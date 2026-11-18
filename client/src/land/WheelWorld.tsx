@@ -1,3 +1,5 @@
+import { compileSafely } from "../game/compileSafely";
+import { BulbHalos } from "./nightGlow";
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
@@ -115,7 +117,7 @@ export function WheelWorld({ env, all }: { env: Texture; all: Texture[] }) {
   useEffect(() => {
     const t = window.setTimeout(() => {
       try {
-        if (root.current) gl.compile(root.current, cam);
+        if (root.current) void compileSafely(gl, root.current, cam);
       } catch {
         /* an optimisation only */
       }
@@ -152,6 +154,7 @@ export function WheelWorld({ env, all }: { env: Texture; all: Texture[] }) {
           <mesh key={i} geometry={p.geometry} material={p.material} dispose={null} />
         ))}
         <instancedMesh frustumCulled={false} ref={bulbRef} args={[bulbGeo, bulbMat, bulbs.length]} dispose={null} />
+        <BulbHalos places={bulbs} size={1.0} strength={0.8} />
       </group>
       {gondolaParts.map((p, i) => (
         <instancedMesh key={`g${i}`} ref={(r) => { gondolaRefs.current[i] = r; }} args={[p.geometry, p.material, WHEEL_N]} frustumCulled={false} dispose={null} castShadow={!p.material.transparent} renderOrder={p.material.transparent ? 2 : 0} />

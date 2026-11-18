@@ -79,12 +79,13 @@ import { houseOpen } from "./keypadText";
 import { liveSunEnabled } from "./sunShadows";
 import { MapPlaces } from "./MapPlaces";
 import { ParkWorld } from "../land/ParkWorld";
-import { preloadPark } from "../land/parkAssets";
-import { parkGateDoor } from "@caysonverse/shared/village/parkArea";
-import { CoasterHud } from "../land/CoasterHud";
+import { CoasterHud, ParkLoadingVeil } from "../land/CoasterHud";
 import { sendRideBoard } from "../net/connection";
 import { landPose } from "../land/coasterRide";
 import { startRideAudio } from "../land/coasterAudio";
+import { boardRide } from "../land/rideBoardWalk";
+import { takeArmedRide } from "../land/rideBoard";
+import { maybePreloadPark } from "../land/parkAssets";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -152,20 +153,6 @@ function LandPoseProbe({ pose }: { pose: Pose }) {
   useFrame(() => {
     landPose.x = pose.x;
     landPose.z = pose.z;
-  });
-  return null;
-}
-
-/**
- * Starts 케이슨랜드's downloads (its models and textures, all at once) when the player comes within PARK_PRELOAD_M of the gate, so the
- * park has arrived by the time the door's curtain closes (parkAssets.ts). Nothing is held for a player who stays away.
- */
-const PARK_PRELOAD_M = 70;
-function ParkPreloader({ pose }: { pose: Pose }) {
-  const gate = parkGateDoor().pad;
-  useFrame(() => {
-    if (localArea() !== "village") return;
-    if (Math.hypot(pose.x - gate.x, pose.z - gate.z) < PARK_PRELOAD_M) preloadPark(isTouchDevice);
   });
   return null;
 }
@@ -292,7 +279,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
       if (target.id.startsWith(RIDE_BOARD_PREFIX)) {
         clearClickTarget();
         startRideAudio(); // inside the press: the browser lets the sound start
-        sendRideBoard(target.id.slice(RIDE_BOARD_PREFIX.length) as "coaster" | "carousel" | "wheel");
+        boardRide(target.id.slice(RIDE_BOARD_PREFIX.length) as "coaster" | "carousel" | "wheel", pose.x, pose.z);
         return;
       }
       if (target.id === BUS_RIDE_TARGET_LEAVE) {
@@ -349,6 +336,13 @@ function VillageDoors({ pose }: { pose: Pose }) {
   // A tap on a house's stair or front door armed its use (houseTap.ts): once the walk has brought us into the pad's reach, it is used.
   useFrame(() => {
     const area = localArea();
+    // A tap on a ride, or a press of its 타기 from afar, walked to the pad: the board is sent on arrival (rideBoard.ts)
+    if (area === "park") {
+      const key = takeArmedRide(pose.x, pose.z);
+      if (key) sendRideBoard(key);
+      return;
+    }
+    if (area === "village") maybePreloadPark(pose.x, pose.z); // the park's files start loading as the gate comes near
     if (!isHouseArea(area)) return;
     const offered = villageTargets(area, pose.x, pose.z);
     const id = takeArmedHouseUse(offered.map((t) => t.id));
@@ -530,7 +524,6 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <GuideNpcs area={area} />
           <VillageDoors pose={pose} />
           <LandPoseProbe pose={pose} />
-          <ParkPreloader pose={pose} />
           {(area === "village" || area === "park") && <StarSky tier={tier} />}
           <VeilFrameThrottle active={area === "village"} />
         </>
@@ -540,6 +533,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <VillageMusic />
           <TransitRideHud />
           <CoasterHud />
+          <ParkLoadingVeil />
           <StarFinderButton />
         </>
       }

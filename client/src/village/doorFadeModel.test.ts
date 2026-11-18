@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
-  ARRIVE_BUILD_MS,
   CLOSE_GRACE_MS,
   DOOR_COOLDOWN_MS,
   FADE_IN_MS,
@@ -279,38 +278,5 @@ describe("doorFade — a request that throws cannot leave the screen black", () 
     expect(() => fade.closed()).toThrow();
     fade.begin(sends());
     expect(fade.covered()).toBe(true);
-  });
-
-  it("hold: the server moved us but the far side is still building: the cover stays shut past the fail-safe, then opens by itself", () => {
-    const clock = manualClock();
-    const fade = createDoorFade(clock);
-    fade.begin(sends());
-    clock.advance(FADE_IN_MS);
-    fade.closed();
-    fade.hold(ARRIVE_BUILD_MS);
-    clock.advance(FAIL_SAFE_MS * 2);
-    expect(fade.covered()).toBe(true);
-    clock.advance(ARRIVE_BUILD_MS);
-    expect(fade.covered()).toBe(false);
-  });
-
-  it("hold: arrived() opens it as soon as the cover has been closed long enough", () => {
-    const clock = manualClock();
-    const fade = createDoorFade(clock);
-    fade.begin(sends());
-    clock.advance(FADE_IN_MS);
-    fade.closed();
-    fade.hold(ARRIVE_BUILD_MS);
-    clock.advance(3000);
-    fade.arrived();
-    clock.advance(1);
-    expect(fade.covered()).toBe(false);
-  });
-
-  it("hold with no curtain up does nothing", () => {
-    const clock = manualClock();
-    const fade = createDoorFade(clock);
-    fade.hold(ARRIVE_BUILD_MS);
-    expect(fade.covered()).toBe(false);
   });
 });

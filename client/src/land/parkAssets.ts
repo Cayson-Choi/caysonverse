@@ -4,6 +4,8 @@ import { useLoader } from "@react-three/fiber";
 import { MOUNTAINS_GRID_URL, MOUNTAINS_TEXTURE_URL } from "../village/mountains";
 import { CAROUSEL_CARRIAGE_URL, CAROUSEL_HORSE_LOD_URL, CAROUSEL_HORSE_URL, CAROUSEL_STATIC_URL } from "./CarouselWorld";
 import { CAR_AO_URL, CAR_URL } from "./CoasterWorld";
+import { parkGateDoor } from "@caysonverse/shared/village/parkArea";
+import { isTouchDevice } from "../device";
 import { ALL_PARK_URLS } from "./pbr";
 import { WHEEL_FRAME_URL, WHEEL_GONDOLA_URL, WHEEL_ROTOR_URL } from "./WheelWorld";
 
@@ -56,4 +58,15 @@ export function useParkAssets(touch: boolean): void {
   for (const u of PARK_GLB_URLS) useGLTF(u);
   useLoader(TextureLoader, ALL_PARK_URLS);
   for (const u of parkSingleTextureUrls(touch)) useLoader(TextureLoader, u);
+}
+
+/** How near the gate (m) a player must come before the park's files start loading. */
+export const PRELOAD_RANGE_M = 160;
+
+/** Called every frame in the village: starts the park's downloads (once per page) when the player is within PRELOAD_RANGE_M of the gate. */
+export function maybePreloadPark(x: number, z: number): void {
+  if (started || !Number.isFinite(x) || !Number.isFinite(z)) return;
+  const g = parkGateDoor().pad;
+  if (Math.hypot(x - g.x, z - g.z) > PRELOAD_RANGE_M) return;
+  preloadPark(isTouchDevice);
 }

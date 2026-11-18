@@ -35,6 +35,11 @@ export interface ViewState {
   fpPitch: number;
   /** The star finder is open: the first-person look may go all the way up to the zenith (viewMode.ts SKY_PITCH_MIN). */
   skyLook: boolean;
+  /** Star-finder zoom: the lens multiplier now (1 = the normal view) and the one it eases toward (CameraRig steps it). */
+  skyZoom: number;
+  skyZoomGoal: number;
+  /** The rig's un-zoomed vertical fov (deg), kept for the zoom's limits. */
+  skyFovBase: number;
   /** 0 = the underlying tp/fp pose, 1 = fully the top-down overview pose. */
   ovBlend: number;
   /** Mode to restore when overview exits ('tp' | 'fp' — never 'ov'). */
@@ -60,6 +65,9 @@ export const viewState: ViewState = {
   fpYaw: 0,
   fpPitch: 0,
   skyLook: false,
+  skyZoom: 1,
+  skyZoomGoal: 1,
+  skyFovBase: 55,
   ovBlend: 0,
   prevMode: "tp",
   ovCenterX: 0,
@@ -260,4 +268,18 @@ export function resetViewMode(): void {
   viewState.ovHeight = 0;
   viewState.orbitGoal = null;
   syncButton();
+}
+
+/** The narrowest star-finder view (vertical fov, deg). */
+export const SKY_FOV_MIN = 20;
+
+/** Set the star-finder zoom goal as a lens multiplier, clamped to [SKY_FOV_MIN / base fov, 1]. */
+export function setSkyZoomGoal(mult: number): void {
+  const lo = Math.min(1, SKY_FOV_MIN / Math.max(1, viewState.skyFovBase));
+  viewState.skyZoomGoal = Math.max(lo, Math.min(1, mult));
+}
+
+/** One wheel notch / pinch step / button press: `factor` > 1 zooms out, < 1 in. */
+export function zoomSkyBy(factor: number): void {
+  setSkyZoomGoal(viewState.skyZoomGoal * factor);
 }

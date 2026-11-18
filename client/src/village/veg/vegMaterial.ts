@@ -284,8 +284,10 @@ const FRAG_COLOR = /* glsl */ `#ifdef VEG_EDGE
 
 #ifdef VEG_CHERRY
 	// petals under the moon: their pink mostly gone (white-grey), a little brighter than their pink's luminance
-	vec3 vegPale = vec3( dot( vegAlbedo, vec3( 0.2126, 0.7152, 0.0722 ) ) * 1.18 );
-	vegAlbedo = mix( vegAlbedo, vegPale, uVegNight * 0.75 );
+	// (owner audit 2026-11-18: on the phone the blossoms at dusk and night read dark violet: the pink's blue-red kept 25 % and the
+	// luminance factor left them dim against the cooler tint, so they are now nearly colourless and a little brighter)
+	vec3 vegPale = vec3( dot( vegAlbedo, vec3( 0.2126, 0.7152, 0.0722 ) ) * 1.7 ) * vec3( 1.0, 0.97, 1.0 );
+	vegAlbedo = mix( vegAlbedo, vegPale, uVegNight * 0.92 );
 #endif
 // the live sun's shadows (village/sunShadows.ts) take the sun's share of the light away (the moon's, a little, at night)
 if ( uSsOn.w > 0.0 && uSsShade.w > 0.0 && vegSunKF > 0.001 ) {

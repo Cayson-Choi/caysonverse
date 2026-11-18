@@ -28,8 +28,6 @@ export const DOOR_COOLDOWN_MS = 1000;
  * a slow device it runs a frame or more behind a plain timer: waiting for it is what keeps the cut hidden.
  */
 export const CLOSE_GRACE_MS = 150;
-/** The longest the curtain waits for the park's tree to mount after the server moved us in (the fail-safe of `hold`). */
-export const ARRIVE_BUILD_MS = 8000;
 
 export interface FadeClock {
   now(): number;
@@ -51,11 +49,6 @@ export interface DoorFadeModel {
   closed(): void;
   /** The local player's area changed (the server moved us): uncover as soon as the cover has closed. */
   arrived(): void;
-  /**
-   * The server moved us but the other side is still building behind the curtain (the park's tree): keep it closed for up to
-   * `ms` more (the fail-safe, so a place that never finishes cannot black the screen for good). `arrived()` still opens it.
-   */
-  hold(ms: number): void;
   /** Drop everything (the scene is going away). */
   reset(): void;
   subscribe(listener: () => void): () => void;
@@ -131,12 +124,6 @@ export function createDoorFade(clock: FadeClock = REAL_CLOCK): DoorFadeModel {
       clear();
       const wait = Math.max(0, coveredAt + FADE_IN_MS - clock.now());
       timer = clock.setTimer(uncover, wait);
-    },
-    hold(ms) {
-      if (!covered) return;
-      pending = null;
-      clear();
-      timer = clock.setTimer(uncover, ms);
     },
     reset() {
       clear();

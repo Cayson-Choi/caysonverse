@@ -127,48 +127,78 @@
 }
 
 /* ── the card ── */
+/* PC: a narrow, see-through card docked under the 🔭 button at the left edge (the sky stays clear); the list scrolls inside. */
 .cv-sky-card {
   position: fixed;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 76px;
+  left: 72px; /* beside the 🔭 button (the HUD's left column), not over it */
   z-index: 26; /* above the HUD rows (22-24), below the banner (30) and the menus */
-  width: min(380px, calc(100vw - 32px));
-  /* never down to the reticle in the middle of the screen (its radius comes from the frame) */
-  max-height: min(52vh, 440px);
-  overflow-y: auto;
-  padding: 10px 12px 12px;
+  width: min(264px, calc(100vw - 88px));
+  max-height: min(58vh, 460px);
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px 8px;
   color: #ece7ff;
-  background: rgba(14, 11, 30, 0.97);
-  border: 1px solid rgba(150, 130, 220, 0.32);
+  background: rgba(14, 11, 30, 0.74);
+  border: 1px solid rgba(150, 130, 220, 0.3);
   border-radius: 14px;
-  backdrop-filter: blur(8px);
-  font-size: 14px;
-  line-height: 1.45;
-  animation: cv-sky-card-in 0.2s ease-out;
-}
-@keyframes cv-sky-card-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -6px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
-}
-/* A phone: under the top row of buttons, beside the button column (left / right inline from the touch layout);
-   compact, foldable to its header, and above the reticle. */
-.cv-sky-card.is-touch {
-  /* under the compass dial (hud.css .cv-compass: 64 px under the top-right buttons) */
-  top: calc(16px + var(--cv-hud-btn, 48px) + 12px + 64px + 8px);
-  width: auto;
-  transform: none;
-  max-height: calc(100dvh - 160px - 190px);
+  backdrop-filter: blur(6px);
   font-size: 13px;
-  line-height: 1.35;
-  padding: 8px 10px 10px;
+  line-height: 1.4;
   animation: cv-sky-card-fade 0.2s ease-out;
+  transition: opacity 0.25s ease;
+}
+/* Looking around (a drag on the sky): the card and the zoom buttons fade out of the way. */
+.cv-sky-card.is-looking,
+.cv-sky-zoom.is-looking {
+  opacity: 0.1;
+  pointer-events: none;
+}
+.cv-sky-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.cv-sky-foot {
+  flex: none;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(150, 130, 220, 0.22);
+}
+/* Folded: just the pill and its ✕. */
+.cv-sky-card.is-pill {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  padding: 4px 4px 4px 4px;
+  border-radius: 999px;
+  background: rgba(14, 11, 30, 0.78);
+}
+.cv-sky-pill-btn {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff3c8;
+  background: rgba(70, 56, 128, 0.7);
+  border: 1px solid rgba(170, 150, 240, 0.45);
+  border-radius: 999px;
+  height: 36px;
+  padding: 0 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.cv-sky-pill-btn:hover {
+  background: rgba(100, 82, 180, 0.85);
+}
+.cv-sky-card.is-pill .cv-sky-btn {
+  border-radius: 999px;
+  min-width: 36px;
+  height: 36px;
 }
 @keyframes cv-sky-card-fade {
   from {
@@ -178,6 +208,20 @@
     opacity: 1;
   }
 }
+/* A phone: under the top row of buttons, beside the HUD's button column (left / right inline from the touch layout);
+   compact, scrolling inside, and out of the way of the reticle. */
+.cv-sky-card.is-touch {
+  /* under the compass dial (hud.css .cv-compass: 64 px under the top-right buttons) */
+  top: calc(16px + var(--cv-hud-btn, 48px) + 12px + 64px + 8px);
+  width: auto;
+  max-height: min(38dvh, calc(100dvh - 160px - 190px));
+  font-size: 13px;
+  line-height: 1.35;
+  padding: 6px 8px 8px;
+}
+.cv-sky-card.is-touch.is-pill {
+  padding: 3px;
+}
 .cv-sky-card.is-touch .cv-sky-mini {
   width: 64px;
   height: 56px;
@@ -186,16 +230,12 @@
   font-size: 15px;
 }
 .cv-sky-card.is-touch .cv-sky-where,
-.cv-sky-card.is-touch .cv-sky-look,
-.cv-sky-card.is-touch .cv-sky-toggle {
+.cv-sky-card.is-touch .cv-sky-look {
   font-size: 12px;
 }
 .cv-sky-card.is-touch .cv-sky-body {
   gap: 4px;
   margin-top: 6px;
-}
-.cv-sky-card.is-folded {
-  padding-bottom: 8px;
 }
 
 .cv-sky-head {
@@ -209,8 +249,9 @@
   font-size: 14px;
 }
 .cv-sky-count {
-  font-weight: 500;
-  color: #c9bff5;
+  font-weight: 700;
+  color: #fff3c8;
+  white-space: nowrap;
 }
 .cv-sky-head-btns {
   display: flex;
@@ -360,18 +401,33 @@
   margin-top: 4px;
 }
 .cv-sky-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #d8d0ff;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #e6e0ff;
   cursor: pointer;
   user-select: none;
 }
 .cv-sky-toggle input {
-  width: 18px;
-  height: 18px;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
   accent-color: #8b74ff;
+  cursor: pointer;
+}
+.cv-sky-toggle-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cv-sky-toggle-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.cv-sky-toggle-hint {
+  font-size: 11.5px;
+  color: #b9b0e6;
 }
 
 .cv-sky-album h3 {
@@ -417,7 +473,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cv-sky-arrow-glyph,
-  .cv-sky-card {
+  .cv-sky-card,
+  .cv-sky-found,
+  .cv-sky-sparks i {
     animation: none;
   }
 }
@@ -441,8 +499,8 @@
   justify-content: space-between;
   gap: 8px;
   width: 100%;
-  min-height: 48px;
-  padding: 6px 12px;
+  min-height: 44px;
+  padding: 4px 10px;
   font: inherit;
   text-align: left;
   color: #f2eeff;
@@ -463,7 +521,7 @@
   min-width: 0;
 }
 .cv-sky-row-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
 }
 .cv-sky-row-seen {
@@ -486,6 +544,132 @@
   min-width: 44px;
   height: 44px;
 }
-.cv-sky-card.is-touch {
-  overflow-y: auto;
+
+/* ── zoom buttons (right edge, middle; the other side when the phone's button column is on the right) ── */
+.cv-sky-zoom {
+  position: fixed;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 26;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 14px;
+  background: rgba(14, 11, 30, 0.55);
+  border: 1px solid rgba(150, 130, 220, 0.25);
+  transition: opacity 0.25s ease;
+}
+.cv-sky-zoom.is-left {
+  right: auto;
+  left: 12px;
+}
+.cv-sky-zoom .cv-sky-btn {
+  min-width: 44px;
+  height: 44px;
+  font-size: 20px;
+  line-height: 1;
+}
+.cv-sky-zoom .cv-sky-zoom-read {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 4px;
+}
+
+/* ── the "발견!" moment ── */
+.cv-sky-found {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 27;
+  width: min(360px, calc(100vw - 32px));
+  padding: 12px 16px;
+  text-align: center;
+  color: #fff;
+  background: rgba(20, 15, 46, 0.82);
+  border: 1px solid rgba(255, 214, 120, 0.6);
+  border-radius: 16px;
+  box-shadow: 0 0 28px rgba(255, 200, 90, 0.35);
+  pointer-events: none;
+  animation: cv-sky-found 5.2s ease-out forwards;
+}
+.cv-sky-found p {
+  margin: 0;
+}
+.cv-sky-found-big {
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffe9a8;
+}
+.cv-sky-found-story {
+  margin-top: 4px !important;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #f0ebff;
+}
+@keyframes cv-sky-found {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.85);
+  }
+  8% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1.04);
+  }
+  14%,
+  88% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) scale(1);
+  }
+}
+.cv-sky-sparks {
+  position: absolute;
+  left: 50%;
+  top: 22px;
+  width: 0;
+  height: 0;
+}
+.cv-sky-sparks i {
+  position: absolute;
+  left: -3px;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffe9a8;
+  box-shadow: 0 0 8px 2px rgba(255, 220, 120, 0.9);
+  opacity: 0;
+  animation: cv-sky-spark 1.1s ease-out 0.05s 1 both;
+}
+@keyframes cv-sky-spark {
+  0% {
+    opacity: 1;
+    transform: rotate(var(--a)) translateX(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateX(var(--d)) scale(0.2);
+  }
+}
+
+/* A phone: the zoom buttons sit under the card (the card takes the upper right), the discovery banner low on the screen. */
+.cv-touch .cv-sky-zoom {
+  top: 60%;
+  transform: none;
+  gap: 4px;
+  padding: 4px;
+}
+.cv-touch .cv-sky-zoom .cv-sky-btn {
+  min-width: 40px;
+  height: 40px;
+}
+.cv-touch .cv-sky-found {
+  top: auto;
+  bottom: 22%;
 }

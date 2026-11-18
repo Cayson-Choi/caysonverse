@@ -98,6 +98,7 @@ import { createVegPark } from "./vegPark";
  */
 
 export { vegModeFrom, type VegMode } from "./vegMode";
+import { floraOld } from "./vegMode";
 
 const FLORA = "M_leaf_flora";
 const GREEN = "M_leaf_green";
@@ -535,6 +536,39 @@ export function varyBoundaryRow(xfs: readonly Matrix4[], edge = 86): Matrix4[] {
   return out;
 }
 
+/**
+ * The orchard's trees stood on a rigid grid, all one size and one turn (owner audit 2026-11-18: "똑같은 나무가 격자로"). Each one now
+ * gets a nudge off its grid point (up to ~0.9 m), its own size (0.8-1.22x) and turn, and about one in nine is left out (a gap, as in a
+ * real orchard where a tree died or was never planted). Seeded by the tree's own grid position: the same orchard every load, whatever
+ * order the file lists them in.
+ */
+export function varyOrchard(xfs: readonly Matrix4[]): Matrix4[] {
+  const out: Matrix4[] = [];
+  const p = new Vector3();
+  const q = new Quaternion();
+  const sc = new Vector3();
+  const turn = new Quaternion();
+  for (const m of xfs) {
+    m.decompose(p, q, sc);
+    let seed = (Math.imul(Math.round(p.x * 7), 73856093) ^ Math.imul(Math.round(p.z * 7), 19349663) ^ 0x51ed270b) >>> 0;
+    const rnd = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+    rnd();
+    const gap = rnd();
+    const size = 0.8 + rnd() * 0.42;
+    const yaw = rnd() * Math.PI * 2;
+    const nx = (rnd() - 0.5) * 1.8;
+    const nz = (rnd() - 0.5) * 1.8;
+    if (gap < 1 / 9) continue;
+    p.x += nx;
+    p.z += nz;
+    turn.setFromAxisAngle(UP, yaw);
+    q.premultiply(turn);
+    sc.multiplyScalar(size);
+    out.push(new Matrix4().compose(p, q, sc));
+  }
+  return out;
+}
+
 /** The world matrices of an instanced mesh's instances. */
 function instanceMatrices(mesh: InstancedMesh): Matrix4[] {
   mesh.updateWorldMatrix(true, false);
@@ -924,7 +958,7 @@ export class VillageVegetation {
     const xfs = {
       street_green: inst.street_green ? varyBoundaryRow(instanceMatrices(inst.street_green)) : [],
       street_cherry: inst.street_cherry ? instanceMatrices(inst.street_cherry) : [],
-      orchard: inst.orchard ? varyBoundaryRow(instanceMatrices(inst.orchard)) : [],
+      orchard: inst.orchard ? varyBoundaryRow(typeof location !== "undefined" && floraOld(location.search, import.meta.env.DEV) ? instanceMatrices(inst.orchard) : varyOrchard(instanceMatrices(inst.orchard))) : [],
       shrub: inst.shrub ? varyBoundaryRow(instanceMatrices(inst.shrub)) : [],
     };
     if (await step("skeletons")) return v.abandon();

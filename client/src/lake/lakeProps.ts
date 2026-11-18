@@ -30,6 +30,7 @@ import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { LAKE_GEAR_NODES, lakeFishNode, type LakeFishId } from "@caysonverse/shared/village/lakeGear";
 import { fishKindFromId } from "@caysonverse/shared/village/fishing";
 import { LAKE_URLS, lakeAssetWanted } from "./lakeAssets";
+import { applyEelSkin, isEelKind } from "./eelSkin";
 
 interface GearFiles {
   gear: { scene: Object3D; animations: AnimationClip[] } | null;
@@ -347,6 +348,7 @@ export function createFishModel(): FishModel {
   let shown: { node: Object3D; near: Object3D[]; far: Object3D[] } | null = null;
   const flex: FlexUniform = { value: new Vector3(0, 0, 0) };
   const owned = new Map<Material, Material>();
+  const ownedEel = new Map<Material, Material>(); // the eel's body has its own skin (eelSkin.ts)
   let far = false;
   const applyLod = () => {
     if (!shown) return;
@@ -380,10 +382,12 @@ export function createFishModel(): FishModel {
           mesh.frustumCulled = false; // the flex moves the tail outside the rest bounds
           const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
           const live = mats.map((mt) => {
-            let l = owned.get(mt);
+            const own = isEelKind(id) ? ownedEel : owned;
+            let l = own.get(mt);
             if (!l) {
               l = liveMaterial(mt, flex);
-              owned.set(mt, l);
+              if (own === ownedEel) applyEelSkin(l);
+              own.set(mt, l);
             }
             return l;
           });
@@ -414,7 +418,9 @@ export function createFishModel(): FishModel {
       root.clear();
       kinds.clear();
       for (const m of owned.values()) m.dispose();
+      for (const m of ownedEel.values()) m.dispose();
       owned.clear();
+      ownedEel.clear();
     },
   };
 }

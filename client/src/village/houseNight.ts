@@ -1,4 +1,5 @@
 import type { Material, Texture } from "three";
+import { FLAME_GLSL, houseFireTime, houseHearthMax, houseHearthMin } from "./houseFire";
 
 /**
  * A house at night (집 실내 G): the baked light of a house changes with the village's clock, like the memorial hall's (hallNight.ts).
@@ -71,9 +72,13 @@ export function patchHouseViewMaterial(material: Material): void {
 export const GLOW_DAY = 0.72;
 
 const GLOW_PARS = /* glsl */ `uniform float uHouseNight;
+uniform vec3 uHearthMin;
+uniform vec3 uHearthMax;
+uniform float uHouseFireTime;
+varying vec3 vHouseWorld;
 void main() {`;
 const GLOW_COLOR = /* glsl */ `#include <color_fragment>
-	diffuseColor.rgb *= mix( ${GLOW_DAY.toFixed(3)}, 1.0, uHouseNight );`;
+	diffuseColor.rgb *= mix( ${GLOW_DAY.toFixed(3)}, 1.0, uHouseNight );${FLAME_GLSL}`;
 
 /** Let a bulb / lamp-shade material glow at night and calm down by day (idempotent). */
 export function patchHouseGlowMaterial(material: Material): void {
@@ -81,9 +86,16 @@ export function patchHouseGlowMaterial(material: Material): void {
   patched.add(material);
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uHouseNight = houseNightUniform;
+    shader.uniforms.uHearthMin = houseHearthMin;
+    shader.uniforms.uHearthMax = houseHearthMax;
+    shader.uniforms.uHouseFireTime = houseFireTime;
+    // the world position of the fragment: the fireplace's flame cones are coloured as a fire (houseFire.ts)
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vHouseWorld;")
+      .replace("#include <project_vertex>", "#include <project_vertex>\nvHouseWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
     shader.fragmentShader = shader.fragmentShader.replace("void main() {", GLOW_PARS).replace("#include <color_fragment>", GLOW_COLOR);
   };
-  material.customProgramCacheKey = () => "house-glow-night";
+  material.customProgramCacheKey = () => "house-glow-night-fire";
   material.needsUpdate = true;
 }
 

@@ -400,14 +400,14 @@ export function leafSpray(level: 0 | 1 | 2, seed = 21, fine = false): BufferGeom
 
 /**
  * A stretch of a willow strand's leaves (instanced; origin on the strand, local +y along the strand, which hangs
- * down): narrow lance leaves (folded slivers) round the 0.3 m stretch, pointing on down and a little out, ten at level 0
- * (20 triangles), six at level 1 (12), three at level 2 (6). The strand itself is in the twig mesh.
+ * down): narrow lance leaves (folded slivers) round the 0.3 m stretch, pointing on down and a little out, fourteen at level 0
+ * (28 triangles), ten at level 1 (20, longer and wider so the far curtain stays full), five at level 2 (10). The strand itself is in the twig mesh.
  */
 export function willowSpray(level: 0 | 1 | 2, seed = 23): BufferGeometry {
   const b = new GeoBuilder();
   b.windHeight = 0.32;
   const rand = mulberry32(seed + level * 131);
-  const n = [10, 6, 3][level]!;
+  const n = [14, 10, 5][level]!;
   for (let i = 0; i < n; i++) {
     const s = 0.02 + (i / n) * 0.27;
     const phi = i * 2.39996 + rand() * 0.4;
@@ -416,8 +416,8 @@ export function willowSpray(level: 0 | 1 | 2, seed = 23): BufferGeometry {
     const al = ((22 + rand() * 20) * Math.PI) / 180;
     const dir = norm(add(mul([0, 1, 0], Math.cos(al)), mul(radial, Math.sin(al))));
     const up = norm(cross(dir, tangent));
-    const length = [0.12, 0.15, 0.19][level]! + rand() * 0.03;
-    const width = [0.026, 0.034, 0.05][level]!;
+    const length = [0.15, 0.2, 0.26][level]! + rand() * 0.03;
+    const width = [0.03, 0.044, 0.06][level]!;
     leaf(b, add([0, s, 0], mul(radial, 0.004)), dir, up, length, width, {
       strap: true,
       fold: 0.25,
