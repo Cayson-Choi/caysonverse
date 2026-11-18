@@ -354,8 +354,24 @@ function paintTall(g: Ctx): void {
 }
 
 /** Paint one atlas on a canvas and make its texture: dilated transparent pixels, premultiplied-free, mipmapped, sRGB. */
+/** The finished atlases' pixels, once per page (a re-mounted lake or a Suspense retry makes a new texture from the same data, not a new painting). */
+const atlasPixels = new Map<string, Uint8Array>();
+function atlasTexture(out: Uint8Array, w: number, h: number, name: string): DataTexture {
+  const t = new DataTexture(out, w, h, RGBAFormat, UnsignedByteType);
+  t.colorSpace = SRGBColorSpace;
+  t.minFilter = LinearMipmapLinearFilter;
+  t.magFilter = LinearFilter;
+  t.generateMipmaps = true;
+  t.anisotropy = 4;
+  t.name = name;
+  t.needsUpdate = true;
+  return t;
+}
+
 function toTexture(w: number, h: number, paint: (g: Ctx) => void, name: string): DataTexture | null {
   if (typeof document === "undefined") return null;
+  const have = atlasPixels.get(name);
+  if (have) return atlasTexture(have, w, h, name);
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
@@ -402,15 +418,8 @@ function toTexture(w: number, h: number, paint: (g: Ctx) => void, name: string):
       out[o + 3] = a;
     }
   }
-  const t = new DataTexture(out, w, h, RGBAFormat, UnsignedByteType);
-  t.colorSpace = SRGBColorSpace;
-  t.minFilter = LinearMipmapLinearFilter;
-  t.magFilter = LinearFilter;
-  t.generateMipmaps = true;
-  t.anisotropy = 4;
-  t.name = name;
-  t.needsUpdate = true;
-  return t;
+  atlasPixels.set(name, out);
+  return atlasTexture(out, w, h, name);
 }
 
 export function makeCrownAtlas(): DataTexture | null {
