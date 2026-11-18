@@ -10,7 +10,7 @@ import { PHONE_GOODS_REACH, innerHingePivot, lotSurfaceMaterial, mergeReady, pic
 import { LOT_DOOR_PADS, LOT_SLOT_HOOKS, lotDoorNotice, lotDoorTarget, lotExitTarget, lotSlotHandlers, onLotSlot } from "./lotTargets";
 import { lotTrimFootprints } from "./LotsVillagePatch";
 import { manifestPaths } from "./lotTextures";
-import { LOT_ROOM_PHONE_FILES, SACRED_MAP_MAX, capMips, sacredFile, sacredUrl } from "./LotRoom";
+import { LOT_ROOM_PHONE_FILES, SACRED_MAP_MAX, capMips, isSacredHero, sacredCaps, sacredFile, sacredUrl } from "./LotRoom";
 
 const LOTS_DIR = resolve(__dirname, "..", "..", "..", "public", "models", "village", "lots");
 /** A GLB's JSON chunk. */
@@ -206,6 +206,19 @@ describe("sacred pieces' maps: capped by dropping mips (L5v2 budget pass)", () =
     }
   };
   const tex = (w: number, h: number) => new CompressedTexture(chain(w, h) as never, w, h);
+
+  it("the chapel's Mary and the framed art keep their sharp maps; the saints, the glass and the temple keep the budget caps", () => {
+    expect(sacredCaps("lotstatue__lot_chapel_nave_mary", false)).toMatchObject({ color: 1024, normal: 2048 });
+    expect(sacredCaps("lotstatue__lot_chapel_nave_mary", true)).toMatchObject({ color: 1024, normal: 1024 });
+    expect(sacredCaps("lotstatue__lot_chapel_nave_crucifix", false)).toMatchObject({ normal: 1024 });
+    expect(sacredCaps("lotart__lot_chapel_nave_station_07", false).color).toBe(768);
+    expect(sacredCaps("lotart__lot_church_nave_bloch_sermon", false).color).toBe(1280);
+    expect(sacredCaps("lotstatue__lot_chapel_nave_saint", false)).toEqual(SACRED_MAP_MAX.desktop);
+    expect(sacredCaps("lotglass__lot_chapel_nave_rose", true)).toEqual(SACRED_MAP_MAX.mobile);
+    expect(sacredCaps("lotstatue__lot_temple_hall_buddha", false)).toEqual(SACRED_MAP_MAX.desktop);
+    expect(isSacredHero("lotart__lot_chapel_nave_station_01")).toBe(true);
+    expect(isSacredHero("lotglass__lot_chapel_nave_rose")).toBe(false);
+  });
 
   it("a 2048 statue map drops to the cap; its image follows the new top level", () => {
     const t = tex(2048, 2048);
