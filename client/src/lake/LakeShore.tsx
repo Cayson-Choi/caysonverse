@@ -1,3 +1,4 @@
+import { compileSafely } from "../game/compileSafely";
 import { useEffect, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Group, Mesh, type BufferGeometry, type Object3D } from "three";
@@ -147,7 +148,7 @@ export function LakeShore({ terrain, water, tier }: { terrain: Object3D; water: 
   useEffect(() => {
     if (!built) return;
     let off = false;
-    void gl.compileAsync(scene, camera).catch(() => {
+    void compileSafely(gl, scene, camera).catch(() => {
       if (!off) console.warn("[lake] precompile failed");
     });
     return () => {

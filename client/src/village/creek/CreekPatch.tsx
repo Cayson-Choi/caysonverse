@@ -1,3 +1,4 @@
+import { compileSafely } from "../../game/compileSafely";
 import { useEffect, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import {
@@ -330,7 +331,7 @@ export function CreekPatch({ nodes, tier }: { nodes: VillageNodes; tier: Village
   useEffect(() => {
     if (!built) return;
     let off = false;
-    void gl.compileAsync(scene, camera).catch(() => {
+    void compileSafely(gl, scene, camera).catch(() => {
       if (!off) console.warn("[creek] precompile failed");
     });
     return () => {

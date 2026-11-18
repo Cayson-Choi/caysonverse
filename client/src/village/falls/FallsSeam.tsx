@@ -1,3 +1,4 @@
+import { compileSafely } from "../../game/compileSafely";
 import { useEffect, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Group, Mesh } from "three";
@@ -95,7 +96,7 @@ export function FallsSeam({ tier }: { tier: VillageTier }) {
   }, [tier, gl]);
   useEffect(() => {
     if (!group) return;
-    void gl.compileAsync(scene, camera).catch(() => console.warn("[falls seam] precompile failed"));
+    void compileSafely(gl, scene, camera).catch(() => console.warn("[falls seam] precompile failed"));
   }, [group, gl, scene, camera]);
   useFrame(({ clock }) => {
     if (group) reedUniforms.uCkTime.value = clock.elapsedTime;
