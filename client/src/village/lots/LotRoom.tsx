@@ -99,10 +99,22 @@ function ownTextureBytes(root: Object3D, mobile: boolean): number {
  * the cap only drops the levels above it (no re-encode, no new file); a piece is seen from a few metres, where 1024 /
  * 512 is still 300+ px a metre (the ORM's soft shading the least of it: 256).
  */
-export const SACRED_MAP_MAX = {
+type SacredCap = { color: number; normal: number; orm: number };
+export const SACRED_MAP_MAX: { desktop: SacredCap; mobile: SacredCap } = {
   desktop: { color: 1024, normal: 512, orm: 256 },
   mobile: { color: 1024, normal: 256, orm: 256 },
-} as const;
+};
+
+/**
+ * Rooms whose sacred pieces are the point of the room get a higher cap (owner 2026-11-18: "고해상도로 선명하게"): the 대웅전's 본존불, 협시보살
+ * and 탱화 keep their full maps on a desktop (colour up to 3072 for the 탱화, normal 2048), 1536 / 1024 on a phone (the room's GPU budget has the room: 48 / 14 MB).
+ */
+export const SACRED_MAP_MAX_BY_UNIT: Record<string, { desktop: SacredCap; mobile: SacredCap }> = {
+  lot_temple_hall: {
+    desktop: { color: 3072, normal: 2048, orm: 1024 },
+    mobile: { color: 1536, normal: 1024, orm: 512 },
+  },
+};
 
 export { capMips } from "./lotTextures";
 
@@ -534,12 +546,16 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
           o.visible = false;
           return;
         }
-        const cap = SACRED_MAP_MAX[phone ? "mobile" : "desktop"];
+        const cap = (SACRED_MAP_MAX_BY_UNIT[unit] ?? SACRED_MAP_MAX)[phone ? "mobile" : "desktop"];
+        const aniso = Math.min(16, gl.capabilities.getMaxAnisotropy());
         const out = matsOf(o).map((mat) => {
           let m = mat as MeshStandardMaterial;
           for (const k of ["map", "emissiveMap", "normalMap", "aoMap", "roughnessMap", "metalnessMap"] as const) {
             const t = m[k];
-            if (t) capMips(t, k === "map" || k === "emissiveMap" ? cap.color : k === "normalMap" ? cap.normal : cap.orm);
+            if (t) {
+              capMips(t, k === "map" || k === "emissiveMap" ? cap.color : k === "normalMap" ? cap.normal : cap.orm);
+              t.anisotropy = Math.max(t.anisotropy, aniso); // a painting / robe seen at a slant stays sharp (mips + anisotropic filtering)
+            }
           }
           const set = /^M_pbr_(.+)$/.exec(m.name)?.[1];
           if (set) {

@@ -11,3 +11,5 @@
 - 나무 십자가, 십자가의 길 판, 장미창 트레이서리, 납 테·철 띠, 탱화 틀, 대리석·금박 표면 굽기: 이 프로젝트에서 직접 제작
 - 본존불 3D: "Gilt bronze statuette of Sakyamuni Buddha" by dluo — **CC BY 4.0** (https://zenodo.org/records/10225206)
 - 십자고상 3D: "Crucified Christ" from St. Jadwiga's hospital, WirtualneMuzeaMalopolski — CC0 (https://zenodo.org/records/21567941)
+- 대웅전 옆 벽 족자 2점: Cleveland Museum of Art 1918.542 "Tathagata Buddha" (조선, 19세기 후반) — CC0 (https://www.clevelandart.org/art/1918.542)
+- 본존불 광배·두광(불꽃 모양 광배, 연꽃잎 두광): 이 프로젝트에서 직접 모델링 (`docs/designs/village-lots-v2/tools/sacred/build_mandorla.py`); 스캔에 붙어 있던 얇은 광배는 잘라냄

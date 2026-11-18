@@ -48,12 +48,18 @@ PAPER_DAY = (1.0, 0.95, 0.84)
 SACRED = [
     {"node": "lotstatue__lot_temple_hall_buddha", "file": "sacred/lotstatue__lot_temple_hall_buddha.glb", "phone": "sacred/lotstatue__lot_temple_hall_buddha_phone.glb",
      "at": (5.7, 1.1, 6.4), "yaw": math.pi, "mirror": False},
+    {"node": "lotstatue__lot_temple_hall_buddha_halo", "file": "sacred/lotstatue__lot_temple_hall_buddha_halo.glb", "phone": "sacred/lotstatue__lot_temple_hall_buddha_halo_phone.glb",
+     "at": (5.7, 1.1, 6.4), "yaw": math.pi, "mirror": False},
     {"node": "lotstatue__lot_temple_hall_bodhisattva_l", "file": "sacred/lotstatue__lot_temple_hall_bodhisattva.glb", "phone": "sacred/lotstatue__lot_temple_hall_bodhisattva_phone.glb",
      "at": (3.55, 1.1, 6.45), "yaw": math.pi, "mirror": False},
     {"node": "lotstatue__lot_temple_hall_bodhisattva_r", "file": "sacred/lotstatue__lot_temple_hall_bodhisattva.glb", "phone": "sacred/lotstatue__lot_temple_hall_bodhisattva_phone.glb",
      "at": (7.85, 1.1, 6.45), "yaw": math.pi, "mirror": True},
     {"node": "lotart__lot_temple_hall_taenghwa", "file": "sacred/lotart__lot_temple_hall_taenghwa.glb", "phone": "sacred/lotart__lot_temple_hall_taenghwa_phone.glb",
      "at": (5.7, 2.15, 7.17), "yaw": math.pi, "mirror": False},
+    {"node": "lotart__lot_temple_hall_scroll_l", "file": "sacred/lotart__lot_temple_hall_scroll.glb", "phone": "sacred/lotart__lot_temple_hall_scroll_phone.glb",
+     "at": (1.85, 1.3, 7.36), "yaw": math.pi, "mirror": False},
+    {"node": "lotart__lot_temple_hall_scroll_r", "file": "sacred/lotart__lot_temple_hall_scroll.glb", "phone": "sacred/lotart__lot_temple_hall_scroll_phone.glb",
+     "at": (9.55, 1.3, 7.36), "yaw": math.pi, "mirror": True},
 ]
 
 
@@ -634,9 +640,46 @@ def side_pieces(kit):
 # ------------------------------------------------------------------------------------------------ 연등 --
 
 def lantern_kind(tint):
+    """A 연등 as a real lotus bud: two overlapping rows of curved, pointed petals (ridge down the middle of each), a green calyx
+    ring on top, a hanging cord and a paper tassel below."""
     m = Mesh("deung")
-    T.lotus_lamp(m, None, 0.0, 0.0, 0.0, None, DAN.t(tint), DAN.t(G.hexc("2E7A58")), r=0.17)
-    m.member((0.0, 0.5, 0.0), (0.0, FLAT_Y - 3.55, 0.0), G.prof_round(0.004, 3), DAN.t(G.hexc("E8E0D0")))
+    R = 0.19
+
+    def petal_row(n, t1, rad, phase, tcol, ridge):
+        for i in range(n):
+            a = 2 * math.pi * (i + phase) / n
+            rows = 3
+            hw0 = math.pi / n * 1.28
+            prof = []
+            for r_ in range(rows + 1):
+                t = r_ / rows * t1
+                rr = rad * (math.sin(math.pi * (0.06 + 0.94 * t)) ** 0.8) + 0.004
+                yy = -0.34 + 0.58 * t
+                hw = hw0 * (math.sin(math.pi * min(1.0, t * 1.02)) ** 0.55)
+                prof.append((rr, yy, hw, t))
+            for r_ in range(rows):
+                (ra, ya, ha, ta), (rb, yb, hb, tb) = prof[r_], prof[r_ + 1]
+                for side in (0, 1):
+                    def pt(rr, yy, hh, k):
+                        # k: -1 left edge, 0 ridge (pushed out), 1 right edge
+                        ang = a + k * hh
+                        rrr = rr + (ridge if k == 0 else 0.0)
+                        return (rrr * math.cos(ang), yy, -rrr * math.sin(ang))
+                    ks = (-1, 0) if side == 0 else (0, 1)
+                    q = [pt(ra, ya, ha, ks[0]), pt(ra, ya, ha, ks[1]), pt(rb, yb, hb, ks[1]), pt(rb, yb, hb, ks[0])]
+                    if ra < 0.01 and ya < -0.3:
+                        q = [q[0], q[2], q[3]] if False else q
+                    u0 = ((i % 5) + (0.5 * side)) / 5.0
+                    stl = [(u0, ta), (u0 + 0.1, ta), (u0 + 0.1, tb), (u0, tb)]
+                    T.apoly(m, q, DAN.t(tcol), "lotus_paper", [(min(0.98, a_), 0.04 + 0.9 * b_) for a_, b_ in stl],
+                            out=(math.cos(a), 0.0, -math.sin(a)))
+
+    petal_row(12, 0.78, R * 1.0, 0.5, (0.98, 0.9, 0.94), 0.010)       # back row (paler), a touch wider
+    petal_row(10, 0.92, R * 0.93, 0.0, tint, 0.014)                    # front row
+    m.lathe([(R * 0.30, 0.2), (R * 0.36, 0.23), (R * 0.30, 0.27)], 10, DAN.t(G.hexc("2E7A58")), 0.0, 0.0, 0.0)
+    m.member((0.0, 0.26, 0.0), (0.0, FLAT_Y - 3.55, 0.0), G.prof_round(0.004, 3), DAN.t(G.hexc("E8E0D0")))
+    m.member((0.0, -0.34, 0.0), (0.0, -0.52, 0.0), G.prof_round(0.012, 4), DAN.t(G.hexc("E8E0D0")))
+    m.cbox(-0.012, 0.012, -0.78, -0.52, -0.012, 0.012, DAN.t(G.hexc("D8453A")), c=0.003)
     return m
 
 
