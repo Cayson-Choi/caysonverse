@@ -4,6 +4,7 @@ import { getRoom, sendRideLeave } from "../net/connection";
 import { VillageServerMsg, type RideNoticePayload } from "@caysonverse/shared/village/messages";
 import { COASTER_DWELL_MS } from "@caysonverse/shared/land/coaster";
 import { CAROUSEL_DWELL_MS } from "@caysonverse/shared/land/carousel";
+import { DROP_DWELL_MS } from "@caysonverse/shared/land/dropTower";
 import { coasterNow, landPose, rideComfort, rideNotice, rideReserved, selfRide, setRideComfort, subscribeRideComfort, type RideComfort } from "./coasterRide";
 import { rideMuted, setRideMuted } from "./coasterAudio";
 import { useLocalArea } from "../village/villageArea";
@@ -216,7 +217,7 @@ export function CoasterHud() {
       ? `${Math.round(wheelSeatPose(selfRide.slot, wall).y)}m 높이 · 한 바퀴 돌면 내려요`
       : "승강장이에요 · 내릴 수 있어요"
     : now.status === "riding"
-      ? `${Math.max(0, Math.round((now.phase - (isCoaster ? COASTER_DWELL_MS : CAROUSEL_DWELL_MS)) / 1000))}초 · ${isCoaster ? "안전바를 잡고 있어요" : "말이 오르내려요"}`
+      ? `${Math.max(0, Math.round((now.phase - (isCoaster ? COASTER_DWELL_MS : def?.key === "droptower" ? DROP_DWELL_MS : CAROUSEL_DWELL_MS)) / 1000))}초 · ${isCoaster ? "안전바를 잡고 있어요" : def?.key === "droptower" ? "어깨 안전바를 잡고 있어요" : "말이 오르내려요"}`
       : now.status === "gate"
         ? `곧 출발해요 · ${secs}초`
         : "출발을 기다리는 중이에요";

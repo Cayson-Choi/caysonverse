@@ -43,6 +43,9 @@ export const COASTER_BOARD_REACH_M = 6;
 export const CAROUSEL_PAD = Object.freeze({ x: 110, z: -119, radius: 3 });
 /** The wheel's boarding pad: on the grass at the foot of the platform steps (the rider is lifted into the gondola; the avatar never walks on the deck). */
 export const WHEEL_PAD = Object.freeze({ x: 205, z: -128.2, radius: 3 });
+/** The cloud drop tower (shared/src/land/dropTower.ts): its axis and its boarding pad, on the grass east of its platform (the rider is lifted into the seat). */
+export const DROP_SITE_AT = Object.freeze({ x: -58, z: -78 });
+export const DROP_PAD = Object.freeze({ x: -44, z: -78, radius: 3 });
 
 /** The village side: the gate lot's door pad and where you stand coming out (world metres, from the gate lot). */
 export function parkGateDoor() {
@@ -129,7 +132,7 @@ function buildTrees(): ParkTree[] {
     if (onPath(x, z, 5)) return false;
     if (PARK_SHOPS.some((s) => Math.abs(x - s.x) < s.d / 2 + 5 && Math.abs(z - s.z) < s.w / 2 + 4)) return false;
     if (Math.hypot(x - PARK_EXIT_PAD.x, z - PARK_EXIT_PAD.z) < 14) return false;
-    if (Math.hypot(x - 110, z + 135) < 30 || Math.hypot(x - 205, z + 135) < 34) return false; // the ride plots (the carousel's, the wheel's) stay open
+    if (Math.hypot(x - 110, z + 135) < 30 || Math.hypot(x - 205, z + 135) < 34 || Math.hypot(x - DROP_SITE_AT.x - 6, z - DROP_SITE_AT.z) < 24) return false; // the ride plots (the carousel's, the wheel's) stay open
     return true;
   };
   // groves: clusters of trees with open lawn between them (lawns stay open beside the paths, the plaza and the ride plots)
@@ -238,6 +241,8 @@ function buildSolids(): AABB[] {
   // the wheel: the four feet of its A-frames and the boarding platform's deck
   for (const sx of [-1, 1]) for (const dz of [-2.75, 5.7]) out.push(box(205 + sx * 11 - 1, 205 + sx * 11 + 1, -140 + dz - 1, -140 + dz + 1));
   out.push(box(205 - 3.5, 205 + 3.5, -140 + 4.45, -140 + 8.8)); // the platform's deck (the steps south of it are walked on)
+  // the drop tower: its platform (the car's station, a 14.8 m square) is a solid; the boarding pad lies east of it
+  out.push(box(DROP_SITE_AT.x - 7.4, DROP_SITE_AT.x + 7.4, DROP_SITE_AT.z - 7.4, DROP_SITE_AT.z + 7.4));
   for (const t of PARK_TROUGHS) out.push(box(t.x0, t.x1, t.z0, t.z1));
   for (const p of PARK_PLANTERS) out.push(box(p.x - p.w / 2, p.x + p.w / 2, p.z - p.d / 2, p.z + p.d / 2));
   for (const b of PARK_BINS) out.push(box(b.x - 0.3, b.x + 0.3, b.z - 0.3, b.z + 0.3));
