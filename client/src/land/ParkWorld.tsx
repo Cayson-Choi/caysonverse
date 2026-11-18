@@ -39,6 +39,7 @@ import {
 import { isTouchDevice } from "../device";
 import { CoasterWorld } from "./CoasterWorld";
 import { CarouselWorld } from "./CarouselWorld";
+import { setParkReady } from "./parkReady";
 import { WheelWorld } from "./WheelWorld";
 import { Shops } from "./ParkShops";
 import { ParkMountains, ParkScenery } from "./ParkScenery";
@@ -569,6 +570,11 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
   const all = useTexture(ALL_PARK_URLS) as Texture[];
   const [pine] = useTexture([PINE_URL]) as Texture[];
   const env = useSkyEnv();
+  // (this component only renders once everything it and its children suspend on has loaded)
+  useEffect(() => {
+    setParkReady(true);
+    return () => setParkReady(false);
+  }, []);
   return (
     <group>
       <ParkSky />

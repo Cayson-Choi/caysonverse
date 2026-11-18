@@ -1,3 +1,4 @@
+import { compileSafely } from "../game/compileSafely";
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
@@ -244,7 +245,7 @@ export function CarouselWorld({ env, all }: { env: Texture; all: Texture[] }) {
     if (root.current) {
       const t = window.setTimeout(() => {
         try {
-          if (root.current) gl.compile(root.current, cam);
+          if (root.current) void compileSafely(gl, root.current, cam);
         } catch {
           /* the compile is an optimisation only */
         }

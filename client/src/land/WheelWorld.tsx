@@ -1,3 +1,4 @@
+import { compileSafely } from "../game/compileSafely";
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
@@ -115,7 +116,7 @@ export function WheelWorld({ env, all }: { env: Texture; all: Texture[] }) {
   useEffect(() => {
     const t = window.setTimeout(() => {
       try {
-        if (root.current) gl.compile(root.current, cam);
+        if (root.current) void compileSafely(gl, root.current, cam);
       } catch {
         /* an optimisation only */
       }

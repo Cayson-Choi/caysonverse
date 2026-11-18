@@ -3,11 +3,14 @@ import { isTouchDevice } from "../device";
 import { getRoom, sendRideLeave } from "../net/connection";
 import { VillageServerMsg, type RideNoticePayload } from "@caysonverse/shared/village/messages";
 import { COASTER_DWELL_MS, COASTER_SEATS } from "@caysonverse/shared/land/coaster";
-import { coasterNow, landPose, rideComfort, rideNotice, selfRide, setRideComfort, subscribeRideComfort, type RideComfort } from "./coasterRide";
+import { CAROUSEL_DWELL_MS } from "@caysonverse/shared/land/carousel";
+import { coasterNow, landPose, rideComfort, rideNotice, rideReserved, selfRide, setRideComfort, subscribeRideComfort, type RideComfort } from "./coasterRide";
 import { rideMuted, setRideMuted } from "./coasterAudio";
 import { useLocalArea } from "../village/villageArea";
-import { RIDES, rideById } from "@caysonverse/shared/land/rides";
+import { RIDES, msUntilBoarding, rideById } from "@caysonverse/shared/land/rides";
 import { villageClock } from "../village/villageClock";
+import { boardRide } from "./rideBoardWalk";
+import { useParkReady } from "./parkReady";
 import { wheelSeatPose } from "@caysonverse/shared/land/wheel";
 
 const NOTICE_TEXT = {
@@ -15,6 +18,8 @@ const NOTICE_TEXT = {
   full: `자리가 가득 찼어요. 다음 번에 타요. (${COASTER_SEATS}석 이하)`,
   busy: "앉아 있거나 버스·낚시 중에는 탈 수 없어요.",
   aloft: "높이 떠 있을 땐 내릴 수 없어요. 바닥에 닿으면 내릴 수 있어요.",
+  reserved: "자리를 맡아뒀어요. 다음 탑승 때 자동으로 타요.",
+  far: "탑승 위치로 가까이 가 주세요.",
 } as const;
 
 /** Re-render ~4 times a second (the countdown). */
@@ -66,16 +71,30 @@ export function CoasterHud() {
     return r.onMessage(VillageServerMsg.RideNotice, (m: RideNoticePayload) => {
       rideNotice.reason = m.reason;
       rideNotice.at = performance.now();
+      if (m.reason === "reserved") {
+        // the ride I stand at: the nearest boarding pad
+        let best = Infinity;
+        for (const ride of RIDES) {
+          const d = Math.hypot(landPose.x - ride.pad.x, landPose.z - ride.pad.z);
+          if (ride.seats > 0 && d < best) {
+            best = d;
+            rideReserved.key = ride.key;
+            rideReserved.at = performance.now();
+          }
+        }
+      }
     });
   }, []);
   const comfort = useSyncExternalStore(subscribeRideComfort, rideComfort, rideComfort);
   const [muted, setMuted] = useState(rideMuted());
+  // a phone keeps the panel small (it lies over the ground a thumb taps): the other rides are behind one button
+  const [more, setMore] = useState(false);
   const riding = selfRide.slot >= 0;
   // the ride in question: the one I sit on, else the nearest whose boarding pad is within sight (70 m)
   const wall = villageClock.liveMs();
   let def = riding ? (rideById(selfRide.ride) ?? RIDES[0]!) : null;
   if (!def && area === "park") {
-    let best = 70;
+    let best = 400; // the whole park: the nearest ride is always shown, with the way to it
     for (const r of RIDES) {
       if (r.seats <= 0) continue;
       const d = Math.hypot(pose.x - r.pad.x, pose.z - r.pad.z);
@@ -85,12 +104,24 @@ export function CoasterHud() {
       }
     }
   }
+  // a reservation ends when I sit, walk away from its pad, or after 8 minutes
+  if (rideReserved.key !== null) {
+    const rd = rideById(RIDES.find((r) => r.key === rideReserved.key)?.id ?? 0);
+    if (selfRide.slot >= 0 || !rd || Math.hypot(landPose.x - rd.pad.x, landPose.z - rd.pad.z) > rd.pad.radius + rd.reach + 5 || performance.now() - rideReserved.at > 480_000) rideReserved.key = null;
+  }
   const now = def ? def.statusAt(wall) : coasterNow();
   const secs = Math.max(0, Math.ceil(now.departsInMs / 1000));
   const noticeFresh = rideNotice.reason !== null && performance.now() - rideNotice.at < 4500;
   const icon = def?.key === "carousel" ? "🎠" : def?.key === "wheel" ? "🎡" : "🎢";
   const isCoaster = !def || def.key === "coaster";
+  const waitMs = def && now.status !== "boarding" ? msUntilBoarding(def, wall) : null;
+  const waitSecs = waitMs === null ? null : Math.max(1, Math.ceil(waitMs / 1000));
   const isWheel = def?.key === "wheel";
+  const padDist = def ? Math.hypot(landPose.x - def.pad.x, landPose.z - def.pad.z) : 0;
+  const ddx = def ? def.pad.x - landPose.x : 0;
+  const ddz = def ? def.pad.z - landPose.z : 0;
+  // the compass's words: north is -z, east +x
+  const dirWord = `${Math.abs(ddz) > Math.abs(ddx) * 0.45 ? (ddz < 0 ? "북" : "남") : ""}${Math.abs(ddx) > Math.abs(ddz) * 0.45 ? (ddx > 0 ? "동" : "서") : ""}`;
   const aloft = riding && !!def?.canLeave && !def.canLeave(selfRide.slot, wall);
   if (!riding) {
     if (!def) return null;
@@ -100,12 +131,31 @@ export function CoasterHud() {
           {icon} {def.name}
         </div>
         <div style={{ opacity: 0.8 }}>
-          {now.status === "unloading" && `손님이 내리는 중 · ${secs}초 뒤 출발`}
           {now.status === "boarding" && `탑승 중 · ${secs}초 뒤 출발`}
-          {now.status === "gate" && `곧 출발해요 (${secs}초)`}
-          {now.status === "riding" && `운행 중 · 다음 출발까지 ${secs}초`}
+          {now.status === "gate" && `곧 출발해요 (${secs}초) · 다음 탑승을 기다려요`}
+          {(now.status === "unloading" || now.status === "riding" || now.status === "gate") && waitSecs !== null && (
+            <div data-testid="ride-countdown">{rideReserved.key === def.key ? `자리를 맡았어요 · ${waitSecs}초 뒤 자동 탑승` : `다음 탑승까지 ${waitSecs}초`}</div>
+          )}
         </div>
-        <div style={{ opacity: 0.7 }}>{isCoaster ? '대기줄 입구에서 "타기"' : '입구에서 "타기"'}</div>
+        <div style={{ opacity: 0.7 }}>
+          {padDist > 45 ? `${dirWord} 쪽으로 ${Math.round(padDist)}m · 놀이기구를 눌러도 걸어가요` : isTouchDevice ? "놀이기구를 누르거나 타기 버튼을 눌러요" : "놀이기구를 누르거나 E 키를 눌러요"}
+        </div>
+        <button type="button" data-testid={`ride-go-${def.key}`} style={{ ...btn, marginTop: 6, width: "100%", fontSize: 13 }} onClick={() => boardRide(def!.key, landPose.x, landPose.z)}>
+          {padDist > 45 ? "걸어가서 타기" : "타기"}
+        </button>
+        {isTouchDevice ? (
+          <button type="button" data-testid="ride-more" style={{ ...btn, marginTop: 4, width: "100%", fontSize: 12, background: "rgba(255,255,255,0.2)", color: "#fff" }} onClick={() => setMore(!more)}>
+            {more ? "다른 놀이기구 접기 ▲" : "다른 놀이기구 ▼"}
+          </button>
+        ) : null}
+        {(!isTouchDevice || more ? RIDES.filter((r) => r.seats > 0 && r.key !== def!.key) : []).map((r) => {
+          const od = Math.hypot(landPose.x - r.pad.x, landPose.z - r.pad.z);
+          return (
+            <button key={r.key} type="button" data-testid={`ride-go-${r.key}`} style={{ ...btn, marginTop: 4, width: "100%", fontSize: 12, textAlign: "left" }} onClick={() => boardRide(r.key, landPose.x, landPose.z)}>
+              {r.key === "carousel" ? "🎠" : r.key === "wheel" ? "🎡" : "🎢"} {r.name} · {Math.round(od)}m · {od > 45 ? "걸어가서 타기" : "타기"}
+            </button>
+          );
+        })}
         {noticeFresh ? (
           <div role="alert" data-testid="coaster-notice" style={{ marginTop: 5, background: "rgba(255,196,64,0.28)", borderRadius: 8, padding: "5px 8px" }}>
             {NOTICE_TEXT[rideNotice.reason!]}
@@ -128,7 +178,7 @@ export function CoasterHud() {
                 ? `${Math.round(wheelSeatPose(selfRide.slot, wall).y)}m 높이 · 한 바퀴 돌면 내려요`
                 : "승강장이에요 · 내릴 수 있어요"
               : now.status === "riding"
-                ? `${Math.max(0, Math.round((now.phase - (isCoaster ? COASTER_DWELL_MS : 30_000)) / 1000))}초 · ${isCoaster ? "안전바를 잡고 있어요" : "말이 오르내려요"}`
+                ? `${Math.max(0, Math.round((now.phase - (isCoaster ? COASTER_DWELL_MS : CAROUSEL_DWELL_MS)) / 1000))}초 · ${isCoaster ? "안전바를 잡고 있어요" : "말이 오르내려요"}`
                 : now.status === "gate"
                   ? `곧 출발해요 (${secs}초)`
                   : "출발을 기다리는 중이에요"}
@@ -154,6 +204,36 @@ export function CoasterHud() {
       <button type="button" data-testid="coaster-leave" disabled={aloft} style={{ ...btn, marginTop: 6, width: "100%", background: aloft ? "#e6e1dc" : "#ffd9d2", opacity: aloft ? 0.6 : 1 }} onClick={() => sendRideLeave()}>
         {aloft ? "높이 떠 있어요" : isWheel ? "내리기" : now.status === "riding" ? "비상 내리기" : "내리기"}
       </button>
+    </div>
+  );
+}
+
+/** Until the park's world has loaded: a veil with a short line (so the void is not mistaken for a broken park). */
+export function ParkLoadingVeil() {
+  const area = useLocalArea();
+  const ready = useParkReady();
+  if (area !== "park" || ready) return null;
+  return (
+    <div
+      data-testid="park-loading"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 5,
+        display: "grid",
+        placeItems: "center",
+        background: "linear-gradient(#b8c8e8, #e9eef8)",
+        color: "#26305e",
+        fontSize: 18,
+        fontWeight: 600,
+        pointerEvents: "none",
+      }}
+    >
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 38 }}>🎡</div>
+        <div>케이슨랜드를 불러오는 중이에요…</div>
+        <div style={{ fontSize: 13, fontWeight: 400, opacity: 0.75, marginTop: 6 }}>놀이기구와 꽃밭을 준비하고 있어요</div>
+      </div>
     </div>
   );
 }
