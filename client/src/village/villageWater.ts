@@ -78,6 +78,17 @@ function rippleWaves(seed: number): Wave[] {
  * `(n + 1) / 2`, x in R and z in G (up is B). Tiles seamlessly in both directions.
  */
 export function rippleNormalData(size = RIPPLE_SIZE, seed = 7): Uint8Array {
+  // the village, the lake and the falls each make their own texture from the same data: computed once (230 k cosines, ~70 ms on a phone, in a frame each time)
+  const key = `${size}:${seed}`;
+  const hit = rippleCache.get(key);
+  if (hit) return hit;
+  const made = buildRippleNormalData(size, seed);
+  rippleCache.set(key, made);
+  return made;
+}
+const rippleCache = new Map<string, Uint8Array>();
+
+function buildRippleNormalData(size: number, seed: number): Uint8Array {
   const waves = rippleWaves(seed);
   const out = new Uint8Array(size * size * 4);
   const strength = 0.09;

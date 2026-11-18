@@ -85,7 +85,7 @@ import { landPose } from "../land/coasterRide";
 import { startRideAudio } from "../land/coasterAudio";
 import { boardRide } from "../land/rideBoardWalk";
 import { takeArmedRide } from "../land/rideBoard";
-import { maybePreloadPark } from "../land/preloadPark";
+import { maybePreloadPark } from "../land/parkAssets";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon

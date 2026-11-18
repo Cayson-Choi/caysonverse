@@ -439,8 +439,14 @@ interface Rig {
  * 묻는다: 조립실이 셰이더를 만드는 중에 닫혀도(재질을 놓아도) 남아서 도는 콜백이 없다. 컨텍스트를 잃었으면 false.
  */
 function compiled(gl: WebGLRenderer, material: Material): boolean {
-  const { currentProgram } = gl.properties.get(material) as { currentProgram?: { isReady(): boolean | null } };
-  return currentProgram?.isReady() === true;
+  const { currentProgram } = gl.properties.get(material) as { currentProgram?: { isReady(): boolean | null; program?: unknown; usedTimes?: number } };
+  // (a program three has released is never asked: a deleted GL object warns; it is not "compiled" either)
+  if (!currentProgram || ("program" in currentProgram && currentProgram.program === undefined) || currentProgram.usedTimes === 0) return false;
+  try {
+    return currentProgram.isReady() === true;
+  } catch {
+    return false;
+  }
 }
 
 /** 잘라 낼 영역(찍은 정사각형 안의 정수 px, 위가 0). */
