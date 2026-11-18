@@ -137,7 +137,9 @@ const SACRED_ENV_INTENSITY = 0.45;
  * The 본존불's own polished gilt bronze reflects the hall harder (2026-11-18 v2, owner "방 안 금빛도 살려": at 0.45 the statue read as dull
  * ochre in the hall's even light). Only its material (`…_buddha_gilt`): the 광배 stays at 0.45 (at 0.9 it burned white).
  */
-const SACRED_STATUE_ENV_INTENSITY = 1.0;
+const SACRED_STATUE_ENV_INTENSITY = 1.5;
+/** The 본존불's warm fill (emissive x its own colour map; linear). */
+const SACRED_STATUE_FILL = new Color(0.16, 0.12, 0.06);
 const sacredEnvs = new WeakMap<WebGLRenderer, { pm: PMREMGenerator; tex: Texture }>();
 /** The hall seen from the altar, linear radiance per direction (room frame: the door wall toward -z, y up). */
 function hallRadiance(x: number, y: number, z: number): [number, number, number] {
@@ -681,6 +683,13 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
           if (m.name.includes("gilt") || (s.node.startsWith("lotstatue__") && m.metalnessMap)) {
             m.envMap = sacredEnv(gl);
             m.envMapIntensity = /_buddha_gilt$/.test(m.name) ? SACRED_STATUE_ENV_INTENSITY : SACRED_ENV_INTENSITY;
+          }
+          if (/_buddha_gilt$/.test(m.name) && m.map) {
+            // a small warm fill on the leaf itself (its own colour map, so the dark curls stay dark): the side away from the
+            // lamps read as brown bronze (owner "더 다듬어" — gold leaf everywhere), without lifting the highlights
+            m.emissive.copy(SACRED_STATUE_FILL);
+            m.emissiveMap = m.map;
+            m.emissiveIntensity = 1;
           }
           if (s.mirrorX) m.side = DoubleSide;
           if (s.glass && m.emissiveMap) glass.push({ m, day: s.glass.emissiveIntensity?.day ?? 1.5, night: s.glass.emissiveIntensity?.night ?? 0.15 });

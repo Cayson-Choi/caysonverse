@@ -18,8 +18,8 @@ TO = int(A[3]) if len(A) > 3 else 1024
 NAME = "lotstatue__lot_temple_hall_buddha"
 TRI_PC, TRI_PHONE = 40000, 10000
 SEAT_BASE = 0.80        # the seat plane in the sculpt's own units (below: the knees' undersides, the fingertips' last cm)
-FIG_H = 1.40            # seat -> top of the 육계 (m)
-THRONE_H = 0.60         # floor -> seat (m)
+FIG_H = 1.58            # (owner reference: the throne ~21% of the whole) seat -> top of the 육계 (m)
+THRONE_H = 0.42         # floor -> seat (m)
 HEAD_Y = 0.14           # the head axis this far behind the origin (the 광배 plate's frame)
 TY = 0.86               # the throne is a little oval (deep as the crossed legs, not as wide as the knees)
 sc = bpy.context.scene
@@ -40,6 +40,7 @@ for o in list(sc.objects):
     if o.name not in ("statue_hi", "curls"): bpy.data.objects.remove(o, do_unlink=True)
 fig = bpy.data.objects["statue_hi"]; curls = bpy.data.objects["curls"]
 gilt = bpy.data.materials["M_gilt"]; hairm = bpy.data.materials["M_hair"]
+paints = [bpy.data.materials[n] for n in ("M_paint_green", "M_paint_red") if n in bpy.data.materials]
 
 # ---------------- cut at the seat, scale and place ----------------
 bm = bmesh.new(); bm.from_mesh(fig.data)
@@ -102,15 +103,13 @@ def bev(o, w=0.006, seg=2, ang=35):
     ws = o.modifiers.new("wn", "WEIGHTED_NORMAL"); ws.keep_sharp = True; bpy.ops.object.modifier_apply(modifier=ws.name)
 
 
-Z0, Z1, Z2, Z3 = 0.0, 0.13, 0.25, 0.36       # floor, top of the 하대석 drum, top of the 복련 band, top of the 중대석
-# 하대석: an octagonal plinth with a step and a moulding
-o = lathe("hadae", [(0.70, 0.0), (0.70, 0.05), (0.68, 0.06), (0.68, 0.10), (0.64, 0.115), (0.62, Z1)], seg=64, ngon=8); bev(o, 0.008)
-# 복련 band core
-o = lathe("bokryeon_core", [(0.60, Z1), (0.60, Z1 + 0.02), (0.50, Z2 - 0.01), (0.44, Z2)], seg=96)
-# 중대석: a drum with a moulding top and bottom
-o = lathe("jungdae", [(0.46, Z2), (0.46, Z2 + 0.018), (0.40, Z2 + 0.03), (0.40, Z3 - 0.03), (0.46, Z3 - 0.018), (0.48, Z3)], seg=96); bev(o, 0.004)
-# 상대석 bowl: flares from the drum to the seat, the petals sit on its outside
-o = lathe("sangdae_bowl", [(0.44, Z3), (0.50, Z3 + 0.06), (0.62, Z3 + 0.15), (0.70, THRONE_H - 0.035), (0.72, THRONE_H - 0.02), (0.72, THRONE_H)], seg=128); bev(o, 0.004)
+# the owner's reference (2026-11-18): a round double-tier lotus throne of plump petals, two layers in each tier, on a plain round
+# plinth; the underside carries a 12-petal lotus medallion
+o = lathe("plinth", [(0.66, 0.006), (0.66, 0.0), (0.72, 0.0), (0.725, 0.040), (0.715, 0.050), (0.68, 0.055)], seg=128); bev(o, 0.004)
+o = lathe("tier_lo_core", [(0.66, 0.055), (0.60, 0.07), (0.56, 0.16), (0.55, 0.215)], seg=96)
+o = lathe("waist", [(0.55, 0.205), (0.585, 0.212), (0.59, 0.228), (0.55, 0.235)], seg=96); bev(o, 0.003)
+o = lathe("tier_hi_core", [(0.55, 0.23), (0.56, 0.27), (0.59, 0.36), (0.62, 0.395)], seg=96)
+o = lathe("seat", [(0.62, 0.392), (0.665, 0.398), (0.67, 0.412), (0.66, THRONE_H), (0.0, THRONE_H)], seg=128); bev(o, 0.004)
 
 
 def petal(width, length, thick, n_u=12, n_v=16, up=True, inner=True, tip_curl=0.25):
@@ -160,28 +159,29 @@ def ring_of_petals(name, count, r_base, z_base, tilt_deg, width, length, thick, 
 
 
 # 앙련 (upturned): a lower row and an upper row offset by half a petal
-ring_of_petals("anglyeon_lo", 20, 0.47, Z3 + 0.015, 58, 0.205, 0.20, 0.016)
-ring_of_petals("anglyeon_hi", 20, 0.58, Z3 + 0.09, 40, 0.20, 0.17, 0.016, phase=0.5)
-# 복련 (downturned): one row round the lower band
-ring_of_petals("bokryeon", 18, 0.47, Z2 - 0.005, 62, 0.22, 0.17, 0.016, up=False, sink=0.004)
-# 중대석 pilasters
-pil = []
-for k in range(8):
-    t = 2 * math.pi * (k + 0.5) / 8
-    bpy.ops.mesh.primitive_cube_add(size=1, location=(0.405 * math.cos(t), 0.405 * math.sin(t), (Z2 + Z3) / 2))
-    o = bpy.context.active_object; o.scale = (0.035, 0.05, Z3 - Z2 - 0.05); o.rotation_euler = (0, 0, t)
-    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True); o.data.materials.append(gilt); bev(o, 0.005); parts.append(o)
-# a beaded rim under the seat edge
-bpy.ops.mesh.primitive_uv_sphere_add(segments=10, ring_count=6, radius=0.011)
-bead = bpy.context.active_object
-bv = [Vector(v.co) for v in bead.data.vertices]; bf = [tuple(p.vertices) for p in bead.data.polygons]
-bpy.data.objects.remove(bead, do_unlink=True)
-allv, allf = [], []
-nb = 150
-for k in range(nb):
-    t = 2 * math.pi * k / nb; c = Vector((0.722 * math.cos(t), 0.722 * math.sin(t), THRONE_H - 0.03))
-    b0 = len(allv); allv += [tuple(c + q) for q in bv]; allf += [tuple(b0 + i for i in f) for f in bf]
-mesh_obj("beads", allv, allf)
+# lower tier: two layers of plump petals (the back layer peeks between the front ones); the upper tier the same, a little taller
+ring_of_petals("lo_back", 18, 0.585, 0.075, 14, 0.235, 0.145, 0.036, phase=0.5)
+ring_of_petals("lo_front", 18, 0.615, 0.060, 22, 0.255, 0.140, 0.040)
+ring_of_petals("hi_back", 18, 0.575, 0.250, 12, 0.225, 0.150, 0.034, phase=0.5)
+ring_of_petals("hi_front", 18, 0.600, 0.236, 20, 0.245, 0.150, 0.038)
+# the underside: a 12-petal lotus medallion in low relief inside the plinth's rim (the reference's bottom view)
+mv, mf = [], []
+for k in range(12):
+    t = 2 * math.pi * k / 12
+    pts = []
+    for j in range(13):
+        q = j / 12; hw = 0.085 * math.sin(math.pi * min(1, q * 1.05)) ** 0.7
+        pts.append((hw, 0.12 + 0.40 * q))
+    pts = pts + [(-x, r) for x, r in reversed(pts[1:-1])]
+    b0 = len(mv)
+    for (x, r) in pts:
+        mv.append((r * math.cos(t) - x * math.sin(t), r * math.sin(t) + x * math.cos(t), 0.0045))
+    mf.append(tuple(reversed(range(b0, b0 + len(pts)))))
+b0 = len(mv); mv += [(0.10 * math.cos(2 * math.pi * i / 32), 0.10 * math.sin(2 * math.pi * i / 32), 0.0045) for i in range(32)]
+mf.append(tuple(reversed(range(b0, b0 + 32))))
+med = mesh_obj("medallion", mv, mf, smooth=False); parts.remove(med)     # (kept whole: the decimator shreds thin relief)
+bm = bmesh.new(); bm.from_mesh(med.data); bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-5); bmesh.ops.triangulate(bm, faces=bm.faces[:]); bm.to_mesh(med.data); bm.free()
+sel_only([med]); m = med.modifiers.new("s", "SOLIDIFY"); m.thickness = 0.003; m.offset = 1; bpy.ops.object.modifier_apply(modifier="s")
 
 # ---------------- the robe falling over the front of the seat (fan of pleats) ----------------
 fan_v, fan_f = [], []
@@ -214,11 +214,21 @@ if fan:
 
 # ---------------- high poly: figure + curls + throne (+ fan) ----------------
 sel_only(parts, parts[0]); bpy.ops.object.join(); throne = bpy.context.active_object; throne.name = "throne_hi"
+# clean the generated pieces: degenerate petal tips and the medallion's pointed ends left a few NaN / doubled vertices (which broke
+# every bake ray and stalled the decimator)
+bm = bmesh.new(); bm.from_mesh(throne.data)
+bad = [v for v in bm.verts if not all(math.isfinite(c) for c in v.co)]
+bmesh.ops.delete(bm, geom=bad, context="VERTS")
+bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=2e-5)
+bmesh.ops.dissolve_degenerate(bm, dist=2e-5, edges=bm.edges[:])
+bm.to_mesh(throne.data); bm.free(); throne.data.update()
+log("throne cleaned: NaN verts", len(bad))
 throne_cy = (lap_front + lap_back) / 2
 throne.data.transform(Matrix.Translation((0, throne_cy, 0)) @ Matrix.Diagonal((1, TY, 1, 1)))
 rep["throne"] = {"centre_y": round(throne_cy, 3), "rx": 0.72, "ry": round(0.72 * TY, 3)}
 log("throne tris", sum(len(p.vertices) - 2 for p in throne.data.polygons))
-hi_objs = [fig, curls, throne]
+med.data.transform(Matrix.Translation((0, throne_cy, 0)) @ Matrix.Diagonal((1, TY, 1, 1)))
+hi_objs = [fig, curls, throne, med]
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, "c_scene.blend"))
 
 # ---------------- low poly ----------------
@@ -234,7 +244,8 @@ def decimated(src, name, target):
 # the figure gets most of the budget, then the throne; the curls are baked onto the scalp (no geometry of their own)
 lo_fig = decimated(fig, "lo_fig", int(TRI_PC * 0.74))
 lo_thr = decimated(throne, "lo_thr", int(TRI_PC * 0.26))
-sel_only([lo_fig, lo_thr], lo_fig); bpy.ops.object.join(); lo = bpy.context.active_object; lo.name = NAME
+lo_med = med.copy(); lo_med.data = med.data.copy(); sc.collection.objects.link(lo_med)
+sel_only([lo_fig, lo_thr, lo_med], lo_fig); bpy.ops.object.join(); lo = bpy.context.active_object; lo.name = NAME
 rep["pc_tris"] = tris(lo); log("lo", rep["pc_tris"])
 # UVs: unwrap a smoothed proxy (calm normals -> few large islands, about twice the texel coverage of a direct smart project),
 # copy the UVs back, then pack again on the game mesh itself (the proxy's islands could overlap a little where it folded)
@@ -277,7 +288,7 @@ except Exception: pass
 
 # texels whose ray misses the high poly (the inner forearm close to the side, pass 1's "sleeve stain") keep a sane value instead of
 # black: every map starts filled and the bake does not clear it
-FILL = {"normal": (0.5, 0.5, 1.0), "albedo": (0.906, 0.749, 0.396), "ao": (0.85, 0.85, 0.85), "mask": (0.0, 0.0, 0.0)}
+FILL = {"normal": (0.5, 0.5, 1.0), "albedo": (0.949, 0.796, 0.294), "ao": (0.85, 0.85, 0.85), "mask": (0.0, 0.0, 0.0)}
 bk.use_clear = False
 
 
@@ -299,15 +310,15 @@ bake("ao", "AO")
 bk.use_pass_direct = False; bk.use_pass_indirect = False; bk.use_pass_color = True
 sc.cycles.samples = 4
 # (the diffuse colour of a metal is base x (1 - metallic): bake the colour with the metal off)
-for m_ in (gilt, hairm):
+for m_ in [gilt, hairm] + paints:
     next(n for n in m_.node_tree.nodes if n.type == "BSDF_PRINCIPLED").inputs["Metallic"].default_value = 0.0
 # pass 2 (owner: "방 안 금빛도 살려"): polished gilt bronze — a rich, warm, saturated leaf (linear 0.80 / 0.52 / 0.13; with the room's
 # lamps now a highlight on metal (LotRoom.tsx LAMP_FRAG), 0.62 / 0.36 / 0.08 read as dark bronze and 0.93 / 0.63 / 0.20 as pale)
-next(n for n in gilt.node_tree.nodes if n.type == "BSDF_PRINCIPLED").inputs["Base Color"].default_value = (0.80, 0.52, 0.13, 1)
+next(n for n in gilt.node_tree.nodes if n.type == "BSDF_PRINCIPLED").inputs["Base Color"].default_value = (0.88, 0.60, 0.07, 1)   # owner reference: bright yellow-gold
 bake("albedo", "DIFFUSE", pass_filter={"COLOR"})
 # material mask (1 = hair): emission bake of the high poly's materials
 saved = {}
-for m_, val in ((gilt, 0.0), (hairm, 1.0)):
+for m_, val in [(gilt, 0.0), (hairm, 1.0)] + [(pm_, 1.0) for pm_ in paints]:
     nt = m_.node_tree; out = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL")
     saved[m_.name] = out.inputs["Surface"].links[0].from_socket
     em = nt.nodes.new("ShaderNodeEmission"); em.inputs["Color"].default_value = (val, val, val, 1); nt.links.new(em.outputs[0], out.inputs["Surface"])
@@ -327,7 +338,7 @@ for _ in range(3): nz = (nz + np.roll(nz, 16, 0) + np.roll(nz, -16, 0) + np.roll
 nz = (nz - nz.mean()) / (nz.std() + 1e-6)
 orm = np.ones((TO, TO, 4), np.float32)
 orm[..., 0] = np.clip(0.15 + 0.85 * ao, 0, 1)
-orm[..., 1] = np.clip(0.20 + 0.035 * nz, 0.13, 0.30) * (1 - mk) + 0.72 * mk      # polished leaf, subtly uneven
+orm[..., 1] = np.clip(0.13 + 0.03 * nz, 0.08, 0.22) * (1 - mk) + 0.85 * mk      # polished leaf, subtly uneven; matte black curls
 orm[..., 2] = 1.0 * (1 - mk)
 oi = bpy.data.images.new(f"{NAME}_orm", TO, TO, alpha=False); oi.colorspace_settings.name = "Non-Color"; oi.pixels.foreach_set(orm.ravel())
 # albedo: the AO in the folds (gold leaf reads darker in a crease even under an even light)
@@ -338,7 +349,10 @@ aoU = np.repeat(np.repeat(aoA, k, 0), k, 1)
 # (in the hall's flat light the plain leaf read pale and plastic next to the scan's photographed gilt: a deeper, warmer leaf and
 # real depth in the folds — the scan's albedo had p10 ~70/255, ours had ~180)
 mkU = np.repeat(np.repeat(mk, k, 0), k, 1)
-al[..., :3] *= (0.32 + 0.68 * aoU)[..., None]        # deep folds read dark against the polished leaf
+# the folds read darker against the polished leaf, but stay gold, not brown (pass 3: 0.32 + 0.68 AO went bronze in the hall's
+# shadow side): a gentler darkening that warms as it deepens
+f_ = (0.58 + 0.42 * aoU)[..., None]
+al[..., :3] = al[..., :3] * f_ * (1 + (1 - f_) * np.array([0.10, 0.02, -0.25], np.float32) * (1 - mkU[..., None]))
 imgs["albedo"][0].pixels.foreach_set(al.ravel())
 rep["metal_mean"] = float(orm[..., 2].mean()); rep["hair_pct"] = round(100 * float((mk > 0.5).mean()), 2)
 # normal: flatten ray misses
@@ -347,7 +361,7 @@ rep["normal_fixed_pct"] = round(100 * float(bad.mean()), 2)
 for kind, im in (("albedo", imgs["albedo"][0]), ("normal", imgs["normal"][0]), ("orm", oi), ("ao", imgs["ao"][0])):
     im.filepath_raw = os.path.join(OUT, f"{NAME}_{kind}.png"); im.file_format = "PNG"
     im.save()
-for m_ in (gilt, hairm):
+for m_ in [gilt, hairm] + paints:
     nt = m_.node_tree; out = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL"); nt.links.new(saved[m_.name], out.inputs["Surface"])
 
 # ---------------- the game material ----------------

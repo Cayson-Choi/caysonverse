@@ -78,14 +78,118 @@ BW = np.zeros((len(bme.vertices), len(gidx)))
 for v in bme.vertices:
     for g in v.groups: BW[v.index, g.group] = g.weight
 bws = lambda *ns: sum(BW[:, gidx[n]] for n in ns)
-cs_w = np.clip(bws("pelvis", "spine", "chest") + 0.8 * bws("uarm.L", "uarm.R", "farm.L", "farm.R", "clav.L", "clav.R") + 0.7 * bws("thigh.L", "thigh.R", "shin.L", "shin.R"), 0, 1)
+cs_w = np.clip(bws("pelvis", "spine", "chest") + 1.0 * bws("uarm.L", "uarm.R", "farm.L", "farm.R", "clav.L", "clav.R") + 0.7 * bws("thigh.L", "thigh.R", "shin.L", "shin.R"), 0, 1)
 cs_w *= (1 - np.clip(bws("head", "hand.L", "hand.R", "foot.L", "foot.R") * 1.5, 0, 1))
 cs_w = smooth_field(cs_w, bed, 3)
 bc0 = bc.copy()
-bc = laplace(bc, bed, cs_w * 0.95, 18, lam=0.5, mu=0.5)   # (pass 2, owner: "몸을 더 둥글고 넉넉하게")
+bc = laplace(bc, bed, cs_w * 0.95, 30, lam=0.5, mu=0.5)   # (pass 2/3, owner: "몸을 더 둥글고 넉넉하게", "더 다듬어": no pecs, no biceps)
 shrink = np.sum((bc - bc0) * bn, axis=1)          # how far each cage vertex sank along its normal
 shrink = smooth_field(shrink, bed, 6)
 bc = bc - bn * (shrink * 1.0)[:, None]
+# ---- the right hand's mudra (owner's reference v2, "오른손 중지와 엄지를 다시 한번 확인해봐"): the thumb tip and the middle-finger tip
+# meet in a small ring, the index points straight up, the ring and little fingers stand up gently curved. Bent on the base cage in
+# the rest pose (the A-pose hand hangs with its palm toward the thigh, +X, fingers down -Z), so the multires detail follows the bends.
+def mudra(bc, bed):
+    R_HAND = (bc[:, 0] < -0.33) & (bc[:, 2] < 0.875) & (bc[:, 2] > 0.68)
+    KN = 0.775                                  # below this line the base cage's four fingers are separate branches of the mesh
+    fing = R_HAND & (bc[:, 2] < KN)
+    # connected components of the finger verts (edges inside the set)
+    idx = np.where(fing)[0]; pos = -np.ones(len(bc), np.int64); pos[idx] = np.arange(len(idx))
+    par = np.arange(len(idx))
+    def find(a):
+        while par[a] != a:
+            par[a] = par[par[a]]; a = par[a]
+        return a
+    for a, b in bed:
+        if pos[a] >= 0 and pos[b] >= 0:
+            ra, rb = find(pos[a]), find(pos[b])
+            if ra != rb: par[ra] = rb
+    roots = np.array([find(i) for i in range(len(idx))])
+    comps = [idx[roots == r] for r in np.unique(roots)]
+    comps = [c for c in comps if len(c) > 12]
+    comps.sort(key=lambda c: bc[c, 1].mean())          # front (-Y, by the thumb) -> back: index, middle, ring, little
+    log("mudra fingers", [len(c) for c in comps], [round(float(bc[c, 1].mean()), 3) for c in comps])
+    if len(comps) != 4:
+        return bc
+    out = bc.copy()
+    palm = np.array([1.0, 0.0, 0.0])                    # the palm faces +X in the rest pose
+    tips = {}
+
+    # the fingers held together (the reference): close the A-pose splay about the palm normal at each knuckle, toward the middle
+    tops = []
+    for c in comps:
+        P = bc[c]; tops.append((P[P[:, 2] > KN - 0.012].mean(0), P[np.argmin(P[:, 2])]))
+    mid_dir = np.mean([(t - k) / np.linalg.norm(t - k) for k, t in tops], 0); mid_dir /= np.linalg.norm(mid_dir)
+    for (k_, t_), c, close in zip(tops, comps, (0.85, 0.6, 0.85, 0.9)):
+        d_ = (t_ - k_) / np.linalg.norm(t_ - k_)
+        ang = np.arctan2(np.dot(np.cross(d_, mid_dir), palm), np.dot(d_, mid_dir)) * close
+        Rm = np.array(Matrix.Rotation(float(ang), 3, Vector(palm)))
+        ext = np.where(R_HAND & (np.abs(bc[:, 1] - bc[c, 1].mean()) < 0.0135) & (bc[:, 2] >= KN) & (bc[:, 2] < KN + 0.026) & (bc[:, 0] < -0.385))[0]
+        allv = np.concatenate([c, ext]); piv = k_ + (k_ - t_) / np.linalg.norm(t_ - k_) * 0.018
+        tt = (bc[allv] - piv) @ d_
+        w = np.clip(tt / 0.02, 0, 1)
+        Xr = (bc[allv] - piv) @ Rm.T + piv
+        bc[allv] = bc[allv] * (1 - w[:, None]) + Xr * w[:, None]
+    out = bc.copy()
+
+    def bend(c, angles, name):
+        # the finger's axis: from its knuckle (top) to its tip (lowest point)
+        P = bc[c]
+        top = P[P[:, 2] > KN - 0.012].mean(0) if (P[:, 2] > KN - 0.012).any() else P[np.argmax(P[:, 2])]
+        tip = P[np.argmin(P[:, 2])]
+        # extend the finger's set up to the knuckle so the MCP bends the base of the finger smoothly
+        ext = np.where(R_HAND & (np.abs(bc[:, 1] - P[:, 1].mean()) < 0.0135) & (bc[:, 2] >= KN) & (bc[:, 2] < KN + 0.026) & (bc[:, 0] < -0.385))[0]
+        allv = np.concatenate([c, ext])
+        ax = tip - top; ax /= np.linalg.norm(ax)
+        mcp = top - ax * 0.018                          # the knuckle itself sits ~2 cm above the cut
+        L = np.linalg.norm(tip - mcp)
+        joints = [(0.0, angles[0]), (0.45, angles[1]), (0.74, angles[2])]
+        X = out[allv].copy()
+        jp = [mcp + ax * (t * L) for t, _ in joints]
+        tip_p = tip.copy()
+        for j, (tj, aj) in enumerate(joints):
+            if aj == 0: continue
+            k = np.cross(ax, palm); k /= np.linalg.norm(k)        # flexion axis: curls the finger toward the palm
+            th = np.radians(aj)
+            Rm = np.array(Matrix.Rotation(th, 3, Vector(k)))
+            tt = (X - jp[j]) @ ax / L
+            w = np.clip((tt + 0.04) / 0.08, 0, 1); w = w * w * (3 - 2 * w)
+            Xr = (X - jp[j]) @ Rm.T + jp[j]
+            X = X * (1 - w[:, None]) + Xr * w[:, None]
+            # the later joints and the tip ride along
+            for jj in range(j + 1, len(jp)): jp[jj] = (jp[jj] - jp[j]) @ Rm.T + jp[j]
+            tip_p = (tip_p - jp[j]) @ Rm.T + jp[j]
+            ax = (Rm @ ax); ax /= np.linalg.norm(ax)
+        out[allv] = X
+        tips[name] = tip_p
+        return tip_p
+
+    bend(comps[0], (0, 0, 0), "index")
+    mid_tip = bend(comps[1], (52, 72, 34), "middle")
+    bend(comps[2], (4, 7, 4), "ring")
+    bend(comps[3], (6, 9, 6), "little")
+    # the thumb: from its base by the wrist to its tip, swung across the palm until its tip meets the middle fingertip
+    th_tip = np.array([-0.369, -0.179, 0.806]); th_base = np.array([-0.372, -0.135, 0.852])
+    seg = th_tip - th_base; Lt = np.linalg.norm(seg); sd = seg / Lt
+    q = bc - th_base; tpar = q @ sd / Lt
+    rad = np.linalg.norm(q - np.outer(tpar * Lt, sd), axis=1)
+    thumb = R_HAND & (tpar > -0.05) & (tpar < 1.25) & (rad < 0.020) & (bc[:, 1] < -0.145)
+    want = (mid_tip + np.array([0.004, -0.004, 0.0])) - th_base
+    rot = Vector(sd).rotation_difference(Vector(want / np.linalg.norm(want))).to_matrix()
+    Rt = np.array(rot)
+    w = np.clip((tpar - 0.0) / 0.35, 0, 1); w = w * w * (3 - 2 * w)
+    X = bc[thumb]
+    Xr = (X - th_base) @ Rt.T + th_base
+    # stretch a little along the new direction if the tip falls short of the middle fingertip
+    stretch = max(0.0, min(0.25, np.linalg.norm(want) / Lt - 1))
+    sd2 = want / np.linalg.norm(want)
+    Xr = Xr + np.outer(((Xr - th_base) @ sd2) * stretch * w[thumb], sd2)
+    out[thumb] = X * (1 - w[thumb][:, None]) + Xr * w[thumb][:, None]
+    log("mudra thumb verts", int(thumb.sum()), "gap", round(float(np.linalg.norm(want) - Lt), 4), "middle tip", np.round(mid_tip, 3))
+    return out
+
+
+bc = mudra(bc, bed)
 bme.vertices.foreach_set("co", bc.ravel()); bme.update()
 mr.levels = 0
 ss = body.modifiers.new("ss", "SUBSURF"); ss.levels = 3; ss.render_levels = 3
@@ -157,11 +261,15 @@ co = laplace(co, ed, np.clip(w_torso + w_leg + 0.6 * w_arm, 0, 1) * (1 - detail)
 # a broad, full chest and shoulders (Seokguram's shoulders ~2.9 face widths): widen the upper torso a little
 up = smoothstep(1.05, 1.30, co[:, 2]) * np.clip(w_torso + wsum("clav.L", "clav.R") + 0.6 * w_arm, 0, 1) * (1 - w_head)
 co[:, 0] *= 1 + 0.11 * up
+# (owner reference: a broad, full, columnar torso under the robe) the whole trunk wider, the waist too
+trunk = np.clip(w_torso + 0.5 * wsum("clav.L", "clav.R"), 0, 1) * smoothstep(0.92, 1.0, co[:, 2]) * (1 - w_head) * (1 - np.clip(w_arm * 1.5, 0, 1))
+co[:, 0] *= 1 + 0.13 * trunk
+co[:, 1] = co[:, 1] + (co[:, 1] - 0.0) * 0.08 * trunk
 # the head a touch larger (statue canon), about the top of the neck
 piv = np.array(H @ rig.pose.bones["head"].bone.head_local)
 Rs = to_rest(co)
-w_sc = smoothstep(1.39, 1.50, Rs[:, 2]) * (np.sqrt(Rs[:, 0] ** 2 + (Rs[:, 1] + 0.01) ** 2) < 0.16) * (1 - np.clip(w_hand * 2, 0, 1))
-HEAD_K = 0.12
+w_sc = smoothstep(1.445, 1.50, Rs[:, 2]) * (np.sqrt(Rs[:, 0] ** 2 + (Rs[:, 1] + 0.01) ** 2) < 0.16) * (1 - np.clip(w_hand * 2, 0, 1))
+HEAD_K = 0.24     # (owner reference 2026-11-18: a larger head, ~0.28 of the seated figure with the 육계)
 FACE_W = 0.10     # the face a fuller, wider oval (pass 2: 0.07 -> 0.10)
 co += (w_sc[:, None] * HEAD_K) * (co - piv)
 piv_r = to_rest(piv[None, :])[0]
@@ -199,7 +307,7 @@ me.vertices.foreach_set("co", co.astype(np.float32).ravel()); me.update()
 # pass 2: ample, soft forms — a full chest and broad soft shoulders, rounded arms, a thicker neck (no gym anatomy left)
 nrm0 = vnormals(me)
 Rn = to_rest(co)
-neck_z = smoothstep(1.37, 1.41, Rn[:, 2]) * (1 - smoothstep(1.44, 1.465, Rn[:, 2])) * (np.sqrt(Rn[:, 0] ** 2 + (Rn[:, 1] + 0.01) ** 2) < 0.09)
+neck_z = smoothstep(1.36, 1.39, Rn[:, 2]) * (1 - smoothstep(1.41, 1.44, Rn[:, 2])) * (np.sqrt(Rn[:, 0] ** 2 + (Rn[:, 1] + 0.01) ** 2) < 0.09)
 infl = (0.011 * np.clip(w_torso + wsum("clav.L", "clav.R"), 0, 1) * smoothstep(0.95, 1.15, co[:, 2])
         + 0.006 * np.clip(w_arm, 0, 1) + 0.005 * neck_z) * (1 - np.clip(w_hand * 2, 0, 1)) * (1 - np.clip(w_head - neck_z, 0, 1))
 infl = smooth_field(infl, ed, 30)
@@ -234,7 +342,7 @@ robe = obj_from("robe", rme)
 nr = vnormals(rme); rc, red = mesh_arrays(rme)
 rc = rc - nr * 0.0025
 rme.vertices.foreach_set("co", rc.astype(np.float32).ravel()); rme.update()
-sm = robe.modifiers.new("s", "SOLIDIFY"); sm.thickness = 0.0110; sm.offset = 1.0; sm.use_rim = True; sm.use_even_offset = False; sm.use_quality_normals = True
+sm = robe.modifiers.new("s", "SOLIDIFY"); sm.thickness = 0.0260; sm.offset = 1.0; sm.use_rim = True; sm.use_even_offset = False; sm.use_quality_normals = True
 log("robe faces", len(rme.polygons))
 
 # boundary of the robe (its edge line, for the folds that run parallel to it) — on the outer skin of the shell
@@ -243,7 +351,7 @@ edge_pts = []
 for e in bm.edges:
     if e.is_boundary:
         for v in e.verts:
-            edge_pts.append(Vector(v.co) + v.normal * 0.011)
+            edge_pts.append(Vector(v.co) + v.normal * 0.026)
 bm.free()
 # only the chest edge drives the chest folds (not the cuff, not the waist cut where the lap takes over)
 chest_edge = [p for p in edge_pts if p.z > 1.0 and abs(p.x) < 0.30 and not (p.x > 0.2 and p.z < 1.2)]
@@ -313,7 +421,10 @@ for s in (1, -1):
     lids.append(rest_obj(f"lobe{s}", "sphere", (s * 0.0805, -0.031, 1.522), (0.0065, 0.0125, 0.026), (0, 0, s * math.radians(12))))
 for s in (1, -1):    # fill the whole socket (reaching just past the lid line, so no thin gap is left) (an eyeball leaves a thin gap that the voxel union turns into a pit)
     lids.append(rest_obj(f"socket{s}", "sphere", (s * 0.0310, -0.1105, 1.5765), (0.0240, 0.0235, 0.0165), (0, 0, s * math.radians(-6))))
-ush = rest_obj("ushnisha", "sphere", (0.0, -0.006, 1.660), (0.054, 0.056, 0.054))
+ush = rest_obj("ushnisha", "sphere", (0.0, -0.006, 1.664), (0.058, 0.060, 0.068))     # a tall 육계 dome
+# the gold jewels: 계주 on top of the 육계, and a small one at the front of the hairline
+jew = [rest_obj("jewel_top", "sphere", (0.0, -0.006, 1.738), (0.0115, 0.0115, 0.0110)),
+       rest_obj("jewel_front", "sphere", (0.0, -0.0655, 1.672), (0.0105, 0.0055, 0.0085))]
 
 FOOT = bpy.data.objects.get("Foot - Realistic")
 feet = []
@@ -333,7 +444,7 @@ if FOOT is not None:
 
 # ---------------- one voxel union ----------------
 for o in sc.objects: o.select_set(False)
-parts = [skin, robe, lap] + lids + [ush] + feet
+parts = [skin, robe, lap] + lids + [ush] + jew + feet
 for o in parts:
     o.select_set(True)
     bpy.context.view_layer.objects.active = o
@@ -383,7 +494,7 @@ g_nose = np.exp(-((gx / 0.019) ** 4 + ((gz - 1.548) / 0.032) ** 4)) * smoothstep
 g_lips = np.exp(-((gx / 0.030) ** 4 + ((gz - 1.503) / 0.013) ** 4)) * smoothstep(-0.10, -0.125, gy)
 g_ears = smoothstep(0.068, 0.080, np.abs(gx)) * (gy > -0.085)
 g_head = np.sqrt(gx ** 2 + (gy + 0.01) ** 2 + (gz - 1.57) ** 2) < 0.15
-fsU = g_head * (uw("head") > 0.3) * np.clip(1 - 0.70 * g_nose - 0.15 * g_lips - 0.95 * g_ears, 0, 1) * smoothstep(-0.02, -0.07, gy) * smoothstep(1.47, 1.49, gz) * (1 - smoothstep(1.63, 1.66, gz))
+fsU = g_head * (uw("head") > 0.3) * np.clip(1 - 0.0 * g_nose - 0.0 * g_lips - 0.95 * g_ears, 0, 1) * smoothstep(-0.02, -0.07, gy) * smoothstep(1.435, 1.46, gz) * (1 - smoothstep(1.63, 1.66, gz))
 fsU = smooth_field(fsU, ued, 6)
 _c0 = uco.copy()
 # (on the face's own vertices only: a few hundred passes are cheap there)
@@ -428,10 +539,17 @@ def dist_to(pts, q):
 
 rob_i = np.where(is_robe & ~is_lap)[0]
 de = dist_to(chest_edge, uco[rob_i])
-amp = 0.0019 * smoothstep(0.006, 0.02, de) * (1 - smoothstep(0.11, 0.17, de)) * smoothstep(1.02, 1.12, uco[rob_i, 2])
-disp[rob_i] += amp * (ridge(de / 0.026) - 0.35)
+back_ = smoothstep(-0.02, 0.04, uco[rob_i, 1])
+reach = 0.15 + 0.17 * back_
+amp = 0.0024 * smoothstep(0.006, 0.02, de) * (1 - smoothstep(reach - 0.05, reach, de)) * smoothstep(1.02, 1.12, uco[rob_i, 2])
+disp[rob_i] += amp * (ridge(de / 0.024) - 0.35)
+# across the belly (the reference's front): near-horizontal folds, rising a little toward the left side
+zb = uco[rob_i, 2] - 0.05 * np.clip(uco[rob_i, 0] + 0.05, 0, None)
+belly = (1 - back_) * smoothstep(0.96, 1.02, uco[rob_i, 2]) * (1 - smoothstep(1.22, 1.28, zb)) * smoothstep(0.012, 0.03, de) * (1 - smoothstep(0.11, 0.16, de) * 0)
+disp[rob_i] += 0.0026 * belly * (ridge(zb / 0.021) - 0.35) * smoothstep(0.10, 0.15, de)
 # the folded-back edge itself: a rolled band right at the edge
-disp[rob_i] += 0.0012 * np.exp(-((de - 0.008) / 0.006) ** 2)
+disp[rob_i] += 0.0024 * np.exp(-((de - 0.0075) / 0.0045) ** 2)    # the hem: a rolled, clearly raised band along the robe edge
+disp[rob_i] -= 0.0010 * np.exp(-((de - 0.0155) / 0.0025) ** 2)    # and the small fold line just inside it
 if cuff:
     dc = dist_to(cuff, uco[rob_i])
     disp[rob_i] += 0.0011 * (ridge(dc / 0.022) - 0.35) * (1 - smoothstep(0.035, 0.06, dc)) * smoothstep(0.004, 0.012, dc)
@@ -482,23 +600,23 @@ for s in (1, -1):
     disp += face * 0.00035 * taper * np.exp(-((zh - zs - 0.0013) / 0.0009) ** 2)     # the lid's lower rim catches the light
     # full, soft cheeks and a round jaw (the gentle oval)
     disp += face * 0.0030 * np.exp(-(((ex - 0.036) / 0.016) ** 2 + ((zh - 1.522) / 0.018) ** 2))
-    disp += face * 0.0008 * np.exp(-(((ex - 0.045) / 0.012) ** 2 + ((zh - 1.500) / 0.014) ** 2))
+    disp += face * 0.0004 * np.exp(-(((ex - 0.045) / 0.012) ** 2 + ((zh - 1.505) / 0.012) ** 2))
     # the nose's soft wings (no flare)
-    disp += face * 0.0005 * np.exp(-(((ex - 0.0105) / 0.0050) ** 2 + ((zh - 1.5390) / 0.0045) ** 2))
+    disp += face * 0.0008 * np.exp(-(((ex - 0.0080) / 0.0035) ** 2 + ((zh - 1.5390) / 0.0030) ** 2))   # the nose's small wings
 # the idealised nose: one straight ridge from the brows to a soft, rounded tip
 tn = np.clip((1.592 - zh) / (1.592 - 1.539), 0, 1)
-wn = 0.0055 + 0.0045 * tn
-disp += face * 0.0016 * tn ** 0.7 * np.exp(-(xh / wn) ** 2) * (zh > 1.535) * smoothstep(1.533, 1.540, zh)
-disp += face * 0.0006 * np.exp(-((xh / 0.0070) ** 2 + ((zh - 1.542) / 0.0050) ** 2))
+wn = 0.0042 + 0.0050 * tn
+disp += face * 0.0105 * tn ** 1.15 * np.exp(-np.abs(xh / wn) ** 3) * smoothstep(1.5335, 1.5410, zh)
+disp += face * 0.0004 * np.exp(-((xh / 0.0045) ** 2 + ((zh - 1.5425) / 0.0030) ** 2))   # a small, refined tip
 # a small, full mouth with a faint smile: the parting line rises at its corners, a bowed upper lip, a full lower lip
 axm = np.abs(xh)
 zm = 1.5040 + 0.0016 * (axm / 0.0175) ** 2
 inm = (axm < 0.0185)
 disp -= face * inm * 0.0012 * np.exp(-((zh - zm) / 0.0007) ** 2) * (1 - smoothstep(0.014, 0.0185, axm))
-disp += face * 0.0013 * np.exp(-((xh / 0.015) ** 2 + ((zh - 1.5072) / 0.0026) ** 2)) * (1 - 0.35 * np.exp(-(xh / 0.003) ** 2))
-disp += face * 0.0019 * np.exp(-((xh / 0.0135) ** 2 + ((zh - 1.5005) / 0.0030) ** 2))
+disp += face * 0.0012 * np.exp(-((xh / 0.0145) ** 2 + ((zh - 1.5072) / 0.0024) ** 2)) * (1 - 0.35 * np.exp(-(xh / 0.003) ** 2))
+disp += face * 0.0016 * np.exp(-((xh / 0.0130) ** 2 + ((zh - 1.5008) / 0.0028) ** 2))
 disp -= face * 0.0006 * np.exp(-((xh / 0.012) ** 2 + ((zh - 1.4945) / 0.0018) ** 2))       # the soft hollow under the lower lip
-disp += face * 0.0013 * np.exp(-((xh / 0.016) ** 2 + ((zh - 1.483) / 0.009) ** 2))        # a full, round chin
+disp += face * 0.0009 * np.exp(-((xh / 0.015) ** 2 + ((zh - 1.486) / 0.008) ** 2))        # a soft, rounded chin
 for s in (1, -1):
     dmc = np.sqrt((s * xh - 0.0195) ** 2 + (zh - 1.5068) ** 2)
     disp -= face * 0.0006 * np.exp(-(dmc / 0.0022) ** 2)                                    # the smile's tucked corners
@@ -515,8 +633,11 @@ ad = np.abs(phi_h)
 hairline = np.where(ad < 1.2, 1.629 - 0.024 * smoothstep(0.35, 1.2, ad), 1.605 - 0.07 * smoothstep(1.2, 2.6, ad))
 near_head = np.sqrt(xh ** 2 + (yh + 0.01) ** 2 + (zh - 1.60) ** 2) < 0.15
 hair = (headish & near_head & (zh > hairline)) | (dist["ushnisha"] < 0.0012)
-hair = smooth_field(hair.astype(np.float64), ued, 2) > 0.5
 log("hair verts", int(hair.sum()))
+# the cap stands a little proud of the brow along one even line (a clean edge for the curls to sit behind)
+capd = (headish & near_head) * smoothstep(hairline - 0.0004, hairline + 0.0016, zh) * 0.0011
+uco = uco + un * capd[:, None]
+um.vertices.foreach_set("co", uco.astype(np.float32).ravel()); um.update()
 
 # materials: gilt + hair (lapis-black)
 def mat(name, col, metal, rough):
@@ -527,13 +648,31 @@ def mat(name, col, metal, rough):
 
 
 gilt = mat("M_gilt", (0.80, 0.52, 0.16), 0.9, 0.30)
-hairm = mat("M_hair", (0.010, 0.014, 0.036), 0.0, 0.72)
-um.materials.clear(); um.materials.append(gilt); um.materials.append(hairm)
+hairm = mat("M_hair", (0.004, 0.004, 0.005), 0.0, 0.85)       # matte black curls (owner reference)
+greenm = mat("M_paint_green", (0.06, 0.30, 0.14), 0.0, 0.55)    # painted brows, moustache line
+redm = mat("M_paint_red", (0.55, 0.035, 0.03), 0.0, 0.45)       # painted lips
+um.materials.clear()
+for m_ in (gilt, hairm, greenm, redm): um.materials.append(m_)
 pv = np.empty(len(um.polygons) * 4, np.int64)
 # polygons are quads from the voxel remesher
 lt = np.empty(len(um.loops), np.int64); um.loops.foreach_get("vertex_index", lt)
 ls = np.empty(len(um.polygons), np.int64); um.polygons.foreach_get("loop_start", ls)
 mi = hair[lt[ls]].astype(np.int64)
+# the jewels are gold, not hair
+for jn in ("jewel_top", "jewel_front"):
+    mi[(dist[jn] < np.minimum(dist["ushnisha"], dist["skin"]) + 0.0003)[lt[ls]]] = 0
+# painted features (the reference: green brows and moustache line, red lips) on the face's own polygons
+pc_ = np.empty(len(um.polygons) * 3); um.polygons.foreach_get("center", pc_); pc_ = pc_.reshape(-1, 3)
+Rp = unwarp_rest(to_rest(pc_)); px_, py_, pz_ = Rp[:, 0], Rp[:, 1], Rp[:, 2]
+fp = (py_ < -0.08) & (np.sqrt(px_ ** 2 + (pz_ - 1.55) ** 2) < 0.09) & (mi == 0)
+ex_ = np.abs(px_); u_ = (ex_ - 0.034) / 0.031
+brow = fp & (np.abs(u_) < 0.92) & (np.abs(pz_ - (1.5925 + 0.0105 * (1 - u_ ** 2)) - 0.0010) < 0.00105 * (1 - 0.5 * np.abs(u_)))
+zmu = 1.5135 - 0.0042 * np.clip((ex_ - 0.003) / 0.015, 0, 1)
+must = fp & (ex_ > 0.0035) & (ex_ < 0.0185) & (np.abs(pz_ - zmu) < 0.00075)
+tuft = fp & (((px_ / 0.0035) ** 2 + ((pz_ - 1.4935) / 0.0022) ** 2) < 1)
+lips = fp & (((px_ / 0.0150) ** 2 + ((pz_ - 1.5040) / 0.0043) ** 2) < 1)
+mi[brow | must | tuft] = 2; mi[lips] = 3
+log("paint polys", int(brow.sum()), int(must.sum()), int(tuft.sum()), int(lips.sum()))
 um.polygons.foreach_set("material_index", mi)
 np.save(OUT.replace(".blend", "_hair.npy"), hair)
 
@@ -543,10 +682,47 @@ order = np.argsort(-uco[hv, 2])
 pick = []
 kd2 = kdtree.KDTree(len(hv) + 1)
 chosen = kdtree.KDTree(4000); nchosen = 0
-SP = 0.0080
+SP = 0.0118
 pts_c = []
 grid = {}
-hl_ok = (zh > hairline + 0.004) | (dist["ushnisha"] < 0.0012)
+hl_ok = ((zh > hairline + 0.004) | (dist["ushnisha"] < 0.0012)) & (dist["jewel_top"] > 0.0095) & (dist["jewel_front"] > 0.0075)
+# neat rows (the reference): rows that follow the hairline over the skull, then rows of latitude round the 육계
+def try_add(idx, min_d):
+    if dist["jewel_top"][idx] < 0.0095 or dist["jewel_front"][idx] < 0.0075: return False
+    p = uco[idx]; key = tuple((p // SP).astype(int))
+    for dx_ in (-1, 0, 1):
+        for dy_ in (-1, 0, 1):
+            for dz_ in (-1, 0, 1):
+                for q in grid.get((key[0] + dx_, key[1] + dy_, key[2] + dz_), ()):
+                    if np.sum((uco[q] - p) ** 2) < min_d * min_d: return False
+    grid.setdefault(key, []).append(idx); pts_c.append(idx); return True
+
+
+on_ush = dist["ushnisha"] < 0.0015
+skull = hair & ~on_ush & near_head
+vrow = zh - hairline
+for r_ in range(14):
+    vt = 0.0060 + r_ * SP * 0.88
+    band = np.where(skull & (np.abs(vrow - vt) < 0.0016))[0]
+    if len(band) == 0: break
+    band = band[np.argsort(phi_h[band])]
+    last = None
+    for idx in band:
+        if last is not None and np.sum((uco[idx] - uco[last]) ** 2) < SP * SP: continue
+        if try_add(idx, SP * 0.86): last = idx
+Ru = unwarp_rest(to_rest(uco))
+lat = np.arctan2(Ru[:, 2] - 1.664, np.sqrt(Ru[:, 0] ** 2 + (Ru[:, 1] + 0.006) ** 2))
+lon = np.arctan2(Ru[:, 0], -(Ru[:, 1] + 0.006))
+ushv = np.where(on_ush & hair)[0]
+for r_ in range(8):
+    lt_ = -0.15 + r_ * 0.19
+    band = ushv[np.abs(lat[ushv] - lt_) < 0.035]
+    if len(band) == 0: continue
+    band = band[np.argsort(lon[band])]; last = None
+    for idx in band:
+        if last is not None and np.sum((uco[idx] - uco[last]) ** 2) < SP * SP: continue
+        if try_add(idx, SP * 0.86): last = idx
+log("rows", len(pts_c))
 for idx in hv[order]:
     if not hl_ok[idx]: continue
     p = uco[idx]
@@ -556,7 +732,7 @@ for idx in hv[order]:
         for dy_ in (-1, 0, 1):
             for dz_ in (-1, 0, 1):
                 for q in grid.get((key[0] + dx_, key[1] + dy_, key[2] + dz_), ()):
-                    if np.sum((uco[q] - p) ** 2) < SP * SP: ok = False; break
+                    if np.sum((uco[q] - p) ** 2) < (SP * 0.95) ** 2: ok = False; break
                 if not ok: break
             if not ok: break
         if not ok: break
@@ -571,8 +747,7 @@ for v in bm.verts:
     if c.z < -0.2:
         c.z = -0.2
     r = math.hypot(c.x, c.y); th = math.atan2(c.y, c.x)
-    sp = math.sin(th + r * 14.0) * 0.08 * r * (c.z > -0.15)
-    c.x *= 0.0046; c.y *= 0.0046; c.z = (c.z * 0.0033 + sp * 0.0036) + 0.0004
+    c.x *= 0.0064; c.y *= 0.0064; c.z = c.z * 0.0056 + 0.0008
 cme = bpy.data.meshes.new("curl"); bm.to_mesh(cme); bm.free(); cme.materials.append(hairm)
 cb = bmesh.new()
 cv = [Vector(v.co) for v in cme.vertices]; cf = [tuple(p.vertices) for p in cme.polygons]

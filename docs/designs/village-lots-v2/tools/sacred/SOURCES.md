@@ -112,3 +112,7 @@ Sketchfab에 **CC0로 표시된 박물관 실사 채색 스캔**이 있지만 �
 - 출처 주소: 14처 «Print, Via Crucis - Station I…XIV, ca. 1749 (CH 18328435…18328471)» — https://commons.wikimedia.org/wiki/Category:Via_Crucis_by_Giovanni_Domenico_Tiepolo 아닌, 위 «Print, Via Crucis» 14개 파일(Cooper Hewitt 소장, https://collection.cooperhewitt.org/);
   블로흐 https://commons.wikimedia.org/wiki/File:Carl_Bloch_-_The_Sermon_on_the_Mount.jpg · 렘브란트 https://commons.wikimedia.org/wiki/File:Rembrandt_Harmensz._van_Rijn_-_The_Return_of_the_Prodigal_Son.jpg · 호프만 https://commons.wikimedia.org/wiki/File:Christ_in_Gethsemane.jpg
 - 쓰지 않은 것: 티에폴로 San Polo 성당의 컬러 «Via Crucis» 사진(CC BY-SA 4.0, 사진가 저작권)은 라이선스(SA) 때문에 뺐어요.
+- **3차 — 사장님 참고 사진 (2026-11-18 밤)**: 사장님이 보낸 6면 사진(`art/sacred/ref/owner_buddha_turnaround*.webp`, 저장소에 올리지 않음)을 형태 기준으로 썼어요 —
+  사진 자체는 게임 자산에 들어가지 않고, 비교 시트(`shots/temple_v3/six_views_vs_ref.jpg`, `hand_vs_ref.jpg`, `face_vs_ref.jpg`)에만 나란히 넣었어요.
+  설법인 손가락(`mudra`), 큰 머리·높은 육계·금 계주·가지런한 검정 나발, 얼굴 칠(초록·빨강 재질), 넓은 몸통과 두꺼운 가사, 둥근 2단 통통한 연꽃 연화대·밑면 12잎 부조,
+  밝은 노란 금과 방의 따뜻한 채움빛. 바탕은 여전히 CC0 Human Base Meshes, 나머지는 모두 직접 제작.

@@ -27,7 +27,7 @@ if FOCUS.startswith("box:"):
 cam_d = bpy.data.cameras.new("c"); cam_d.type = "ORTHO"; cam_d.ortho_scale = ext * 1.08
 cam = bpy.data.objects.new("lookcam", cam_d); sc.collection.objects.link(cam); sc.camera = cam
 DIRS = {"front": (0, -1, 0.05), "q34": (-0.7, -0.7, 0.12), "q34r": (0.7, -0.7, 0.12), "side": (-1, 0, 0.05), "sider": (1, 0, 0.05), "back": (0, 1, 0.05),
-        "top": (0, -0.2, 1), "low": (0, -1, -0.25), "high": (0, -1, 0.5)}
+        "top": (0, -0.2, 1), "topdown": (0, -0.05, 1), "bottom": (0, -0.02, -1), "low": (0, -1, -0.25), "high": (0, -1, 0.5)}
 sc.render.resolution_x = SIZE; sc.render.resolution_y = SIZE; sc.render.film_transparent = False
 if ENG == "WB":
     try: sc.render.engine = "BLENDER_WORKBENCH"
