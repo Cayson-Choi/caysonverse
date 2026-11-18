@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
-import { AnimationMixer, Group, LoopOnce, Quaternion, Vector3, type AnimationAction, type Camera, type Object3D, type Plane } from "three";
+import { extend, useFrame } from "@react-three/fiber";
+import { AnimationMixer, LoopOnce, Quaternion, Vector3, type AnimationAction, type Camera, type Group, type Object3D, type Plane } from "three";
 import { busCamState } from "./busRide";
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
 import { setAvatarOpacity } from "./characterAvatar";
@@ -33,7 +33,7 @@ import {
   stepLoop,
 } from "./stride";
 import { decideMixerTick } from "./mixerThrottle";
-import { AVATAR_LOD, avatarTreeCadence, behindCamera, crowdForce, crowdLodOff } from "./avatarLod";
+import { AVATAR_LOD, RemoteAvatarGroup, avatarTreeCadence, behindCamera, crowdForce, crowdLodOff } from "./avatarLod";
 import { useCrowd } from "./crowdLayer";
 import { setFadeCut } from "./avatarFade";
 import { IMPOSTOR_FADE_PER_S, impostorColors, wantsImpostor } from "./crowdImpostor";
@@ -123,17 +123,7 @@ function riderInTheWay(camera: Camera, x: number, y: number, z: number, wasHidde
   return dist < 0.05 || wayV.dot(wayD) / dist > (hidden ? 0.35 : 0.5);
 }
 
-/**
- * Refresh an avatar group's matrices by hand. Step 8 switches the group's automatic update off (far avatars refresh a few frames
- * apart), and three 0.185 then leaves the group's OWN matrixWorld alone in `updateMatrixWorld` (the flag is checked inside it), so a
- * standing remote was drawn at the world origin. The world matrix is composed here (parent x local); three does the node tree below.
- */
-function refreshAvatarMatrices(group: Group): void {
-  group.updateMatrix();
-  if (group.parent) group.matrixWorld.multiplyMatrices(group.parent.matrixWorld, group.matrix);
-  else group.matrixWorld.copy(group.matrix);
-  group.updateMatrixWorld(true);
-}
+const AvatarGroup = extend(RemoteAvatarGroup);
 
 export function RemotePlayer({
   sessionId,
@@ -149,7 +139,7 @@ export function RemotePlayer({
   const appearance = record?.appearance ?? DEFAULT_APPEARANCE;
   const nickname = record?.nickname ?? "";
 
-  const groupRef = useRef<Group>(null);
+  const groupRef = useRef<RemoteAvatarGroup>(null);
   const lodFramesRef = useRef(0); // frames since the node tree was last refreshed (step 8)
   // Far stand-in (crowdImpostor.ts): the slot this avatar holds in the scene's crowd (-1: it is drawn as the full avatar), the
   // stride phase of its walk, and whether a pose was applied (mixer tick) since the last tree refresh, and where the group was then.
@@ -540,7 +530,7 @@ export function RemotePlayer({
    * The viewer came close (or the avatar sat down, boarded, was disconnected...): the full avatar is back in the scene, posed
    * as the mixer last left it, and the stand-in's slot is free.
    */
-  const leaveImpostor = (group: Group | null): void => {
+  const leaveImpostor = (group: RemoteAvatarGroup | null): void => {
     if (slotRef.current < 0) return;
     crowd?.release(slotRef.current);
     slotRef.current = -1;
@@ -551,7 +541,7 @@ export function RemotePlayer({
       if (avatar.root.parent !== group) group.add(avatar.root);
       if (shadowRef.current) shadowRef.current.visible = true;
       mixer.update(0);
-      refreshAvatarMatrices(group);
+      group.refreshTransform();
       treeDirtyRef.current = false;
     }
     lodFramesRef.current = 0;
@@ -577,6 +567,7 @@ export function RemotePlayer({
 
   useFrame((state, delta) => {
     const group = groupRef.current;
+    if (group) group.restingBody = null;
     const rec = getRemoteRecord(sessionId);
     if (!group || !rec || !seatRef.current) return;
 
@@ -610,7 +601,7 @@ export function RemotePlayer({
         }
         // the avatar's node tree is refreshed by hand: the walking path switches the automatic update off (step 8 below), and a group
         // with matrixWorldAutoUpdate off keeps the matrixWorld it is given
-        refreshAvatarMatrices(group);
+        group.refreshTransform();
         return;
       }
       // got off: upright again, on the ground where the server has them
@@ -719,7 +710,7 @@ export function RemotePlayer({
         fadeRef.current = Math.max(0, fadeRef.current - delta);
       }
       // a rider moves with the bus: its node tree every frame (step 8's LOD is for walkers)
-      if (!group.matrixWorldAutoUpdate) refreshAvatarMatrices(group);
+      if (!group.matrixWorldAutoUpdate) group.refreshTransform();
       return;
     }
     const seat = seatRef.current;
@@ -776,7 +767,7 @@ export function RemotePlayer({
       benchClip.clipped = onBench;
     }
     // A backed seat: lean back while seated (leanBack.ts). `seat.seat` is the seat index on the one global list.
-    stepLean(avatar.root, seat.mode === "seated" ? (activeSeats()[seat.seat]?.lean ?? 0) : 0, delta);
+    const lean = stepLean(avatar.root, seat.mode === "seated" ? (activeSeats()[seat.seat]?.lean ?? 0) : 0, delta);
 
     // Fishing lake: the rod, the fishing clips, the landed fish; a no-op without a rod.
     fishRig.update(delta, { seatMode: seat.mode, baseSit: sitIdleAction.current });
@@ -928,7 +919,7 @@ export function RemotePlayer({
             if (avatar.root.parent !== group) {
               group.add(avatar.root);
               mixer.update(0);
-              refreshAvatarMatrices(group);
+              group.refreshTransform();
               treeDirtyRef.current = false;
               lodFramesRef.current = 0;
             }
@@ -951,7 +942,7 @@ export function RemotePlayer({
         lodFramesRef.current += 1;
         if (lodFramesRef.current >= 2) {
           lodFramesRef.current = 0;
-          refreshAvatarMatrices(group); // the tag and the blob under it (the avatar's tree is out of the scene)
+          group.refreshTransform(); // the tag and the blob under it (the avatar's tree is out of the scene)
         }
         return;
       }
@@ -1005,13 +996,14 @@ export function RemotePlayer({
     if (still && camDist >= AVATAR_LOD.nearM && !crowdLodOff()) cadence = Math.max(cadence, AVATAR_LOD.stillCadence);
     if (lodFramesRef.current >= cadence || transient || fadeRef.current > 0) {
       lodFramesRef.current = 0;
-      refreshAvatarMatrices(group);
+      group.refreshTransform();
       treeDirtyRef.current = false;
       at.x = group.position.x;
       at.y = group.position.y;
       at.z = group.position.z;
       at.yaw = group.rotation.y;
     }
+    if (!active && seat.mode === "up" && !hasRod && lean === 0 && !crowdLodOff()) group.restingBody = avatar.root;
     const casts = camDist < AVATAR_LOD.shadowM;
     if (casts !== castsRef.current) {
       castsRef.current = casts;
@@ -1028,13 +1020,13 @@ export function RemotePlayer({
   });
 
   return (
-    <group ref={groupRef} userData={PICK_AS_BODY}>
+    <AvatarGroup ref={groupRef} userData={PICK_AS_BODY}>
       <primitive object={avatar.root} />
       {blobShadow && (
         <group ref={shadowRef}>
           <BlobShadow />
         </group>
       )}
-    </group>
+    </AvatarGroup>
   );
 }
