@@ -61,12 +61,19 @@ export interface StoneSpec {
 /** The unit rock's top sits at this height (before scaling) once the crown is flattened. */
 const TOP = 0.62;
 
-/** One stone as a geometry in world space: position, normal, colour (tone x a bottom-dark gradient). */
-export function stoneGeometry(s: StoneSpec): BufferGeometry {
-  let g: BufferGeometry = new IcosahedronGeometry(1, s.detail);
+function unitStone(detail: number): BufferGeometry {
+  const g = new IcosahedronGeometry(1, detail);
   g.deleteAttribute("uv");
   g.deleteAttribute("normal");
-  g = mergeVertices(g, 1e-4);
+  return mergeVertices(g, 1e-4);
+}
+
+/** One stone as a geometry in world space: position, normal, colour (tone x a bottom-dark gradient). */
+export function stoneGeometry(s: StoneSpec): BufferGeometry {
+  return shapeStone(s, unitStone(s.detail));
+}
+
+function shapeStone(s: StoneSpec, g: BufferGeometry): BufferGeometry {
   const pos = g.getAttribute("position");
   const v = new Vector3();
   const s1 = s.seed * 7 + 1;
@@ -105,7 +112,17 @@ export function stoneGeometry(s: StoneSpec): BufferGeometry {
 /** Every stone merged into one geometry (position, normal, colour). */
 export function mergeStones(specs: readonly StoneSpec[]): BufferGeometry | null {
   if (!specs.length) return null;
-  const geos = specs.map(stoneGeometry);
+  const units = new Map<number, BufferGeometry>();
+  const geos = specs.map((s) => {
+    let unit = units.get(s.detail);
+    if (!unit) {
+      unit = unitStone(s.detail);
+      units.set(s.detail, unit);
+    }
+    // Keep the welded indices and give each rock private positions to deform.
+    const rock = new BufferGeometry().setIndex(unit.index).setAttribute("position", unit.getAttribute("position").clone());
+    return shapeStone(s, rock);
+  });
   const merged = mergeGeometries(geos, false);
   for (const g of geos) g.dispose();
   return merged;
