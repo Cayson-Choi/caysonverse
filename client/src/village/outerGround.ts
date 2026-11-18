@@ -27,6 +27,8 @@ export const TERRAIN_FOOT_R = 200;
 const SINK = 2.5;
 /** The outer ground is meshed out to this radius (m): the ridges' shell stands over everything beyond it. */
 const MESH_RADIUS = 236;
+/** The village core (|x|, |z| < this, m): baked ground everywhere (the lawn reaches +-150), never outer ground. */
+const CORE_HALF = 138;
 /** The baked ground's name prefixes: the village lawn mesh (LM_grass) and the lake's ground. */
 export const GROUND_MESH_NAMES = /^(village_lm_\d+_\d+|lake_ground_\d+)$/;
 
@@ -232,6 +234,9 @@ export function buildOuterGround(meshes: readonly Mesh[]): OuterGround {
       const cx = (i + 0.5) * OG_MESH_STEP - OG_HALF;
       const cz = (j + 0.5) * OG_MESH_STEP - OG_HALF;
       if (Math.hypot(cx, cz) > MESH_RADIUS) continue;
+      // inside the village core the baked lawn (and the ground layer's plaza / roads / lanes) always covers the ground: a cell there
+      // that the raster missed (re-shaped ground meshes) must never be meshed, or it draws grass over the plaza (2026-11-18 live bug)
+      if (Math.abs(cx) < CORE_HALF && Math.abs(cz) < CORE_HALF) continue;
       cells.push(a);
       for (const q of [a, a + 1, a + M, a + M + 1]) if (used[q]! < 0) used[q] = nv++;
     }
