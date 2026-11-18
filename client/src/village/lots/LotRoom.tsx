@@ -173,13 +173,19 @@ interface RoomLights {
   points: Array<[number, number, number, string, number, number]>;
   spots: Array<[number, number, number, number, number, number, string, number]>;
 }
+/**
+ * A per-room colour grade on the lit surfaces (a multiply, linear): the chapel's honey stone under a warm bake and warm lamps read
+ * orange all over (the paintings and the stained glass lost their true colours); a slight cool pull brings the room to a neutral cream.
+ */
+export const ROOM_GRADE: Readonly<Record<string, readonly [number, number, number]>> = { lot_chapel_nave: [0.80, 0.93, 1.18] };
+
 const ROOM_LIGHTS: Record<string, RoomLights> = {
   lot_school_class: { ambient: ["#fff4e6", 0.55, 0.28], points: [[5.2, 3.2, 5, "#fff1dc", 6, 9], [10.4, 3.2, 5, "#fff1dc", 6, 9]], spots: [] },
   lot_library_reading: { fire: [6.7, 0.61, 9.93], ambient: ["#fff0dc", 0.5, 0.24], points: [[4.5, 4.2, 5.5, "#ffd9a6", 7, 9], [9, 4.2, 5.5, "#ffd9a6", 7, 9]], spots: [] },
   lot_chapel_nave: {
     fire: [4.7, 1.6, 11.9],
-    ambient: ["#ffe9d0", 0.6, 0.35],
-    points: [[4.7, 3.9, 5.1, "#ffc98a", 9, 9], [4.7, 3.9, 8.5, "#ffc98a", 9, 9], [4.7, 5.3, 1.4, "#ffd09a", 2.5, 6]],
+    ambient: ["#f3efe9", 0.6, 0.35],
+    points: [[4.7, 3.9, 5.1, "#ffdcb4", 9, 9], [4.7, 3.9, 8.5, "#ffdcb4", 9, 9], [4.7, 5.3, 1.4, "#ffe0b8", 2.5, 6]],
     spots: [[4.7, 7.0, 9.4, 4.7, 2.2, 12.6, "#ffe0b8", 60], [3.2, 5.2, 7.25, 0.6, 1.75, 9.85, "#ffe4c4", 30], [6.2, 5.2, 7.25, 8.8, 1.75, 9.85, "#ffe4c4", 30]],
   },
   lot_church_nave: { fire: [3.9, 1.4, 9.6], ambient: ["#ffe9d0", 0.6, 0.35], points: [[3.9, 3.6, 3.6, "#ffcf96", 7, 8], [3.9, 3.6, 6.9, "#ffcf96", 7, 8]], spots: [[3.9, 5.6, 6.6, 3.9, 3.2, 10.4, "#fff0d8", 40]] },
@@ -472,6 +478,8 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
       if (src.name.startsWith("LM_")) {
         const sm = lotSurfaceMaterial(s, spec, false);
         sm.vertexColors = colours;
+        const grade = ROOM_GRADE[unit];
+        if (grade) sm.color.multiply(new Color(grade[0], grade[1], grade[2]));
         applyLotTextures(sm, bank);
         if (baked && lm) {
           sm.lightMap = lm.day;

@@ -38,6 +38,126 @@
    ],
    "yaw": -1.5707963267948966,
    "what": "framed painting: Christ in Gethsemane (Heinrich Hofmann, public domain), east wall"
+  },
+  {
+   "node": "lotprop__lot_church_nave_cross_carved",
+   "file": "lots/sacred/lotprop__lot_church_nave_cross_carved.glb",
+   "phone": true,
+   "at": [
+    3.9,
+    2.35,
+    10.365
+   ],
+   "yaw": 3.141592653589793,
+   "what": "carved oak cross (chamfered beams, raised fillet) over the plank cross"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_cap_l1",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_cap.glb",
+   "phone": true,
+   "at": [
+    1.8,
+    0.0,
+    2.2
+   ],
+   "yaw": 0,
+   "what": "carved oak pew cap rail with finial posts"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_cap_r1",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_cap.glb",
+   "phone": true,
+   "at": [
+    6.0,
+    0.0,
+    2.2
+   ],
+   "yaw": 0,
+   "what": "carved oak pew cap rail with finial posts"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_cap_l2",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_cap.glb",
+   "phone": true,
+   "at": [
+    1.8,
+    0.0,
+    3.7
+   ],
+   "yaw": 0,
+   "what": "carved oak pew cap rail with finial posts"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_cap_r2",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_cap.glb",
+   "phone": true,
+   "at": [
+    6.0,
+    0.0,
+    3.7
+   ],
+   "yaw": 0,
+   "what": "carved oak pew cap rail with finial posts"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_cap_l3",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_cap.glb",
+   "phone": true,
+   "at": [
+    1.8,
+    0.0,
+    5.2
+   ],
+   "yaw": 0,
+   "what": "carved oak pew cap rail with finial posts"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_cap_r3",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_cap.glb",
+   "phone": true,
+   "at": [
+    6.0,
+    0.0,
+    5.2
+   ],
+   "yaw": 0,
+   "what": "carved oak pew cap rail with finial posts"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_cap_l4",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_cap.glb",
+   "phone": true,
+   "at": [
+    1.8,
+    0.0,
+    6.7
+   ],
+   "yaw": 0,
+   "what": "carved oak pew cap rail with finial posts"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pew_cap_r4",
+   "file": "lots/sacred/lotprop__lot_church_nave_pew_cap.glb",
+   "phone": true,
+   "at": [
+    6.0,
+    0.0,
+    6.7
+   ],
+   "yaw": 0,
+   "what": "carved oak pew cap rail with finial posts"
+  },
+  {
+   "node": "lotprop__lot_church_nave_pulpit_crown",
+   "file": "lots/sacred/lotprop__lot_church_nave_pulpit_crown.glb",
+   "phone": true,
+   "at": [
+    1.2,
+    1.3,
+    9.1
+   ],
+   "yaw": 0,
+   "what": "carved oak crown and base rings on the pulpit"
   }
  ],
  "glassDay": {
