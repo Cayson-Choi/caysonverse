@@ -102,3 +102,13 @@ Sketchfab에 **CC0로 표시된 박물관 실사 채색 스캔**이 있지만 �
   금박 — 따뜻하고 채도 높은 금(선형 0.80 / 0.52 / 0.13), 금속 1.0, 거칠기 0.20 ± 미세한 얼룩, 주름 AO를 색에 더 깊게(0.32 + 0.68 AO).
   방에서는 본존불 재질(`…_buddha_gilt`)만 환경맵 1.0(광배는 그대로 0.45), 그리고 방 등불이 금속을 무광 페인트처럼 비추던 셰이더를 고침(`LotRoom.tsx` `LAMP_FRAG`).
   소매 얼룩 — 원인은 AO의 기본 도달 거리 10 m(왼팔과 옆구리 사이 좁은 틈이 검게 얼룩짐): AO는 4.5 cm 안의 주름만, 빗나간 광선 자리는 검정 대신 기본값으로 채움.
+## 2026-11-18 성당·교회 실내 다듬기
+
+- 성모상: 위 표의 SMK KAS225를 **작은(`_small`) 20 MB 파일 대신 원본 해상도 76 MB STL**(https://api.smk.dk/api/v1/download-3d/st74cw417_smk21-kas225-bruges-madonna.stl, 1.54M 삼각형)에서 `process_statue.py`로 다시 구움:
+  PC 40,000 삼각형 · 2K 노멀 · 2K 색 · 1K ORM, 폰 9,000 삼각형(1K 맵). 작업 파일 `art/sacred/mary_job.json`(저장소에 올리지 않음). 지난번에는 14,000 삼각형이었고, 게다가 `SACRED_MAP_MAX`가 2K 노멀을 512로 깎아 얼굴이 뭉개졌어요:
+  이제 성모상·십자고상은 `sacredCaps`(LotRoom.tsx)에서 2K(폰 1K)를 그대로 써요.
+- 십자가의 길 14처: 티에폴로 동판화 14점(Cooper Hewitt, CC0/PD) → `build_framed_art.mjs`(참나무 액자 + 오목한 그림, KTX2) → `patch_room_art.py`로 방 GLB의 옛 나무 판 자리 위에 걸기(판은 방 메시에 합쳐져 있어 그대로 두고 액자로 덮음).
+- 교회 그림 3점(칼 블로흐 «산상수훈», 렘브란트 «탕자의 귀환», 호프만 «겟세마네의 그리스도», 모두 PD)과 색유리 낮 밝기 조정(성당 2.0→1.05, 장미창 1.8→1.0, 교회 1.1→0.8: 흰색으로 날아가던 색유리가 제 색으로).
+- 출처 주소: 14처 «Print, Via Crucis - Station I…XIV, ca. 1749 (CH 18328435…18328471)» — https://commons.wikimedia.org/wiki/Category:Via_Crucis_by_Giovanni_Domenico_Tiepolo 아닌, 위 «Print, Via Crucis» 14개 파일(Cooper Hewitt 소장, https://collection.cooperhewitt.org/);
+  블로흐 https://commons.wikimedia.org/wiki/File:Carl_Bloch_-_The_Sermon_on_the_Mount.jpg · 렘브란트 https://commons.wikimedia.org/wiki/File:Rembrandt_Harmensz._van_Rijn_-_The_Return_of_the_Prodigal_Son.jpg · 호프만 https://commons.wikimedia.org/wiki/File:Christ_in_Gethsemane.jpg
+- 쓰지 않은 것: 티에폴로 San Polo 성당의 컬러 «Via Crucis» 사진(CC BY-SA 4.0, 사진가 저작권)은 라이선스(SA) 때문에 뺐어요.

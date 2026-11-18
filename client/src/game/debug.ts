@@ -1,6 +1,6 @@
 import type { Appearance } from "@caysonverse/shared/appearance";
 import type { Orbit, Pose } from "./types";
-import { getRemotes, remoteDrawnProbe, type DrawnPose } from "./remoteStore";
+import { getRemotes, remoteDrawnProbe, remoteViewProbe, type DrawnPose, type RenderedView } from "./remoteStore";
 import { getRoom, sendSit, sendStand } from "../net/connection";
 import { bubbleRegistry } from "./bubbleRegistry";
 import { emojiRegistry } from "./emojiRegistry";
@@ -170,6 +170,8 @@ declare global {
        * page-wide sampler, so a scene switch does not reset it. Headless reference for the perf E2E.
        */
       getFrameStats: (windowMs?: number) => FrameStats;
+      /** Where each remote's body really is on screen (the avatar's node tree or its far stand-in), by session id. */
+      getRemoteView: () => Record<string, RenderedView>;
     };
   }
 }
@@ -239,6 +241,7 @@ export function installDebugHook(
     sit: (seatIndex: number) => sendSit(seatIndex),
     stand: () => sendStand(),
     getScreen: () => useAppStore.getState().screen,
+    getRemoteView: () => Object.fromEntries(Array.from(remoteViewProbe, ([sid, f]) => [sid, f()])),
     getFrameStats: (windowMs = 20000) => ensureFrameSampler().stats(windowMs, performance.now()),
   };
   return () => {

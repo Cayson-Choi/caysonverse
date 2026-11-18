@@ -7,6 +7,22 @@
 import { create } from "zustand";
 import { figureById } from "@caysonverse/shared/village/constellations";
 import { loadStarProgress, saveStarProgress, type StarProgress } from "./starProgress";
+import { isTouchDevice } from "../../device";
+
+/** localStorage key of the card's fold state (per viewer; a phone starts folded). */
+export const PANEL_KEY = "cv-stars-panel-v1";
+
+/** The remembered fold state; unset (or blocked storage) = folded on a phone, open on a PC. */
+export function loadPanelFolded(): boolean {
+  try {
+    const raw = typeof localStorage === "undefined" ? null : localStorage.getItem(PANEL_KEY);
+    if (raw === "1") return true;
+    if (raw === "0") return false;
+  } catch {
+    // blocked storage: the default
+  }
+  return isTouchDevice;
+}
 
 export type FinderPhase = "day" | "night";
 export type FinderView = "find" | "album";
@@ -46,6 +62,10 @@ export interface StarFinderState {
   /** What the reticle passes over: "목성 — 별이 아니라 행성이에요" / "시리우스 (천랑성)". */
   aimInfo: string | null;
   progress: StarProgress;
+  /** The card is folded to its little pill ("🔭 별자리 6/6 ▸"); remembered per viewer. */
+  folded: boolean;
+  /** The "발견!" moment: the figure just discovered (the banner shows it a few seconds). */
+  discovery: { id: string; at: number } | null;
   /** A short line on the card (the view switch, the dawn). */
   notice: string | null;
   /** For screen readers (aria-live). */
@@ -68,6 +88,8 @@ export const useStarFinder = create<StarFinderState>(() => ({
   foundNow: null,
   aimInfo: null,
   progress: loadStarProgress(),
+  folded: loadPanelFolded(),
+  discovery: null,
   notice: null,
   announce: "",
 }));
@@ -99,11 +121,21 @@ export function setFinderView(view: FinderView): void {
   patchFinder({ view });
 }
 
-/** "찾은 별자리 보기": keep the found figures drawn (remembered on this device). */
+/** "찾은 별자리 선 항상 켜두기": the lines of the figures already found stay on the sky, card open or closed (remembered on this device). */
 export function setShowFound(on: boolean): void {
   const progress = { ...useStarFinder.getState().progress, showFound: on };
   saveStarProgress(progress);
   useStarFinder.setState({ progress });
+}
+
+/** Fold / unfold the card (remembered on this device). */
+export function setFolded(folded: boolean): void {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem(PANEL_KEY, folded ? "1" : "0");
+  } catch {
+    // blocked storage: it lasts for this visit
+  }
+  useStarFinder.setState({ folded });
 }
 
 /** Store and publish new progress (a figure found). */

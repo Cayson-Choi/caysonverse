@@ -1209,6 +1209,49 @@ describe("VillageRoom: nobody is ever inside the moving bus (integration, checke
   });
 });
 
+describe("VillageRoom a tab that joins again replaces its own old session (integration, 2026-11-18 bus ghost)", () => {
+  const TAB = "tab-0123456789abcdef";
+
+  async function riderDropped(tabId: string | null) {
+    const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
+    const rider = await colyseus.connectTo(room, tabId === null ? JOIN : { ...JOIN, tabId });
+    const watcher = await colyseus.connectTo(room, JOIN_BOB);
+    const slot = Date.UTC(2026, 10, 15, 3, 10, 0);
+    const clock = { t: slot - 60_000 };
+    (room as unknown as { wallClock: () => number }).wallClock = () => clock.t;
+    room.tickBus();
+    const player = room.state.players.get(rider.sessionId)!;
+    placeAt(player, 39.4, -6.2);
+    rider.send(MessageType.BusRide, { action: "board" });
+    expect(await pollFor(() => watcher.state?.players?.get(rider.sessionId)?.busSeat === 0)).toBe(true);
+    const sid = rider.sessionId;
+    rider.reconnection.enabled = false;
+    rider.connection.close(4010, "test drop");
+    expect(await pollFor(() => room.state.players.get(sid)?.connected === false)).toBe(true);
+    return { room, watcher, sid };
+  }
+
+  it("the old session of the same tab is gone at once: seat freed, avatar gone for the other clients, one avatar left", async () => {
+    const { room, watcher, sid } = await riderDropped(TAB);
+    // phase 2: the same tab joins afresh while the old one is still a ghost aboard the bus
+    const again = await colyseus.connectTo(room, { ...JOIN, tabId: TAB });
+    expect(again.sessionId).not.toBe(sid);
+    expect(await pollFor(() => room.state.players.get(sid) === undefined)).toBe(true);
+    expect(await pollFor(() => watcher.state?.players?.get(sid) === undefined)).toBe(true);
+    const names = [...room.state.players.values()].map((p) => p.nickname).filter((n) => n === JOIN.nickname);
+    expect(names).toHaveLength(1);
+    expect(room.state.players.get(again.sessionId)!.busSeat).toBe(-1);
+  });
+
+  it("another tab (a different tab id, or none) leaves the ghost alone until its window runs out", async () => {
+    const { room, sid } = await riderDropped(TAB);
+    const other = await colyseus.connectTo(room, { ...JOIN_CAROL, tabId: "tab-other-0123456789" });
+    expect(other.sessionId).not.toBe(sid);
+    expect(room.state.players.get(sid)?.connected).toBe(false);
+    expect(room.state.players.get(sid)?.busSeat).toBe(0);
+  });
+});
+
 describe("VillageRoom bus riders are in the bus (integration, owner 2026-11-15)", () => {
   /** A room on the clock `clock.t`, at a departure on the 10-minute grid with boarding open. */
   async function atTheStop() {

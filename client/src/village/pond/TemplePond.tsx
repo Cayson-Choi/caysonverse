@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Box3, BufferGeometry, DoubleSide, Float32BufferAttribute, Group, Mesh, Uint32BufferAttribute, Vector3, type InstancedMesh, type Material, type Object3D, type ShaderMaterial, type Scene } from "three";
+import { compileSafely } from "../../game/compileSafely";
 import { getPbrSet } from "../pbr/pbrLibrary";
 import { groundGrainTexture } from "../groundDetail";
 import { makeFountainNoise } from "../fountainWater";
@@ -216,7 +217,7 @@ export function TemplePond({ nodes, tier }: { nodes: VillageNodes; tier: Village
       };
       scene.add(group);
       if (import.meta.env.DEV) (window as unknown as { __cvPond?: () => unknown }).__cvPond = () => st.built?.stats ?? null;
-      void gl.compileAsync(scene, camera).catch(() => console.warn("[pond] precompile failed"));
+      void compileSafely(gl, scene, camera).catch(() => console.warn("[pond] precompile failed"));
     } catch (e) {
       console.error("[pond] build failed", e);
     } finally {

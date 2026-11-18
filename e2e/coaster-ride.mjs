@@ -25,7 +25,7 @@ mkdirSync(run.evidence, { recursive: true });
 const NOON = "2026-11-03T12:30";
 let nickSeq = 0;
 async function joinLand(p, prefix) {
-  await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(NOON)}`, { waitUntil: "domcontentloaded" });
+  await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(NOON)}`, { waitUntil: "domcontentloaded", timeout: 120000 });
   await entryReady(p);
   const nick = `${prefix}${++nickSeq}${Math.floor(Math.random() * 90 + 10)}`.slice(0, 10);
   await p.page.locator("input.cv-input").first().fill(nick);

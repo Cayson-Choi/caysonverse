@@ -47,6 +47,9 @@ caysonverse가 배포하는 그림·모델·글꼴·디코더의 출처와 라�
 
 | 대웅전 본존불(2026-11-18 v2, 연화대 포함): 직접 만든 원작 — 석굴암 본존불·한국 금동좌불을 보고 Blender로 조각(결가부좌·항마촉지인·우견편단, 나발·육계, 2단 앙련·복련 연화대) | 이 프로젝트에서 제작(`docs/designs/village-lots-v2/tools/sacred/bv2_pose.py` → `bv2_sculpt.py` → `bv2_bake.py`). 바탕 몸·발은 Blender Studio **Human Base Meshes** 번들 v1.2(`GEO-body_male_realistic`, `Foot - Realistic`) — https://www.blender.org/download/demo-files/ (공식 미러 ftp.halifax.rwth-aachen.de/blender/demo/asset-bundles/human-base-meshes/) | 원작(직접 제작) + 바탕 메시 **CC0 1.0** | `client/public/models/village/lots/sacred/lotstatue__lot_temple_hall_buddha*.glb` — 예전 dluo 스캔(CC BY 4.0)은 더 이상 쓰지 않음. 원본 `art/sacred/src/hbm/` | 2026-11-18 |
 | 성당 십자고상: *"Crucified Christ" from St. Jadwiga's hospital* (16세기, Museum of the Biecz Land AH/1273) 3D 스캔 | WirtualneMuzeaMalopolski (Małopolska's Virtual Museums), Zenodo https://zenodo.org/records/21567941 | CC0 1.0 | `client/public/models/village/lots/sacred/lotstatue__lot_chapel_nave_crucifix*.glb` — 새 마감 색으로 다시 칠함 | 2026-11-17 |
+| 성당 성모상 고해상도 재작업: SMK KAS225 원본 해상도 스캔(1.5M 삼각형) | 덴마크 국립미술관 SMK Open, https://api.smk.dk/api/v1/download-3d/st74cw417_smk21-kas225-bruges-madonna.stl | 퍼블릭 도메인(Public Domain Mark 1.0) | `lotstatue__lot_chapel_nave_mary*.glb` — PC 40k 삼각형·2K 노멀/색, 폰 9k·1K (`process_statue.py`) | 2026-11-18 |
+| 성당 십자가의 길 14처: 조반니 도메니코 티에폴로 «Via Crucis» 동판화 14점(1749경) | Cooper Hewitt, Smithsonian Design Museum(스미스소니언 오픈액세스 CC0), 위키미디어 공용 «Print, Via Crucis - Station I … XIV, ca. 1749 (CH 18328435 … 18328471)» | 퍼블릭 도메인 / CC0 | `lotart__lot_chapel_nave_station_01..14*.glb` — 그림 부분 잘라 틀에 넣음, 참나무 액자 직접 제작 (`build_framed_art.mjs`) | 2026-11-18 |
+| 교회 그림 3점: 칼 블로흐 «산상수훈», 렘브란트 «탕자의 귀환», 하인리히 호프만 «겟세마네의 그리스도» | 위키미디어 공용 «Carl Bloch - The Sermon on the Mount.jpg», «Rembrandt Harmensz. van Rijn - The Return of the Prodigal Son.jpg», «Christ in Gethsemane.jpg» (모두 Public domain: 작가 사후 100년 이상) | 퍼블릭 도메인 | `lotart__lot_church_nave_*.glb` — 도금 액자 직접 제작 | 2026-11-18 |
 
 ## AI 생성 자산
 
@@ -148,3 +151,13 @@ B1과 같은 방식으로 성당·교회(B2)가 처음 쓰는 세트를 더했�
 | Poly Haven `japanese_stone_wall` 텍스처 세트(색, 노멀, AO/거칠기/금속 ARM) | Poly Haven, https://polyhaven.com/a/japanese_stone_wall (같은 형식의 2k 파일 3장) | CC0 1.0 Universal | `client/public/textures/pbr/{2k,1k}/stone_wall_korean_*.ktx2` (PBR 세트 `stone_wall_korean`: 화강석 돌담·석축) | 2026-11-17 |
 | 단청 아틀라스 `dancheong_wood` (직접 그림) | `docs/designs/village-lots-v2/tools/temple_dancheong.py`로 그린 일반형 머리초·금단청·꽃살·연등 무늬(실제 절 이름·글자·卍 없음) | CC0 1.0 Universal (자체 제작) | `client/public/textures/pbr/{2k,1k}/dancheong_wood_*.ktx2` | 2026-11-17 |
 | 케이슨랜드 정문 그림 지도 아틀라스 `lot_gate_goods` | `docs/designs/village-lots-v2/tools/gate_goods.py`: L4(75ab7df) 깃발·꽃밭·흙 칸을 다시 쓰고 글자 없는 공원 그림 지도를 새로 그림 | 자체 제작 | `client/public/models/village/lots/martgate/lot_gate_goods.ktx2` | 2026-11-17 |
+
+## 집 외관 2차·케이슨랜드 정문 (2026-11-18)
+
+집 10채 외관(참나무 보, 사암, 기와)과 케이슨랜드 정문이 쓰는 Poly Haven CC0 2k 세트입니다. 2026-11-18에 Poly Haven API(https://api.polyhaven.com/files/<자산>)가 알려 준 파일을 내려받았고 md5를 API 값과 맞춰 봤습니다. 가공(채도·밝기, 이끼 얼룩 제거, 이음매 없이 이어 붙이기, 1024 px WebP)은 `tools/house-ext/make_house_ext_textures.mjs`에 있고, 원본은 저장소에 올리지 않았습니다.
+
+| 자산 | 출처 | 라이선스 | 쓰는 곳 | 확인일 |
+| --- | --- | --- | --- | --- |
+| Poly Haven `dark_wood` 텍스처 세트(색, 노멀, 거칠기) | https://polyhaven.com/a/dark_wood (https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_wood/dark_wood_diff_2k.jpg 외 2장) | CC0 1.0 Universal | `client/public/models/village/houses/house_wood_*.webp`의 참나무 반쪽(기둥·보·베란다 판자) | 2026-11-18 |
+| Poly Haven `mossy_sandstone` 텍스처 세트(색, 노멀, 거칠기) | https://polyhaven.com/a/mossy_sandstone (https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mossy_sandstone/mossy_sandstone_diff_2k.jpg 외 2장) | CC0 1.0 Universal | `house_sandstone_*.webp`(주춧돌·창틀·모서리돌)과 케이슨랜드 정문 석재 | 2026-11-18 |
+| Poly Haven `clay_roof_tiles_03` 텍스처 세트(색, 노멀, 거칠기) | https://polyhaven.com/a/clay_roof_tiles_03 (https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/clay_roof_tiles_03/clay_roof_tiles_03_diff_2k.jpg 외 2장) | CC0 1.0 Universal | `house_tile_*.webp`(집 기와)과 케이슨랜드 정문 첨탑 기와(남색 유약 색조) | 2026-11-18 |
