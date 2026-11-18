@@ -11,6 +11,7 @@ import {
   ShaderMaterial,
   UniformsLib,
   UniformsUtils,
+  Vector2,
   Vector3,
   Vector4,
   type Side,
@@ -331,6 +332,12 @@ uniform vec2 uSunGlint;
 uniform vec3 uTint;
 uniform vec4 uFountain;
 uniform vec3 uFountainColor;
+#ifdef CREEK
+uniform sampler2D uCreek;
+uniform sampler2D uNoise;
+uniform vec4 uCreekRect;
+uniform vec2 uCreekRange;
+#endif
 #include <common>
 #include <fog_pars_fragment>
 varying vec2 vUv;
@@ -431,6 +438,42 @@ void main() {
     alpha = mix( alpha, 1.0, fpFoam * 0.85 );
   #endif
 
+
+  #ifdef CREEK
+  {
+    // The creek (CreekPatch): depth from the ground map (R = bed height, G = foam), so the water is clear and see-through
+    // over the shallows, deeper and darker in the middle, with its own shoreline, foam rings round the stones and churn at
+    // the cascades. Outside the map (the feeder stream) the old look stays.
+    vec2 cuv = ( vWorldPos.xz - uCreekRect.xy ) * uCreekRect.zw;
+    if ( cuv.x > 0.0 && cuv.x < 1.0 && cuv.y > 0.0 && cuv.y < 1.0 ) {
+      vec2 cm = texture2D( uCreek, cuv ).rg;
+      float depth = vWorldPos.y - mix( uCreekRange.x, uCreekRange.y, cm.r );
+      float jag = g.x * 0.03 + g.y * 0.02;
+      float edge = smoothstep( 0.0, 0.1, depth + jag );
+      float absorb = 1.0 - exp( -depth * 1.7 );
+      vec3 shallowC = vec3( 0.16, 0.30, 0.19 );
+      vec3 deepC = vec3( 0.03, 0.13, 0.13 );
+      vec3 body = mix( shallowC, deepC, smoothstep( 0.08, 0.62, depth ) ) * ( 1.0 + 0.1 * ( g.x + g.y ) );
+      col = mix( body, sky * uReflect, F );
+      #ifdef WATER_DETAIL
+        col += uSunColor * pow( max( dot( R, uSunDir ), 0.0 ), uSunGlint.x ) * uSunGlint.y * 0.35;
+      #endif
+      alpha = clamp( 0.1 + 0.8 * absorb, 0.0, 0.94 );
+      alpha = mix( alpha, 1.0, F * 0.55 );
+      // Foam: the map's churn (cascade foot, stone collars and wakes) and a faint lace along the waterline, flowing east.
+      vec4 fa = texture2D( uNoise, vWorldPos.xz * vec2( 0.9, 1.5 ) + vec2( -uTime * 0.42, 0.0 ) );
+      vec4 fb = texture2D( uNoise, vWorldPos.xz * vec2( 1.9, 2.7 ) + vec2( -uTime * 0.27, 0.13 ) );
+      float lace = 0.55 * ( fa.r * 0.6 + fb.g * 0.4 ) + 0.45 * ( 1.0 - min( fa.b, fb.b ) );
+      float cover = clamp( cm.g + ( 1.0 - smoothstep( 0.0, 0.05, depth ) ) * 0.4, 0.0, 1.0 );
+      float fm = smoothstep( 1.0 - cover, 1.0 - cover + 0.28, lace ) * min( 1.0, cover * 1.25 );
+      col = mix( col, vec3( 0.80, 0.86, 0.86 ), fm * 0.92 );
+      alpha = mix( alpha, 1.0, fm * 0.9 );
+      alpha *= edge;
+      if ( alpha < 0.01 ) discard;
+    }
+  }
+  #endif
+
   // The time of day (Task 7A): the whole surface follows the light (dark blue at night), and at night the fountain's
   // underwater lights glow in its pool and jets (x, z, radius, strength), the foam the most.
   col *= uTint;
@@ -466,6 +509,8 @@ export interface WaterOptions {
    * noise texture (`uNoise`) and wrapped clock (`uFTime`). Off (absent) for every other water surface.
    */
   fountainPool?: { noise: Texture } | null;
+  /** The creek (creek/CreekPatch.tsx): its ground/foam map, the map's rectangle (x0, z0, 1/width, 1/height) and the foam noise. */
+  creek?: { map: Texture; rect: readonly [number, number, number, number]; noise: Texture; range?: readonly [number, number] } | null;
 }
 
 /** The village's water surface (a ShaderMaterial with the scene's fog, tone mapping and colour space). */
@@ -500,11 +545,14 @@ export function createWaterMaterial(o: WaterOptions): ShaderMaterial {
         uFountainColor: { value: new Vector3(fountain.r, fountain.g, fountain.b) },
         uNoise: { value: null },
         uFTime: { value: 0 },
+        uCreek: { value: null },
+        uCreekRect: { value: new Vector4() },
+        uCreekRange: { value: new Vector2(-1.6, 0.4) },
       },
     ]),
     vertexShader: WATER_VERTEX,
     fragmentShader: WATER_FRAGMENT,
-    defines: { ...(o.detail ? { WATER_DETAIL: "" } : {}), ...(o.fountainPool ? { FOUNTAIN_POOL: "" } : {}) },
+    defines: { ...(o.detail ? { WATER_DETAIL: "" } : {}), ...(o.fountainPool ? { FOUNTAIN_POOL: "" } : {}), ...(o.creek ? { CREEK: "" } : {}) },
     transparent: true,
     depthWrite: false,
     fog: true,
@@ -514,7 +562,16 @@ export function createWaterMaterial(o: WaterOptions): ShaderMaterial {
   m.uniforms.uMap!.value = o.map;
   m.uniforms.uRipple!.value = o.ripple;
   m.uniforms.uSky!.value = o.sky;
-  m.uniforms.uNoise!.value = o.fountainPool?.noise ?? null;
+  m.uniforms.uNoise!.value = o.fountainPool?.noise ?? o.creek?.noise ?? null;
+  if (o.creek) {
+    m.name = "M_water (creek)";
+    m.uniforms.uCreek!.value = o.creek.map;
+    (m.uniforms.uCreekRect!.value as Vector4).set(...o.creek.rect);
+    (m.uniforms.uCreekRange!.value as Vector2).set(...(o.creek.range ?? [-1.6, 0.4]));
+    // the creek runs east at about 0.4 m/s: the ripples stretch along it and slide faster
+    m.uniforms.uRippleDrift!.value = new Vector4(0.13, 0.0, 0.34, 0.02);
+    m.uniforms.uRippleScale!.value = [0.27, 0.7];
+  }
   if (o.fountainPool) m.name = "M_water (fountain pool)";
   const s = o.skyMapping;
   (m.uniforms.uSkyMap!.value as Vector4).set(s.uSign, s.uOffset, s.vScale, s.vOffset);

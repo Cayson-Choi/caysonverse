@@ -1,3 +1,4 @@
+import { CreekPatch } from "./creek/CreekPatch";
 import { Suspense, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, useTexture } from "@react-three/drei";
@@ -270,6 +271,8 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       )}
       {/* The fishing lake takes the old backdrop lake out of this clone once it is drawn (lake/lakeVillagePatch.ts). */}
       <LakeVillagePatch root={nodes.root} />
+      {/* The creek, redone: see-through water, wet banks, river stones, cascades and reeds (creek/CreekPatch.tsx). */}
+      <CreekPatch nodes={nodes} tier={tier} />
       {/* The lot buildings (L5) take the old plot signs and posts out of this clone once they are drawn (lots/LotsVillagePatch.tsx). */}
       <LotsVillagePatch root={nodes.root} />
       {veg && <primitive object={veg.group} dispose={null} />}
