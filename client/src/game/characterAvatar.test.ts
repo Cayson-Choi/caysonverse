@@ -27,6 +27,7 @@ import {
   buildAvatar as buildAvatarImpl,
   releaseAvatar,
   releaseAvatarSoon,
+  reuseRestingBoneTexture,
   retainAvatar,
   setAvatarOpacity,
   solidGeometryRefs,
@@ -247,6 +248,69 @@ afterEach(() => {
 // ── assembly ──────────────────────────────────────────────────────────────────
 
 describe("buildAvatar", () => {
+  it("keeps a resting remote's bone texture until the actual skinning inputs change", () => {
+    const a = buildAvatar(assets, L);
+    const b = buildAvatar(assets, L);
+    const rig = solidOf(a).skeleton;
+    const other = solidOf(b).skeleton;
+    const face = a.root.getObjectByName("face__smile") as SkinnedMesh;
+    expect(face.skeleton).toBe(rig);
+    expect(other).not.toBe(rig);
+    expect(other.bones[0]).not.toBe(rig.bones[0]);
+    const originalUpdate = rig.update;
+    let resting = true;
+    const restore = reuseRestingBoneTexture(a, () => resting);
+    expect(other.update).toBe(originalUpdate);
+
+    // A stock Skeleton on the same inputs is the shader palette for both the colour and shadow pass.
+    const reference = new Skeleton(rig.bones, rig.boneInverses);
+    const draw = () => {
+      a.root.updateMatrixWorld(true);
+      rig.update();
+      reference.boneInverses = rig.boneInverses;
+      reference.update();
+      expect(rig.boneMatrices).toEqual(reference.boneMatrices);
+    };
+    draw(); // WebGLObjects first updates the matrices, then WebGLRenderer makes the texture.
+    rig.computeBoneTexture();
+    reference.computeBoneTexture();
+    draw();
+    const tex = rig.boneTexture!;
+    const first = tex.version;
+    for (let frame = 0; frame < 12; frame++) {
+      draw();
+      face.skeleton.update(); // another pass, same rig
+    }
+    expect(tex.version).toBe(first);
+    a.root.position.x = 5;
+    draw();
+    expect(tex.version).toBe(first + 1);
+    rig.boneInverses = rig.boneInverses.map((m) => m.clone());
+    rig.boneInverses[0]!.makeTranslation(1, 2, 3);
+    draw();
+    expect(tex.version).toBe(first + 2);
+    resting = false;
+    rig.bones[1]!.rotation.x = 0.4;
+    draw();
+    expect(tex.version).toBe(first + 3);
+    resting = true;
+    draw();
+    rig.dispose();
+    reference.dispose();
+    rig.computeBoneTexture();
+    reference.computeBoneTexture();
+    const created = rig.boneTexture!;
+    const beforeDraw = created.version;
+    draw();
+    expect(created.version).toBe(beforeDraw + 1);
+
+    restore();
+    expect(rig.update).toBe(originalUpdate);
+    reference.dispose();
+    releaseAvatar(a);
+    releaseAvatar(b);
+  });
+
   it("keeps only the visible parts and merges every untextured primitive into one solid mesh", () => {
     const a = buildAvatar(assets, CAP_WHITE_TEE);
     expect(a.parts).toEqual(visibleParts(CAP_WHITE_TEE.parts));

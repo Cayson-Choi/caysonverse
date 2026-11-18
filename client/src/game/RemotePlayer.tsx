@@ -3,7 +3,7 @@ import { extend, useFrame } from "@react-three/fiber";
 import { AnimationMixer, LoopOnce, Quaternion, Vector3, type AnimationAction, type Camera, type Group, type Object3D, type Plane } from "three";
 import { busCamState } from "./busRide";
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
-import { setAvatarOpacity } from "./characterAvatar";
+import { reuseRestingBoneTexture, setAvatarOpacity } from "./characterAvatar";
 import { clipFor, lookFromAppearance } from "./characterLook";
 import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
@@ -160,6 +160,7 @@ export function RemotePlayer({
   const stride = useMemo(() => lookStride(look), [look]);
   const crowdColors = useMemo(() => impostorColors(look), [look]);
   const { avatar, animations } = useAvatar(look, { probeId: sessionId });
+  useEffect(() => reuseRestingBoneTexture(avatar, () => groupRef.current?.restingBody === avatar.root), [avatar]);
   const mixer = useMemo(() => new AnimationMixer(avatar.root), [avatar]);
   // Fishing lake (A10): the rod in this avatar's hand, the fishing clips and the landed fish (lake/fishingRig.ts). A carrier's
   // walk / run / idle have no right arm (Carry_Rod owns it): the base clips are bound again when the rod comes or goes.
