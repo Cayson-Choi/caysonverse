@@ -20,6 +20,9 @@
  * bite or a lost fish) -> ready. Strike during nibble is ignored with no penalty ("too_early"); too late is `missed`.
  */
 
+import { FIGHT, fightSchedule, stepFight, type FightEvent } from "./fishFight";
+
+const FIGHT_START_PROGRESS = FIGHT.startProgress;
 import { LAKE_FISHING_SPOTS, LAKE_RENTAL_PAD, LAKE_SHORE, distToPolygonEdge } from "./lakeLayout";
 
 /** Timings (ms), distances (m) and rate caps. One place to tune; the design's numbers (chapters 7-9). */
@@ -53,18 +56,11 @@ export const FISHING = {
   actionGapMs: 100,
   /** A strike is honoured this long after the window's end, at most (design 9.2: min(250 ms, RTT / 2)). */
   strikeGraceMs: 250,
-  /** Big fish: the hold needed is 1.5 s + (cm - 40) x 80 ms, 1.5..5 s (design 8). */
-  holdBaseMs: 1500,
-  holdPerCmMs: 80,
-  holdBaseCm: 40,
-  holdMaxMs: 5000,
-  /** One Hold message counts for at most this long (a lost "up" is taken as released after it). */
+  /** One Hold message counts for at most this long (a lost "up" is taken as released after it; the client repeats it every 0.5 s). */
   holdGapMs: 1500,
-  /** While the button is up the progress falls at this fraction of real time ("the fish pulls a little"). */
-  holdDecay: 0.5,
-  /** Never pressing for this long loses the fish (design 7.1); and the whole fight is capped. */
-  fightIdleMs: 6000,
-  fightMaxMs: 30000,
+  /** The big fish's fight is a pull / release rhythm (fishFight.ts); a fight nobody touches for this long, and the whole fight, are capped. */
+  fightIdleMs: 8000,
+  fightMaxMs: 45000,
   /** Fishing messages per client: 8 per second and 40 per 10 seconds (design 9.5). */
   rateShort: { count: 8, windowMs: 1000 },
   rateLong: { count: 40, windowMs: 10000 },
@@ -189,12 +185,6 @@ export function fishSpecies(kind: FishKind): FishSpecies {
 /** "Big fish" = the ones that need the hold stage and the net. */
 export function needsNet(kind: FishKind, cm: number): boolean {
   return cm >= fishSpecies(kind).netFromCm;
-}
-
-/** How long the button must be held for a big fish of `cm` (ms). */
-export function holdNeededMs(cm: number): number {
-  const ms = FISHING.holdBaseMs + (cm - FISHING.holdBaseCm) * FISHING.holdPerCmMs;
-  return Math.round(Math.min(FISHING.holdMaxMs, Math.max(FISHING.holdBaseMs, ms)));
 }
 
 /** How loudly a catch is announced: nothing, to the people at the lake, to the whole village (design 7.3). */
@@ -358,6 +348,9 @@ export interface FishingPlan {
   fish: FishCatch;
 }
 
+/** The ways a fight is lost. */
+export type FightLoss = "none" | "snap" | "escape" | "idle";
+
 export type FishingResultKind = "none" | "cast" | "missed" | "lost" | "caught";
 
 export interface FishingState {
@@ -372,9 +365,10 @@ export interface FishingState {
   plan: FishingPlan | null;
   /** The fish: known from `hooked` on. */
   catch: FishCatch | null;
-  /** Fight: hold progress (ms), button state, when it was last integrated, and the grace of the last Hold message. */
-  holdMs: number;
-  holdNeedMs: number;
+  /** Fight (fishFight.ts): how close the fish is (0..1, landed at 1), the line's tension (0..1, snaps at 1), the button state, when it was
+   *  last integrated, and the grace of the last Hold message. */
+  fightProgress: number;
+  fightTension: number;
   holdDown: boolean;
   holdDownUntil: number;
   holdIntegratedAt: number;
@@ -384,6 +378,8 @@ export interface FishingState {
   lastSitAt: number;
   lastActionAt: number;
   lastResult: FishingResultKind;
+  /** Why the fish was lost: its line snapped, it escaped (never pulled), or nobody did anything. */
+  lostWhy: FightLoss;
   /** The grace after a bite window: min(250 ms, RTT / 2); the room may lower it per client. */
   graceMs: number;
 }
@@ -428,8 +424,8 @@ export function createFishingState(): FishingState {
     seq: 0,
     plan: null,
     catch: null,
-    holdMs: 0,
-    holdNeedMs: 0,
+    fightProgress: 0,
+    fightTension: 0,
     holdDown: false,
     holdDownUntil: 0,
     holdIntegratedAt: 0,
@@ -439,6 +435,7 @@ export function createFishingState(): FishingState {
     lastSitAt: Number.NEGATIVE_INFINITY,
     lastActionAt: Number.NEGATIVE_INFINITY,
     lastResult: "none",
+    lostWhy: "none",
     graceMs: FISHING.strikeGraceMs,
   };
 }
@@ -456,8 +453,8 @@ function enter(s: FishingState, phase: FishingPhase, at: number, entered: Fishin
 function clearCast(s: FishingState): void {
   s.plan = null;
   s.catch = null;
-  s.holdMs = 0;
-  s.holdNeedMs = 0;
+  s.fightProgress = 0;
+  s.fightTension = 0;
   s.holdDown = false;
   s.holdDownUntil = 0;
 }
@@ -561,6 +558,7 @@ export function castLine(
     lastCastAt: now,
     lastActionAt: now,
     lastResult: "cast",
+    lostWhy: "none",
     plan: {
       nibbleAt,
       biteAt,
@@ -570,8 +568,8 @@ export function castLine(
       fish: { kind: roll.kind, label: species.label, cm: roll.cm, needsNet: net, disposal: species.disposal, tier: trophyTier(roll.kind, roll.cm) },
     },
     catch: null,
-    holdMs: 0,
-    holdNeedMs: 0,
+    fightProgress: 0,
+    fightTension: 0,
     holdDown: false,
     holdDownUntil: 0,
   };
@@ -602,7 +600,7 @@ export function strikeLine(state: FishingState, now: number): FishingActionResul
     case "bite": {
       const plan = s.plan!;
       if (now < plan.windowOpensAt) return withEntered(fail(s, "too_early"));
-      const next: FishingState = { ...s, lastActionAt: now, catch: { ...plan.fish }, holdMs: 0, holdNeedMs: plan.fish.needsNet ? holdNeededMs(plan.fish.cm) : 0 };
+      const next: FishingState = { ...s, lastActionAt: now, catch: { ...plan.fish }, fightProgress: 0, fightTension: 0 };
       const entered: FishingPhase[] = [];
       enter(next, "hooked", now, entered);
       return { ok: true, state: next, action: "struck", entered: [...ticked.entered, ...entered] };
@@ -614,16 +612,41 @@ export function strikeLine(state: FishingState, now: number): FishingActionResul
   }
 }
 
-/** Bring the fight's hold progress up to `now` (credit while pressed, decay while not). */
-function integrateHold(s: FishingState, now: number): void {
+/** The seed of this cast's fight schedule (public: the client shows the same command): the spot and the cast number. */
+export function fightSeedOf(s: Pick<FishingState, "spot" | "seq">): number {
+  return fishSeed(s.spot, s.seq);
+}
+
+/**
+ * Bring the fight (fishFight.ts) up to `now` with the button state the server holds: returns the first event inside (the fish landed, the
+ * line snapped, the fish escaped) and when it happened, or null. The button counts as held only until `holdDownUntil` (a lost "up" lapses).
+ */
+function integrateFight(s: FishingState, now: number): { event: FightEvent | null; at: number } {
   const from = s.holdIntegratedAt;
-  const dt = Math.max(0, now - from);
-  if (dt === 0) return;
-  const down = s.holdDown ? Math.max(0, Math.min(now, s.holdDownUntil) - from) : 0;
-  const up = dt - down;
-  s.holdMs = Math.max(0, Math.min(s.holdNeedMs, s.holdMs + down - up * FISHING.holdDecay));
-  if (down > 0) s.lastActiveAt = from + down;
-  s.holdIntegratedAt = now;
+  if (!s.catch || now <= from) return { event: null, at: now };
+  const sched = fightSchedule(s.catch.cm, fightSeedOf(s));
+  const t0 = from - s.fightStartAt;
+  const t1 = now - s.fightStartAt;
+  const press = s.holdDown ? { from: -1e9, to: s.holdDownUntil - s.fightStartAt } : null;
+  const r = stepFight(sched, { progress: s.fightProgress, tension: s.fightTension }, t0, t1, press);
+  s.fightProgress = r.run.progress;
+  s.fightTension = r.run.tension;
+  const upTo = r.event ? s.fightStartAt + r.atMs : now;
+  if (s.holdDown) s.lastActiveAt = Math.max(s.lastActiveAt, Math.min(upTo, s.holdDownUntil));
+  s.holdIntegratedAt = upTo;
+  return { event: r.event, at: upTo };
+}
+
+/** The fight ends: landed (lifting), or lost (the line snapped / the fish escaped / nobody pulled). */
+function endFight(f: FishingState, event: FightEvent | "idle", at: number, entered: FishingPhase[]): void {
+  if (event === "landed") {
+    enter(f, "lifting", at, entered);
+    return;
+  }
+  f.lastResult = "lost";
+  f.lostWhy = event === "snap" ? "snap" : event === "escape" ? "escape" : "idle";
+  clearCast(f);
+  enter(f, "missed", at, entered);
 }
 
 /** One Hold message of the fight: `down` true presses (counted for up to `holdGapMs`, then it must be repeated), false releases. */
@@ -633,13 +656,17 @@ export function holdLine(state: FishingState, now: number, down: boolean): Fishi
   const s = ticked.state;
   if (s.phase !== "fighting") return { ...fail(s, "not_fighting"), entered: ticked.entered };
   const next: FishingState = { ...s };
-  integrateHold(next, now);
+  const ev = integrateFight(next, now);
+  const entered = [...ticked.entered];
+  if (ev.event) {
+    endFight(next, ev.event, ev.at, entered);
+    next.lastActionAt = now;
+    return { ok: true, state: next, action: "hold", entered };
+  }
   next.holdDown = down === true;
   next.holdDownUntil = down === true ? now + FISHING.holdGapMs : 0;
   if (down === true) next.lastActiveAt = Math.max(next.lastActiveAt, now);
   next.lastActionAt = now;
-  const entered = [...ticked.entered];
-  if (next.holdMs >= next.holdNeedMs) enter(next, "lifting", now, entered);
   return { ok: true, state: next, action: "hold", entered };
 }
 
@@ -690,17 +717,15 @@ export function tickFishing(state: FishingState, now: number): FishingActionResu
     const end = phaseEndsAt(s);
     if (s.phase === "fighting") {
       const f = { ...s };
-      integrateHold(f, now);
-      if (f.holdMs >= f.holdNeedMs) {
-        enter(f, "lifting", now, entered);
+      const ev = integrateFight(f, now);
+      if (ev.event) {
+        endFight(f, ev.event, ev.at, entered);
         s = f;
         continue;
       }
       const idleSince = Math.max(f.fightStartAt, f.lastActiveAt);
       if (now - idleSince >= FISHING.fightIdleMs || now >= (end ?? Infinity)) {
-        f.lastResult = "lost";
-        clearCast(f);
-        enter(f, "missed", Math.min(now, idleSince + FISHING.fightIdleMs), entered);
+        endFight(f, "idle", Math.min(now, idleSince + FISHING.fightIdleMs), entered);
         s = f;
         continue;
       }
@@ -731,7 +756,10 @@ export function tickFishing(state: FishingState, now: number): FishingActionResu
           n.fightStartAt = end;
           n.holdIntegratedAt = end;
           n.lastActiveAt = end;
-          n.holdMs = 0;
+          n.fightProgress = FIGHT_START_PROGRESS;
+          n.fightTension = 0;
+          n.holdDown = false;
+          n.holdDownUntil = 0;
           enter(n, "fighting", end, entered);
         } else {
           enter(n, "lifting", end, entered);
@@ -764,6 +792,13 @@ export function tickFishing(state: FishingState, now: number): FishingActionResu
 
 // ------------------------------------------------------------------------------------------------ the wire
 
+/** The fight on the wire (`Player.fishReel`, uint16): bits 0..6 the distance brought in (0..100), bit 7 the button held, bits 8..14 the line tension (0..100). */
+export function packReel(progress: number, tension: number, held: boolean): number {
+  const p = Math.max(0, Math.min(100, Math.round(100 * progress)));
+  const t = Math.max(0, Math.min(100, Math.round(100 * tension)));
+  return p | (held ? 128 : 0) | (t << 8);
+}
+
 /** What `Player` carries for the other clients (design 9.4). */
 export interface FishingSync {
   rod: number;
@@ -774,7 +809,7 @@ export interface FishingSync {
   fishKind: number;
   fishCm: number;
   fishAt: number;
-  /** Lake v2: the fight (bit 7 the angler holds, bits 0..6 progress 0..100); 0 outside the fight. */
+  /** The fight (packReel: progress, held, tension); 0 outside it. */
   fishReel: number;
 }
 
@@ -790,7 +825,7 @@ export function fishingSync(s: FishingState): FishingSync {
     fishKind: fishShown ? fishKindId(s.catch!.kind) : 0,
     fishCm: fishShown ? Math.min(255, s.catch!.cm) : 0,
     fishAt: Math.floor(s.phaseAt) % 4294967296,
-    fishReel: s.phase === "fighting" ? Math.min(100, Math.round((100 * s.holdMs) / Math.max(1, s.holdNeedMs))) | (s.holdDown ? 128 : 0) : 0,
+    fishReel: s.phase === "fighting" ? packReel(s.fightProgress, s.fightTension, s.holdDown) : 0,
   };
 }
 

@@ -368,7 +368,10 @@ function LakeAnglers() {
     const lineGeo = new BufferGeometry();
     const linePos = new Float32Array(MAX_FLOATS * SEGMENTS * 2 * 3).fill(-1000);
     lineGeo.setAttribute("position", new Float32BufferAttribute(linePos, 3));
-    const lineMat = new LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.8 });
+    // the line's colour shows the tension in the big fish's fight (white; yellow when tight; red near the snap)
+    const lineCol = new Float32Array(linePos.length).fill(1);
+    lineGeo.setAttribute("color", new Float32BufferAttribute(lineCol, 3));
+    const lineMat = new LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.8, vertexColors: true });
     const lines = new LineSegments(lineGeo, lineMat);
     lines.frustumCulled = false;
     const haloGeo = new RingGeometry(0.3, 0.37, 32);
@@ -379,7 +382,7 @@ function LakeAnglers() {
     // lake v2: the spray of a splash and the drips off a fish (soft round drops, lakeDrops.ts)
     const spray = createDrops(MAX_SPLASH, 0.085, 0.9);
     const drips = createDrops(160, 0.035, 0.95);
-    return { slots, floatGeo, floatMat, floatMesh, chemiGeo, chemiMat, chemiMesh, chemiBase, originDown, lineGeo, linePos, lineMat, lines, haloGeo, haloMat, halo, spray, drips, ambient: 12 + Math.random() * 20 };
+    return { slots, floatGeo, floatMat, floatMesh, chemiGeo, chemiMat, chemiMesh, chemiBase, originDown, lineGeo, linePos, lineCol, lineMat, lines, haloGeo, haloMat, halo, spray, drips, ambient: 12 + Math.random() * 20 };
   }, [gearIn]);
   useEffect(
     () => () => {
@@ -559,6 +562,16 @@ function LakeAnglers() {
           py = ny;
           pz = nz;
         }
+        // the line's colour: the tension of a fight (Player.fishReel bits 8..14)
+        const tn = v.phase === FISH_PHASE.fighting ? ((v.reel >> 8) & 127) / 100 : 0;
+        const cr = 1;
+        const cg = tn < 0.45 ? 1 : Math.max(0.15, 1 - (tn - 0.45) * 2.4);
+        const cb = tn < 0.45 ? 1 : Math.max(0.1, 1 - (tn - 0.45) * 3);
+        for (let c = base; c < base + SEGMENTS * 6; c += 3) {
+          parts.lineCol[c] = cr;
+          parts.lineCol[c + 1] = tn >= 0.75 ? 0.2 : cg;
+          parts.lineCol[c + 2] = tn >= 0.75 ? 0.15 : cb;
+        }
       } else parts.linePos.fill(-1000, base, base + SEGMENTS * 6);
     });
     // anglers who left take their float and line with them (design 12.5)
@@ -576,6 +589,7 @@ function LakeAnglers() {
       if (parts.chemiMat) parts.chemiMat.emissiveIntensity = parts.chemiBase * (0.05 + 1.6 * dayNight.applied.lights);
     }
     (parts.lineGeo.getAttribute("position") as Float32BufferAttribute).needsUpdate = true;
+    (parts.lineGeo.getAttribute("color") as Float32BufferAttribute).needsUpdate = true;
     parts.halo.visible = haloShown;
     // the drops: ballistic, gone when they fall back to the water
     parts.spray.step(delta, LAKE_WATER_Y);

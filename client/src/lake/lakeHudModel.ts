@@ -3,6 +3,7 @@
 // waiting).
 
 import { FISH_PHASE, FISH_SIG, type FishView } from "./lakeProtocol";
+import type { FightPrompt } from "./fishFightView";
 
 export type LakeAction =
   | { kind: "rent" }
@@ -15,7 +16,7 @@ export type LakeAction =
   | { kind: "tooEarly" }
   | { kind: "none" };
 
-export type LakeTone = "go" | "wait" | "soft" | "alert" | "hold" | "done";
+export type LakeTone = "go" | "wait" | "soft" | "alert" | "hold" | "release" | "done";
 
 export interface LakeButtonSpec {
   /** Stable id: the DOM keeps the same button while only its words change. */
@@ -45,6 +46,10 @@ export interface LakeContext {
   seatedNoRod: boolean;
   /** Already seated on a fishing chair (the room's seat) with a rod but not yet fishing there: the button starts the fishing. */
   onChair?: boolean;
+  /** In the big fish's fight: the command now, the tension and the distance (fishFightView.ts). */
+  fight?: FightPrompt | null;
+  /** After a lost fight (`missed`): why the fish was lost (the personal message). */
+  lostWhy?: string;
 }
 
 const B = (id: string, label: string, icon: string, key: "E" | "Space", tone: LakeTone, enabled: boolean, action: LakeAction, hold = false): LakeButtonSpec => ({
@@ -84,7 +89,8 @@ export function lakeButton(c: LakeContext): LakeButtonSpec | null {
     case FISH_PHASE.lifting:
       return B("cast", "올리는 중…", "🐟", "Space", "wait", false, { kind: "none" });
     case FISH_PHASE.fighting:
-      return B("cast", "꾹 누르고 있어요", "💪", "Space", "hold", true, { kind: "hold" }, true);
+      // the pull / release rhythm (owner 2026-11-19): the same big button, held to pull and let go to release
+      return c.fight?.kind === "run" ? B("cast", "놓아주세요", "⬇", "Space", "release", true, { kind: "hold" }, true) : B("cast", "당기세요", "⬆", "Space", "hold", true, { kind: "hold" }, true);
     case FISH_PHASE.landed:
       return B("cast", "잡았어요!", "🐟", "Space", "done", false, { kind: "none" });
     case FISH_PHASE.releasing:
@@ -117,8 +123,10 @@ export function lakeCaption(c: LakeContext, firstTime: boolean): string {
     case FISH_PHASE.hooked:
       return "걸렸어요!";
     case FISH_PHASE.fighting:
-      return "버튼을 꾹 누르고 있어요. 힘을 빼면 끌려가요.";
+      return ""; // the fight prompt (LakeFight) says what to do
     case FISH_PHASE.missed:
+      if (c.lostWhy === "snap") return "줄이 끊어졌어요! '놓아주세요'일 때는 손을 떼야 해요.";
+      if (c.lostWhy === "escape" || c.lostWhy === "idle") return "물고기가 도망갔어요. '당기세요'일 때는 꾹 눌러요.";
       return "찌가 다시 올라왔어요. 다음엔 빨간 버튼일 때!";
     default:
       return "";

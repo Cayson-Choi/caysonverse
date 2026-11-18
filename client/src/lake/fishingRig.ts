@@ -15,6 +15,7 @@ import { FISHING_CLIPS, GRIP_OFFSET, ROD_AXIS_R, ROD_GLB_AXIS, type FishingClip 
 import type { BuiltAvatar } from "../game/characterAvatar";
 import { fishingAnimsNow, loadFishingAnims, withoutRightArm } from "./fishAnims";
 import { elapsedSince, readFishView } from "./lakeNet";
+import { reelTension } from "./fishFightView";
 import { FISH_PHASE, emptyFishView, type FishView } from "./lakeProtocol";
 import { createRod, lakeGearReady, loadLakeGear, type Rod } from "./lakeProps";
 import { createCatchRig, fpNarrow } from "./catchRig";
@@ -156,7 +157,11 @@ export function rodBend(view: FishView, t: number): number {
       return 0.5;
     case FISH_PHASE.fighting:
       // held: bent hard under the load; let go: the tension drops (the fish takes line)
-      return (view.reel & 128) !== 0 ? 0.82 + 0.14 * Math.sin(t * 6.5) + 0.04 * Math.sin(t * 17) : 0.42 + 0.12 * Math.sin(t * 3.1);
+      {
+        // the rod bends with the line's tension (Player.fishReel), a little more while the angler pulls; it trembles faster when it is tight
+        const tn = reelTension(view.reel);
+        return Math.min(1, 0.28 + 0.62 * tn + ((view.reel & 128) !== 0 ? 0.1 : 0) + 0.05 * Math.sin(t * (5 + 14 * tn)));
+      }
     case FISH_PHASE.lifting:
       // reeled in hard, then the fish's weight on the line as it swings, then the hand takes it
       if (t < REEL_S) return 0.72 + 0.14 * Math.sin(t * 9.5) + 0.06 * Math.sin(t * 23);
