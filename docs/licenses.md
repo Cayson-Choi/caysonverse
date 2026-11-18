@@ -151,3 +151,13 @@ B1과 같은 방식으로 성당·교회(B2)가 처음 쓰는 세트를 더했�
 | Poly Haven `japanese_stone_wall` 텍스처 세트(색, 노멀, AO/거칠기/금속 ARM) | Poly Haven, https://polyhaven.com/a/japanese_stone_wall (같은 형식의 2k 파일 3장) | CC0 1.0 Universal | `client/public/textures/pbr/{2k,1k}/stone_wall_korean_*.ktx2` (PBR 세트 `stone_wall_korean`: 화강석 돌담·석축) | 2026-11-17 |
 | 단청 아틀라스 `dancheong_wood` (직접 그림) | `docs/designs/village-lots-v2/tools/temple_dancheong.py`로 그린 일반형 머리초·금단청·꽃살·연등 무늬(실제 절 이름·글자·卍 없음) | CC0 1.0 Universal (자체 제작) | `client/public/textures/pbr/{2k,1k}/dancheong_wood_*.ktx2` | 2026-11-17 |
 | 케이슨랜드 정문 그림 지도 아틀라스 `lot_gate_goods` | `docs/designs/village-lots-v2/tools/gate_goods.py`: L4(75ab7df) 깃발·꽃밭·흙 칸을 다시 쓰고 글자 없는 공원 그림 지도를 새로 그림 | 자체 제작 | `client/public/models/village/lots/martgate/lot_gate_goods.ktx2` | 2026-11-17 |
+
+## 집 외관 2차·케이슨랜드 정문 (2026-11-18)
+
+집 10채 외관(참나무 보, 사암, 기와)과 케이슨랜드 정문이 쓰는 Poly Haven CC0 2k 세트입니다. 2026-11-18에 Poly Haven API(https://api.polyhaven.com/files/<자산>)가 알려 준 파일을 내려받았고 md5를 API 값과 맞춰 봤습니다. 가공(채도·밝기, 이끼 얼룩 제거, 이음매 없이 이어 붙이기, 1024 px WebP)은 `tools/house-ext/make_house_ext_textures.mjs`에 있고, 원본은 저장소에 올리지 않았습니다.
+
+| 자산 | 출처 | 라이선스 | 쓰는 곳 | 확인일 |
+| --- | --- | --- | --- | --- |
+| Poly Haven `dark_wood` 텍스처 세트(색, 노멀, 거칠기) | https://polyhaven.com/a/dark_wood (https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_wood/dark_wood_diff_2k.jpg 외 2장) | CC0 1.0 Universal | `client/public/models/village/houses/house_wood_*.webp`의 참나무 반쪽(기둥·보·베란다 판자) | 2026-11-18 |
+| Poly Haven `mossy_sandstone` 텍스처 세트(색, 노멀, 거칠기) | https://polyhaven.com/a/mossy_sandstone (https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mossy_sandstone/mossy_sandstone_diff_2k.jpg 외 2장) | CC0 1.0 Universal | `house_sandstone_*.webp`(주춧돌·창틀·모서리돌)과 케이슨랜드 정문 석재 | 2026-11-18 |
+| Poly Haven `clay_roof_tiles_03` 텍스처 세트(색, 노멀, 거칠기) | https://polyhaven.com/a/clay_roof_tiles_03 (https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/clay_roof_tiles_03/clay_roof_tiles_03_diff_2k.jpg 외 2장) | CC0 1.0 Universal | `house_tile_*.webp`(집 기와)과 케이슨랜드 정문 첨탑 기와(남색 유약 색조) | 2026-11-18 |

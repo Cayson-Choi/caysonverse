@@ -101,6 +101,8 @@ try {
             r3.info.reset();
             let last = performance.now();
             let n = 0;
+            r3.info.autoReset = false; // sum every pass of the frame (shadow cascades, scene, post), not only the last
+            r3.info.reset();
             const f = (t) => {
               ts.push(t - last);
               last = t;

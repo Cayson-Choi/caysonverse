@@ -92,3 +92,12 @@ Poly Haven CC0 1.0 자산으로 만든 것입니다(2026-11-16 Poly Haven API로
 위 표의 **기존 Poly Haven CC0 1.0 껍질 사진을 그대로 다시 씁니다**(새로 내려받은 것 없음). 자작나무·너도밤나무는 `bark_smooth_*`
 (japanese_hackberry_bark), 참나무와 소나무(붉은 갈색으로 물들임)는 `bark_plates_*`(japanese_zelkova_bark), 버드나무는 `bark_willow_*`(bark_willow)입니다.
 잎·솔잎·갈대·부들·풀 그림(`client/src/village/veg/leafAtlas.ts`)은 스크립트가 직접 그린 것(절차적)이고, 저작권이 걸린 사진을 쓰지 않았습니다.
+## 집 외관 2차 (2026-11-18)
+
+`houses/house_wood_*`, `house_sandstone_*`, `house_tile_*`는 Poly Haven CC0 1.0 자산을 가공한 것입니다(2026-11-18 API로 내려받음).
+
+| Poly Haven 자산 | 주소 | 쓰는 곳 |
+| --- | --- | --- |
+| dark_wood | https://polyhaven.com/a/dark_wood | 참나무 보·기둥·베란다 판자 `house_wood_*` |
+| mossy_sandstone | https://polyhaven.com/a/mossy_sandstone | 사암 `house_sandstone_*` (이끼 얼룩은 지우고 한 덩이의 결만 씀) |
+| clay_roof_tiles_03 | https://polyhaven.com/a/clay_roof_tiles_03 | 기와 `house_tile_*`, 케이슨랜드 정문 첨탑 |
