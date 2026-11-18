@@ -1,0 +1,193 @@
+{
+ "items": [
+  {
+   "node": "lotart__lot_chapel_nave_station_01",
+   "file": "lots/sacred/lotart__lot_chapel_nave_station_01.glb",
+   "phoneFile": "lots/sacred/lotart__lot_chapel_nave_station_01_phone.glb",
+   "phone": true,
+   "at": [
+    -0.012,
+    1.35,
+    8.9
+   ],
+   "yaw": 1.5707963267948966,
+   "what": "Station 1 of the Cross (framed print, CC0 Cooper Hewitt), left wall"
+  },
+  {
+   "node": "lotart__lot_chapel_nave_station_02",
+   "file": "lots/sacred/lotart__lot_chapel_nave_station_02.glb",
+   "phoneFile": "lots/sacred/lotart__lot_chapel_nave_station_02_phone.glb",
+   "phone": true,
+   "at": [
+    -0.012,
+    1.35,
+    7.8
+   ],
+   "yaw": 1.5707963267948966,
+   "what": "Station 2 of the Cross (framed print, CC0 Cooper Hewitt), left wall"
+  },
+  {
+   "node": "lotart__lot_chapel_nave_station_03",
+   "file": "lots/sacred/lotart__lot_chapel_nave_station_03.glb",
+   "phoneFile": "lots/sacred/lotart__lot_chapel_nave_station_03_phone.glb",
+   "phone": true,
+   "at": [
+    -0.012,
+    1.35,
+    6.7
+   ],
+   "yaw": 1.5707963267948966,
+   "what": "Station 3 of the Cross (framed print, CC0 Cooper Hewitt), left wall"
+  },
+  {
+   "node": "lotart__lot_chapel_nave_station_04",
+   "file": "lots/sacred/lotart__lot_chapel_nave_station_04.glb",
+   "phoneFile": "lots/sacred/lotart__lot_chapel_nave_station_04_phone.glb",
+   "phone": true,
+   "at": [
+    -0.012,
+    1.35,
+    5.6
+   ],
+   "yaw": 1.5707963267948966,
+   "what": "Station 4 of the Cross (framed print, CC0 Cooper Hewitt), left wall"
+  },
+  {
+   "node": "lotart__lot_chapel_nave_station_05",
+   "file": "lots/sacred/lotart__lot_chapel_nave_station_05.glb",
+   "phoneFile": "lots/sacred/lotart__lot_chapel_nave_station_05_phone.glb",
+   "phone": true,
+   "at": [
+    -0.012,
+    1.35,
+    4.5
+   ],
+   "yaw": 1.5707963267948966,
+   "what": "Station 5 of the Cross (framed print, CC0 Cooper Hewitt), left wall"
+  },
+  {
+   "node": "lotart__lot_chapel_nave_station_06",
+   "file": "lots/sacred/lotart__lot_chapel_nave_station_06.glb",
+   "phoneFile": "lots/sacred/lotart__lot_chapel_nave_station_06_phone.glb",
+   "phone": true,
+   "at": [
+    -0.012,
+    1.35,
+    3.4
+   ],
+   "yaw": 1.5707963267948966,
+   "what": "Station 6 of the Cross (framed print, CC0 Cooper Hewitt), left wall"
+  },
+  {
+   "node": "lotart__lot_chapel_nave_station_07",
+   "file": "lots/sacred/lotart__lot_chapel_nave_station_07.glb",
+   "phoneFile": "lots/sacred/lotart__lot_chapel_nave_station_07_phone.glb",
+   "phone": true,
+   "at": [
+    -0.012,
+    1.35,
+    2.3
+   ],
+   "yaw": 1.5707963267948966,
+   "what": "Station 7 of the Cross (framed print, CC0 Cooper Hewitt), left wall"
+  },
+  {
+   "node": "lotart__lot_chapel_nave_station_08",
+   "file": "lots/sacred/lotart__lot_chapel_nave_station_08.glb",
+   "phoneFile": "lots/sacred/lotart__lot_chapel_nave_station_08_phone.glb",
+   "phone": true,
+   "at": [
+    9.412,
+    1.35,
+    2.3
+   ],
+   "yaw": -1.5707963267948966,
+   "what": "Station 8 of the Cross (framed print, CC0 Cooper Hewitt), right wall"
+  },
+  {
+   "node": "lotart__lot_chapel_nave_station_09",
+   "file": "lots/sacred/lotart__lot_chapel_nave_station_09.glb",
+   "phoneFile": "lots/sacred/lotart__lot_chapel_nave_station_09_phone.glb",
+   "phone": true,
+   "at": [
+    9.412,
+    1.35,
+    3.4
+   ],
+   "yaw": -1.5707963267948966,
+   "what": "Station 9 of the Cross (framed print, CC0 Cooper Hewitt), right wall"
+  },
+  {
+   "node": "lotart__lot_chapel_nave_station_10",
+   "file": "lots/sacred/lotart__lot_chapel_nave_station_10.glb",
+   "phoneFile": "lots/sacred/lotart__lot_chapel_nave_station_10_phone.glb",
+   "phone": true,
+   "at": [
+    9.412,
+    1.35,
+    4.5
+   ],
+   "yaw": -1.5707963267948966,
+   "what": "Station 10 of the Cross (framed print, CC0 Cooper Hewitt), right wall"
+  },
+  {
+   "node": "lotart__lot_chapel_nave_station_11",
+   "file": "lots/sacred/lotart__lot_chapel_nave_station_11.glb",
+   "phoneFile": "lots/sacred/lotart__lot_chapel_nave_station_11_phone.glb",
+   "phone": true,
+   "at": [
+    9.412,
+    1.35,
+    5.6
+   ],
+   "yaw": -1.5707963267948966,
+   "what": "Station 11 of the Cross (framed print, CC0 Cooper Hewitt), right wall"
+  },
+  {
+   "node": "lotart__lot_chapel_nave_station_12",
+   "file": "lots/sacred/lotart__lot_chapel_nave_station_12.glb",
+   "phoneFile": "lots/sacred/lotart__lot_chapel_nave_station_12_phone.glb",
+   "phone": true,
+   "at": [
+    9.412,
+    1.35,
+    6.7
+   ],
+   "yaw": -1.5707963267948966,
+   "what": "Station 12 of the Cross (framed print, CC0 Cooper Hewitt), right wall"
+  },
+  {
+   "node": "lotart__lot_chapel_nave_station_13",
+   "file": "lots/sacred/lotart__lot_chapel_nave_station_13.glb",
+   "phoneFile": "lots/sacred/lotart__lot_chapel_nave_station_13_phone.glb",
+   "phone": true,
+   "at": [
+    9.412,
+    1.35,
+    7.8
+   ],
+   "yaw": -1.5707963267948966,
+   "what": "Station 13 of the Cross (framed print, CC0 Cooper Hewitt), right wall"
+  },
+  {
+   "node": "lotart__lot_chapel_nave_station_14",
+   "file": "lots/sacred/lotart__lot_chapel_nave_station_14.glb",
+   "phoneFile": "lots/sacred/lotart__lot_chapel_nave_station_14_phone.glb",
+   "phone": true,
+   "at": [
+    9.412,
+    1.35,
+    8.9
+   ],
+   "yaw": -1.5707963267948966,
+   "what": "Station 14 of the Cross (framed print, CC0 Cooper Hewitt), right wall"
+  }
+ ],
+ "glassDay": {
+  "nativity": 1.05,
+  "assumption": 1.05,
+  "virgin": 1.05,
+  "rose": 1.0,
+  "grisaille": 0.8
+ }
+}

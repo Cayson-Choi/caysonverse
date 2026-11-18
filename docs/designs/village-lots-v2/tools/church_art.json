@@ -1,0 +1,46 @@
+{
+ "items": [
+  {
+   "node": "lotart__lot_church_nave_bloch_sermon",
+   "file": "lots/sacred/lotart__lot_church_nave_bloch_sermon.glb",
+   "phoneFile": "lots/sacred/lotart__lot_church_nave_bloch_sermon_phone.glb",
+   "phone": true,
+   "at": [
+    0.0,
+    1.25,
+    4.325
+   ],
+   "yaw": 1.5707963267948966,
+   "what": "framed painting: Sermon on the Mount (Carl Bloch, public domain), west wall"
+  },
+  {
+   "node": "lotart__lot_church_nave_rembrandt_prodigal",
+   "file": "lots/sacred/lotart__lot_church_nave_rembrandt_prodigal.glb",
+   "phoneFile": "lots/sacred/lotart__lot_church_nave_rembrandt_prodigal_phone.glb",
+   "phone": true,
+   "at": [
+    7.8,
+    1.25,
+    4.325
+   ],
+   "yaw": -1.5707963267948966,
+   "what": "framed painting: The Return of the Prodigal Son (Rembrandt, public domain), east wall"
+  },
+  {
+   "node": "lotart__lot_church_nave_hofmann_gethsemane",
+   "file": "lots/sacred/lotart__lot_church_nave_hofmann_gethsemane.glb",
+   "phoneFile": "lots/sacred/lotart__lot_church_nave_hofmann_gethsemane_phone.glb",
+   "phone": true,
+   "at": [
+    7.8,
+    1.25,
+    7.075
+   ],
+   "yaw": -1.5707963267948966,
+   "what": "framed painting: Christ in Gethsemane (Heinrich Hofmann, public domain), east wall"
+  }
+ ],
+ "glassDay": {
+  "church_nave_": 0.8
+ }
+}

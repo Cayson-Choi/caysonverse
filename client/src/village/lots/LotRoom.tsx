@@ -104,6 +104,31 @@ export const SACRED_MAP_MAX = {
   mobile: { color: 1024, normal: 256, orm: 256 },
 } as const;
 
+/**
+ * The hero pieces (the statues and the framed prints: what a visitor walks up to and looks at from arm's length) keep their
+ * 2K maps: at the budget caps above a 2048 normal map reached the screen as 512 (the marble's folds and the faces read as
+ * soft clay). A phone keeps 1K colour and normal (the phone files carry 1K maps; the pieces are few).
+ */
+export const SACRED_HERO_MAP_MAX = {
+  desktop: { color: 2048, normal: 2048, orm: 1024 },
+  mobile: { color: 1024, normal: 1024, orm: 512 },
+} as const;
+
+/** The map caps of a sacred piece by its anchor's node name: the hero pieces (statues, framed art) keep more than the rest. */
+export function sacredCaps(node: string, phone: boolean): { color: number; normal: number; orm: number } {
+  const tier = phone ? "mobile" : "desktop";
+  // the saints stand at the side: the budget caps; the 14 stations are small prints seen one or two at a time (768 px a long side is 1.8x the screen)
+  if (node.startsWith("lotstatue__lot_chapel_nave_") && !node.includes("saint")) return SACRED_HERO_MAP_MAX[tier];
+  if (node.startsWith("lotart__lot_chapel_nave_station")) return { ...SACRED_MAP_MAX[tier], color: phone ? 512 : 768 };
+  if (node.startsWith("lotart__lot_church_nave_")) return { ...SACRED_MAP_MAX[tier], color: phone ? 768 : 1280 };
+  return SACRED_MAP_MAX[tier];
+}
+
+/** Whether a sacred piece takes anisotropic reads (everything but the glass). */
+export function isSacredHero(node: string): boolean {
+  return /^lot(statue|art)__lot_(chapel|church)_nave_/.test(node);
+}
+
 export { capMips } from "./lotTextures";
 
 /** The rooms B2 made a phone file for (`<unit>_phone.glb`, its extras' `phone.file`). */
@@ -534,12 +559,16 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
           o.visible = false;
           return;
         }
-        const cap = SACRED_MAP_MAX[phone ? "mobile" : "desktop"];
+        const hero = isSacredHero(s.node);
+        const cap = sacredCaps(s.node, phone);
         const out = matsOf(o).map((mat) => {
           let m = mat as MeshStandardMaterial;
           for (const k of ["map", "emissiveMap", "normalMap", "aoMap", "roughnessMap", "metalnessMap"] as const) {
             const t = m[k];
-            if (t) capMips(t, k === "map" || k === "emissiveMap" ? cap.color : k === "normalMap" ? cap.normal : cap.orm);
+            if (!t) continue;
+            capMips(t, k === "map" || k === "emissiveMap" ? cap.color : k === "normalMap" ? cap.normal : cap.orm);
+            // sharp at a slant (a statue seen from the side, a print along the wall): anisotropic reads for the colour and normal maps
+            if (hero && (k === "map" || k === "normalMap")) t.anisotropy = Math.min(8, gl.capabilities.getMaxAnisotropy());
           }
           const set = /^M_pbr_(.+)$/.exec(m.name)?.[1];
           if (set) {
