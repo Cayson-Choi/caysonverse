@@ -18,7 +18,7 @@
  *   lake      to the lake, rent the rod, sit at a fishing chair, cast once, get up
  *   wheel     (after park) one whole ride on the 하늘 등불 바퀴
  *   park      (after lake) to the gate, into Caysonland, along the promenade to the carousel and the wheel and back
- *   bus       to the stop; boards if the boarding window is open and the bus leaves within --bus-wait s, rides a lap
+ *   bus       to the stop, board within --bus-wait s and ride until the bus returns; run before entering the park
  *
  * Verdict (exit 1 on failure): after the warm-up (--warmup, default 4 s after the vegetation veil lifts), no frame
  * interval over --max-hitch ms (default 100) while nothing covers the screen (the door fade, the house cover and the veil
@@ -82,7 +82,7 @@ run.allow("WebGL performance warnings (GPU stall readback)", /GPU stall due to R
 // Installed before any page script: wraps the WebGL contexts' expensive calls and keeps one record per animation frame.
 function recorder() {
   const R = (window.__perf = {
-    phase: "boot",
+    phase: "entry",
     t: [], // rAF timestamps
     ph: [], // phase of each frame
     cover: [], // 1 when a loading cover was up at that frame
@@ -151,7 +151,7 @@ function recorder() {
   // loading covers (polled, never per frame): the vegetation veil, the door fade, the house cover, the hall curtain
   setInterval(() => {
     let c = 0;
-    for (const sel of [".cv-veg-veil", ".cv-door-fade", ".cv-house-cover", ".cv-curtain", ".cv-loading"]) {
+    for (const sel of [".cv-veg-veil", ".cv-door-fade", ".cv-house-cover", ".cv-curtain", ".cv-loader", "[data-testid=park-loading]"]) {
       const e = document.querySelector(sel);
       if (!e) continue;
       const o = parseFloat(getComputedStyle(e).opacity || "1");
@@ -319,23 +319,30 @@ const session = await cdp(p);
 if (THROTTLE > 1) await session.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE });
 await session.send("Profiler.enable");
 await session.send("Profiler.setSamplingInterval", { interval: 500 });
+if (PROFILE) await session.send("Performance.enable");
 
 const setPhase = (ph) => p.page.evaluate((x) => (window.__perf.phase = x), ph).catch(() => {});
 const profiles = {};
 const pageNow = () => p.page.evaluate(() => performance.now());
 let judgeFrom = Infinity;
 
+// V8 CPU samples and CDP NavigationStart use Chromium's monotonic clock.
+// Subtract the current document's origin to align samples to its rAF timestamps.
+async function saveProfile(name) {
+  const { profile } = await session.send("Profiler.stop");
+  const { metrics } = await session.send("Performance.getMetrics");
+  const origin = metrics.find((m) => m.name === "NavigationStart");
+  if (!origin) throw new Error("Missing NavigationStart for CPU profile");
+  profiles[name] = { profile, offset: origin.value * 1000 };
+  writeFileSync(join(OUT, `${tagName}-${name}.cpuprofile`), JSON.stringify(profile));
+}
+
 async function phase(name, body) {
   if (!ROUTES.includes(name)) return;
   console.log(`— ${name}`);
-  let offset = null;
   if (PROFILE) {
     // starting the profiler stalls the page once (V8 logs its code): that frame belongs to no phase
-    const before = await pageNow();
-    const wall0 = Date.now();
     await session.send("Profiler.start");
-    const after = await pageNow();
-    offset = { pageAt: (before + after) / 2, wall: Date.now() - wall0 };
     await sleep(800);
   }
   await setPhase(name);
@@ -347,11 +354,7 @@ async function phase(name, body) {
     run.check(`${name}: route done`, false, String(e?.message ?? e).slice(0, 300));
   }
   await setPhase("between");
-  if (PROFILE) {
-    const { profile } = await session.send("Profiler.stop");
-    profiles[name] = { profile, offset: profile.startTime / 1000 - offset.pageAt };
-    writeFileSync(join(OUT, `${tagName}-${name}.cpuprofile`), JSON.stringify(profile));
-  }
+  if (PROFILE) await saveProfile(name);
   console.log(`  ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   await setPhase("between");
 }
@@ -407,7 +410,7 @@ const pressBig = async (label, ms = 15000) => {
 const entry = {};
 try {
   // ── entry (always: the other routes need the village) ──
-  await setPhase("entry");
+  if (PROFILE) await session.send("Profiler.start");
   const tEntry = Date.now();
   await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(args.time)}${args.query ? `&${args.query}` : ""}`, { waitUntil: "domcontentloaded" });
   await entryReady(p);
@@ -421,16 +424,18 @@ try {
   const tVeil = Date.now();
   while ((await veilUp()) && Date.now() - tVeil < 90000) await sleep(200);
   entry.veilMs = Date.now() - tJoin;
-  entry.lakeModelMs = await p.page
-    .waitForFunction(() => performance.getEntriesByType("resource").some((r) => /lake.*\.glb/.test(r.name)), null, { timeout: 60000 })
-    .then(() => p.page.evaluate(() => Math.round(performance.getEntriesByType("resource").find((r) => /lake.*\.glb/.test(r.name)).responseEnd)))
-    .catch(() => null);
   entry.vegStats = await p.page.evaluate(() => {
     const s = window.__cvVeg?.();
     return s ? { buildMs: s.buildMs ?? null, trees: Object.values(s.trees ?? {}).reduce((a, k) => a + (k.trees ?? 0), 0) } : null;
   });
   await sleep(WARMUP);
+  entry.lakeModelMs = await p.page.evaluate(() => {
+    const lake = performance.getEntriesByType("resource").find((r) => /lake.*\.glb/.test(r.name));
+    return lake ? Math.round(lake.responseEnd) : null;
+  });
   judgeFrom = await pageNow();
+  await setPhase("between");
+  if (PROFILE) await saveProfile("entry");
   console.log(`entry: screen ${entry.entryScreenMs} ms, village ${entry.villageScreenMs} ms, veil lifted after ${entry.veilMs} ms`);
 
   await phase("plaza", async () => {
@@ -480,7 +485,10 @@ try {
   await phase("hall", async () => {
     await enterHall(p);
     await waitCoversGone();
-    for (const [x, z] of [[300, -2], [303, -6], [297, -6], [300, 0]]) await walkAndWait(p, x, z, 20000, 1.0);
+    for (const [x, z] of [[300, -3.8], [303.3, -3.8], [303.3, 0.5], [300, 1.5]]) {
+      const at = await walkAndWait(p, x, z, 20000, 0.4);
+      if (Math.hypot(at.x - x, at.z - z) >= 0.4) throw new Error(`hall waypoint (${x}, ${z}) missed at (${at.x}, ${at.z})`);
+    }
     await sleep(1500);
     await leaveHall(p);
     await waitCoversGone();
@@ -536,7 +544,7 @@ try {
   });
 
   // click-move inside the park with the click planner's detour round the park's solids (as e2e/wheel-ride.mjs goTo)
-  const parkGo = async (x, z, tol = 2.5) => {
+  const walkWithDetour = async (x, z, tol = 2.5) => {
     for (let attempt = 0; attempt < 4; attempt++) {
       await p.page.evaluate(
         async ([x, z]) => {
@@ -556,7 +564,8 @@ try {
       const at = await pos(p);
       if (Math.hypot(at.x - x, at.z - z) < tol) return at;
     }
-    return pos(p);
+    const at = await pos(p);
+    throw new Error(`Waypoint (${x}, ${z}) missed at (${at.x}, ${at.z})`);
   };
   const enterPark = async () => {
     if ((await pos(p)).seatIndex >= 0) {
@@ -565,8 +574,10 @@ try {
     }
     if ((await areaNow()) === "park") return;
     const g = await p.page.evaluate(async () => (await window.__imp("/village/parkArea.ts")).parkGateDoor().pad);
-    for (const [x, z] of [[80, -9], [40, 0]]) await walkAndWait(p, x, z, 60000, 1.5);
-    const at = await parkGo(g.x, g.z - 0.5, 1.0);
+    if ((await pos(p)).x > 75) {
+      for (const [x, z] of [[80, -9], [40, 0]]) await walkWithDetour(x, z, 1.5);
+    }
+    const at = await walkWithDetour(g.x, g.z - 0.5, 1.0);
     console.log(`park gate: at ${JSON.stringify(at)} pad ${JSON.stringify(g)}`);
     await act(p);
     await waitArea("park", 20000);
@@ -574,11 +585,13 @@ try {
     await sleep(3000);
   };
 
+  // The bus stop uses village coordinates. Finish its route before leaving through the park gate.
+  await phase("bus", runBus);
   await phase("park", async () => {
     await enterPark();
     // the promenade, the carousel, the wheel, back across the park (park-local metres)
     for (const [x, z] of [[40, -150], [60, -125], [110, -119], [160, -125], [211, -131], [260, -100], [200, -60]]) {
-      await parkGo(x, z, 3);
+      await walkWithDetour(x, z, 3);
       await dragOrbit(PHONE_DEV ? 200 : 300, 20);
       await sleep(800);
     }
@@ -588,36 +601,53 @@ try {
   // one whole ride on the 하늘 등불 바퀴 (the top is where the whole park is in view)
   await phase("wheel", async () => {
     await enterPark();
-    await parkGo(211, -130.8, 1.5);
+    const pad = await p.page.evaluate(async () => (await window.__imp("/village/parkArea.ts")).WHEEL_PAD);
+    await walkWithDetour(pad.x, pad.z, 1.5);
     const st = () =>
       p.page.evaluate(async () => {
-        const w = await window.__imp("/land/wheel.ts");
-        const m = await window.__imp("/land/coasterRide.ts");
-        const clock = await window.__imp("/src/village/villageClock.ts");
-        return { status: w.wheelAt(clock.villageClock.liveMs()).status, slot: m.selfRide.slot };
+        const { wheelAt, WHEEL_RIDE_CYCLES } = await window.__imp("/land/wheel.ts");
+        const { selfRide } = await window.__imp("/src/land/coasterRide.ts");
+        const { RIDE } = await window.__imp("/land/rides.ts");
+        const { villageClock } = await window.__imp("/src/village/villageClock.ts");
+        const { status, cycle } = wheelAt(villageClock.liveMs());
+        return { status, cycle, cyclesPerLap: WHEEL_RIDE_CYCLES, slot: selfRide.slot, onWheel: selfRide.ride === RIDE.wheel };
       });
-    const t0 = Date.now();
-    while ((await st()).status !== "boarding" && Date.now() - t0 < 60000) await sleep(500);
-    await act(p);
-    const t1 = Date.now();
-    while ((await st()).slot < 0 && Date.now() - t1 < 8000) await sleep(200);
-    run.check("wheel: boarded", (await st()).slot >= 0);
-    const t2 = Date.now();
-    while ((await st()).slot >= 0 && Date.now() - t2 < 220000) await sleep(500);
+    await press(p, p.page.getByTestId("ride-go-wheel")); // the HUD also reserves the next loading gondola when the wheel turns
+    const boardDeadline = Date.now() + 60000;
+    let state = await st();
+    while (state.slot < 0 && Date.now() < boardDeadline) {
+      await sleep(250);
+      state = await st();
+    }
+    if (!state.onWheel || state.slot < 0) throw new Error(`Wheel boarding failed: ${JSON.stringify(state)}`);
+    const boarded = state;
+    let turned = false;
+    const rideDeadline = Date.now() + 220000;
+    while (state.onWheel && state.slot === boarded.slot && Date.now() < rideDeadline) {
+      if (state.status === "riding") turned = true;
+      await sleep(500);
+      state = await st();
+    }
+    if (!turned || state.slot >= 0 || state.cycle - boarded.cycle < boarded.cyclesPerLap) {
+      throw new Error(`Incomplete wheel lap: boarded=${JSON.stringify(boarded)} end=${JSON.stringify(state)}`);
+    }
+    run.check("wheel: same seat through a full revolution and automatic unload", true, { slot: boarded.slot, boardedCycle: boarded.cycle, unloadedCycle: state.cycle });
     await sleep(2500);
   });
 
-  await phase("bus", async () => {
+  async function runBus() {
     // off the lake chair first (the lake phase leaves the player seated)
     if ((await pos(p)).seatIndex >= 0) {
       await p.page.evaluate(() => window.__cv.stand());
       await sleep(1500);
     }
-    for (const [x, z] of [[80, -9], [40, 0], [38.5, -0.5], [36.9, -6.0]]) await walkAndWait(p, x, z, 40000, 1);
+    if ((await areaNow()) !== "village") throw new Error("Bus route started outside the village");
+    const approach = (await pos(p)).x > 75 ? [[80, -9], [40, 0]] : [];
+    for (const [x, z] of [...approach, [38.5, -0.5], [36.9, -6.0]]) await walkWithDetour(x, z, 0.6);
     const sync = () => p.page.evaluate(async () => {
       const s = (await window.__imp("/src/net/transitSync.ts")).getTransitState();
       const snap = s.snapshot;
-      return { boarded: s.boarded, snap: snap ? { tripId: snap.tripId, departAt: snap.departAt ?? snap.departureMs ?? null, phase: snap.phase ?? null } : null };
+      return { boarded: s.boarded, tripId: snap?.tripId, status: snap?.status };
     });
     const t0 = Date.now();
     let boarded = false;
@@ -633,19 +663,21 @@ try {
       }
       await sleep(2000);
     }
-    run.check("bus: boarded (or the bus was not boarding in the wait)", true, { boarded, state: await sync() });
-    if (!boarded) {
-      await sleep(5000);
-      return;
-    }
+    if (!boarded) throw new Error(`No boarding observed within ${args["bus-wait"]} s: ${JSON.stringify(await sync())}`);
     // wait for the ride to start and finish (lap ≈ 50 s + the signal holds)
     const tRide = Date.now();
-    while ((await sync()).boarded && Date.now() - tRide < 300000) {
+    let departed = false;
+    let state = await sync();
+    while (state.boarded && Date.now() - tRide < 300000) {
+      if (state.status === "inTransit") departed = true;
       if (Date.now() - tRide > 20000 && Date.now() - tRide < 24000) await dragOrbit(PHONE_DEV ? 200 : 300);
       await sleep(1500);
+      state = await sync();
     }
+    if (!departed || state.boarded) throw new Error(`Incomplete bus lap: departed=${departed}, boarded=${state.boarded}`);
+    run.check("bus: boarded, rode and dismounted", true, { departed, final: state });
     await sleep(3000);
-  });
+  }
 } catch (e) {
   run.check("routes ran", false, String(e?.stack ?? e).slice(0, 600));
 }
