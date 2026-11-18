@@ -55,7 +55,7 @@ export async function loadLotOwnMap(gl: WebGLRenderer, url: string): Promise<Tex
   const tex = await getPbrKtx2Loader(gl).loadAsync(versionedUrl(url));
   tex.colorSpace = SRGBColorSpace;
   tex.flipY = false;
-  tex.anisotropy = Math.min(8, gl.capabilities.getMaxAnisotropy());
+  tex.anisotropy = Math.min(16, gl.capabilities.getMaxAnisotropy());
   tex.needsUpdate = true;
   return tex;
 }
@@ -209,7 +209,7 @@ export class LotTextureBank {
           t.colorSpace = SRGBColorSpace;
           t.magFilter = LinearFilter;
           t.minFilter = LinearMipmapLinearFilter;
-          t.anisotropy = Math.min(8, this.gl.capabilities.getMaxAnisotropy());
+          t.anisotropy = Math.min(16, this.gl.capabilities.getMaxAnisotropy());
           t.name = `lotfar_${id}`;
           const c = this.repeat(id, t);
           this.stageFar(e, c);

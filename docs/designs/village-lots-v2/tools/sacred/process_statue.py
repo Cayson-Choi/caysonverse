@@ -114,6 +114,58 @@ H = job["height_m"]
 if job.get("smooth", 0):
     m = hi.modifiers.new("smooth", "LAPLACIANSMOOTH"); m.iterations = job["smooth"]; m.lambda_factor = 0.4; m.use_volume_preserve = True
     bpy.ops.object.modifier_apply(modifier=m.name)
+if job.get("cut"):
+    # [{"y_gt": 0.28, "z_gt": 0.7}, ...]: drop the vertices inside each box (metres after normalising) -
+    # e.g. the scan's own mandorla, replaced by a modelled one; then loose bits below "min_piece_frac" of the vertices go
+    bm = bmesh.new(); bm.from_mesh(me); bm.verts.ensure_lookup_table()
+    for c in job["cut"]:
+        # every key is a bound, all ANDed: x_gt / x_lt / y_gt / y_lt / z_gt / z_lt (metres, after normalising)
+        def hit(v, c=c):
+            if "outside_r" in c:
+                # a cylinder round a vertical axis: drop what is OUTSIDE radius r (the head's loose halo remnants), above z_gt
+                if not (v.co.z > c.get("z_gt", -1e9)) or math.hypot(v.co.x - c["cx"], v.co.y - c["cy"]) <= c["outside_r"]: return False
+                return True
+            for k, lim in c.items():
+                ax = "xyz".index(k[0])
+                if k.endswith("_gt") and not v.co[ax] > lim: return False
+                if k.endswith("_lt") and not v.co[ax] < lim: return False
+            return True
+        kill = [v for v in bm.verts if hit(v)]
+        bmesh.ops.delete(bm, geom=kill, context="VERTS")
+    bm.verts.ensure_lookup_table(); seen = set(); comps = []
+    for v in bm.verts:
+        if v.index in seen: continue
+        comp = []; stack = [v]; seen.add(v.index)
+        while stack:
+            x = stack.pop(); comp.append(x)
+            for e in x.link_edges:
+                y = e.other_vert(x)
+                if y.index not in seen: seen.add(y.index); stack.append(y)
+        comps.append(comp)
+    big = max(len(c) for c in comps)
+    drop = [v for c in comps if len(c) < big * job.get("min_piece_frac", 0.02) for v in c]
+    bmesh.ops.delete(bm, geom=drop, context="VERTS")
+    bm.to_mesh(me); bm.free(); me.update()
+if job.get("sliver"):
+    # hair-thin long triangles (a photogrammetry bridge that draws as a light line across the robe): long AND needle-like
+    bm = bmesh.new(); bm.from_mesh(me); bm.faces.ensure_lookup_table()
+    sl = job["sliver"]
+    bad = []
+    for f in bm.faces:
+        le = max(e.calc_length() for e in f.edges)
+        if le > sl["min_edge"] and 2 * f.calc_area() / (le * le) < sl["ratio"]: bad.append(f)
+    rep["slivers_dropped"] = len(bad)
+    bmesh.ops.delete(bm, geom=bad, context="FACES_ONLY")
+    bm.to_mesh(me); bm.free(); me.update()
+if job.get("max_edge"):
+    # photogrammetry bridges a fold with hair-thin, very long triangles that draw as a light line across the robe: drop faces with an edge
+    # longer than this (metres, after normalising); the loose bits that leaves are dropped like the "cut" ones
+    bm = bmesh.new(); bm.from_mesh(me); bm.faces.ensure_lookup_table()
+    lim = job["max_edge"]
+    long_f = [f for f in bm.faces if max(e.calc_length() for e in f.edges) > lim]
+    rep["long_faces_dropped"] = len(long_f)
+    bmesh.ops.delete(bm, geom=long_f, context="FACES_ONLY")
+    bm.to_mesh(me); bm.free(); me.update()
 co = [v.co for v in me.vertices]
 dims = [max(c[i] for c in co) - min(c[i] for c in co) for i in range(3)]
 rep["dims_m"] = [round(d, 3) for d in dims]
@@ -217,7 +269,7 @@ if surf == "marble":
     rr = ramp(noise(6.0 / H, 3).outputs["Fac"], [(0.3, (0.30, 0.30, 0.30, 1)), (0.7, (0.42, 0.42, 0.42, 1))]); rough = rr.outputs["Color"]
 elif surf in ("gilt", "bronze"):
     if surf == "gilt":
-        hi_c, lo_c = (1.0, 0.75, 0.33, 1), (0.84, 0.55, 0.20, 1)       # burnished 개금 leaf / matte leaf in hollows (warm, not brass)
+        hi_c, lo_c = tuple(job.get("gilt_hi", (1.0, 0.75, 0.33))) + (1,), tuple(job.get("gilt_lo", (0.84, 0.55, 0.20))) + (1,)       # burnished 개금 leaf / matte leaf in hollows (warm, not brass)
         r0, r1 = 0.34, 0.52
     else:
         hi_c, lo_c = (0.78, 0.56, 0.36, 1), (0.42, 0.28, 0.16, 1)       # new warm statuary bronze

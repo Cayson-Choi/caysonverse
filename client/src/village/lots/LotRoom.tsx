@@ -4,14 +4,21 @@ import {
   AdditiveBlending,
   AmbientLight,
   Color,
+  DataTexture,
   DoubleSide,
+  EquirectangularReflectionMapping,
+  HalfFloatType,
+  LinearFilter,
   Group,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  PMREMGenerator,
+  RGBAFormat,
   ShaderMaterial,
   Vector3,
   Vector4,
+  DataUtils,
   type Material,
   type Object3D,
   type Texture,
@@ -99,10 +106,73 @@ function ownTextureBytes(root: Object3D, mobile: boolean): number {
  * the cap only drops the levels above it (no re-encode, no new file); a piece is seen from a few metres, where 1024 /
  * 512 is still 300+ px a metre (the ORM's soft shading the least of it: 256).
  */
-export const SACRED_MAP_MAX = {
+type SacredCap = { color: number; normal: number; orm: number };
+export const SACRED_MAP_MAX: { desktop: SacredCap; mobile: SacredCap } = {
   desktop: { color: 1024, normal: 512, orm: 256 },
   mobile: { color: 1024, normal: 256, orm: 256 },
-} as const;
+};
+
+/**
+ * Rooms whose sacred pieces are the point of the room get a higher cap (owner 2026-11-18: "고해상도로 선명하게"): the 대웅전's 본존불, 협시보살
+ * and 탱화 keep their full maps on a desktop (colour up to 3072 for the 탱화, normal 2048), 1024 / 1024 on a phone (the room's GPU budget has the room: 48 / 14 MB).
+ */
+export const SACRED_MAP_MAX_BY_UNIT: Record<string, { desktop: SacredCap; mobile: SacredCap }> = {
+  lot_temple_hall: {
+    desktop: { color: 3072, normal: 2048, orm: 512 },
+    mobile: { color: 1024, normal: 1024, orm: 256 },
+  },
+};
+
+/**
+ * The gilt statues, the halo and the scroll fittings reflect a small HDR panorama of the hall (128 x 64 half floats, prefiltered once by a
+ * PMREM generator that is kept, never disposed: disposing one in the middle of a room load frees programs under the loader's compile poll,
+ * a TypeError in three's timer). A metal has nothing to reflect in a room without an environment map, so burnished gold read as dry ochre
+ * (owner 2026-11-18: "진짜 입체적으로 … 실제 새것같은 질감"). The first version was an 8-bit panorama (radiance <= 1: the reflections
+ * came out too dark to see even at envMapIntensity 30); this one holds real radiances: the paper doors and lamps at 1.5..3, the lacquered
+ * walls and floor around 0.4..0.8. Only the sacred gilt carries it: the dancheong, the paintings and the room's own surfaces do not.
+ */
+const SACRED_ENV_W = 128;
+const SACRED_ENV_INTENSITY = 0.45;
+const sacredEnvs = new WeakMap<WebGLRenderer, { pm: PMREMGenerator; tex: Texture }>();
+/** The hall seen from the altar, linear radiance per direction (room frame: the door wall toward -z, y up). */
+function hallRadiance(x: number, y: number, z: number): [number, number, number] {
+  if (y > 0.55) {
+    const lamp = Math.sin(Math.atan2(z, x) * 6) > 0.8 && y < 0.9;
+    return lamp ? [3.2, 2.4, 1.4] : [0.10, 0.28, 0.25];
+  }
+  if (y < -0.25) return [0.6, 0.4, 0.22]; // the pine floor
+  if (z < -0.3) return y > 0.12 ? [0.6, 0.85, 0.8] : [1.7, 1.55, 1.3]; // the paper doors toward the visitor (daylight), a blue-green transom
+  return y > 0.0 ? [0.55, 0.14, 0.08] : [0.8, 0.66, 0.46]; // the lacquered walls over the plaster
+}
+function sacredEnv(gl: WebGLRenderer): Texture {
+  const have = sacredEnvs.get(gl);
+  if (have) return have.tex;
+  const w = SACRED_ENV_W;
+  const h = w / 2;
+  const data = new Uint16Array(w * h * 4);
+  for (let j = 0; j < h; j++) {
+    const lat = ((j + 0.5) / h - 0.5) * Math.PI; // row 0 = straight down (flipY false)
+    for (let i = 0; i < w; i++) {
+      const lon = ((i + 0.5) / w - 0.5) * Math.PI * 2;
+      const [r, g, b] = hallRadiance(Math.cos(lat) * Math.cos(lon), Math.sin(lat), Math.cos(lat) * Math.sin(lon));
+      const k = (j * w + i) * 4;
+      data[k] = DataUtils.toHalfFloat(r);
+      data[k + 1] = DataUtils.toHalfFloat(g);
+      data[k + 2] = DataUtils.toHalfFloat(b);
+      data[k + 3] = DataUtils.toHalfFloat(1);
+    }
+  }
+  const eq = new DataTexture(data, w, h, RGBAFormat, HalfFloatType);
+  eq.mapping = EquirectangularReflectionMapping;
+  eq.magFilter = LinearFilter;
+  eq.minFilter = LinearFilter;
+  eq.needsUpdate = true;
+  const pm = new PMREMGenerator(gl);
+  const rt = pm.fromEquirectangular(eq);
+  eq.dispose();
+  sacredEnvs.set(gl, { pm, tex: rt.texture });
+  return rt.texture;
+}
 
 export { capMips } from "./lotTextures";
 
@@ -534,12 +604,16 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
           o.visible = false;
           return;
         }
-        const cap = SACRED_MAP_MAX[phone ? "mobile" : "desktop"];
+        const cap = (SACRED_MAP_MAX_BY_UNIT[unit] ?? SACRED_MAP_MAX)[phone ? "mobile" : "desktop"];
+        const aniso = Math.min(16, gl.capabilities.getMaxAnisotropy());
         const out = matsOf(o).map((mat) => {
           let m = mat as MeshStandardMaterial;
           for (const k of ["map", "emissiveMap", "normalMap", "aoMap", "roughnessMap", "metalnessMap"] as const) {
             const t = m[k];
-            if (t) capMips(t, k === "map" || k === "emissiveMap" ? cap.color : k === "normalMap" ? cap.normal : cap.orm);
+            if (t) {
+              capMips(t, k === "map" || k === "emissiveMap" ? cap.color : k === "normalMap" ? cap.normal : cap.orm);
+              t.anisotropy = Math.max(t.anisotropy, aniso); // a painting / robe seen at a slant stays sharp (mips + anisotropic filtering)
+            }
           }
           const set = /^M_pbr_(.+)$/.exec(m.name)?.[1];
           if (set) {
@@ -550,6 +624,10 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
             surfaces.push(sm);
             materials.push(sm);
             m = sm;
+          }
+          if (m.name.includes("gilt") || (s.node.startsWith("lotstatue__") && m.metalnessMap)) {
+            m.envMap = sacredEnv(gl);
+            m.envMapIntensity = SACRED_ENV_INTENSITY;
           }
           if (s.mirrorX) m.side = DoubleSide;
           if (s.glass && m.emissiveMap) glass.push({ m, day: s.glass.emissiveIntensity?.day ?? 1.5, night: s.glass.emissiveIntensity?.night ?? 0.15 });

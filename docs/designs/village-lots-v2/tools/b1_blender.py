@@ -84,6 +84,17 @@ def tile_meters():
     return {m.group(1): float(m.group(2)) for m in re.finditer(r'"id": "([a-z0-9_]+)",[\s\S]*?"tileMeters": ([0-9.]+)', src)}
 
 
+def load_png(path):
+    """The decoded PBR twin of a KTX2 map; when the PNG set is not at hand (a bake only needs the surface's mean tone) a flat mid-grey stands in."""
+    if os.path.exists(path):
+        return bpy.data.images.load(path, check_existing=True)
+    name = "missing_" + os.path.basename(path)
+    im = bpy.data.images.get(name) or bpy.data.images.new(name, 4, 4)
+    # (a flat normal map is (0.5, 0.5, 1.0): a mid-grey one would be a zero-length normal and bake black)
+    im.pixels = ([0.5, 0.5, 1.0, 1.0] if "normal" in name else [0.5, 0.5, 0.5, 1.0]) * 16
+    return im
+
+
 def make_materials(matdefs):
     tiles = tile_meters()
     mats = {}
@@ -97,7 +108,7 @@ def make_materials(matdefs):
         if d.get("own"):
             # a lot's own map (KTX2 in the game; its PNG twin for the render): atlas UVs, no metre repeat
             t = nt.nodes.new("ShaderNodeTexImage")
-            t.image = bpy.data.images.load(os.path.join(PNG, d["own"] + ".png"), check_existing=True)
+            t.image = load_png(os.path.join(PNG, d["own"] + ".png"))
             t.interpolation = "Cubic"
             nt.links.new(t.outputs["Color"], b.inputs["Base Color"])
             b.inputs["Roughness"].default_value = 0.45
@@ -150,7 +161,7 @@ def make_materials(matdefs):
 
         def img(kind, data):
             t = nt.nodes.new("ShaderNodeTexImage")
-            t.image = bpy.data.images.load(os.path.join(PNG, "%s_%s.png" % (sid, kind)), check_existing=True)
+            t.image = load_png(os.path.join(PNG, "%s_%s.png" % (sid, kind)))
             if data:
                 t.image.colorspace_settings.name = "Non-Color"
             t.interpolation = "Cubic"
