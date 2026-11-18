@@ -16,7 +16,7 @@ TN = int(A[1]) if len(A) > 1 else 4096
 TA = int(A[2]) if len(A) > 2 else 2048
 TO = int(A[3]) if len(A) > 3 else 1024
 NAME = "lotstatue__lot_temple_hall_buddha"
-TRI_PC, TRI_PHONE = 40000, 10000
+TRI_PC, TRI_PHONE = 46000, 10000     # (pass 4: +6k for the real curls on the game mesh)
 SEAT_BASE = 0.80        # the seat plane in the sculpt's own units (below: the knees' undersides, the fingertips' last cm)
 FIG_H = 1.58            # (owner reference: the throne ~21% of the whole) seat -> top of the 육계 (m)
 THRONE_H = 0.42         # floor -> seat (m)
@@ -112,23 +112,32 @@ o = lathe("tier_hi_core", [(0.55, 0.23), (0.56, 0.27), (0.59, 0.36), (0.62, 0.39
 o = lathe("seat", [(0.62, 0.392), (0.665, 0.398), (0.67, 0.412), (0.66, THRONE_H), (0.0, THRONE_H)], seg=128); bev(o, 0.004)
 
 
+PLUMP = True
+
+
 def petal(width, length, thick, n_u=12, n_v=16, up=True, inner=True, tip_curl=0.25):
     """one lotus petal in its own frame: base at the origin, length along +Z, bulging toward +Y (outward); returns verts, faces"""
     vs, fs = [], []
     for j in range(n_v + 1):
         v = j / n_v
-        w = width * 0.5 * (math.sin(math.pi * min(1.0, v * 0.92 + 0.06)) ** 0.85) * (1 - 0.25 * v)
-        if v > 0.8: w *= 1 - ((v - 0.8) / 0.2) ** 1.5 * 0.92
+        if PLUMP:
+            # a round-topped petal (an ellipse with a soft little point at the very top)
+            w = width * 0.5 * max(0.0, 1 - (2 * v - 1) ** 2) ** 0.42 * (1 - 0.10 * v)
+            if v > 0.9: w *= 1 - ((v - 0.9) / 0.1) ** 2 * 0.65
+        else:
+            w = width * 0.5 * (math.sin(math.pi * min(1.0, v * 0.92 + 0.06)) ** 0.85) * (1 - 0.25 * v)
+            if v > 0.8: w *= 1 - ((v - 0.8) / 0.2) ** 1.5 * 0.92
         for i in range(n_u + 1):
             u = -1 + 2 * i / n_u
             x = u * w
             b = thick * math.sqrt(max(0.0, 1 - u * u)) * (0.35 + 0.65 * math.sin(math.pi * min(1.0, v * 1.05)))
+            if PLUMP: b = thick * max(0.0, 1 - u * u) ** 0.55 * (0.45 + 0.55 * math.sin(math.pi * min(1.0, v * 1.0)) ** 0.6)
             if inner:      # the double petal: an inner petal raised inside the outer one
                 wi = 0.55 * w; vi = (v - 0.12) / 0.72
                 if 0 < vi < 1 and abs(x) < wi * math.sin(math.pi * vi) ** 0.8:
                     b += thick * 0.45 * math.sqrt(max(0.0, 1 - (x / max(1e-5, wi * math.sin(math.pi * vi) ** 0.8)) ** 2))
             b += thick * 0.15 * math.exp(-(u / 0.12) ** 2) * v          # the mid-rib
-            y = b + tip_curl * thick * 4 * max(0.0, v - 0.75) ** 2 * 16 * 0.25
+            y = b + (0.0 if PLUMP else tip_curl * thick * 4 * max(0.0, v - 0.75) ** 2 * 16 * 0.25)
             vs.append((x, y, v * length))
     for j in range(n_v):
         for i in range(n_u):
@@ -160,10 +169,10 @@ def ring_of_petals(name, count, r_base, z_base, tilt_deg, width, length, thick, 
 
 # 앙련 (upturned): a lower row and an upper row offset by half a petal
 # lower tier: two layers of plump petals (the back layer peeks between the front ones); the upper tier the same, a little taller
-ring_of_petals("lo_back", 18, 0.585, 0.075, 14, 0.235, 0.145, 0.036, phase=0.5)
-ring_of_petals("lo_front", 18, 0.615, 0.060, 22, 0.255, 0.140, 0.040)
-ring_of_petals("hi_back", 18, 0.575, 0.250, 12, 0.225, 0.150, 0.034, phase=0.5)
-ring_of_petals("hi_front", 18, 0.600, 0.236, 20, 0.245, 0.150, 0.038)
+ring_of_petals("lo_back", 16, 0.580, 0.080, 10, 0.270, 0.140, 0.050, phase=0.5)
+ring_of_petals("lo_front", 16, 0.612, 0.058, 16, 0.285, 0.135, 0.056)
+ring_of_petals("hi_back", 16, 0.572, 0.252, 8, 0.262, 0.148, 0.048, phase=0.5)
+ring_of_petals("hi_front", 16, 0.598, 0.235, 14, 0.278, 0.145, 0.054)
 # the underside: a 12-petal lotus medallion in low relief inside the plinth's rim (the reference's bottom view)
 mv, mf = [], []
 for k in range(12):
@@ -175,13 +184,13 @@ for k in range(12):
     pts = pts + [(-x, r) for x, r in reversed(pts[1:-1])]
     b0 = len(mv)
     for (x, r) in pts:
-        mv.append((r * math.cos(t) - x * math.sin(t), r * math.sin(t) + x * math.cos(t), 0.0045))
+        mv.append((r * math.cos(t) - x * math.sin(t), r * math.sin(t) + x * math.cos(t), 0.0042))
     mf.append(tuple(reversed(range(b0, b0 + len(pts)))))
-b0 = len(mv); mv += [(0.10 * math.cos(2 * math.pi * i / 32), 0.10 * math.sin(2 * math.pi * i / 32), 0.0045) for i in range(32)]
+b0 = len(mv); mv += [(0.10 * math.cos(2 * math.pi * i / 32), 0.10 * math.sin(2 * math.pi * i / 32), 0.0042) for i in range(32)]
 mf.append(tuple(reversed(range(b0, b0 + 32))))
 med = mesh_obj("medallion", mv, mf, smooth=False); parts.remove(med)     # (kept whole: the decimator shreds thin relief)
-bm = bmesh.new(); bm.from_mesh(med.data); bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-5); bmesh.ops.triangulate(bm, faces=bm.faces[:]); bm.to_mesh(med.data); bm.free()
-sel_only([med]); m = med.modifiers.new("s", "SOLIDIFY"); m.thickness = 0.003; m.offset = 1; bpy.ops.object.modifier_apply(modifier="s")
+bm = bmesh.new(); bm.from_mesh(med.data); bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-5); bmesh.ops.triangulate(bm, faces=bm.faces[:], ngon_method='EAR_CLIP'); bm.to_mesh(med.data); bm.free()
+sel_only([med]); m = med.modifiers.new("s", "SOLIDIFY"); m.thickness = 0.0032; m.offset = 1; bpy.ops.object.modifier_apply(modifier="s")   # (z 0.001 .. 0.0042, below the plinth's bottom at 0.006)
 
 # ---------------- the robe falling over the front of the seat (fan of pleats) ----------------
 fan_v, fan_f = [], []
@@ -242,10 +251,27 @@ def decimated(src, name, target):
 
 
 # the figure gets most of the budget, then the throne; the curls are baked onto the scalp (no geometry of their own)
-lo_fig = decimated(fig, "lo_fig", int(TRI_PC * 0.74))
-lo_thr = decimated(throne, "lo_thr", int(TRI_PC * 0.26))
+n_curls = len(curls.get("centres", [])) // 6
+lo_fig = decimated(fig, "lo_fig", int(TRI_PC * 0.82) - n_curls * 24)
+lo_thr = decimated(throne, "lo_thr", int(TRI_PC * 0.18))
 lo_med = med.copy(); lo_med.data = med.data.copy(); sc.collection.objects.link(lo_med)
-sel_only([lo_fig, lo_thr, lo_med], lo_fig); bpy.ops.object.join(); lo = bpy.context.active_object; lo.name = NAME
+lo_parts = [lo_fig, lo_thr, lo_med]
+cen = np.array(curls.get("centres", []), np.float64).reshape(-1, 6)
+if len(cen):
+    bm = bmesh.new(); bmesh.ops.create_uvsphere(bm, u_segments=6, v_segments=3, radius=1.0)
+    for v in bm.verts:
+        if v.co.z < -0.1: v.co.z = -0.1
+        v.co.x *= 0.0080 * S; v.co.y *= 0.0080 * S; v.co.z = v.co.z * 0.0068 * S + 0.0006 * S
+    cv_ = [Vector(v.co) for v in bm.verts]; cf_ = [tuple(v.index for v in f.verts) for f in bm.faces]; bm.free()
+    allv, allf = [], []
+    for row in cen:
+        p_ = M @ Vector(row[:3]); n_ = Vector(row[3:]).normalized()
+        q_ = n_.to_track_quat("Z", "Y"); Mx = Matrix.LocRotScale(p_, q_, Vector((1, 1, 1)))
+        b0 = len(allv); allv += [Mx @ c for c in cv_]; allf += [tuple(b0 + i for i in f) for f in cf_]
+    cmesh = bpy.data.meshes.new("lo_curls"); cmesh.from_pydata(allv, [], allf); cmesh.update(); cmesh.materials.append(hairm)
+    lo_c = bpy.data.objects.new("lo_curls", cmesh); sc.collection.objects.link(lo_c); lo_parts.append(lo_c)
+    log("lo curls", len(cen), tris(lo_c))
+sel_only(lo_parts, lo_fig); bpy.ops.object.join(); lo = bpy.context.active_object; lo.name = NAME
 rep["pc_tris"] = tris(lo); log("lo", rep["pc_tris"])
 # UVs: unwrap a smoothed proxy (calm normals -> few large islands, about twice the texel coverage of a direct smart project),
 # copy the UVs back, then pack again on the game mesh itself (the proxy's islands could overlap a little where it folded)

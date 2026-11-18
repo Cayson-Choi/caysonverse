@@ -200,18 +200,18 @@
     {
       "file": "lotstatue__lot_temple_hall_buddha.glb",
       "room": "lot_temple_hall",
-      "what": "본존불 (original, 2026-11-18 v2 pass 3, after the owner's six-view reference): polished yellow-gold Buddha in full lotus, right hand raised in the teaching mudra (thumb and middle finger form a ring), left hand palm-up in the lap, robe over the left shoulder, matte black curls in rows, tall 육계 with a gold 계주, painted brows/lips; round double-tier lotus throne of plump petals with a 12-petal medallion underneath",
+      "what": "본존불 (original, 2026-11-18 v2 pass 3, after the owner's six-view reference): polished yellow-gold Buddha in full lotus, right hand raised in the teaching mudra (thumb and middle finger form a ring), left hand palm-up in the lap, robe over the left shoulder, matte black snail curls in rows (real geometry on the game mesh), long earlobes, a gold crescent ornament, tall 육계 with a gold 계주, painted brows/lips; round double-tier lotus throne of plump petals with a 12-petal medallion underneath",
       "size_m": [
         1.45,
         2.0,
         1.246
       ],
       "pc": {
-        "tris": 41226,
+        "tris": 47218,
         "gpuMB": 12.0
       },
       "phone": {
-        "tris": 9998,
+        "tris": 9584,
         "gpuMB": 4.0
       },
       "place": "centre of the 수미단 (x 5.7, z ~6.4, top 1.1 m), facing the door; top reaches ~3.1 m; the 광배 (…_halo.glb) at the same node, its head halo on the head axis (0, 0.14, 1.64)"
