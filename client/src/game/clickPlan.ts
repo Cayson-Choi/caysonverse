@@ -389,8 +389,9 @@ export function simulateWalk(
     if (i >= span && Math.hypot(x - pastX[slot], z - pastZ[slot]) < progress) return { x, z, arrived: false, contact };
     pastX[slot] = x;
     pastZ[slot] = z;
-    const sx = (dx / len) * step;
-    const sz = (dz / len) * step;
+    const distance = Math.min(step, len);
+    const sx = (dx / len) * distance;
+    const sz = (dz / len) * distance;
     const next = resolveCollision(x, z, sx, sz, r, local(x, z));
     const nx = Math.min(Math.max(next.x, bounds.minX + r), bounds.maxX - r);
     const nz = Math.min(Math.max(next.z, bounds.minZ + r), bounds.maxZ - r);
