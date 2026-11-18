@@ -133,6 +133,11 @@ export const SACRED_MAP_MAX_BY_UNIT: Record<string, { desktop: SacredCap; mobile
  */
 const SACRED_ENV_W = 128;
 const SACRED_ENV_INTENSITY = 0.45;
+/**
+ * The 본존불's own polished gilt bronze reflects the hall harder (2026-11-18 v2, owner "방 안 금빛도 살려": at 0.45 the statue read as dull
+ * ochre in the hall's even light). Only its material (`…_buddha_gilt`): the 광배 stays at 0.45 (at 0.9 it burned white).
+ */
+const SACRED_STATUE_ENV_INTENSITY = 1.0;
 const sacredEnvs = new WeakMap<WebGLRenderer, { pm: PMREMGenerator; tex: Texture }>();
 /** The hall seen from the altar, linear radiance per direction (room frame: the door wall toward -z, y up). */
 function hallRadiance(x: number, y: number, z: number): [number, number, number] {
@@ -345,7 +350,11 @@ void main() {`;
 const LAMP_FRAG = /* glsl */ `#include <lights_fragment_end>
 {
   vec3 rN = normalize( vRoomNormal );
+  vec3 rV = normalize( cameraPosition - vRoomWorld );
   vec3 rSum = vec3( 0.0 );
+  vec3 rSpec = vec3( 0.0 );
+  PhysicalMaterial rLobe = material;
+  rLobe.roughness = max( material.roughness, 0.55 );
   for ( int i = 0; i < ROOM_LAMPS; i ++ ) {
     vec3 Ld = uRoomLampPos[ i ].xyz - vRoomWorld;
     float d = length( Ld );
@@ -354,9 +363,15 @@ const LAMP_FRAG = /* glsl */ `#include <lights_fragment_end>
     float fall = pow( clamp( 1.0 - pow( d / range, 4.0 ), 0.0, 1.0 ), 2.0 ) / max( pow( d, 1.6 ), 0.01 );
     vec4 sd = uRoomLampDir[ i ];
     float cone = sd.w < -1.5 ? 1.0 : smoothstep( sd.w, mix( sd.w, 1.0, 0.6 ), dot( -Ln, sd.xyz ) );
-    rSum += uRoomLampCol[ i ] * fall * cone * max( dot( rN, Ln ), 0.0 );
+    vec3 rIn = uRoomLampCol[ i ] * fall * cone * max( dot( rN, Ln ), 0.0 );
+    rSum += rIn;
+    // a metal takes a lamp as a highlight, not as diffuse light (2026-11-18: with the albedo as diffuse every gilt statue lit up flat,
+    // like matte ochre paint); dielectrics are unchanged
+    // (a broad lobe: the lamps' intensities are tuned for diffuse light, and a sharp GGX peak from them bloomed the whole altar)
+    rSpec += rIn * BRDF_GGX( Ln, rV, rN, rLobe ) * ( 0.35 * metalnessFactor );
   }
-  reflectedLight.directDiffuse += rSum * diffuseColor.rgb * RECIPROCAL_PI;
+  reflectedLight.directDiffuse += rSum * material.diffuseContribution * RECIPROCAL_PI;
+  reflectedLight.directSpecular += rSpec;
 }`;
 
 /** A room material lit by its lamps too (once per material; the program key carries the lamp count). */
@@ -627,7 +642,7 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
           }
           if (m.name.includes("gilt") || (s.node.startsWith("lotstatue__") && m.metalnessMap)) {
             m.envMap = sacredEnv(gl);
-            m.envMapIntensity = SACRED_ENV_INTENSITY;
+            m.envMapIntensity = /_buddha_gilt$/.test(m.name) ? SACRED_STATUE_ENV_INTENSITY : SACRED_ENV_INTENSITY;
           }
           if (s.mirrorX) m.side = DoubleSide;
           if (s.glass && m.emissiveMap) glass.push({ m, day: s.glass.emissiveIntensity?.day ?? 1.5, night: s.glass.emissiveIntensity?.night ?? 0.15 });

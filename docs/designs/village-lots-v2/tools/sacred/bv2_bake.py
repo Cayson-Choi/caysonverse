@@ -236,19 +236,23 @@ lo_fig = decimated(fig, "lo_fig", int(TRI_PC * 0.74))
 lo_thr = decimated(throne, "lo_thr", int(TRI_PC * 0.26))
 sel_only([lo_fig, lo_thr], lo_fig); bpy.ops.object.join(); lo = bpy.context.active_object; lo.name = NAME
 rep["pc_tris"] = tris(lo); log("lo", rep["pc_tris"])
-# UVs: unwrap a smoothed proxy (calm normals -> large islands), copy back
+# UVs: unwrap a smoothed proxy (calm normals -> few large islands, about twice the texel coverage of a direct smart project),
+# copy the UVs back, then pack again on the game mesh itself (the proxy's islands could overlap a little where it folded)
 px_ = lo.copy(); px_.data = lo.data.copy(); sc.collection.objects.link(px_)
 sel_only([px_]); sm = px_.modifiers.new("sm", "SMOOTH"); sm.factor = 1.0; sm.iterations = 30; bpy.ops.object.modifier_apply(modifier="sm")
 bpy.ops.object.mode_set(mode="EDIT"); bpy.ops.mesh.select_all(action="SELECT")
 bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=0.004, area_weight=0.0, scale_to_bounds=False)
-try: bpy.ops.uv.pack_islands(margin=0.004, rotate=True, shape_method="CONCAVE")
-except Exception as ex: log("pack", ex)
 bpy.ops.object.mode_set(mode="OBJECT")
 uv = np.empty(len(px_.data.loops) * 2, np.float32); px_.data.uv_layers[0].data.foreach_get("uv", uv)
 if not lo.data.uv_layers: lo.data.uv_layers.new(name="UVMap")
 lo.data.uv_layers[0].data.foreach_set("uv", uv)
-lo.data.uv_layers.active = lo.data.uv_layers[0]; lo.data.uv_layers[0].active_render = True
 bpy.data.objects.remove(px_, do_unlink=True)
+sel_only([lo])
+bpy.ops.object.mode_set(mode="EDIT"); bpy.ops.mesh.select_all(action="SELECT")
+try: bpy.ops.uv.pack_islands(margin=0.004, rotate=True, shape_method="CONCAVE")
+except Exception as ex: log("pack", ex)
+bpy.ops.object.mode_set(mode="OBJECT")
+lo.data.uv_layers.active = lo.data.uv_layers[0]; lo.data.uv_layers[0].active_render = True
 sel_only([lo]); bpy.ops.object.shade_smooth()
 
 # ---------------- bake ----------------
@@ -266,25 +270,40 @@ def img(kind, size, srgb):
 
 img("normal", TN, False); img("albedo", TA, True); img("ao", TO, False); img("mask", TO, False)
 sel_only(hi_objs + [lo], lo)
-bk = sc.render.bake; bk.use_selected_to_active = True; bk.cage_extrusion = 0.012; bk.max_ray_distance = 0.03; bk.margin = 16
+bk = sc.render.bake; bk.use_selected_to_active = True; bk.cage_extrusion = 0.008; bk.max_ray_distance = 0.02; bk.margin = 16
 try: bk.margin_type = "EXTEND"
 except Exception: pass
 
 
+# texels whose ray misses the high poly (the inner forearm close to the side, pass 1's "sleeve stain") keep a sane value instead of
+# black: every map starts filled and the bake does not clear it
+FILL = {"normal": (0.5, 0.5, 1.0), "albedo": (0.906, 0.749, 0.396), "ao": (0.85, 0.85, 0.85), "mask": (0.0, 0.0, 0.0)}
+bk.use_clear = False
+
+
 def bake(kind, btype, **kw):
+    im0 = imgs[kind][0]; c = FILL[kind]
+    im0.pixels.foreach_set(np.tile(np.array(c + (1.0,), np.float32), im0.size[0] * im0.size[1]))
     for k, (im, n) in imgs.items(): n.select = False
     imgs[kind][1].select = True; lnt.nodes.active = imgs[kind][1]
     tb = time.time(); bpy.ops.object.bake(type=btype, **kw); log("baked", kind, f"{time.time() - tb:.0f}s")
 
 
 bake("normal", "NORMAL", normal_space="TANGENT")
-sc.cycles.samples = 48
+sc.cycles.samples = 160
+# AO only for the local creases (folds, the curls, the lid line): with the default 10 m reach the narrow gap between the left
+# forearm and the side went black and mottled (the "sleeve stain")
+if sc.world is None: sc.world = bpy.data.worlds.new("bake")
+sc.world.light_settings.distance = 0.045
 bake("ao", "AO")
 bk.use_pass_direct = False; bk.use_pass_indirect = False; bk.use_pass_color = True
 sc.cycles.samples = 4
 # (the diffuse colour of a metal is base x (1 - metallic): bake the colour with the metal off)
 for m_ in (gilt, hairm):
     next(n for n in m_.node_tree.nodes if n.type == "BSDF_PRINCIPLED").inputs["Metallic"].default_value = 0.0
+# pass 2 (owner: "방 안 금빛도 살려"): polished gilt bronze — a rich, warm, saturated leaf (linear 0.80 / 0.52 / 0.13; with the room's
+# lamps now a highlight on metal (LotRoom.tsx LAMP_FRAG), 0.62 / 0.36 / 0.08 read as dark bronze and 0.93 / 0.63 / 0.20 as pale)
+next(n for n in gilt.node_tree.nodes if n.type == "BSDF_PRINCIPLED").inputs["Base Color"].default_value = (0.80, 0.52, 0.13, 1)
 bake("albedo", "DIFFUSE", pass_filter={"COLOR"})
 # material mask (1 = hair): emission bake of the high poly's materials
 saved = {}
@@ -300,10 +319,16 @@ def px(im):
 
 
 ao = px(imgs["ao"][0])[..., 0]; mk = px(imgs["mask"][0])[..., 0]
+ao = (ao + np.roll(ao, 1, 0) + np.roll(ao, -1, 0) + np.roll(ao, 1, 1) + np.roll(ao, -1, 1)) / 5     # (sampling speckle out)
+rng_ = np.random.default_rng(11)
+nz = rng_.standard_normal((TO // 32, TO // 32)).astype(np.float32)
+nz = np.kron(nz, np.ones((32, 32), np.float32))
+for _ in range(3): nz = (nz + np.roll(nz, 16, 0) + np.roll(nz, -16, 0) + np.roll(nz, 16, 1) + np.roll(nz, -16, 1)) / 5
+nz = (nz - nz.mean()) / (nz.std() + 1e-6)
 orm = np.ones((TO, TO, 4), np.float32)
-orm[..., 0] = np.clip(0.30 + 0.70 * ao, 0, 1)
-orm[..., 1] = 0.30 * (1 - mk) + 0.72 * mk
-orm[..., 2] = 0.90 * (1 - mk)
+orm[..., 0] = np.clip(0.15 + 0.85 * ao, 0, 1)
+orm[..., 1] = np.clip(0.20 + 0.035 * nz, 0.13, 0.30) * (1 - mk) + 0.72 * mk      # polished leaf, subtly uneven
+orm[..., 2] = 1.0 * (1 - mk)
 oi = bpy.data.images.new(f"{NAME}_orm", TO, TO, alpha=False); oi.colorspace_settings.name = "Non-Color"; oi.pixels.foreach_set(orm.ravel())
 # albedo: the AO in the folds (gold leaf reads darker in a crease even under an even light)
 al = px(imgs["albedo"][0])
@@ -313,8 +338,7 @@ aoU = np.repeat(np.repeat(aoA, k, 0), k, 1)
 # (in the hall's flat light the plain leaf read pale and plastic next to the scan's photographed gilt: a deeper, warmer leaf and
 # real depth in the folds — the scan's albedo had p10 ~70/255, ours had ~180)
 mkU = np.repeat(np.repeat(mk, k, 0), k, 1)
-tint = np.array([0.97, 0.90, 0.76], np.float32)
-al[..., :3] *= (0.45 + 0.55 * aoU)[..., None] * (tint * (1 - mkU[..., None]) + mkU[..., None])
+al[..., :3] *= (0.32 + 0.68 * aoU)[..., None]        # deep folds read dark against the polished leaf
 imgs["albedo"][0].pixels.foreach_set(al.ravel())
 rep["metal_mean"] = float(orm[..., 2].mean()); rep["hair_pct"] = round(100 * float((mk > 0.5).mean()), 2)
 # normal: flatten ray misses

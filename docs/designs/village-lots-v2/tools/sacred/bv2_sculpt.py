@@ -82,10 +82,10 @@ cs_w = np.clip(bws("pelvis", "spine", "chest") + 0.8 * bws("uarm.L", "uarm.R", "
 cs_w *= (1 - np.clip(bws("head", "hand.L", "hand.R", "foot.L", "foot.R") * 1.5, 0, 1))
 cs_w = smooth_field(cs_w, bed, 3)
 bc0 = bc.copy()
-bc = laplace(bc, bed, cs_w * 0.9, 10, lam=0.5, mu=0.5)
+bc = laplace(bc, bed, cs_w * 0.95, 18, lam=0.5, mu=0.5)   # (pass 2, owner: "몸을 더 둥글고 넉넉하게")
 shrink = np.sum((bc - bc0) * bn, axis=1)          # how far each cage vertex sank along its normal
 shrink = smooth_field(shrink, bed, 6)
-bc = bc - bn * (shrink * 0.85)[:, None]
+bc = bc - bn * (shrink * 1.0)[:, None]
 bme.vertices.foreach_set("co", bc.ravel()); bme.update()
 mr.levels = 0
 ss = body.modifiers.new("ss", "SUBSURF"); ss.levels = 3; ss.render_levels = 3
@@ -156,12 +156,13 @@ co = co_s + (co - co_s) * detail[:, None]
 co = laplace(co, ed, np.clip(w_torso + w_leg + 0.6 * w_arm, 0, 1) * (1 - detail), 40)
 # a broad, full chest and shoulders (Seokguram's shoulders ~2.9 face widths): widen the upper torso a little
 up = smoothstep(1.05, 1.30, co[:, 2]) * np.clip(w_torso + wsum("clav.L", "clav.R") + 0.6 * w_arm, 0, 1) * (1 - w_head)
-co[:, 0] *= 1 + 0.07 * up
+co[:, 0] *= 1 + 0.11 * up
 # the head a touch larger (statue canon), about the top of the neck
 piv = np.array(H @ rig.pose.bones["head"].bone.head_local)
 Rs = to_rest(co)
 w_sc = smoothstep(1.39, 1.50, Rs[:, 2]) * (np.sqrt(Rs[:, 0] ** 2 + (Rs[:, 1] + 0.01) ** 2) < 0.16) * (1 - np.clip(w_hand * 2, 0, 1))
 HEAD_K = 0.12
+FACE_W = 0.10     # the face a fuller, wider oval (pass 2: 0.07 -> 0.10)
 co += (w_sc[:, None] * HEAD_K) * (co - piv)
 piv_r = to_rest(piv[None, :])[0]
 
@@ -170,7 +171,7 @@ def warp_rest(R_):
     """the head's own growth and the wider face, in the head's rest frame (for the pieces added in that frame)"""
     R_ = piv_r + (R_ - piv_r) * (1 + HEAD_K)
     f = smoothstep(-0.02, -0.07, R_[:, 1]) * smoothstep(1.47, 1.50, R_[:, 2]) * (1 - smoothstep(1.60, 1.64, R_[:, 2]))
-    R_[:, 0] *= 1 + 0.07 * f
+    R_[:, 0] *= 1 + FACE_W * f
     return R_
 
 
@@ -178,7 +179,7 @@ def unwarp_rest(R_):
     """back to the measured landmarks' frame (the carving below is written against the base mesh's own face)"""
     R_ = R_.copy()
     f = smoothstep(-0.02, -0.07, R_[:, 1]) * smoothstep(1.47, 1.50, R_[:, 2]) * (1 - smoothstep(1.60, 1.64, R_[:, 2]))
-    R_[:, 0] /= 1 + 0.07 * f
+    R_[:, 0] /= 1 + FACE_W * f
     return piv_r + (R_ - piv_r) / (1 + HEAD_K)
 
 # earlobes: long, as on every Buddha — stretch the ear below its middle downward in the head's rest frame
@@ -192,9 +193,19 @@ co = np.where(ear[:, None], from_rest(R), co)
 log("ears", int(ear.sum()))
 R = to_rest(co)
 fw = w_head * smoothstep(-0.02, -0.07, R[:, 1]) * smoothstep(1.47, 1.50, R[:, 2]) * (1 - smoothstep(1.60, 1.64, R[:, 2]))
-R[:, 0] *= 1 + 0.07 * fw
+R[:, 0] *= 1 + FACE_W * fw
 co = np.where((w_head > 0.01)[:, None], from_rest(R), co)
 me.vertices.foreach_set("co", co.astype(np.float32).ravel()); me.update()
+# pass 2: ample, soft forms — a full chest and broad soft shoulders, rounded arms, a thicker neck (no gym anatomy left)
+nrm0 = vnormals(me)
+Rn = to_rest(co)
+neck_z = smoothstep(1.37, 1.41, Rn[:, 2]) * (1 - smoothstep(1.44, 1.465, Rn[:, 2])) * (np.sqrt(Rn[:, 0] ** 2 + (Rn[:, 1] + 0.01) ** 2) < 0.09)
+infl = (0.011 * np.clip(w_torso + wsum("clav.L", "clav.R"), 0, 1) * smoothstep(0.95, 1.15, co[:, 2])
+        + 0.006 * np.clip(w_arm, 0, 1) + 0.005 * neck_z) * (1 - np.clip(w_hand * 2, 0, 1)) * (1 - np.clip(w_head - neck_z, 0, 1))
+infl = smooth_field(infl, ed, 30)
+co = co + nrm0 * infl[:, None]
+me.vertices.foreach_set("co", co.astype(np.float32).ravel()); me.update()
+log("inflated", float(infl.max()))
 
 # ---------------- robe mask (1 = under the robe) ----------------
 x, y, z = co[:, 0], co[:, 1], co[:, 2]
@@ -271,11 +282,13 @@ pb = rig.pose.bones
 P = lambda n, end: rig.matrix_world @ (pb[n].tail if end else pb[n].head)
 for s in "LR":
     hip, knee, ank = P(f"thigh.{s}", 0), P(f"thigh.{s}", 1), P(f"shin.{s}", 1)
-    capsule(hip + Vector((0, 0.0, -0.01)), knee, 0.115)
-    capsule(knee, ank, 0.085)
-    capsule(ank, P(f"foot.{s}", 1), 0.06)
-ellip((0, -0.17, 0.91), (0.17, 0.12, 0.05), 1.0)
-ellip((0, -0.03, 0.93), (0.17, 0.10, 0.07), 1.0)
+    capsule(hip + Vector((0, 0.0, -0.01)), knee, 0.135)
+    capsule(knee, ank, 0.105)
+    capsule(ank, P(f"foot.{s}", 1), 0.075)
+ellip((0, -0.17, 0.91), (0.22, 0.14, 0.06), 1.0)
+ellip((0, -0.03, 0.93), (0.20, 0.12, 0.08), 1.0)
+for s_ in (1, -1):    # the knees: broad and solid under the cloth
+    ellip((s_ * 0.33, -0.31, 0.86), (0.10, 0.10, 0.075), 1.0)
 dg = bpy.context.evaluated_depsgraph_get()
 lme = bpy.data.meshes.new_from_object(lapo.evaluated_get(dg), depsgraph=dg)
 bpy.data.objects.remove(lapo); lap = obj_from("lap", lme)
@@ -370,14 +383,14 @@ g_nose = np.exp(-((gx / 0.019) ** 4 + ((gz - 1.548) / 0.032) ** 4)) * smoothstep
 g_lips = np.exp(-((gx / 0.030) ** 4 + ((gz - 1.503) / 0.013) ** 4)) * smoothstep(-0.10, -0.125, gy)
 g_ears = smoothstep(0.068, 0.080, np.abs(gx)) * (gy > -0.085)
 g_head = np.sqrt(gx ** 2 + (gy + 0.01) ** 2 + (gz - 1.57) ** 2) < 0.15
-fsU = g_head * (uw("head") > 0.3) * np.clip(1 - 0.95 * g_nose - 0.9 * g_lips - 0.95 * g_ears, 0, 1) * smoothstep(-0.02, -0.07, gy) * smoothstep(1.47, 1.49, gz) * (1 - smoothstep(1.63, 1.66, gz))
+fsU = g_head * (uw("head") > 0.3) * np.clip(1 - 0.70 * g_nose - 0.15 * g_lips - 0.95 * g_ears, 0, 1) * smoothstep(-0.02, -0.07, gy) * smoothstep(1.47, 1.49, gz) * (1 - smoothstep(1.63, 1.66, gz))
 fsU = smooth_field(fsU, ued, 6)
 _c0 = uco.copy()
 # (on the face's own vertices only: a few hundred passes are cheap there)
 sel = np.where(fsU > 0.002)[0]
 remap = -np.ones(len(uco), np.int64); remap[sel] = np.arange(len(sel))
 e_in = ued[(remap[ued[:, 0]] >= 0) & (remap[ued[:, 1]] >= 0)]
-sub = laplace(uco[sel], remap[e_in], fsU[sel], 420, lam=0.5, mu=0.5)
+sub = laplace(uco[sel], remap[e_in], fsU[sel], 650, lam=0.5, mu=0.5)
 uco[sel] = sub
 # a light general clean-up of voxel steps (not the hands, not the face features)
 uco = laplace(uco, ued, 0.6 * (1 - np.clip(uw("hand.L", "hand.R") * 2, 0, 1)) * (1 - fsU), 4)
@@ -434,10 +447,10 @@ for s, bn_ in [(s_, b_) for s_ in "LR" for b_ in ("shin", "thigh")]:
     ang = np.arctan2(perp @ ref2, perp @ ref)
     better = dperp < best
     best = np.where(better, dperp, best)
-    phase = np.where(better, ang / (2 * np.pi) * 9 + tpar / L * 0.9, phase)
+    phase = np.where(better, ang / (2 * np.pi) * 7 + tpar / L * 1.1, phase)
     fade = np.where(better, smoothstep(-0.05, 0.12, tpar) * (1 - smoothstep(L * 0.85, L * 1.1, tpar)), fade)
 top = smoothstep(0.86, 0.95, uco[lap_i, 2])
-disp[lap_i] += 0.0034 * fade * top * (ridge(phase) - 0.35)
+disp[lap_i] += 0.0050 * fade * top * (ridge(phase) - 0.35)
 
 # ---- the head: neck rings, brows, eye slits, 백호, smile (head rest frame)
 Rr = unwarp_rest(to_rest(uco))
@@ -467,11 +480,28 @@ for s in (1, -1):
     taper = np.clip(1 - v ** 2, 0, 1) ** 0.6
     disp -= face * 0.0011 * taper * np.exp(-((zh - zs) / 0.0007) ** 2)
     disp += face * 0.00035 * taper * np.exp(-((zh - zs - 0.0013) / 0.0009) ** 2)     # the lid's lower rim catches the light
-    # the faint smile: the corners of the mouth tucked in and lifted
-    dmc = np.sqrt((ex - 0.0225) ** 2 + (zh - 1.5060) ** 2)
-    disp -= face * 0.0007 * np.exp(-(dmc / 0.0026) ** 2)
-    disp += face * 0.0007 * np.exp(-(np.sqrt((ex - 0.019) ** 2 + (zh - 1.5045) ** 2) / 0.004) ** 2)
-    disp += face * 0.0012 * np.exp(-(np.sqrt((ex - 0.032) ** 2 + (zh - 1.515) ** 2) / 0.010) ** 2)  # full cheeks
+    # full, soft cheeks and a round jaw (the gentle oval)
+    disp += face * 0.0030 * np.exp(-(((ex - 0.036) / 0.016) ** 2 + ((zh - 1.522) / 0.018) ** 2))
+    disp += face * 0.0008 * np.exp(-(((ex - 0.045) / 0.012) ** 2 + ((zh - 1.500) / 0.014) ** 2))
+    # the nose's soft wings (no flare)
+    disp += face * 0.0005 * np.exp(-(((ex - 0.0105) / 0.0050) ** 2 + ((zh - 1.5390) / 0.0045) ** 2))
+# the idealised nose: one straight ridge from the brows to a soft, rounded tip
+tn = np.clip((1.592 - zh) / (1.592 - 1.539), 0, 1)
+wn = 0.0055 + 0.0045 * tn
+disp += face * 0.0016 * tn ** 0.7 * np.exp(-(xh / wn) ** 2) * (zh > 1.535) * smoothstep(1.533, 1.540, zh)
+disp += face * 0.0006 * np.exp(-((xh / 0.0070) ** 2 + ((zh - 1.542) / 0.0050) ** 2))
+# a small, full mouth with a faint smile: the parting line rises at its corners, a bowed upper lip, a full lower lip
+axm = np.abs(xh)
+zm = 1.5040 + 0.0016 * (axm / 0.0175) ** 2
+inm = (axm < 0.0185)
+disp -= face * inm * 0.0012 * np.exp(-((zh - zm) / 0.0007) ** 2) * (1 - smoothstep(0.014, 0.0185, axm))
+disp += face * 0.0013 * np.exp(-((xh / 0.015) ** 2 + ((zh - 1.5072) / 0.0026) ** 2)) * (1 - 0.35 * np.exp(-(xh / 0.003) ** 2))
+disp += face * 0.0019 * np.exp(-((xh / 0.0135) ** 2 + ((zh - 1.5005) / 0.0030) ** 2))
+disp -= face * 0.0006 * np.exp(-((xh / 0.012) ** 2 + ((zh - 1.4945) / 0.0018) ** 2))       # the soft hollow under the lower lip
+disp += face * 0.0013 * np.exp(-((xh / 0.016) ** 2 + ((zh - 1.483) / 0.009) ** 2))        # a full, round chin
+for s in (1, -1):
+    dmc = np.sqrt((s * xh - 0.0195) ** 2 + (zh - 1.5068) ** 2)
+    disp -= face * 0.0006 * np.exp(-(dmc / 0.0022) ** 2)                                    # the smile's tucked corners
 # 백호: a small round boss between the brows
 dur = np.sqrt(xh ** 2 + (zh - 1.6000) ** 2)
 disp += face * 0.0022 * np.sqrt(np.clip(1 - (dur / 0.0036) ** 2, 0, 1))
