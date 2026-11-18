@@ -20,8 +20,8 @@ import { sky } from "./skyRuntime";
 const NGP = equatorialUnit((192.85948 * Math.PI) / 180, (27.12825 * Math.PI) / 180);
 const GC = equatorialUnit((266.40499 * Math.PI) / 180, (-28.93617 * Math.PI) / 180);
 
-/** The moon's drawn radius: the real 0.26° drawn 1.6x (a true-size moon reads as a dot on a phone). */
-export const MOON_RADIUS_DEG = 0.42;
+/** The moon's drawn radius: the real 0.26° drawn 3x (a true-size moon reads as a dot on a phone). */
+export const MOON_RADIUS_DEG = 0.8;
 const MOON_SPHERE_R = 1380;
 
 /** The current moon (recomputed every 30 s of village time) and its apparent altitude. */
@@ -184,7 +184,8 @@ void main() {
   vec2 p = vP * uScale;     // in disc radii
   float r = length(p);
   vec3 tint = vec3(1.0, 0.96, 0.88);
-  vec3 outc = tint * (0.16 / (1.0 + r * r * 1.8)); // the soft glow round the moon
+  // the soft glow round the moon, faded out well inside the plane's edge (a bigger moon showed the plane's square: night audit 2026-11-18)
+  vec3 outc = tint * (0.16 / (1.0 + r * r * 1.8)) * (1.0 - smoothstep(0.45, 0.98, max(abs(vP.x), abs(vP.y))));
   if (r < 1.0) {
     float disc = 1.0 - smoothstep(0.93, 1.0, r);
     float chord = sqrt(max(1.0 - r * r, 0.0));

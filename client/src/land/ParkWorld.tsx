@@ -53,6 +53,8 @@ import { parkSkyTexture } from "./parkSkyTexture";
 import { ALL_PARK_URLS, featherTexture, parkMaterial, pickSet } from "./pbr";
 import { addBellRoof, addHedge, addLathe } from "./parkShapes";
 import { boxwoodTextures } from "./boxwoodTexture";
+import { dayNight } from "../village/dayNightDriver";
+import { BulbHalos, LampPools } from "./nightGlow";
 
 const MARBLE_URL = (isTouchDevice ? "/textures/houses/lo/" : "/textures/houses/hi/") + "T_h_stone.webp";
 const PINE_URL = (isTouchDevice ? "/textures/houses/lo/" : "/textures/houses/hi/") + "T_h_wood_pine.webp";
@@ -68,12 +70,17 @@ function ParkSky() {
   const ref = useRef<Mesh>(null);
   const geo = useMemo(() => new SphereGeometry(1450, 48, 24), []);
   const map = useMemo(() => parkSkyTexture(), []);
+  const mat = useRef<MeshBasicMaterial>(null);
   useFrame(({ camera }) => {
     ref.current?.position.copy(camera.position);
+    // the day's dome painted dark and blue with the clock (night audit 2026-11-18: it stayed a pastel noon sky at midnight); the stars
+    // and the moon are drawn over it by the village's sky
+    const t = dayNight.applied.domeTint;
+    mat.current?.color.setRGB(t[0], t[1], t[2]);
   });
   return (
     <mesh ref={ref} geometry={geo} renderOrder={-10} frustumCulled={false}>
-      <meshBasicMaterial map={map} side={BackSide} depthWrite={false} fog={false} toneMapped={false} />
+      <meshBasicMaterial ref={mat} map={map} side={BackSide} depthWrite={false} fog={false} toneMapped={false} />
     </mesh>
   );
 }
@@ -144,6 +151,11 @@ function Ground({ all }: { all: Texture[] }) {
     m.customProgramCacheKey = () => "park-grass-variation";
     return m;
   }, [all]);
+  // the sunny lime lawn cools to a dark moonlit green with the night (the village's lawns do the same: GROUND_GRADE_NIGHT)
+  useFrame(() => {
+    const n = dayNight.applied.night;
+    grass.color.setRGB(0.4 + (0.2 - 0.4) * n, 1.2 + (0.5 - 1.2) * n, 0.26 + (0.32 - 0.26) * n);
+  });
   const terrain = useMemo(() => buildParkTerrain(), []);
   const plazaGeo = useMemo(() => new CircleGeometry(PARK_PLAZA.radius, 64), []);
   // the brass inlays are set into the paving, not painted on it: a 1.2 cm bevelled bar, a darker joint either side
@@ -441,6 +453,8 @@ function Fountain({ all, env }: { all: Texture[]; env: Texture }) {
 // ───────────────────────────────────────── trees, lamps, flowers, benches ─────────────────────────────────────────
 
 function Lamps() {
+  const lampSpots = useMemo(() => PARK_LAMPS.map((l) => ({ x: l.x, z: l.z })), []);
+  const halos = useMemo(() => PARK_LAMPS.map((l) => [l.x, 4.45, l.z] as const), []);
   const post = useRef<InstancedMesh>(null);
   const bulb = useRef<InstancedMesh>(null);
   const postGeo = useMemo(() => new CylinderGeometry(0.07, 0.11, 4.2, 8), []);
@@ -458,8 +472,14 @@ function Lamps() {
     if (post.current) post.current.instanceMatrix.needsUpdate = true;
     if (bulb.current) bulb.current.instanceMatrix.needsUpdate = true;
   }, []);
+  // the bulbs burn brighter at night (the halos and the pools on the paving come from nightGlow.tsx)
+  useFrame(() => {
+    bulbMat.emissiveIntensity = 1.2 + 2.2 * dayNight.applied.lights;
+  });
   return (
     <group>
+      <LampPools places={lampSpots} radius={5.2} strength={0.4} />
+      <BulbHalos places={halos} size={2.6} />
       <instancedMesh frustumCulled={false} ref={post} args={[postGeo, postMat, PARK_LAMPS.length]} castShadow />
       <instancedMesh frustumCulled={false} ref={bulb} args={[bulbGeo, bulbMat, PARK_LAMPS.length]} />
     </group>
