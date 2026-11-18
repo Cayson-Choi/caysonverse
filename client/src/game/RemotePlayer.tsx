@@ -37,6 +37,12 @@ import { AVATAR_LOD, avatarTreeCadence, behindCamera, crowdForce, crowdLodOff } 
 import { useCrowd } from "./crowdLayer";
 import { setFadeCut } from "./avatarFade";
 import { IMPOSTOR_FADE_PER_S, impostorColors, wantsImpostor } from "./crowdImpostor";
+
+/**
+ * The far stand-ins (crowdImpostor.ts) are OFF (owner 2026-11-19: "여려명 들어온다고 캐릭터 모양을 이상한걸로 바꾸지마 이상해").
+ * Every avatar is always drawn as itself; the crowd budget is kept by the slower refresh of far / still avatars instead.
+ */
+const CROWD_STAND_INS = false;
 import { typingRegistry } from "./typing";
 import {
   JUMP_FADE_IN_S,
@@ -891,7 +897,7 @@ export function RemotePlayer({
     // 6b) Far stand-in (crowdImpostor.ts): a standing or walking avatar well away from the camera is one instance of the crowd
     //     mesh — no mixer, no node tree, no draws of its own. Hysteresis between ENTER and EXIT; anything but a plain ground
     //     avatar (seated, getting up, hopping, fishing, ghosted) stays a full avatar.
-    if (crowd && !crowdLodOff()) {
+    if (crowd && CROWD_STAND_INS && !crowdLodOff()) {
       const eligible =
         !!target && seat.mode === "up" && jumpSeqRef.current === -1 && rec.connected && !hasRod && !fishRig.needsTick();
       if (!eligible) {
