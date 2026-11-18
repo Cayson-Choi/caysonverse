@@ -43,7 +43,13 @@ export const OV_BLEND_SEC = 0.3;
  * vertical so `lookAt` never flips.
  */
 export const FP_PITCH_MIN = -1.5;
-export const FP_PITCH_MAX = 1.2;
+/**
+ * Down to 1.4 (80°): the floor at the feet comes into view (owner 2026-11-18, the bus: "바닥을 더 보고 싶은데 못보는 경우도 많아").
+ * Still 10° short of straight down, so `lookAt` never flips.
+ */
+export const FP_PITCH_MAX = 1.4;
+/** The rides (coaster, carousel, wheel) stop their look at 1.2 themselves (land/coasterRide.ts): the drag stops there too on a ride. */
+export const RIDE_PITCH_MAX = 1.2;
 /** While the star finder is open the look reaches (all but) the zenith: 0.7 deg short of straight up, so the camera's up vector never flips. */
 export const SKY_PITCH_MIN = -(Math.PI / 2 - 0.012);
 

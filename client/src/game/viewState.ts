@@ -104,6 +104,22 @@ export function fpBodyYaw(fpYaw: number): number {
   return normalizeAngle(fpYaw + Math.PI);
 }
 
+/** The play shell's own first / third person toggle (it holds the orbit), for a button outside it (the bus's ride panel). */
+let viewToggler: (() => void) | null = null;
+
+/** PlayShell registers its toggle while it is mounted; the returned function unregisters it. */
+export function setViewToggler(fn: () => void): () => void {
+  viewToggler = fn;
+  return () => {
+    if (viewToggler === fn) viewToggler = null;
+  };
+}
+
+/** Toggle first / third person from outside the play shell (the bus's "1인칭 / 3인칭으로 보기"); nothing when no shell is up. */
+export function requestViewToggle(): void {
+  viewToggler?.();
+}
+
 /** Toggle between modes (V key / 👁 button). Reads/writes orbit.yaw for seeding. */
 export function toggleViewMode(orbit: Orbit): void {
   if (viewState.mode === "tp") enterFp(orbit.yaw);

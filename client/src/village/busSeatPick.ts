@@ -1,4 +1,4 @@
-import { BUS_SEATS, BUS_SEAT_BACKS, BUS_SOLIDS } from "@caysonverse/shared/village/busCabin";
+import { BUS_CABIN_BOUNDS, BUS_HALF_WIDTH, BUS_SEATS, BUS_SEAT_BACKS, BUS_SOLIDS, BUS_WALK_RADIUS, cabinBlocked, cabinFloorAt } from "@caysonverse/shared/village/busCabin";
 
 /**
  * Bus v3 (owner 2026-11-16: "버스에 있는 의자에는 어디든 앉을 수 있게"): which of the bus's seats a tap or a click points at. The
@@ -79,4 +79,38 @@ export function busSeatUnderRay(
     }
   });
   return best;
+}
+
+/**
+ * Owner 2026-11-18 ("버스안에서 이동이 잘 안되고"): where a world ray meets the cabin's floor, as a spot a rider can stand on
+ * (bus-local ahead / right), or null (the ray goes up, out of a window, or past the cabin's ends). A spot inside a seat block or
+ * a fixture is moved across to the aisle at the same row; none there either: null.
+ */
+export function busFloorUnderRay(
+  bus: { x: number; z: number; yaw: number },
+  origin: { x: number; y: number; z: number },
+  dir: { x: number; y: number; z: number },
+): { ahead: number; right: number } | null {
+  if (dir.y > -1e-3) return null;
+  const fx = Math.sin(bus.yaw);
+  const fz = Math.cos(bus.yaw);
+  const ox = origin.x - bus.x;
+  const oz = origin.z - bus.z;
+  const oA = ox * fx + oz * fz;
+  const oR = -ox * fz + oz * fx;
+  const dA = dir.x * fx + dir.z * fz;
+  const dR = -dir.x * fz + dir.z * fx;
+  // the floor is flat (bus v3): its height at the ray's own point is the floor everywhere
+  const floor = cabinFloorAt(oA, oR);
+  const t = (floor - origin.y) / dir.y;
+  if (!(t > 0)) return null;
+  const ahead = oA + dA * t;
+  const right = oR + dR * t;
+  if (Math.abs(right) > BUS_HALF_WIDTH || ahead < BUS_CABIN_BOUNDS.aheadMin || ahead > BUS_CABIN_BOUNDS.aheadMax) return null;
+  const inner = BUS_HALF_WIDTH - BUS_WALK_RADIUS - 0.01;
+  const a = Math.max(BUS_CABIN_BOUNDS.aheadMin + BUS_WALK_RADIUS + 0.01, Math.min(BUS_CABIN_BOUNDS.aheadMax - BUS_WALK_RADIUS - 0.01, ahead));
+  const r = Math.max(-inner, Math.min(inner, right));
+  if (!cabinBlocked(a, r)) return { ahead: a, right: r };
+  if (!cabinBlocked(a, 0)) return { ahead: a, right: 0 };
+  return null;
 }
