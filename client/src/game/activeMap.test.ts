@@ -7,15 +7,34 @@ import {
   activeMapVersion,
   activeSeats,
   getActiveMap,
+  mapBounds,
   setActiveMap,
   villageActiveMap,
   type ActiveMap,
 } from "./activeMap";
 import { cameraBoxes } from "./cameraCollision";
+import { planClickMove, walkThere } from "./clickPlan";
+import { seatThroughFloor } from "./furnitureClick";
+import { seatUnderTap } from "./seatTap";
 
 afterEach(() => setActiveMap(VILLAGE_ACTIVE_MAP));
 
 describe("activeMap (the map seam)", () => {
+  it("a ground tap between outdoor café chairs walks next to them from the terrace seat", () => {
+    const map = VILLAGE_ACTIVE_MAP;
+    const seats = VILLAGE_SEATS;
+    const seat = seats.find((s) => s.id === "cafe_terrace_1")!;
+    const from = { x: seat.standX, z: seat.standZ };
+    const bounds = mapBounds(map);
+    const ground = { x: 41.35, y: 0.01, z: -20.2, ny: 1 };
+    const ray = { o: { x: ground.x, y: 6, z: ground.z }, d: { x: 0, y: -1, z: 0 } };
+    expect(seatUnderTap(seats, ground.x, ground.y, ground.z)).toBe(-1);
+    expect(seatThroughFloor(ground, ray, seats, map.seatArea, () => false, from, map.furniture!)).toBeNull();
+    const plan = planClickMove(from.x, from.z, ground, map.geometry.obstacles, bounds, true, { furniture: map.furniture });
+    expect(plan).toMatchObject({ ok: true, adjusted: "pushed" });
+    if (plan.ok) expect(walkThere(from.x, from.z, plan.x, plan.z, map.geometry.obstacles, bounds, plan.via).arrived).toBe(true);
+  });
+
   it("starts on the open village: its geometry and its name", () => {
     expect(getActiveMap()).toBe(VILLAGE_ACTIVE_MAP);
     expect(VILLAGE_ACTIVE_MAP.geometry).toBe(villageGeometry);
