@@ -6,8 +6,8 @@
  *   ring 0 (outer, radius 9.6 m):   12 horses, seats 0..11
  *   ring 1 (middle, radius 6.6 m):   8 horses, seats 12..19
  *   ring 2 (inner, radius 3.8 m):    2 carriages of two seats, seats 20..23
- * The horses rise and fall on brass poles (alternate ones in step), faster with the turning. The ride: 5 s unloading, 19 s boarding, 6 s gate,
- * then 110 s: 10 s getting up to speed, 85 s at 4 rpm, 15 s slowing; one cycle is 140 s.
+ * The horses rise and fall on brass poles (alternate ones in step), faster with the turning. The ride: 5 s unloading, 29 s boarding (a person walking up from afar must make it), 6 s gate,
+ * then 110 s: 10 s getting up to speed, 85 s at 4 rpm, 15 s slowing; one cycle is 150 s.
  */
 
 export const CAROUSEL_CENTER = Object.freeze({ x: 110, z: -135 });
@@ -25,7 +25,7 @@ export const CAROUSEL_RINGS = Object.freeze([
 export const CAROUSEL_SEATS = 24;
 
 export const CAROUSEL_UNLOAD_MS = 5000;
-export const CAROUSEL_DWELL_MS = 30_000;
+export const CAROUSEL_DWELL_MS = 40_000;
 export const CAROUSEL_GATE_MS = 6000;
 export const CAROUSEL_RIDE_MS = 110_000;
 export const CAROUSEL_CYCLE_MS = CAROUSEL_DWELL_MS + CAROUSEL_RIDE_MS;

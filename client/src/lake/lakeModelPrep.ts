@@ -19,7 +19,7 @@
 // Everything here works on CLONES of the cached glTF scenes; the materials are the loader's, changed idempotently.
 
 import { groundOld } from "../village/ground/groundMode";
-import { wornEdges } from "./lakeTrailEdge";
+import { clipAtSidewalk, wornEdges } from "./lakeTrailEdge";
 import {
   BufferAttribute,
   BufferGeometry,
@@ -123,6 +123,8 @@ export function prepareLakeTerrain(root: Object3D, day: Texture, night: Texture 
       // the trail and the office's yard: a worn, ragged edge instead of a hard-cut sticker (lakeTrailEdge.ts)
       const worn = wornEdges(mesh.geometry);
       if (worn) mesh.geometry = worn;
+      // the trail's mouth: lake.glb's dirt starts 0.5 m on the ring's cobble; it ends flush against the sidewalk's stone band instead
+      if (mesh.material.name === "LM_dirt") mesh.geometry = clipAtSidewalk(mesh.geometry) ?? mesh.geometry;
     }
     for (const m of materialsOf(mesh)) {
       if (m.name.startsWith("LM_")) {
@@ -277,10 +279,16 @@ export function prepareLakeStructures(root: Object3D, day: Texture | null = null
   return { glows, lampHeads, own };
 }
 
+/** The `exposureKeep` of the mornings / afternoons the ridge's colour was tuned at (09:00 and 15:30 are about 1.24). */
+export const RIDGE_KEEP_REF = 1.24;
+
 /** Per frame: the time of day on the lake's own parts (the shared village uniforms are already written by the village). */
 export function lakeDayNight(d: Pick<LakeDressed, "glows" | "hazed" | "graded">, s: DayNightState): void {
   lakeNightBlend.value = lakeNightMap.value || structuresNightMap.value ? s.night : 0;
-  for (const m of d.hazed) m.color.setRGB(s.hazeTint[0], s.hazeTint[1], s.hazeTint[2]);
+  // the ridge is an unlit material: the exposure's sun adaptation (a high noon sun lowers the exposure, `exposureKeep` takes it back on the lit
+  // ground) dimmed it by ~14 % at 12:30 only, a darker band of forest south of the lake. Kept level from the 09:00 / 15:30 value up.
+  const ridgeKeep = Math.max(1, s.exposureKeep / RIDGE_KEEP_REF);
+  for (const m of d.hazed) m.color.setRGB(s.hazeTint[0] * ridgeKeep, s.hazeTint[1] * ridgeKeep, s.hazeTint[2] * ridgeKeep);
   for (const g of d.graded) {
     const n = s.night;
     g.material.color.setRGB(g.day[0]! + (g.night[0]! - g.day[0]!) * n, g.day[1]! + (g.night[1]! - g.day[1]!) * n, g.day[2]! + (g.night[2]! - g.day[2]!) * n);

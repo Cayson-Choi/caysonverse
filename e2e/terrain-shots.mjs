@@ -1,7 +1,7 @@
 /**
  * e2e/terrain-shots.mjs — photo-camera shots (window.__cvShot) of the village or 케이슨랜드 for terrain / map-edge checks.
  *   CV_CLIENT_URL=http://localhost:5477 node e2e/terrain-shots.mjs --spec=<json> [--out=<dir>] [--tag=after] [--area=village|park]
- *        [--time=12:30] [--device=desktop|phone] [--perf]
+ *        [--time=12:30] [--device=desktop|phone] [--perf] [--query=flora=old] [--probe=<js file, run before the shots>] [--post=<js file, run after them>]
  * spec: [{ "name": "ov_150_45", "x":..,"y":..,"z":..,"tx":..,"ty":..,"tz":..,"fov":60 }, ...]; HUD hidden.
  * With --perf, prints the median frame time, draw calls and triangles per shot.
  */
@@ -50,13 +50,15 @@ async function goTo(p, x, z, tol = 1.2) {
 const browser = await launchBrowser();
 const P = await openPlayer(browser, run, { tag: DEVICE, device: DEVICE === "phone" ? PHONE : DESKTOP, settings: { graphics: DEVICE === "phone" ? "low" : "high" } });
 try {
-  await P.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(`2026-11-16T${TIME}`)}`, { waitUntil: "domcontentloaded" });
+  await P.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(`2026-11-16T${TIME}`)}${opt("query", "") ? `&${opt("query", "")}` : ""}`, { waitUntil: "domcontentloaded" });
+  console.log("progress: entry");
   await entryReady(P);
   await P.page.locator("input.cv-input").first().fill(`지형${Math.floor(Math.random() * 900 + 100)}`);
   await press(P, P.page.locator(".cv-submit"));
   await P.page.waitForFunction(() => window.__cv?.getScreen?.() === "village", null, { timeout: 60000 });
   await P.page.waitForFunction(() => !!window.__cvVillage && !!window.__cvThree, null, { timeout: 120000 });
   await P.page.waitForFunction(() => !document.querySelector(".cv-loading"), null, { timeout: 60000 }).catch(() => {});
+  console.log("progress: in village");
   await sleep(4000);
   if (AREA === "park") {
     const g = await P.page.evaluate(async () => (await window.__imp("/village/parkArea.ts")).parkGateDoor().pad);
@@ -76,6 +78,8 @@ try {
     console.log(typeof out === "string" ? out : JSON.stringify(out, null, 1));
   }
   for (const s of spec) {
+    // `go: [x, z]`: walk the player there first (the lake file is asked for when the PLAYER comes near it, not the camera)
+    if (s.go) await goTo(P, s.go[0], s.go[1], 2.5);
     await P.page.evaluate((s) => {
       window.__cvShot = { x: s.x, y: s.y, z: s.z, tx: s.tx, ty: s.ty, tz: s.tz, fov: s.fov ?? 60 };
       const sc = window.__cvThree().scene;
@@ -85,21 +89,28 @@ try {
     }, s);
     await sleep(s.wait ?? (s === spec[0] ? 9000 : 2500));
     await run.shot(P, `${TAG}_${s.name}.png`);
+    console.log(`progress: shot ${s.name}`);
     if (args.includes("--perf")) {
       const r = await P.page.evaluate(
         () =>
           new Promise((res) => {
             const r3 = window.__cvThree().gl;
             const ts = [];
+            // a frame renders several passes (shadows, post chain): count them all, not just the last
+            r3.info.autoReset = false;
+            r3.info.reset();
             let last = performance.now();
             let n = 0;
+            r3.info.autoReset = false; // sum every pass of the frame (shadow cascades, scene, post), not only the last
+            r3.info.reset();
             const f = (t) => {
               ts.push(t - last);
               last = t;
               if (++n < 90) requestAnimationFrame(f);
               else {
                 ts.sort((a, b) => a - b);
-                res({ medianMs: Math.round(ts[45] * 10) / 10, calls: r3.info.render.calls, tris: r3.info.render.triangles });
+                r3.info.autoReset = true;
+                res({ medianMs: Math.round(ts[45] * 10) / 10, callsPerFrame: Math.round(r3.info.render.calls / 90), trisPerFrame: Math.round(r3.info.render.triangles / 90) });
               }
             };
             requestAnimationFrame(f);
@@ -108,6 +119,11 @@ try {
       console.log(`perf ${s.name} ${JSON.stringify(r)}`);
     }
   }
+  if (args.some((a) => a.startsWith("--post="))) {
+    const out = await P.page.evaluate(`(async()=>{${readFileSync(opt("post", ""), "utf8")}})()`);
+    console.log(typeof out === "string" ? out : JSON.stringify(out, null, 1));
+  }
+  if (run.errors.length) console.log(`console/page errors: ${JSON.stringify(run.errors.slice(0, 8), null, 1)}`);
 } finally {
   await browser.close();
 }

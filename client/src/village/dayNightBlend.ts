@@ -175,7 +175,7 @@ export const NIGHT_LOOK = {
    */
   cherryTint: [0.07, 0.08, 0.115] as Rgb,
   domeTint: [0.03, 0.05, 0.12] as Rgb,
-  hazeTint: [0.075, 0.1, 0.19] as Rgb,
+  hazeTint: [0.045, 0.063, 0.125] as Rgb,
   waterTint: [0.12, 0.2, 0.42] as Rgb,
 };
 

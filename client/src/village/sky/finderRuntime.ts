@@ -12,7 +12,7 @@ import { altAzOf, angleDeg, nextSunset, seasonAt, type Vec3 } from "@caysonverse
 import { kstClock } from "@caysonverse/shared/village/sunClock";
 import { clampFpPitch } from "../../game/viewMode";
 import { normalizeAngle } from "../../game/yaw";
-import { viewState } from "../../game/viewState";
+import { SKY_FOV_MIN, setSkyZoomGoal, viewState } from "../../game/viewState";
 import { anchorDirection, eqDirection, sky, starAltitudes, starDirection, type FigureGeom } from "./skyRuntime";
 import {
   BRIGHT_STAR_MAG,
@@ -52,6 +52,7 @@ export const skyOverlay = {
   arrow: null as HTMLElement | null,
   arrowText: null as HTMLElement | null,
   look: null as HTMLElement | null,
+  zoomText: null as HTMLElement | null,
   card: null as HTMLElement | null,
   labels: [] as HTMLElement[],
 };
@@ -93,7 +94,9 @@ const rt = {
   cardRect: null as null | { l: number; t: number; r: number; b: number },
   /** The camera turn toward a picked figure (look yaw / pitch, rad) and the yaw we last wrote (to see the player take over). */
   rowText: "",
-  turn: null as null | { yaw: number; altRad: number; below: number; lastYaw: number; lastPitch: number },
+  turn: null as null | { yaw: number; altRad: number; below: number; spanDeg: number; zoomed?: boolean; lastYaw: number; lastPitch: number },
+  /** The zoom readout's last text (written only when it changes). */
+  zoomShown: 0,
 };
 
 const fwd = new Vector3();
@@ -127,6 +130,9 @@ export function finderProbe() {
     found: Object.keys(st.progress.found),
     aimInfo: st.aimInfo,
     lines: lineSpec.map((l) => ({ id: l.geom.figure.id, brightness: l.brightness })),
+    zoom: viewState.skyZoom,
+    zoomGoal: viewState.skyZoomGoal,
+    fov: viewState.skyFovBase * viewState.skyZoom,
   };
 }
 
@@ -148,6 +154,7 @@ export function resetFinderRuntime(): void {
     reticlePx: 0,
     cardBottom: 0,
     cardRect: null,
+    zoomShown: 0,
     turn: null,
     rowText: "",
   });
@@ -257,7 +264,11 @@ export function selectFigure(id: string): void {
   // The card covers the top of the screen (a phone: its top third), so the figure is brought to the lower part: `below` is
   // how far under the middle (share of the screen height) it ends up.
   const portrait = typeof window !== "undefined" && window.innerHeight > window.innerWidth;
-  rt.turn = { yaw: Math.atan2(-d[0], -d[2]), altRad: Math.asin(Math.max(-1, Math.min(1, d[1]))), below: portrait ? 0.2 : 0.08, lastYaw: NaN, lastPitch: NaN };
+  // how wide the figure is on the sky (twice its farthest star from the aim point): the lens narrows to frame it
+  let reach = 0;
+  for (const i of g.stars) reach = Math.max(reach, angleDeg(d, starDirection(i, dirB)));
+  rt.turn = { yaw: Math.atan2(-d[0], -d[2]), altRad: Math.asin(Math.max(-1, Math.min(1, d[1]))), below: portrait ? 0.2 : 0.08, spanDeg: reach * 2, lastYaw: NaN, lastPitch: NaN };
+  if (first) patchFinder({ discovery: { id, at: Date.now() } });
   rt.lastRefresh = -Infinity; // refresh the picture and the words now
 }
 
@@ -269,7 +280,8 @@ export function clearSelection(): void {
 }
 
 /** Ease the first-person view toward the picked figure; stops when the player turns the view themselves. */
-function stepTurn(dt: number, fovDeg: number): void {
+function stepTurn(dt: number): void {
+  let fovDeg: number;
   const t = rt.turn;
   if (!t) return;
   if (viewState.mode !== "fp") {
@@ -280,6 +292,15 @@ function stepTurn(dt: number, fovDeg: number): void {
     rt.turn = null; // the player's own drag
     return;
   }
+  if (!t.zoomed) {
+    t.zoomed = true;
+    // the vertical fov that shows the whole figure with some air round it (a tall phone: its narrow width decides)
+    const need = Math.max(SKY_FOV_MIN, t.spanDeg * 1.6);
+    const aspect = typeof window !== "undefined" ? window.innerWidth / Math.max(1, window.innerHeight) : 1.6;
+    const vfov = aspect < 1 ? (2 * Math.atan(Math.tan((need * Math.PI) / 360) / aspect) * 180) / Math.PI : need;
+    setSkyZoomGoal(vfov / Math.max(1, viewState.skyFovBase));
+  }
+  fovDeg = viewState.skyZoomGoal * viewState.skyFovBase;
   const dy = normalizeAngle(t.yaw - viewState.fpYaw);
   // looking above the figure by `below` of the view's height puts it that far under the middle
   const goalPitch = clampFpPitch(-(t.altRad + t.below * ((fovDeg * Math.PI) / 180)), true);
@@ -330,7 +351,7 @@ export function finderFrame(camera: PerspectiveCamera, dt: number, width: number
   fwdArr[2] = fwd.z;
 
   // the guide: the view turns to the pick; the arrow shows the way while it is off screen
-  if (picking) stepTurn(dt, camera.fov);
+  if (picking) stepTurn(dt);
   else rt.turn = null;
   if (g && !rt.turn) {
     anchorDirection(g, dirA);
@@ -355,6 +376,12 @@ export function finderFrame(camera: PerspectiveCamera, dt: number, width: number
     const { altDeg, azDeg } = altAzOf(fwdArr);
     const text = lookText(altDeg, azDeg);
     if (skyOverlay.look.textContent !== text) skyOverlay.look.textContent = text;
+  }
+
+  // the zoom readout ("×2.4"), written when it changes
+  if (skyOverlay.zoomText && Math.abs(rt.zoomShown - viewState.skyZoom) > 0.004) {
+    rt.zoomShown = viewState.skyZoom;
+    skyOverlay.zoomText.textContent = `×${(1 / viewState.skyZoom).toFixed(1)}`;
   }
 
   // ── lines and names ──
@@ -411,7 +438,9 @@ function arrow(camera: PerspectiveCamera, offAxisDeg: number, width: number, hei
 function buildLines(st: StarFinderState, night: boolean): void {
   lineSpec.length = 0;
   if (!night) return;
-  const showFound = st.open || st.progress.showFound;
+  // The found figures' lines stay on the sky only while "찾은 별자리 선 항상 켜두기" is on (card open or closed); the figure
+  // being looked at is drawn while the card is open.
+  const showFound = st.progress.showFound;
   for (const g of sky.figures) {
     const id = g.figure.id;
     if (st.open && id === st.targetId) {

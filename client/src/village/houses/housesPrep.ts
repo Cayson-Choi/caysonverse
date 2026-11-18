@@ -62,6 +62,8 @@ import { A7_MODEL_HOUSE_BOXES, A8_TREE_MOVES, modelHasA8Houses } from "@caysonve
 import { houseGardenCollider } from "@caysonverse/shared/village/houseExterior";
 import { VILLAGE_LAYOUT, type SceneryHouse } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_COLLIDERS } from "@caysonverse/shared/village/generated/villageColliders";
+import { deckHouseSurface, splitDeckTriangles } from "./deckPlanks";
+import { ridgeCaps } from "./roofRidge";
 import { versionedUrl } from "../modelUrl";
 import { LIT, litUniform } from "../villageModelPrep";
 import { SS_FRAGMENT_PARS, SS_VERTEX_PARS, SS_VERTEX_WORLD, bindSunShadowUniforms } from "../sunShadows";
@@ -206,15 +208,20 @@ export function patchHouseLight(m: MeshStandardMaterial, key: string): void {
  * world-space mottle (a few per cent of tint, drifting slightly in hue: each wall a little different, none stained); `foot` darkens
  * the first metre of wall a touch (the contact shade at the ground); `normal` is the relief's strength.
  */
-export const HOUSE_SURFACE: Record<string, { mean: number; gain: number; macro: number; foot: number; normal: number }> = {
-  LM_render: { mean: 0.822, gain: 4.2, macro: 0.07, foot: 0.07, normal: 2.2 },
-  LM_stone: { mean: 0.37, gain: 4.5, macro: 0.08, foot: 0, normal: 2.0 },
-  LM_wood: { mean: 0.504, gain: 1.0, macro: 0.05, foot: 0, normal: 2.4 },
-  LM_roof: { mean: 0.16, gain: 1.15, macro: 0.05, foot: 0, normal: 1.4 },
+export const HOUSE_SURFACE: Record<string, { mean: number; gain: number; macro: number; foot: number; eave: number; sat: number; bright: number; normal: number; repeat: number; oakMean?: number; oakGain?: number }> = {
+  // eave: how much the wall just under the roof edge darkens (the soffit shades it: the ambient occlusion the lightmap-free walls lack)
+  LM_render: { mean: 0.822, gain: 4.2, macro: 0.07, foot: 0.13, eave: 0.2, sat: 1, bright: 1, normal: 2.2, repeat: 1 },
+  // the sandstone sheet is a scanned block face (Poly Haven mossy_sandstone, lichen taken out), 1 m x 1 m: real grain and relief
+  LM_stone: { mean: 0.394, gain: 1.0, macro: 0.07, foot: 0.06, eave: 0.12, sat: 0.55, bright: 1.18, normal: 1.5, repeat: 1 },
+  // the oak half is Poly Haven dark_wood's grain (oiled oak beams); the painted-board half is the first pass's
+  LM_wood: { mean: 0.504, gain: 1.0, macro: 0.04, foot: 0, eave: 0.1, sat: 0.62, bright: 1.05, normal: 2.6, repeat: 1, oakMean: 0.0405, oakGain: 1.9 },
+  // Poly Haven clay_roof_tiles_03 (a stamped plain-tile roof): its image spans ~1.5 m of roof, so the old 2 m tiling shrinks to 1.3
+  LM_roof: { mean: 0.168, gain: 1.1, macro: 0.05, foot: 0, eave: 0, sat: 0.86, bright: 0.96, normal: 1.7, repeat: 1.3 },
 };
 
 const SURFACE_PARS = /* glsl */ `uniform vec4 uSurf;
-uniform vec2 uSurf2;
+uniform vec3 uSurf2;
+uniform vec2 uSurf3;
 float srfHash( vec3 p ) {
 	p = fract( p * 0.3183099 + vec3( 0.1, 0.2, 0.3 ) );
 	p *= 17.0;
@@ -234,9 +241,16 @@ const SURFACE_COLOUR = /* glsl */ `#include <map_fragment>
 	float srL = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
 	float srR = srL / uSurf.x;
 	diffuseColor.rgb *= max( 0.15, 1.0 + ( srR - 1.0 ) * uSurf.y ) / max( srR, 0.05 );
+	// the oak half of the wood sheet (glTF v < 0.5): its grain stretched around its own mean, so dark beams still show their grain
+	float srOak = ( 1.0 - step( 0.5, vMapUv.y ) ) * step( 0.001, uSurf3.y );
+	float srOR = srL / max( uSurf3.x, 0.001 );
+	diffuseColor.rgb *= mix( 1.0, max( 0.2, 1.0 + ( srOR - 1.0 ) * uSurf3.y ) / max( srOR, 0.05 ), srOak );
 	float srN = srfNoise( vSsWorld * 0.55 ) * 0.65 + srfNoise( vSsWorld * 1.9 ) * 0.35 - 0.5;
 	diffuseColor.rgb *= vec3( 1.0 + srN * uSurf.z * 2.0, 1.0 + srN * uSurf.z * 1.0, 1.0 - srN * uSurf.z * 1.4 );
-	diffuseColor.rgb *= 1.0 - uSurf.w * ( 1.0 - smoothstep( 0.05, 1.0, vSsWorld.y ) ) * step( abs( vSsNormal.y ), 0.5 );
+	float srWall = step( abs( vSsNormal.y ), 0.5 );
+	diffuseColor.rgb *= 1.0 - uSurf.w * ( 1.0 - smoothstep( 0.05, 1.0, vSsWorld.y ) ) * srWall;
+	// the soffit's shade: the last metre of wall under the roof edge (the walls end at 7.2 m)
+	diffuseColor.rgb *= 1.0 - uSurf2.x * smoothstep( 6.0, 7.15, vSsWorld.y ) * ( 1.0 - smoothstep( 7.2, 7.7, vSsWorld.y ) ) * srWall;
 }`;
 
 /** Layer the surface character on a lit house material (after patchHouseLight: wraps its compile hook). */
@@ -247,13 +261,44 @@ export function enhanceHouseSurface(m: MeshStandardMaterial, name: string): void
   if (import.meta.env.DEV && typeof location !== "undefined" && new URLSearchParams(location.search).get("surf") === "off") return;
   const prev = m.onBeforeCompile;
   const uSurf = { value: new Vector4(spec.mean, spec.gain, spec.macro, spec.foot) };
+  const uSurf2 = { value: new Vector3(spec.eave, spec.sat, spec.bright) };
+  const uSurf3 = { value: new Vector2(spec.oakMean ?? 1, spec.oakGain ?? 0) };
   m.onBeforeCompile = (shader, r) => {
     prev.call(m, shader, r);
     shader.uniforms.uSurf = uSurf;
-    shader.fragmentShader = shader.fragmentShader.replace("void main() {", SURFACE_PARS).replace("#include <map_fragment>", SURFACE_COLOUR);
+    shader.uniforms.uSurf2 = uSurf2;
+    shader.uniforms.uSurf3 = uSurf3;
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", SURFACE_PARS)
+      .replace("#include <map_fragment>", SURFACE_COLOUR)
+      // after the vertex colour is in: the pastel / sandstone / oak colours of the model, toned (saturation, brightness)
+      .replace("uHouseNight );", "uHouseNight );\n\tdiffuseColor.rgb = mix( vec3( dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) ) ), diffuseColor.rgb, uSurf2.y ) * uSurf2.z;");
   };
   const key = m.customProgramCacheKey.bind(m);
   m.customProgramCacheKey = () => `${key()}|surf-${name}`;
+  m.needsUpdate = true;
+}
+
+/** The sky the metal parts (gutters, downpipes, hinges) mirror: scaled by the time of day in `applyHousesDayNight`. */
+const metalSky = { value: 0.9 };
+const METAL_FRAGMENT = /* glsl */ `#include <metalnessmap_fragment>
+// the sheet's grainy iron half (glTF v < 0.5) is real zinc / iron; the painted-frame half stays dielectric
+float metalBand = 1.0 - step( 0.5, vMapUv.y );
+metalnessFactor = 0.82 * metalBand;
+roughnessFactor = mix( roughnessFactor, 0.36, metalBand );`;
+
+/** Gutters and downpipes as real metal: a metalness mask by the sheet's band, and the village's sky for it to mirror. */
+export function metalHouseSurface(m: MeshStandardMaterial): void {
+  const prev = m.onBeforeCompile;
+  const prevKey = m.customProgramCacheKey.bind(m);
+  addBusSky(m, metalSky, "paint");
+  const sky = m.onBeforeCompile;
+  m.onBeforeCompile = (shader, r) => {
+    prev.call(m, shader, r);
+    sky.call(m, shader, r);
+    shader.fragmentShader = shader.fragmentShader.replace("#include <metalnessmap_fragment>", METAL_FRAGMENT);
+  };
+  m.customProgramCacheKey = () => `${prevKey()}|metal-sky`;
   m.needsUpdate = true;
 }
 
@@ -261,6 +306,16 @@ export interface HouseMaps {
   map: Texture;
   normalMap: Texture;
   roughnessMap: Texture | null;
+}
+
+/** The porch decks and steps (deckPlanks.ts): the wood sheet's oak half laid out as boards. */
+export const DECK_KEY = "LM_deck";
+const deckSource = new MeshStandardMaterial({ name: DECK_KEY });
+export function deckMaterial(maps: HouseMaps | null): MeshStandardMaterial {
+  const m = houseSurfaceMaterial(deckSource, maps);
+  if (maps) m.normalScale = new Vector2(1.8, -1.8);
+  if (maps?.map) deckHouseSurface(m);
+  return m;
 }
 
 /** A house surface (LM_*): its tiling set, the vertex colour, lit. */
@@ -278,8 +333,11 @@ export function houseSurfaceMaterial(source: MeshStandardMaterial, maps: HouseMa
   });
   const ns = HOUSE_SURFACE[source.name]?.normal ?? HOUSE_LOOK.normalScale;
   if (maps) m.normalScale = new Vector2(ns, -ns);
+  const rep = HOUSE_SURFACE[source.name]?.repeat ?? 1;
+  if (maps && rep !== 1) for (const t of [maps.map, maps.normalMap, maps.roughnessMap]) t?.repeat.set(rep, rep);
   patchHouseLight(m, `${maps ? "pbr" : "flat"}${maps?.roughnessMap ? "-r" : ""}`);
   if (maps?.map) enhanceHouseSurface(m, source.name);
+  if (source.name === "LM_metal") metalHouseSurface(m);
   return m;
 }
 
@@ -618,7 +676,8 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
     if (hit) return hit;
     const s = src as MeshStandardMaterial;
     let m: Material;
-    if (src.name.startsWith("LM_")) m = houseSurfaceMaterial(s, maps[src.name] ?? null);
+    if (src === deckSource) m = deckMaterial(maps.LM_wood ?? null);
+    else if (src.name.startsWith("LM_")) m = houseSurfaceMaterial(s, maps[src.name] ?? null);
     else if (src.name === "M_window") m = glow.window = windowMaterial(s);
     else if (src.name === "M_lamp") m = glow.lamp = lampMaterial(s);
     else if (src.name === "M_glass") m = glow.glass = glassMaterial(s, glow.glassSky);
@@ -640,6 +699,7 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
     return m;
   };
 
+  const a8Houses = A8_HOUSES();
   const root = new Group();
   root.name = "village_houses";
   root.userData.cvHouses = true;
@@ -670,6 +730,18 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
         const world = g.clone().applyMatrix4(tmp.copy(mesh.matrixWorld));
         const key = src[0]!.name;
         if (src[0]!.name === "M_lamp") lamps.push(mesh);
+        if (key === "LM_stone") {
+          // the porch slab and steps are drawn as oak planks (deckPlanks.ts), the rest stays sandstone
+          const sp = splitDeckTriangles(world, a8Houses);
+          if (sp.deck) {
+            world.dispose();
+            if (sp.rest) shellParts.set(key, [...(shellParts.get(key) ?? []), sp.rest]);
+            shellParts.set(DECK_KEY, [...(shellParts.get(DECK_KEY) ?? []), sp.deck]);
+            if (!made.has(DECK_KEY)) material(deckSource);
+            if (!made.has(key)) material(src[0]!);
+            continue;
+          }
+        }
         shellParts.set(key, [...(shellParts.get(key) ?? []), world]);
         if (!made.has(key)) material(src[0]!);
       }
@@ -679,6 +751,27 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
       let t = 0;
       let d = 0;
       for (const mesh of meshes) {
+        if (matsOf(mesh)[0]!.name === "LM_stone") {
+          // the steps: oak planks (deckPlanks.ts), in the world (an identity transform inside the group)
+          const sp = splitDeckTriangles(mesh.geometry.clone().applyMatrix4(mesh.matrixWorld), a8Houses);
+          if (sp.deck) {
+            const pieces: Array<[BufferGeometry | null, Material, string]> = [
+              [sp.rest, matsOf(mesh).map(material)[0]!, mesh.name],
+              [sp.deck, material(deckSource), `${mesh.name}_deck`],
+            ];
+            for (const [geo, mat, nm] of pieces) {
+              if (!geo) continue;
+              own.geometries.push(geo);
+              const piece = new Mesh(geo, mat);
+              piece.name = nm;
+              piece.matrixAutoUpdate = false;
+              group.add(piece);
+              d++;
+            }
+            t += tris(mesh.geometry);
+            continue;
+          }
+        }
         const fresh = freshenColours(mesh.geometry);
         if (fresh) own.geometries.push(fresh);
         const m = new Mesh(fresh ?? mesh.geometry, matsOf(mesh).map(material)[0]!);
@@ -702,6 +795,8 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
   const shells: Mesh[] = [];
   let shellTriangles = 0;
   for (const [name, parts] of shellParts) {
+    // the roofs get a row of half-round ridge tiles on their top edge (roofRidge.ts)
+    if (name === "LM_roof") parts.push(...ridgeCaps(parts, a8Houses));
     const merged = mergeGeometries(parts, false);
     for (const p of parts) p.dispose();
     if (!merged) continue;
@@ -873,6 +968,7 @@ export function applyHousesDayNight(nodes: HouseNodes, s: Pick<DayNightState, "l
   if (g.lamp) g.lamp.emissiveIntensity = HOUSE_LOOK.lampDay + (HOUSE_LOOK.lampNight - HOUSE_LOOK.lampDay) * s.lights;
   if (g.glass) g.glass.opacity = HOUSE_LOOK.glassOpacity + (HOUSE_LOOK.glassNightOpacity - HOUSE_LOOK.glassOpacity) * s.lights;
   g.glassSky.value = HOUSE_LOOK.glassEnv * busEnvScale(s);
+  metalSky.value = 0.9 * busEnvScale(s);
 }
 
 /** Show the detail of exactly `ids`. */

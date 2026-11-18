@@ -7,12 +7,13 @@ describe("park targets", () => {
     expect(villageTargets("park", PARK_EXIT_PAD.x, PARK_EXIT_PAD.z).map((t) => t.id)).toEqual([PARK_DOOR_ID]);
     expect(villageTargets("park", 40, -140)).toEqual([]);
   });
-  it("offers the coaster at its queue gate, not from the plaza", () => {
+  it("offers the coaster from the queue, not from the plaza", () => {
     expect(villageTargets("park", COASTER_QUEUE_PAD.x, COASTER_QUEUE_PAD.z).map((t) => t.id)).toEqual([COASTER_BOARD_TARGET_ID]);
     expect(villageTargets("park", 40, -112)).toEqual([]);
   });
-  it("offers the carousel at its gate, and only there", () => {
+  it("offers the carousel from 40 m, not from the plaza", () => {
     expect(villageTargets("park", CAROUSEL_PAD.x, CAROUSEL_PAD.z).map((t) => t.id)).toEqual([CAROUSEL_BOARD_TARGET_ID]);
+    expect(villageTargets("park", CAROUSEL_PAD.x - 40, CAROUSEL_PAD.z).map((t) => t.id)).toEqual([CAROUSEL_BOARD_TARGET_ID]);
     expect(villageTargets("park", 40, -112)).toEqual([]);
   });
   it("offers the park gate at the village gate lot's pad", () => {

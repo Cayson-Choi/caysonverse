@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BufferAttribute, BufferGeometry, Uint16BufferAttribute } from "three";
-import { wornEdges, noise2 } from "../../lake/lakeTrailEdge";
+import { wornEdges, noise2, clipAtSidewalk, MOUTH_R } from "../../lake/lakeTrailEdge";
 import { wearPixels } from "./roadPaint";
 import {
   CONNECTOR_HALF_W,
@@ -167,6 +167,42 @@ describe("the lake trail's worn edge", () => {
     expect(p.getX(0)).toBeCloseTo(39, 6); // the mouth stays
     expect(p.getZ(4)).not.toBeCloseTo(-1.5, 3); // the rim wanders
     expect(noise2(3.3, 4.4)).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("the trail's mouth at the sidewalk", () => {
+  it("cuts the dirt on the stone band's circle: nothing nearer the centre, the uv / colour interpolated, the width kept", () => {
+    // a 2.5 m wide strip from x 38.5 to 44 (z -1 .. 1.5), two triangles per cell
+    const pos: number[] = [];
+    const uv: number[] = [];
+    const col: number[] = [];
+    for (let j = 0; j < 2; j++) for (let i = 0; i < 12; i++) (pos.push(38.5 + i * 0.5, 0.034, j * 2.5 - 1), uv.push(i * 0.5, j), col.push(i * 0.1, 1, 1));
+    const idx: number[] = [];
+    for (let i = 0; i < 11; i++) idx.push(i, i + 1, 12 + i, i + 1, 13 + i, 12 + i);
+    const g = new BufferGeometry();
+    g.setAttribute("position", new BufferAttribute(new Float32Array(pos), 3));
+    g.setAttribute("uv", new BufferAttribute(new Float32Array(uv), 2));
+    g.setAttribute("color", new BufferAttribute(new Float32Array(col), 3));
+    g.setIndex(idx);
+    const c = clipAtSidewalk(g)!;
+    const p = c.getAttribute("position");
+    let minR = Infinity;
+    let minX = Infinity;
+    for (let i = 0; i < p.count; i++) {
+      if (!c.getIndex()!.array.includes(i)) continue;
+      minR = Math.min(minR, Math.hypot(p.getX(i), p.getZ(i)));
+      minX = Math.min(minX, p.getX(i));
+    }
+    expect(minR).toBeGreaterThanOrEqual(MOUTH_R - 0.03); // the cut is linear along each edge: a chord, within 3 cm of the circle
+    expect(minR).toBeLessThan(MOUTH_R + 0.05); // cut ON the circle, not a cell short
+    // the cut edge keeps the full width (z -1 .. 1.5) and its uv follows the position (uv.x = x - 38.5 on this strip)
+    const cutRows = [...Array(p.count).keys()].filter((i) => Math.hypot(p.getX(i), p.getZ(i)) < MOUTH_R + 1e-3 && c.getIndex()!.array.includes(i));
+    expect(cutRows.length).toBeGreaterThanOrEqual(2);
+    for (const i of cutRows) expect(c.getAttribute("uv").getX(i)).toBeCloseTo(p.getX(i) - 38.5, 3);
+    // a geometry wholly outside comes back untouched
+    expect(clipAtSidewalk(c)).not.toBeNull();
+    const again = clipAtSidewalk(c)!;
+    expect(again.getAttribute("position").count).toBe(c.getAttribute("position").count);
   });
 });
 
