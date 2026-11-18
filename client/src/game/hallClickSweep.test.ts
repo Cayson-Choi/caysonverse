@@ -17,7 +17,7 @@ import { isFreeSpot, planClickMove, walkThere, wayLength, type GroundPoint } fro
 const map = HALL_ACTIVE_MAP;
 const obstacles = map.geometry.obstacles;
 const bounds = VILLAGE_LAYOUT.areas.hall;
-const hallSeats = VILLAGE_SEATS.filter((s) => s.area === "hall");
+const hallSeats = VILLAGE_SEATS.filter((s) => s.area === "hall" && !s.retired);
 const pad = VILLAGE_LAYOUT.memorial.interior.doorPad.centre;
 
 /** The shortest way a body has from (x, z) to every point (a 0.1 m grid of free spots, eight neighbours, no corner cut). */

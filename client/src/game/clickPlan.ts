@@ -362,7 +362,14 @@ export function simulateWalk(
 
   const step = MOVE_SPEED * dt;
   const progress = STUCK_MIN_DIST * PLAN_PROGRESS_MARGIN;
-  const local = nearbyBoxes(near, loX - pad, hiX + pad, loZ - pad, hiZ + pad, r + step + 0.01);
+  // A picked point can lie past the map. All movement is clamped to it; the edge buckets also contain every
+  // box beyond them because nearbyBoxes clamps both lookups and box ranges to the same grid.
+  const local = nearbyBoxes(
+    near,
+    Math.max(bounds.minX, loX - pad), Math.min(bounds.maxX, hiX + pad),
+    Math.max(bounds.minZ, loZ - pad), Math.min(bounds.maxZ, hiZ + pad),
+    r + step + 0.01,
+  );
   const maxSteps = Math.ceil(((legs / MOVE_SPEED) * 1.25 + SIM_EXTRA_SEC) / dt);
   let x = fromX;
   let z = fromZ;
