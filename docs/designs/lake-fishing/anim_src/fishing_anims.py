@@ -23,14 +23,9 @@ import bpy, math, json, struct, os, sys
 from mathutils import Vector, Quaternion, Matrix
 
 FPS = 24
-# 낚싯대 쥐는 법(소유자 2026-11-19: "팔과 손이 많이 꺾여 있어", "손에 대가 꿰뚫려 있어"): 대 축 = 손가락 방향(slot +X)에서 손등 쪽(+Z)으로 COCK도만 든 방향
-# = 팔뚝 방향 + 살짝 젖힌 손목. (예전 축 (-0.8, 0.6, 0)은 팔뚝에서 66~85도 벗어나 손목이 꺾였다.) 쥐는 점은 대의 뒤끝 0.10 m 앞(손잡이 가운데).
-COCK = 10.0
-FORE_MAX = 40.0   # 팔뚝은 이보다 가파르게 들지 않는다(팔꿈치가 너무 접히지 않게): 대가 더 가파르면 그만큼 손목을 젖힌다(최대 elev-50도: 80도 대 = 30도)
-U_R = Vector((math.cos(math.radians(COCK)), 0.0, math.sin(math.radians(COCK)))).normalized()
+U_R = Vector((-0.8, 0.6, 0.0)).normalized()
 U_L = Vector((0.8, 0.6, 0.0)).normalized()
-ROD_HAND_AT = -0.10     # 손이 쥔 점의 대 좌표(그립 뿌리 노드 기준, 축 방향 m): 손잡이 뒤끝(-0.338)은 손 뒤 0.24 m, 팔뚝 속에 묻힌다
-GRIP = U_R * (-ROD_HAND_AT)   # 뿌리 노드가 놓일 slot 로컬 위치(손 = slot 원점)
+GRIP = Vector((0.0, 0.0, 0.025))
 X_ = Vector((1, 0, 0)); Y_ = Vector((0, 1, 0)); Z_ = Vector((0, 0, 1))
 FING_R = Vector((1, 0, 0))    # 오른손 손가락 방향(slot 로컬 +X)
 FING_L = Vector((-1, 0, 0))   # 왼손 손가락 방향(slot 로컬 -X)
@@ -191,15 +186,6 @@ def solve_arm(side, spec, rod_info):
 
     W = ch_pos + rel(spec['w']) if 'w' in spec else None
     goal = slot_goal()
-    if 'rodal' in spec:
-        # 팔꿈치 E(몸 옆 느슨히) -> 손목 W = E + 팔뚝 x (대 방향보다 COCK도 아래): 팔뚝과 대가 거의 나란하다(손목 꺾임 = COCK도)
-        S_ = r.pose.bones[up].head.copy()
-        L1_ = (r.data.bones[lo].head_local - r.data.bones[up].head_local).length
-        L2_ = (r.data.bones[wr].head_local - r.data.bones[lo].head_local).length
-        E_ = S_ + (ch_D @ Vector(spec['ua'])).normalized() * L1_
-        W = E_ + rod(min(spec['rodal'][0] - COCK, FORE_MAX), spec['rodal'][1]) * L2_
-        pole = E_ - S_
-        goal = None
     if W is None:
         # 처음 추정: slot 목표에서 손 길이만큼 어깨 쪽으로
         S0 = r.pose.bones[up].head
@@ -286,24 +272,22 @@ SIT = ('Sit_Chair_Idle', 0)
 STAND = ('Idle', 0)
 
 
-def arm_rod_r(w, elev, yaw=-6.0, pole=(-1, 0.5, -0.7), ua=None):
-    """오른손으로 대 쥐기: 팔꿈치는 몸 옆에 느슨하게 내려오고(ua = 위팔 방향, 가슴 공간), 팔뚝이 대와 나란하다(대보다 COCK도 아래).
-    `w`·`pole`은 옛 값(무시): 손목 자리는 팔꿈치 + 팔뚝 길이 x 팔뚝 방향으로 정해진다."""
-    return {'rodal': (elev, yaw), 'ua': ua or (-0.28, -0.22, -0.90), 'a': (U_R, rod(elev, yaw)), 'b': (BACK, (0, 0, 1))}
+def arm_rod_r(w, elev, yaw=-6.0, pole=(-1, 0.5, -0.7)):
+    return {'w': w, 'pole': pole, 'a': (U_R, rod(elev, yaw)), 'b': (BACK, (0, 0, 1))}
 
 
 def L_lap(w=(0.22, -0.26, -0.30)):
     return {'w': w, 'pole': (1, 0.4, -0.5), 'a': (FING_L, (0.05, -1.0, -0.45)), 'b': (BACK, (0.2, 0.1, 1))}
 
 
-def sit_idle(elev=30, chest=0.0, head=None, w=(-0.27, -0.33, -0.21), L=None, yaw=-6.0, ua=None):
+def sit_idle(elev=30, chest=0.0, head=None, w=(-0.27, -0.33, -0.21), L=None, yaw=-6.0):
     rot = {'chest': [((1, 0, 0), chest)]}
     if head:
         rot['head'] = head
-    return {'base': SIT, 'rot': rot, 'R': arm_rod_r(w, elev, yaw, ua=ua), 'L': L or L_lap()}
+    return {'base': SIT, 'rot': rot, 'R': arm_rod_r(w, elev, yaw), 'L': L or L_lap()}
 
 
-def fight(elev=60, yaw=-12.0, lean=-9.0, twist=0.0, head=None, w=(-0.22, -0.26, -0.08), s_on=-0.30):
+def fight(elev=60, yaw=-12.0, lean=-9.0, twist=0.0, head=None, w=(-0.22, -0.26, -0.08), s_on=-0.20):
     rot = {'spine': [((0, 0, 1), twist), ((1, 0, 0), lean * 0.5)], 'chest': [((1, 0, 0), lean * 0.5)]}
     if head:
         rot['head'] = head
@@ -327,10 +311,10 @@ def clip_poses():
     # 1) 앉아서 기다리기(반복 4 s): 숨쉬기, 대 끝 살짝 까딱, 가끔 고개
     C['Fish_Sit_Idle'] = [
         (0, sit_idle()),
-        (24, sit_idle(elev=36, chest=-1.5, yaw=-10.0, ua=(-0.26, -0.32, -0.88))),
-        (44, sit_idle(elev=30, chest=0.5, yaw=-4.0, head=[((0, 0, 1), 14), ((1, 0, 0), 3)])),
-        (60, sit_idle(elev=26, chest=0.5, yaw=-2.0, ua=(-0.30, -0.12, -0.92), head=[((0, 0, 1), 12), ((1, 0, 0), 4)])),
-        (74, sit_idle(elev=35, chest=-1.5, yaw=-9.0, ua=(-0.26, -0.30, -0.89), head=[((0, 0, 1), -4)])),
+        (24, sit_idle(elev=31.5, chest=-1.5, w=(-0.27, -0.33, -0.20))),
+        (44, sit_idle(elev=30, chest=0.5, head=[((0, 0, 1), 14), ((1, 0, 0), 3)])),
+        (60, sit_idle(elev=29, chest=0.5, head=[((0, 0, 1), 12), ((1, 0, 0), 4)])),
+        (74, sit_idle(elev=31, chest=-1.5, w=(-0.27, -0.33, -0.20), head=[((0, 0, 1), -4)])),
         (96, sit_idle()),
     ]
     # 2) 던지기(1.0 s): 대를 뒤로 세웠다가 앞으로 흔들어 채비를 내려놓는다(민장대)
@@ -413,8 +397,7 @@ def clip_poses():
     ]
     # 9) 접은 대를 어깨에 메기(반복, 오른팔만): 손은 오른 어깨 앞, 대는 뒤-위-바깥으로
     def carry(dz):
-        # 대는 앞-위로 비스듬히(대 끝이 앞으로): 팔뚝과 나란히 쥔 손목(옛 자세는 대를 뒤로 메어 손목이 120도 꺾였다)
-        return {'base': STAND, 'R': arm_rod_r(None, 46 + dz * 400, -16, ua=(-0.22, -0.10 + dz * 12, -0.95))}
+        return {'base': STAND, 'R': {'s': (-0.30, -0.20, 0.06 + dz), 'pole': (-0.5, 0.2, -1), 'a': (U_R, (-0.50, 0.55, 0.67)), 'b': (BACK, (-0.4, -1, 0.2)), 'wrist_share': 0.4}}
     C['Carry_Rod'] = [(0, carry(0)), (6.25, carry(-0.012)), (12.5, carry(0)), (18.75, carry(-0.012)), (25, carry(0))]
     return C
 
