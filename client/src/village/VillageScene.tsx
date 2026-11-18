@@ -85,6 +85,7 @@ import { landPose } from "../land/coasterRide";
 import { startRideAudio } from "../land/coasterAudio";
 import { boardRide } from "../land/rideBoardWalk";
 import { takeArmedRide } from "../land/rideBoard";
+import { maybePreloadPark } from "../land/preloadPark";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -341,6 +342,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
       if (key) sendRideBoard(key);
       return;
     }
+    if (area === "village") maybePreloadPark(pose.x, pose.z); // the park's files start loading as the gate comes near
     if (!isHouseArea(area)) return;
     const offered = villageTargets(area, pose.x, pose.z);
     const id = takeArmedHouseUse(offered.map((t) => t.id));
