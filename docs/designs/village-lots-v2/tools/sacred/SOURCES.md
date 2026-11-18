@@ -11,7 +11,7 @@
 | `lotstatue__lot_chapel_nave_mary` 성모상 | *The Virgin and Child, 'Bruges Madonna'* 석고 주조(1897), 미켈란젤로 원작의 복제, KAS225, 129 cm | 덴마크 국립미술관(SMK), Royal Cast Collection | 퍼블릭 도메인(Public Domain Mark 1.0) | https://open.smk.dk/artwork/image/KAS225 · 파일 https://api.smk.dk/api/v1/download-3d/h128nk494_KAS225_small.stl |
 | `lotstatue__lot_chapel_nave_saint_a` 성인상(수도복, 십자가와 책) | *Frans af Assisi* 석고 주조, KAS1959 | SMK | 퍼블릭 도메인(PDM 1.0) | https://open.smk.dk/artwork/image/KAS1959 · https://api.smk.dk/api/v1/download-3d/xd07gz58b_KAS1959_small.stl |
 | `lotstatue__lot_chapel_nave_saint_b` 성인상(갑옷과 방패) | *St. Georg iklædt rustning og kappe, med skjold* 석고 주조(도나텔로 원작의 복제), KAS82 | SMK | 퍼블릭 도메인(PDM 1.0) | https://open.smk.dk/artwork/image/KAS82 · https://api.smk.dk/api/v1/download-3d/765376019_KAS82_small.stl |
-| `lotstatue__lot_temple_hall_buddha` 본존불(광배·연화대 포함 2.8 m) | *Gilt bronze statuette of Sakyamuni Buddha*, 당말~오대(10세기), 중국 저장성박물관 소장품의 채색 사진측량 스캔 — 스캔 색을 깨끗이(때·얼룩 제거), 나발은 짙은 군청으로 칠함 | 3D: dluo (Sketchfab `7d0cbc0e0d034e63a02274ab8af70eee`) | **CC BY 4.0** — 표시: "Gilt bronze statuette of Sakyamuni Buddha" by dluo, CC BY 4.0 | Zenodo(로그인 없음) https://zenodo.org/records/10225206 |
+| `lotstatue__lot_temple_hall_buddha` 본존불과 연화대 (2.0 m) | 프로젝트를 위해 직접 제작 | Caysonverse | 프로젝트 원작 | 제작 도구와 이전 이력은 아래 본존불 항목 참조 |
 | `lotstatue__lot_temple_hall_bodhisattva` 협시보살(입상, 좌우 한 쌍으로 거울 배치, 새 금박) | 국보200 금동보살입상 3D프린팅 데이터(2018, STL) | 국가유산청(구 문화재청) | **공공누리 제1유형(출처표시)** | 같은 데이터셋 (과거 데이터 "국보200_금동보살입상…", 파일 FILE_000000001494494) |
 
 공공누리 제1유형은 발주자 승인(2026-11-17, "출처 밝히고 써"). 출처 표시 문구(크레딧 `client/public/models/LICENSE.md`·라이선스 문서에 그대로): "이 저작물은 국가유산청에서 공공누리 제1유형으로 개방한 '국가유산 3D 프린팅 데이터(국보 제200호 금동보살입상)'을 이용하였으며, 해당 저작물은 공공데이터포털(www.data.go.kr)에서 무료로 내려받을 수 있습니다."
@@ -69,6 +69,45 @@ Sketchfab에 **CC0로 표시된 박물관 실사 채색 스캔**이 있지만 �
 - **협시보살**: 같은 국보 제200호 금동보살입상 데이터(공공누리 제1유형)를 1.6만 삼각형 + 노멀 4096→2048로, 금속도 0.5로 낮춰(환경맵 없는 방에서 어둡게 보이지 않게) 새 금박으로 구웠어요.
 - **족자 2점**: Cleveland 1918.542 (CC0), `make_scroll.py`(새것 손질) + `build_scroll.py`(옻칠 축·금 마구리·끈·술) — 뒤 벽 좌우, 오른쪽은 거울.
 - **연등**: 스캔·사진 없이 직접 모델링한 연꽃봉오리 연등(두 줄 꽃잎, 능선 있는 꽃잎).
+
+## 현행 대웅전 본존불과 연화대 (2026-11-19)
+
+본존불 PC·폰 GLB는 프로젝트를 위해 직접 제작했다. 얼굴과 나발, 손, 옷주름, 연꽃잎과 밑면 부조를 Blender에서 모델링했다. 별도의 바탕 메시나 스캔을 사용하지 않았다. 소유자가 제공한 6면 사진은 비례와 형태를 살피는 데 사용했다. 색상·노멀·ORM 텍스처는 절차적으로 생성했다.
+
+`buddha_build.py`는 같은 폴더의 `buddha_head.py`, `buddha_body.py`, `buddha_lap.py`, `buddha_mesh.py`로 두 LOD를 조립한다. Blender 5.3에서 `blender -b -P buddha_build.py -- <build-dir>`로 중간 GLB를 만든 뒤, `node buddha_pack.mjs <build-dir> <sacred-GLB-dir>`로 게임 파일을 만든다. 루트와 이 폴더의 `node/`에서 각각 `npm ci --allow-git=all`로 의존성을 설치한다.
+
+## 이전 제작 이력 · 2026-11-18 본존불 v2 — 직접 만든 원작 (소유자 "그냥 블렌더로 니가 입체적인 불상을 니가 만들어. 여러 부처님 불상을 찾아보고 비슷하게 만들면 되잖아")
+- **본존불(연화대 포함) = 이 프로젝트의 원작**이에요. dluo 스캔(CC BY 4.0)은 더 이상 쓰지 않아요(파일 이름·자리 `lotstatue__lot_temple_hall_buddha*.glb`는 그대로).
+- **바탕 메시 (CC0 1.0)**: Blender Studio **Human Base Meshes** 번들 v1.2 — `GEO-body_male_realistic`(멀티레스 3)과 `Foot - Realistic`.
+  https://www.blender.org/download/demo-files/ (받은 곳: Blender 공식 미러 https://ftp.halifax.rwth-aachen.de/blender/demo/asset-bundles/human-base-meshes/human-base-meshes-bundle-v1.2.0.zip,
+  49.7 MB, `art/sacred/src/hbm/`에 둠, 저장소에 올리지 않음). .blend는 `--factory-startup` 없이 열었지만 스크립트 자동 실행은 꺼진 상태(기본값)로만 읽었어요.
+- **만드는 법** (모두 Blender 5.3 헤드리스, 스크립트는 이 폴더):
+  1. `bv2_pose.py` — 관절을 재서 만든 뼈대(19개)에 bone heat 무게를 주고 결가부좌(오른발이 위) + 항마촉지인(오른손은 오른 무릎 앞으로 손끝이 땅에, 왼손은 손바닥 위로 무릎 위)으로 포즈.
+  2. `bv2_sculpt.py` — 기본 케이지를 라플라시안으로 다듬어 근육을 없앤 풍만하고 고요한 몸(머리·손은 멀티레스 3의 디테일 유지), 어깨를 넓히고 머리를 12% 크게,
+     우견편단 가사(왼 어깨로 넘어가고 오른 어깨·팔·가슴은 드러남 — 얇게 몸에 붙는 껍질)와 겹친 다리를 덮는 무릎(메타볼 캡슐), 긴 귓불, 눈두덩을 채운 뒤
+     2 mm 미만 복셀 하나로 합치고: 얼굴만 따로 400번 다듬어 이상화한 얼굴, 반쯤 감은 긴 눈(넓은 윗눈꺼풀 + 가는 눈매 홈), 높게 휜 눈썹 선, 백호, 살짝 올라간 입꼬리,
+     삼도(목 주름 셋), 가사 끝선과 나란한 옷주름(가슴)·정강이를 따라 흐르는 옷주름(무릎), 나발(나선 구슬 ~950개, 군청빛 검정) + 육계.
+  3. `bv2_bake.py` — 앉는 면에서 자르고 키 맞춤(앉은 몸 1.40 m + 연화대 0.60 m = 2.0 m, 머리 축은 원점 뒤 0.14 m — 예전 광배 자리),
+     연화대 직접 모델링(팔각 하대석, 복련 18잎, 기둥 8개의 중대석, 앙련 2단 20+20잎 — 잎마다 안쪽 잎이 겹친 겹잎, 구슬 테; 무릎 깊이에 맞춰 살짝 타원),
+     감쇄로 PC 4만 / 폰 1만 삼각형(같은 UV), 노멀 4096 → 2048, 색 2048(금은 금속을 끄고 구운 색 + 주름에 AO 조금), ORM 1024(머리카락 거칠기 0.72·금속 0, 금 0.30·0.90).
+  4. `build_mandorla.py` — 같은 광배를 `MANDORLA_CAP=0`(스캔용 남색 모자 빼고), 머리 중심 (0, 0.14, 1.74)로 다시. `MANDORLA_STYLE=round`(석굴암처럼 두광만)도 만들어
+     비교(`docs/designs/village-lots-v2/shots/temple_v3/turntable/halo_options.jpg`)한 뒤, 대웅전 탱화·단청과 어울리는 지금 모양(불꽃 광배)을 그대로 두었어요.
+  - 처음 몇 번은 얼굴이 실제 남자 얼굴(주름, 열린 눈)로 남았고, 가랑이 쪽 발이 비틀려 튀어나왔고, 목에 칼라 같은 단이 생겼어요 — 각각 얼굴만의 다듬기, 발 접기 +
+    CC0 발 따로 놓기, 위치 기반 섞기로 고쳤어요. 앞에 늘어진 옷자락(상현좌) 시도는 방석처럼 보여서 뺐어요(`BV2_FAN=1`로만 켜짐).
+- **참고 사진** (형태 공부용, 게임 자산에 들어가지 않음; Wikimedia Commons, 2026-11-18): 석굴암 본존불 정면 *Front view of Buddha at Seokguram* (문화재청, 공공누리 제1유형),
+  *Front view of Seokguram from front chamber* (공공누리 제1유형), *Korea-Gyeongju-Seokguram-13*, *…Buddha statue-01/02/05* (CC BY 2.0),
+  *Bulguksa gilt-bronze Vairocana* (CC BY-SA 2.0), *Gilt-bronze Seated Amitabha Buddha*, *Gilt-bronze Seated Vairocana Buddha* (국립중앙박물관, 공공누리 제1유형),
+  봉정사 *Korea-Andong-Bongjeongsa-Monk praying and Buddha statues-01* (CC BY 3.0), 영탑사 금동약사여래삼존 (퍼블릭 도메인), 조선 15세기 금은 삼존 (Sackler Museum, CC0).
+  실제 사진과 나란히 놓은 비교 시트는 저장소에 넣지 않아요(공개 저장소).
+- 배운 비례(사진 r02 정면에서 잼): 얼굴 너비 1 : 어깨 ≈ 2.9 : 무릎 ≈ 4.8, 머리(턱까지)/앉은키 ≈ 0.27, 무릎 너비/앉은키 ≈ 0.9 — 새 본존불은 무릎 1.28 m / 앉은키 1.40 m.
+- **2차 손질 (2026-11-18 밤, 사장님 "얼굴을 더 온화한 불상 얼굴로 고치고 몸을 더 둥글고 넉넉하게 방 안 금빛도 살려")**:
+  얼굴 — 바탕 머리의 콧방울·입술·광대 흔적을 650번 다듬어 지우고(코는 70%만 남김) 얼굴을 10% 넓힌 둥근 달걀형, 통통한 볼·둥근 턱, 눈썹에서 콧등으로
+  이어지는 곧은 콧날과 둥근 코끝, 작고 도톰한 입(입꼬리가 올라간 입선, 활 모양 윗입술, 도톰한 아랫입술).
+  몸 — 기본 케이지를 18번 다듬고 줄어든 만큼 되돌려 근육 없는 둥근 몸, 가슴·어깨 1.1 cm·팔 0.6 cm·목 0.5 cm 부풀림, 어깨 11% 넓힘,
+  무릎 덩어리 더 넓고 두껍게(무릎 타원 추가), 다리 옷주름을 더 굵고 깊게.
+  금박 — 따뜻하고 채도 높은 금(선형 0.80 / 0.52 / 0.13), 금속 1.0, 거칠기 0.20 ± 미세한 얼룩, 주름 AO를 색에 더 깊게(0.32 + 0.68 AO).
+  방에서는 본존불 재질(`…_buddha_gilt`)만 환경맵 1.0(광배는 그대로 0.45), 그리고 방 등불이 금속을 무광 페인트처럼 비추던 셰이더를 고침(`LotRoom.tsx` `LAMP_FRAG`).
+  소매 얼룩 — 원인은 AO의 기본 도달 거리 10 m(왼팔과 옆구리 사이 좁은 틈이 검게 얼룩짐): AO는 4.5 cm 안의 주름만, 빗나간 광선 자리는 검정 대신 기본값으로 채움.
 ## 2026-11-18 성당·교회 실내 다듬기
 
 - 성모상: 위 표의 SMK KAS225를 **작은(`_small`) 20 MB 파일 대신 원본 해상도 76 MB STL**(https://api.smk.dk/api/v1/download-3d/st74cw417_smk21-kas225-bruges-madonna.stl, 1.54M 삼각형)에서 `process_statue.py`로 다시 구움:
@@ -79,3 +118,8 @@ Sketchfab에 **CC0로 표시된 박물관 실사 채색 스캔**이 있지만 �
 - 출처 주소: 14처 «Print, Via Crucis - Station I…XIV, ca. 1749 (CH 18328435…18328471)» — https://commons.wikimedia.org/wiki/Category:Via_Crucis_by_Giovanni_Domenico_Tiepolo 아닌, 위 «Print, Via Crucis» 14개 파일(Cooper Hewitt 소장, https://collection.cooperhewitt.org/);
   블로흐 https://commons.wikimedia.org/wiki/File:Carl_Bloch_-_The_Sermon_on_the_Mount.jpg · 렘브란트 https://commons.wikimedia.org/wiki/File:Rembrandt_Harmensz._van_Rijn_-_The_Return_of_the_Prodigal_Son.jpg · 호프만 https://commons.wikimedia.org/wiki/File:Christ_in_Gethsemane.jpg
 - 쓰지 않은 것: 티에폴로 San Polo 성당의 컬러 «Via Crucis» 사진(CC BY-SA 4.0, 사진가 저작권)은 라이선스(SA) 때문에 뺐어요.
+- **3차 — 사장님 참고 사진 (2026-11-18 밤)**: 사장님이 보낸 6면 사진(`art/sacred/ref/owner_buddha_turnaround*.webp`, 저장소에 올리지 않음)을 형태 기준으로 썼어요 —
+  사진 자체는 게임 자산에도 저장소에도 들어가지 않아요(저작권 확인 전 — 나란히 놓은 비교 시트는 저장소 밖에만).
+  설법인 손가락(`mudra`), 큰 머리·높은 육계·금 계주·가지런한 검정 나발, 얼굴 칠(초록·빨강 재질), 넓은 몸통과 두꺼운 가사, 둥근 2단 통통한 연꽃 연화대·밑면 12잎 부조,
+  밝은 노란 금과 방의 따뜻한 채움빛. 바탕은 여전히 CC0 Human Base Meshes, 나머지는 모두 직접 제작.
+- **4차**: 비교 시트(참고 사진 포함)는 저장소에서 빼고 작업 폴더에만 둠. 몸통·가사 부피, 통통한 손가락, 긴 귓불, 큰 나발(게임 메시에 실제 구슬), 초승달 장식, 둥근 꽃잎 연화대 — 모두 직접 제작.

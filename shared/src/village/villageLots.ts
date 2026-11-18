@@ -920,7 +920,8 @@ export const LOT_SURFACE_RULES = Object.freeze({
     lot_chapel: Object.freeze(["stone_ashlar", "roof_slate", "granite_flamed", "wood_oak", "cast_iron", "gravel", "copper_new"]),
     // B1 2026-11-17: orange clay tiles, not slate (owner's Colmar reference "이런 동화 같은 집의 느낌"); roof_slate stays in the library for the chapel
     lot_library: Object.freeze(["brick_red", "stone_ashlar", "roof_clay_tile", "wood_painted", "wood_oak", "floor_wood", "plaster_painted", "fabric_upholstery", "granite_flamed"]),
-    lot_temple: Object.freeze(["roof_giwa", "dancheong_wood", "wood_pine_natural", "granite_flamed", "stone_wall_korean", "rock", "dirt_path"]),
+    // 2026-11-18 (35a7ef5 ground rebuild): the courtyard is raked gravel (the 마당 of a Korean temple), not a dirt path
+    lot_temple: Object.freeze(["roof_giwa", "dancheong_wood", "wood_pine_natural", "granite_flamed", "stone_wall_korean", "rock", "gravel"]),
     lot_church: Object.freeze(["wood_siding", "roof_shingle", "wood_painted", "granite_flamed", "wood_oak", "cast_iron", "metal_roof_seam"]),
     // B3 2026-11-17: the 75ab7df gate re-seated on the library's KTX2 sets (v1's band names had no library sets): ashlar
     // towers, granite plinths, cream render, glossy painted iron and domes (plaster_painted), brushed metal, oak benches
