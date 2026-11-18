@@ -60,9 +60,6 @@ export const HEAD_HEIGHT = 1.4;
  */
 export const FP_EYE_HEIGHT = HEAD_HEIGHT + 0.1;
 
-/** Third-person safety distance below which the local avatar is hidden instead of showing its inside surfaces. */
-export const SELF_CAMERA_HIDE_DISTANCE = 1.8;
-
 /**
  * Inside a building (a place with a camera limit) the own body is hidden only when the third-person camera is really inside the
  * head: nearer than this (m). Review 2026-11-15 round 5: it used to hide within 2.8 m (a faded head that near was a big see-through

@@ -13,6 +13,8 @@ import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor, sendUseStair } from "../net/connection";
 import { rideStatusText, sendBusRide, sendBusSit, sendBusStand, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState } from "../net/transitSync";
 import { BUS_VIEW_YAW, busCamGoal, busSeatPreferred, busWalk, selfBusRide } from "../game/busRide";
+import { requestViewToggle } from "../game/viewState";
+import { useViewStore } from "../stores/viewStore";
 import { busRiderPoints, takenBusSpots } from "../game/remoteStore";
 import { TRANSIT, boardingOpensWords } from "@caysonverse/shared/village/transit";
 import type { Identity } from "../stores/appStore";
@@ -385,10 +387,13 @@ const RIDE_VIEWS: ReadonlyArray<{ id: string; label: string; short: string; yaw:
 
 /**
  * The ride panel (owner 2026-11-15): where the bus is, the way to look around (drag the screen, or the quick views: left
- * windows, front, right windows, back), how to sit or stand, and the way off. The hint shows once per device.
+ * windows, front, right windows, back), how to sit or stand, and the way off. The hint shows once per device. Owner 2026-11-18
+ * (docs/designs/bus-controls.md): a plain first / third person button (the top bar's eye icon was not obvious), and the hint says
+ * the view tilts too and that a tap on the floor walks there.
  */
 function TransitRideHud() {
   const { boarded, snapshot, notice } = useTransitState();
+  const isFp = useViewStore((s) => s.isFp);
   const touch = isTouchDevice;
   const [hint, setHint] = useState(false);
   useEffect(() => {
@@ -446,18 +451,37 @@ function TransitRideHud() {
               </button>
             ))}
           </div>
+          {touch ? null : (
+            <button type="button" data-testid="bus-ride-view-toggle" onClick={requestViewToggle} style={{ ...btn, marginTop: 4, width: "100%" }}>
+              {isFp ? "👁 3인칭으로 보기" : "👁 1인칭으로 보기"}
+            </button>
+          )}
           {hint ? (
             <div style={{ marginTop: 6, background: "rgba(139,92,246,0.35)", borderRadius: 8, padding: "6px 8px" }} data-testid="bus-ride-hint">
-              {touch ? "화면을 끌어서 창밖을 둘러보세요 · 빈 의자를 톡 누르면 가서 앉아요" : "화면을 끌어서 창밖을 둘러보세요 · 빈 의자를 누르거나 가까이에서 E"}
+              {touch ? "화면을 끌어서 창밖을 둘러보세요(위·아래도) · 바닥을 톡 누르면 걸어가요 · 빈 의자를 톡 누르면 가서 앉아요" : "화면을 끌어서 창밖을 둘러보세요(위·아래도) · 바닥을 누르면 걸어가요 · 빈 의자를 누르거나 가까이에서 E"}
             </div>
           ) : touch ? null : (
-            <div style={{ marginTop: 5, opacity: 0.7 }}>화면을 끌면 둘러볼 수 있어요 · 의자를 누르거나 가까이에서 E</div>
+            <div style={{ marginTop: 5, opacity: 0.7 }}>화면을 끌면 둘러볼 수 있어요 · 바닥을 누르면 걸어가요 · 의자를 누르거나 가까이에서 E</div>
           )}
-          {snapshot?.status === "inTransit" ? (
+          {touch ? (
+            // a phone: the view toggle and the way off share one row (the panel already covers the left of a narrow screen)
+            <div style={{ marginTop: 4, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+              <button type="button" data-testid="bus-ride-view-toggle" onClick={requestViewToggle} style={{ ...btn, padding: "6px 6px", whiteSpace: "nowrap" }}>
+                {isFp ? "👁 3인칭" : "👁 1인칭"}
+              </button>
+              {snapshot?.status === "inTransit" ? (
+                <div style={{ alignSelf: "center", opacity: 0.75 }}>정류장에 돌아오면 내려요</div>
+              ) : (
+                <button type="button" onClick={() => sendBusRide("leave")} style={btn}>
+                  하차
+                </button>
+              )}
+            </div>
+          ) : snapshot?.status === "inTransit" ? (
             // the doors open only at the stop (the server refuses a leave on the lap): say when instead of a dead button
             <div style={{ marginTop: 4, opacity: 0.75 }}>정류장에 돌아오면 내려요</div>
           ) : (
-            <button type="button" onClick={() => sendBusRide("leave")} style={{ ...btn, marginTop: 6, width: touch ? "100%" : undefined }}>
+            <button type="button" onClick={() => sendBusRide("leave")} style={{ ...btn, marginTop: 6 }}>
               하차
             </button>
           )}

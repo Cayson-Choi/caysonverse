@@ -6,7 +6,7 @@ import type { Fog } from "three";
 import { CAMERA, CAMERA_FAR, FP_EYE_HEIGHT, HEAD_HEIGHT } from "./constants";
 import type { MoveControl } from "./constants";
 import { normalizeAngle, stepYaw } from "./yaw";
-import { clampFpPitch, easeBlend } from "./viewMode";
+import { RIDE_PITCH_MAX, clampFpPitch, easeBlend } from "./viewMode";
 import {
   viewState,
   applyZoom,
@@ -81,16 +81,16 @@ import { getLocalStepLift } from "../village/houses/houseLift";
 import { useFpCursor } from "./useFpCursor";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose } from "../net/transitSync";
-import { busRiderCamera, ownSeatIndex, riderFov, type TransitCameraPose } from "../village/transitCamera";
+import { busRiderCamera, busSelfHidden, busShoulderScale, busShoulderSide, clampBusPitch, riderFov, type TransitCameraPose } from "../village/transitCamera";
 import { resetRideCamera, selfRide, stepRideCamera } from "../land/coasterRide";
 import { stepRideAudio, stopRideAudio } from "../land/coasterAudio";
 import { resetCarouselCamera, stepCarouselCamera } from "../land/carouselRide";
 import { startCarouselMusic, stopCarouselMusic } from "../land/carouselAudio";
 import { resetWheelCamera, stepWheelCamera } from "../land/wheelRide";
 import { startWheelAudio, stopWheelAudio } from "../land/wheelAudio";
-import { busCamGoal, busCamState, busElevation, busSeatGoal, busSeatPreferred, riderBusPoint, selfBusRide } from "./busRide";
+import { busCamGoal, busCamState, busSeatGoal, busSeatPreferred, busWalkGoal, riderBusPoint, selfBusRide } from "./busRide";
 import { BUS_SEATS, busPlaceOf, cabinFloorAt, seatBodyPoint } from "@caysonverse/shared/village/busCabin";
-import { busSeatUnderRay } from "../village/busSeatPick";
+import { busFloorUnderRay, busSeatUnderRay } from "../village/busSeatPick";
 import { VILLAGE_LAYOUT, cubbyAtPoint, isHouseArea, isLotArea } from "@caysonverse/shared/village/villageLayout";
 import { localArea } from "../village/villageArea";
 import { armHouseUse, houseTapTarget } from "../village/houseTap";
@@ -279,7 +279,13 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
   /** The lens's field of view before the bus ride widened it (null while not riding). */
   const fovBeforeRideRef = useRef<number | null>(null);
   const nearBeforeRideRef = useRef(0.2);
-  const busRideCam = useRef<TransitCameraPose>({ x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, arm: 0, firstPerson: false }).current;
+  const busRideCam = useRef<TransitCameraPose>({ x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, arm: 0, gap: 0, firstPerson: false }).current;
+  /** In the bus: the shoulder the third person stands over (+1 right, -1 left) and the side drawn, eased toward it. */
+  const busShoulder = useRef<{ side: 1 | -1; ease: number }>({ side: 1, ease: 1 }).current;
+  /** In the bus: the own body hidden because the third-person lens is too near the head (selfGap.ts), with its hysteresis. */
+  const busHidden = useRef(false);
+  /** In the bus: the view mode of the last frame (null off the bus) — a first <-> third person toggle carries the aim's pitch across. */
+  const busLastMode = useRef<string | null>(null);
   // First person hides the resting mouse cursor over the 3D view (fpCursor.ts) — the owner saw it as a stray icon.
   useFpCursor(gl.domElement, getKeys);
 
@@ -380,9 +386,9 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       return pick;
     };
     /**
-     * Bus v3 (owner 2026-11-16): riding, a click or a tap on one of the bus's seats walks the rider down the aisle to it and sits
-     * (busRide.ts busSeatGoal; LocalPlayer walks and asks). A click anywhere else in the bus does nothing (the bus has no ground
-     * to walk to). True when the rider is aboard: the click is the bus's.
+     * Bus v3 (owner 2026-11-16): riding, a click or a tap on one of the bus's seats walks the rider down the aisle to it
+     * (busRide.ts busSeatGoal; LocalPlayer walks, the rider sits with E / 앉기). A click or a tap on the cabin's floor walks there
+     * (busWalkGoal, owner 2026-11-18). True when the rider is aboard: the click is the bus's.
      */
     const busSeatTap = (clientX: number, clientY: number, cam = camera as PerspectiveCamera): boolean => {
       if (selfBusRide.slot < 0) return false;
@@ -390,11 +396,24 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -(((clientY - rect.top) / rect.height) * 2 - 1));
       raycaster.setFromCamera(ndc, cam);
       const { origin: o, direction: d } = raycaster.ray;
-      const index = busSeatUnderRay(getTransitRenderPose(), o, d);
+      const busPose = getTransitRenderPose();
+      const index = busSeatUnderRay(busPose, o, d);
       if (index >= 0) {
         busSeatGoal.index = index;
         busSeatPreferred.index = -1;
         busSeatGoal.at = performance.now();
+        busWalkGoal.active = false;
+        return true;
+      }
+      // owner 2026-11-18 ("버스안에서 이동이 잘 안되고"): a click or a tap on the cabin's floor walks there, as on the village's ground
+      const spot = busFloorUnderRay(busPose, o, d);
+      if (spot) {
+        busWalkGoal.ahead = spot.ahead;
+        busWalkGoal.right = spot.right;
+        busWalkGoal.at = performance.now();
+        busWalkGoal.active = true;
+        busSeatGoal.index = -1;
+        busSeatPreferred.index = -1;
       }
       return true;
     };
@@ -829,16 +848,18 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         cancelOrbitGoal();
         const gain = dragSpeed() * viewState.skyZoom; // zoomed in, a drag turns the view less
         viewState.fpYaw = normalizeAngle(viewState.fpYaw - DRAG_SIGN * dx * gain);
-        viewState.fpPitch = clampFpPitch(viewState.fpPitch + DRAG_SIGN * dy * gain, viewState.skyLook);
+        const pitch = clampFpPitch(viewState.fpPitch + DRAG_SIGN * dy * gain, viewState.skyLook);
+        // on a ride (coaster, carousel, wheel) the ride's own camera stops at RIDE_PITCH_MAX: the drag stops there too (no dead travel)
+        viewState.fpPitch = selfRide.slot >= 0 ? Math.min(pitch, RIDE_PITCH_MAX) : pitch;
       } else {
         cancelOrbitGoal(); // a drag takes the camera back from any recenter glide
         const gain = dragSpeed();
         orbit.yaw = normalizeAngle(orbit.yaw - DRAG_SIGN * dx * gain);
-        orbit.pitch = clamp(
-          orbit.pitch + DRAG_SIGN * dy * gain,
-          CAMERA.minPitch,
-          CAMERA.maxPitch,
-        );
+        // in the bus the third person aims (over the shoulder): its tilt reaches the floor and the ceiling (transitCamera.ts BUS_TP)
+        orbit.pitch =
+          selfBusRide.slot >= 0
+            ? clampBusPitch(orbit.pitch + DRAG_SIGN * dy * gain)
+            : clamp(orbit.pitch + DRAG_SIGN * dy * gain, CAMERA.minPitch, CAMERA.maxPitch);
       }
     };
     const onUp = (e: PointerEvent) => {
@@ -1211,6 +1232,15 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
           viewState.fpPitch = 0;
         }
       }
+      // first <-> third person keep the same aim (docs/designs/bus-controls.md): the yaw is carried by enterFp / exitFp, the pitch here
+      if (viewState.mode !== "ov") {
+        const last = busLastMode.current;
+        if (last !== null && last !== viewState.mode) {
+          if (viewState.mode === "tp") orbit.pitch = clampBusPitch(viewState.fpPitch);
+          else viewState.fpPitch = clampFpPitch(orbit.pitch);
+        }
+        busLastMode.current = viewState.mode;
+      }
       const fp = viewState.mode === "fp";
       if (busCamGoal.yaw !== null) {
         // the quick view's glide: the look yaw (first person) or the orbit yaw (third), relative to the bus
@@ -1225,6 +1255,10 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       const bus = getTransitRenderPose();
       const spot = place.kind === "seat" ? seatBodyPoint(BUS_SEATS[place.index]!) : undefined;
       const local = riderBusPoint(selfBusRide, place.kind, spot);
+      // the third person's shoulder: the one with room beside the head, eased across when it changes
+      // (a portrait phone prefers the left shoulder, the rider on the right of the screen: the ride panel covers the left)
+      busShoulder.side = busShoulderSide(local.right, orbit.yaw, busShoulder.side, persp.aspect < 1 ? -1 : 1);
+      busShoulder.ease += (busShoulder.side - busShoulder.ease) * Math.min(1, delta * 5);
       const ride = busRiderCamera(
         {
           bus,
@@ -1233,13 +1267,14 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
           floor: cabinFloorAt(local.ahead, local.right),
           seated: place.kind === "seat",
           yaw: fp ? viewState.fpYaw : orbit.yaw,
-          elevation: fp ? viewState.fpPitch : busElevation(orbit.pitch),
+          elevation: fp ? viewState.fpPitch : clampBusPitch(orbit.pitch),
           dist: fp ? 0 : orbit.distance, // the player's own zoom; only the cabin's walls and ceiling shorten it (owner 2026-11-16)
-          frame: fp ? undefined : { vfov: (riderFov(persp.aspect) * Math.PI) / 180, aspect: persp.aspect },
-          ownSeat: ownSeatIndex(selfBusRide.slot),
+          shoulder: busShoulder.ease * busShoulderScale(persp.aspect),
+          portrait: persp.aspect < 1,
         },
         busRideCam,
       );
+      busHidden.current = busSelfHidden(busHidden.current, ride, persp.aspect < 1);
       camera.position.set(ride.x, ride.y, ride.z);
       camera.up.set(0, 1, 0);
       camera.lookAt(ride.targetX, ride.targetY, ride.targetZ);
@@ -1251,6 +1286,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       }
       busCamState.active = true;
       busCamState.firstPerson = ride.firstPerson;
+      busCamState.selfHidden = busHidden.current;
       busCamState.arm = ride.arm;
       const fxx = Math.sin(bus.yaw);
       const fzz = Math.cos(bus.yaw);
@@ -1278,6 +1314,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     } else if (fovBeforeRideRef.current !== null || busModeBeforeRef.current !== null) {
       if (busModeBeforeRef.current === "tp" && viewState.mode === "fp") exitFp(orbit); // got off: the view the player had before boarding
       busModeBeforeRef.current = null;
+      busLastMode.current = null;
+      busHidden.current = false;
       if (fovBeforeRideRef.current !== null) {
         const persp = camera as PerspectiveCamera;
         persp.fov = fovBeforeRideRef.current;
@@ -1287,6 +1325,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       fovBeforeRideRef.current = null;
       busCamState.active = false;
       busCamState.firstPerson = false;
+      busCamState.selfHidden = false;
     }
 
     // The 별똥별 급행 (케이슨랜드): the camera is the rider's eye in the car's frame (land/coasterRide.ts). Looking round is the first-person
