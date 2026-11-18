@@ -933,8 +933,17 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
             // riding: a click on a seat sits there (busSeatTap), nothing else walks
             if (!busSeatTap(e.clientX, e.clientY)) {
             let generation = clickGeneration();
+            // The pick (a raycast against the whole scene) and the plan run just AFTER this event, on the camera as it is now (the
+            // look-half tap's rule: lookTapWalk): INP "event handlers blocked UI updates" (Vercel Toolbar, 207 ms on a phone) counts the
+            // handler, and the page answers the press first. A key, the stick or another click meanwhile is a take-over (clickGeneration).
+            const cam = camera as PerspectiveCamera;
+            cam.updateMatrixWorld();
+            const snap = new PerspectiveCamera().copy(cam, false);
+            const cx = e.clientX;
+            const cy = e.clientY;
+            clickWork.hold(() => {
             planClick(
-              pickAt(e.clientX, e.clientY),
+              pickAt(cx, cy, snap),
               (plan, provisional) => {
                 // a key, the stick, Esc or a sit while its way round was looked for: the player took over
                 if (clickGeneration() !== generation) return;
@@ -957,8 +966,10 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
                   stopWalk();
                   generation = clickGeneration();
                 },
+                snap,
               },
             );
+            }, 0);
             }
           }
         }
