@@ -4,7 +4,6 @@ import { useGLTF, useTexture } from "@react-three/drei";
 import {
   type MeshStandardMaterial,
   BufferGeometry,
-  CircleGeometry,
   Color,
   CylinderGeometry,
   Float32BufferAttribute,
@@ -29,7 +28,7 @@ import { clearNpcCache } from "../village/npcAvatar";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { dayNight } from "../village/dayNightDriver";
 import type { Pose } from "../game/types";
-import { LAKE_AREA, LAKE_FACE_DIR, LAKE_FISHING_SPOTS, LAKE_LAMPS, LAKE_RENTAL_PAD, LAKE_SHORE, LAKE_WATER_Y, insidePolygon } from "@caysonverse/shared/village/lakeLayout";
+import { LAKE_AREA, LAKE_FACE_DIR, LAKE_FISHING_SPOTS, LAKE_LAMPS, LAKE_SHORE, LAKE_WATER_Y, insidePolygon } from "@caysonverse/shared/village/lakeLayout";
 import { LAKE_URLS, lakeAssetWanted } from "./lakeAssets";
 import { createDrops } from "./lakeDrops";
 import { LakeGreybox } from "./LakeGreybox";
@@ -264,35 +263,6 @@ function LakeFromFile({ tier, pose }: { tier: VillageTier; pose: Pose }) {
 }
 
 // ───────────────────────────────────────── the rental pad and the chair markers ─────────────────────────────────────────
-
-/**
- * The yellow circle in front of the office (design 7.1): stand in it to rent the rod. Always drawn: it is the way in.
- * (The mint discs under the free fishing chairs and the arrow over the nearest one are gone, owner 2026-11-16: no floor discs or
- * floating markers at seats; a chair is used by walking up to it + the button / E, or by tapping it.)
- */
-function RentalPad() {
-  const g = useMemo(() => ({ ring: new RingGeometry(LAKE_RENTAL_PAD.radius - 0.28, LAKE_RENTAL_PAD.radius, 48), disc: new CircleGeometry(LAKE_RENTAL_PAD.radius - 0.28, 48) }), []);
-  const mat = useMemo(() => new MeshBasicMaterial({ color: "#ffd23a", transparent: true, opacity: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }), []);
-  const fill = useMemo(() => new MeshBasicMaterial({ color: "#ffd23a", transparent: true, opacity: 0.16, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 }), []);
-  useFrame(({ clock }) => {
-    mat.opacity = 0.62 + 0.2 * Math.sin(clock.elapsedTime * 2.4);
-  });
-  useEffect(
-    () => () => {
-      g.ring.dispose();
-      g.disc.dispose();
-      mat.dispose();
-      fill.dispose();
-    },
-    [g, mat, fill],
-  );
-  return (
-    <group position={[LAKE_RENTAL_PAD.x, 0.04, LAKE_RENTAL_PAD.z]} rotation={[-Math.PI / 2, 0, 0]}>
-      <mesh geometry={g.ring} material={mat} />
-      <mesh geometry={g.disc} material={fill} />
-    </group>
-  );
-}
 
 // ───────────────────────────────────────── the floats, lines, rings and splashes ─────────────────────────────────────────
 
@@ -651,7 +621,7 @@ export function LakeWorld({ pose, tier }: { pose: Pose; tier: VillageTier }) {
     <>
       <LakeModel tier={tier} pose={pose} />
       <LakeSigns />
-      <RentalPad />
+      {/* the yellow rental ring is gone (owner 2026-11-19: "노란색원 이것도 없애자"); renting still happens at the counter spot */}
       <LakeAnglers />
     </>
   );

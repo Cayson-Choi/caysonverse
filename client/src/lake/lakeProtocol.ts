@@ -211,7 +211,7 @@ export function parseBoard(raw: unknown): BoardLine[] | null {
 export function rejectText(reason: unknown): string {
   switch (reason) {
     case "not_near_rental":
-      return "관리소 앞 노란 원으로 가까이 와요.";
+      return "관리소 앞으로 가까이 와요.";
     case "not_near_return":
       return "낚싯대는 관리소 앞에서 돌려줘요.";
     case "already_has_rod":

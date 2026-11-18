@@ -222,7 +222,7 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
           // get up, then walk to the yellow circle
           standUp();
           setClickTarget(LAKE_RENTAL_PAD.x, LAKE_RENTAL_PAD.z + 2.2);
-          s.say("관리소 앞 노란 원으로 가요.");
+          s.say("관리소 앞으로 가요.");
           break;
         default:
           break;
@@ -290,7 +290,7 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
   const inZone = inLakeZone(pose.x, pose.z);
   if (!inZone && ctx.view.rod === 0 && !ctx.seatedNoRod) return null;
   // at the lake without a rod, away from the pad: where to get one (a first-time player has been told nothing)
-  const caption = lakeCaption(ctx, firstTimeRef.current) || (ctx.view.rod === 0 && !ctx.nearRental && inZone ? "낚싯대는 관리소 앞 노란 원에서 빌려요." : "");
+  const caption = lakeCaption(ctx, firstTimeRef.current) || (ctx.view.rod === 0 && !ctx.nearRental && inZone ? "낚싯대는 관리소 앞에서 빌려요." : "");
   const rect = isTouchDevice ? bigRect(layout, vp.w) : null;
   return (
     <>
