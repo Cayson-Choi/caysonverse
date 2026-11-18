@@ -22,7 +22,7 @@ export const MOON_ARM_L = 11.3;
 /** The hull: half length to the horn tips (z), half width (x), the keel's thickness at the middle and the horns' height over the keel. */
 export const MOON_HULL = Object.freeze({ halfZ: 7.2, halfX: 2.2, keelT: 0.55, horn: 2.2 });
 /** The seats: column spacing (x), row spacing (z), the front row's z, the cushion's height over the terrace. */
-export const MOON_SEAT = Object.freeze({ dx: 0.9, dz: 1.0, z0: 3.6, cushion: 0.5, eye: 0.9 });
+export const MOON_SEAT = Object.freeze({ dx: 0.85, dz: 1.0, z0: 3.6, cushion: 0.5, eye: 0.9 });
 /** The frame's feet and legs. */
 export const MOON_FRAME = Object.freeze({ legX: 3.9, footZ: 9.5, armX: 2.45 });
 
@@ -117,10 +117,16 @@ export function moonKeelY(z: number): number {
   return -MOON_ARM_L + MOON_HULL.horn * u * u;
 }
 
+/**
+ * The order the rows fill: from the middle of the boat outward (row 0 is at the bow). A rider in the middle looks over the backs of the rows ahead
+ * (a seat in front of you, the deck a small part of the view) and feels the swing most; the bow row, with only the bowl in front, fills late.
+ */
+export const MOON_ROW_ORDER: readonly number[] = Object.freeze([3, 4, 2, 5, 1, 6, 0, 7]);
+
 /** Which row and column a seat is on (row 0 at the bow). */
 export function moonSeatCell(seat: number): { row: number; col: number } {
   const s = Math.max(0, Math.min(MOON_BOAT_SEATS - 1, Math.floor(seat)));
-  return { row: Math.floor(s / MOON_BOAT_COLS), col: s % MOON_BOAT_COLS };
+  return { row: MOON_ROW_ORDER[Math.floor(s / MOON_BOAT_COLS)]!, col: s % MOON_BOAT_COLS };
 }
 
 /** A seat's cushion point in the boat frame (x across, y up, z toward the bow). */

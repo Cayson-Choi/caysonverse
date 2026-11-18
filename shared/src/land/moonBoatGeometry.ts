@@ -65,7 +65,7 @@ export function moonBoatPoints(step = 0.2): { p: V3; name: string }[] {
       }
   // the two arms, from the hull's gunwale to the axle
   for (const sx of [-MOON_FRAME.armX, MOON_FRAME.armX])
-    for (let y = -MOON_ARM_L + 1.4; y <= 0; y += 0.3) out.push({ p: [sx, y, 0], name: "arm" });
+    for (const sz of [-1, 1]) for (let f = 0; f <= 1.001; f += 0.1) out.push({ p: [sx, -0.15 + (-MOON_ARM_L + 1.45 + 0.15) * f, sz * (0.12 + 0.83 * f)], name: "arm" });
   return out;
 }
 

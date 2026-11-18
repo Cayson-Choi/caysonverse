@@ -1338,7 +1338,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         rideBeforeRef.current = { mode: viewState.mode, fov: persp.fov, near: persp.near };
         if (viewState.mode !== "fp") enterFp(orbit.yaw);
         viewState.fpYaw = 0;
-        viewState.fpPitch = selfRide.ride === 2 ? -0.04 : selfRide.ride === 3 ? 0.12 : selfRide.ride === 4 ? 0.02 : 0.1; // a rider settles looking a little down at the bar (on the carousel: level, over the horse's ears)
+        viewState.fpPitch = selfRide.ride === 2 ? -0.04 : selfRide.ride === 3 ? 0.12 : selfRide.ride === 4 ? -0.12 : 0.1; // a rider settles looking a little down at the bar (on the carousel: level, over the horse's ears)
         resetRideCamera();
         resetCarouselCamera();
         resetWheelCamera();

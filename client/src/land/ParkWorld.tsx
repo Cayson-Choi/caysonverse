@@ -751,7 +751,7 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       <CoasterWorld all={all} pine={pine} env={env} />
       <CarouselWorld env={env} all={all} />
       <WheelWorld env={env} all={all} />
-      <MoonBoatWorld />
+      <MoonBoatWorld all={all} />
     </group>
   );
 }

@@ -28,7 +28,8 @@ export function stepMoonBoatCamera(camera: PerspectiveCamera, _dt: number, lookY
   const float = Math.max(0, 1 - g) * 0.16 * (st.status === "riding" ? 1 : 0);
   const lift = MOON_SEAT.eye + float;
   // the eye in the boat frame is `lift` above the cushion along the seat's up
-  camera.position.set(P.x, P.y + P.uy * lift, P.z + P.uz * lift);
+  // 0.15 m back from the cushion point, along the seat (the rider sits back in the seat, the row ahead a little farther off)
+  camera.position.set(P.x - 0 * P.fy, P.y + P.uy * lift - P.fy * 0.15, P.z + P.uz * lift - P.fz * 0.15);
   // the hull's pitch: nose up while the angle is positive (the boat's +z end rises)
   const pitch = P.angle * k;
   camera.rotation.order = "YXZ";

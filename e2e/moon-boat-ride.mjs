@@ -157,12 +157,12 @@ let fps = null;
     await act(R);
     const seated = await until(async () => (await probe(R)).slot >= 0, 8000);
     const me = await probe(R);
-    run.check("R boards: a moon boat seat, ride 4, the front row (seat 0..3)", seated && me.ride === 4 && me.slot >= 0 && me.slot < 4, { slot: me.slot, ride: me.ride });
+    run.check("R boards: a moon boat seat, ride 4, a first-row seat (0..3)", seated && me.ride === 4 && me.slot >= 0 && me.slot < 4, { slot: me.slot, ride: me.ride });
     await sleep(1500);
     run.check("the ride panel is up", (await R.page.locator("[data-testid=coaster-ride-hud]").count()) === 1);
     await run.shot(R, "m05-seated-at-the-platform.png");
     const eye = (await probe(R)).probe.eye;
-    run.check("the eye is in the bow row, 2-4 m over the ground", eye[1] > 2 && eye[1] < 4.5, { eye });
+    run.check("the eye is in the boat, 2-4.5 m over the ground", eye[1] > 2 && eye[1] < 4.5, { eye });
   });
   await run.step("ride", async () => {
     const shot = new Set();
@@ -220,7 +220,7 @@ let fps = null;
 }
 
 // phase 3 (PC): two small pages: a rider on the boat seen from outside (remote rider drawn, rideId/rideSeat synced), and the ghost rule
-if (!phone) {
+if (!phone && !process.argv.includes("--look")) {
   const b = await launchBrowser();
   const small = { viewport: { width: 640, height: 400 } };
   const O = await openPlayer(b, run, { tag: "O2", device: small });
@@ -236,7 +236,7 @@ if (!phone) {
     await act(G);
     const seated = await until(async () => (await probe(G)).slot >= 0, 8000);
     const gs = await probe(G);
-    run.check("G boards: seat 0 (the bow row), ride 4", seated && gs.slot === 0 && gs.ride === 4, { slot: gs.slot, ride: gs.ride });
+    run.check("G boards: seat 0, ride 4", seated && gs.slot === 0 && gs.ride === 4, { slot: gs.slot, ride: gs.ride });
     await sleep(2000);
     const seen = (await remotes(O)).find((r) => r.nickname === G.nick);
     run.check("O sees G on the moon boat (rideId 4, rideSeat 0)", !!seen && seen.rideId === 4 && seen.rideSeat === 0, { rideId: seen?.rideId, rideSeat: seen?.rideSeat });

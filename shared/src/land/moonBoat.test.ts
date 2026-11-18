@@ -67,19 +67,21 @@ describe("moon boat timeline", () => {
     expect(hi).toBeGreaterThan(1.7);
     expect(hi).toBeLessThan(2.3);
   });
-  it("is in the ride table with 32 seats and the front row first", () => {
+  it("is in the ride table with 32 distinct seats, the middle rows first", () => {
     const r = rideByKey("moonboat")!;
     expect(r.seats).toBe(32);
     expect(RIDES.map((x) => x.id)).toEqual([1, 2, 3, 4]);
+    // the rows fill from the middle outward: the first rider has rows ahead (toward the bow) and behind
     const a = moonSeatLocal(0);
-    const b = moonSeatLocal(4);
-    const z = moonSeatLocal(31);
-    expect(a[2]).toBeGreaterThan(b[2]);
-    expect(z[2]).toBeLessThan(b[2]);
+    expect(a[2]).toBeGreaterThan(-1.2);
+    expect(a[2]).toBeLessThan(1.2);
+    expect(moonSeatLocal(31)[2]).not.toBeCloseTo(a[2], 1);
+    const rows = Array.from({ length: 8 }, (_, i) => moonSeatLocal(i * 4)[2]);
+    expect(new Set(rows.map((r) => r.toFixed(2))).size).toBe(8);
     expect(new Set(Array.from({ length: 32 }, (_, i) => moonSeatLocal(i).join())).size).toBe(32);
     expect(MOON_BOAT_SEATS).toBe(32);
   });
-  it("seats the first rider in the bow row (z positive) and the seat pose follows the swing", () => {
+  it("the seat pose follows the swing", () => {
     const rest = moonSeatPose(0, 0);
     let tTop = 58;
     for (let t = 58; t < 66; t += 0.01) if (Math.abs(moonBoatAt(MOON_DWELL_MS + t * 1000).angle) > Math.abs(moonBoatAt(MOON_DWELL_MS + tTop * 1000).angle)) tTop = t;
