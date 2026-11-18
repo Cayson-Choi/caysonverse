@@ -13,7 +13,7 @@ import { registerLabel } from "./labelRegistry";
 import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
-import { getRemoteRecord, noteRemoteDrawn, remoteDrawnProbe } from "./remoteStore";
+import { getRemoteRecord, noteRemoteDrawn, remoteDrawnProbe, remoteViewProbe } from "./remoteStore";
 import { pushOutOfMovingBus } from "./playerObstacles";
 import { sample, exceedsSnapDistance } from "./interpolation";
 import { advancePlayout, playoutGaitSpeed } from "./playout";
@@ -310,6 +310,24 @@ export function RemotePlayer({
     };
   }, [sessionId]);
 
+  // DEV-only E2E probe (window.__cv.getRemoteView): where this avatar's body really is on screen right now.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    remoteViewProbe.set(sessionId, () => {
+      const slot = slotRef.current;
+      if (slot >= 0 && impARef.current >= 1 && crowd) {
+        const m = crowd.mesh.instanceMatrix.array as Float32Array;
+        return { kind: "imp", x: m[slot * 16 + 12]!, y: m[slot * 16 + 13]!, z: m[slot * 16 + 14]!, visible: true };
+      }
+      const e = avatar.root.matrixWorld.elements;
+      const inScene = avatar.root.parent !== null;
+      return { kind: inScene ? "full" : "none", x: e[12]!, y: e[13]!, z: e[14]!, visible: groupRef.current?.visible ?? false };
+    });
+    return () => {
+      remoteViewProbe.delete(sessionId);
+    };
+  }, [sessionId, crowd, avatar]);
+
   /** The looping action of a loop (null if the clip is missing). */
   const loopAction = (l: Gait): AnimationAction | null =>
     l === "run" ? runAction.current : l === "walk" ? walkAction.current : idleAction.current;
@@ -506,6 +524,10 @@ export function RemotePlayer({
     line.drawn = rec.seatIndex;
     seatRef.current = createSeatMotion(rec.seatIndex, activeSeats(), drawn);
     primedRef.current = false;
+    // The avatar's node tree was posed by hand at the car / in the bus until now (and a ride puts the rider back on the very spot it
+    // boarded from): the far "still" rule of step 8 (nothing moved, nothing touched since the last refresh) must not keep that pose.
+    treeDirtyRef.current = true;
+    refreshedAtRef.current.x = Number.NaN;
   };
 
   /**
