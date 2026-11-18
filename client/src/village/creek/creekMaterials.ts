@@ -30,12 +30,28 @@ export interface CreekUniformsShared {
   noise: Texture;
 }
 
+export interface BankOptions {
+  /** A single water level (m) instead of the creek's (the fishing lake: -0.55). */
+  level?: number;
+  /** Heights over the water (m) between which the dressing fades out into the lawn (default 0.2 .. 0.36). */
+  fade?: readonly [number, number];
+  /** The gravel / wet-dirt split heights over the water (default gravel up to 0.03 .. 0.2). */
+  gravel?: readonly [number, number];
+  /** A multiplier on the gravel's colour (default a little cool grey; the lake's bed is a warmer silt). */
+  tint?: readonly [number, number, number];
+}
+
 /**
  * The bank and the bed over the baked ground: where the grass would run down into the water, wet earth, then pebbles at the
  * waterline and gravel below it. Drawn over the ground triangles (same positions, 1 cm up) with an alpha that fades into the grass
- * on the bank's upper part, so no straight line separates the lawn from the water.
+ * on the bank's upper part, so no straight line separates the lawn from the water. The creek's levels by default; `opts.level`
+ * makes it one water level (the fishing lake's).
  */
-export function bankMaterial(gravel: PbrSet, dirt: PbrSet, shared: CreekUniformsShared, tierLow: boolean): MeshStandardMaterial {
+export function bankMaterial(gravel: PbrSet, dirt: PbrSet, shared: CreekUniformsShared, tierLow: boolean, opts: BankOptions = {}): MeshStandardMaterial {
+  const fade = opts.fade ?? [0.2, 0.36];
+  const grav = opts.gravel ?? [0.03, 0.2];
+  const gt = opts.tint ?? [1.05, 1.03, 1.0];
+  const levelGlsl = opts.level === undefined ? LEVEL_GLSL : `float ckLevel( vec2 p ) { return ${opts.level.toFixed(3)}; }`;
   const m = new MeshStandardMaterial({
     name: "creek_bank",
     map: gravel.map,
@@ -69,7 +85,7 @@ uniform sampler2D uCkDirt;
 uniform sampler2D uCkNoise;
 uniform float uCkGravelTile;
 uniform float uCkDirtTile;
-${LEVEL_GLSL}
+${levelGlsl}
 float ckWet;
 float ckAlpha;`,
       )
@@ -82,20 +98,20 @@ float ckAlpha;`,
   float n1 = texture2D( uCkNoise, wp * 0.21 ).r;
   float n2 = texture2D( uCkNoise, wp * 0.9 + 0.37 ).r;
   float t = vCkWPos.y - ckLevel( vCkWPos.xz ) + ( n1 - 0.5 ) * 0.2 + ( n2 - 0.5 ) * 0.07;
-  float gravelW = 1.0 - smoothstep( 0.03, 0.2, t );
-  vec3 alb = mix( dr * vec3( 0.78, 0.74, 0.68 ), gr * vec3( 1.05, 1.03, 1.0 ), gravelW );
+  float gravelW = 1.0 - smoothstep( ${grav[0].toFixed(3)}, ${grav[1].toFixed(3)}, t );
+  vec3 alb = mix( dr * vec3( 0.78, 0.74, 0.68 ), gr * vec3( ${gt[0].toFixed(3)}, ${gt[1].toFixed(3)}, ${gt[2].toFixed(3)} ), gravelW );
   ckWet = 1.0 - smoothstep( -0.02, 0.2, t );
   alb *= mix( 1.0, 0.55, ckWet );
   // algae-green film at the waterline
   alb = mix( alb, alb * vec3( 0.7, 0.95, 0.5 ), ( 1.0 - smoothstep( 0.0, 0.12, abs( t + 0.03 ) ) ) * 0.45 );
-  ckAlpha = 1.0 - smoothstep( 0.2, 0.36, t );
+  ckAlpha = 1.0 - smoothstep( ${fade[0].toFixed(3)}, ${fade[1].toFixed(3)}, t );
   ckAlpha *= smoothstep( -0.01, -0.1, vCkWPos.y );
   diffuseColor = vec4( alb, ckAlpha );
 }`,
       )
       .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix( roughnessFactor, 0.5, ckWet * 0.8 );");
   };
-  m.customProgramCacheKey = () => `creek-bank${tierLow ? "-low" : ""}`;
+  m.customProgramCacheKey = () => `creek-bank${tierLow ? "-low" : ""}-${opts.level ?? "c"}-${fade[0]}-${fade[1]}-${gt.join(",")}`;
   return m;
 }
 
