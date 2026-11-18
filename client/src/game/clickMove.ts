@@ -270,7 +270,7 @@ export function peekClickRing(): Readonly<ClickTarget> | null {
 }
 
 /** Drop the walk's target only (it arrived, or made no progress): a tap waiting out its double-tap wait keeps its ring. */
-function endWalk(): void {
+export function endWalk(): void {
   state.target = null;
   state.viaIndex = 0;
   state.anchored = false;
