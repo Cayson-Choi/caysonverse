@@ -149,6 +149,22 @@ const orbitTo = (yaw, pitch, dist) =>
     const o = window.__cvOrbitLive();
     o.yaw = yaw; o.pitch = pitch; o.distance = dist;
   }, [yaw, pitch, dist]);
+const WHAT = opt("what", "hand");
+if (WHAT === "chair") {
+  // the seated avatar and the chair, from behind, the side, the front quarter and above (arm rests and backrest clearance)
+  await run.step("the chair and the sitter", async () => {
+    await sleep(1500);
+    const base = await p.page.evaluate(() => window.__cvOrbitLive().yaw);
+    for (const [name, dy, pitch, dist] of [["behind", 0, 0.12, 4.0], ["side", Math.PI / 2, 0.05, 4.0], ["front34", Math.PI * 0.75, 0.12, 4.0], ["above", 0.4, 0.9, 4.0]]) {
+      await orbitTo(base + dy, pitch, dist);
+      await sleep(900);
+      await shot(`chair-${name}`);
+    }
+  });
+  const code0 = run.finish();
+  await browser.close();
+  process.exit(code0);
+}
 await run.step("the hand on the rod, close up", async () => {
   await sleep(1500);
   const base = await p.page.evaluate(() => window.__cvOrbitLive().yaw);
