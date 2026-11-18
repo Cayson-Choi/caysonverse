@@ -208,8 +208,9 @@ describe("sacred pieces' maps: capped by dropping mips (L5v2 budget pass)", () =
   const tex = (w: number, h: number) => new CompressedTexture(chain(w, h) as never, w, h);
 
   it("the chapel's Mary and the framed art keep their sharp maps; the saints, the glass and the temple keep the budget caps", () => {
-    expect(sacredCaps("lotstatue__lot_chapel_nave_mary", false)).toMatchObject({ color: 2048, normal: 2048 });
+    expect(sacredCaps("lotstatue__lot_chapel_nave_mary", false)).toMatchObject({ color: 1024, normal: 2048 });
     expect(sacredCaps("lotstatue__lot_chapel_nave_mary", true)).toMatchObject({ color: 1024, normal: 1024 });
+    expect(sacredCaps("lotstatue__lot_chapel_nave_crucifix", false)).toMatchObject({ normal: 1024 });
     expect(sacredCaps("lotart__lot_chapel_nave_station_07", false).color).toBe(768);
     expect(sacredCaps("lotart__lot_church_nave_bloch_sermon", false).color).toBe(1280);
     expect(sacredCaps("lotstatue__lot_chapel_nave_saint", false)).toEqual(SACRED_MAP_MAX.desktop);

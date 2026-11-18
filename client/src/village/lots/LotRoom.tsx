@@ -118,7 +118,9 @@ export const SACRED_HERO_MAP_MAX = {
 export function sacredCaps(node: string, phone: boolean): { color: number; normal: number; orm: number } {
   const tier = phone ? "mobile" : "desktop";
   // the saints stand at the side: the budget caps; the 14 stations are small prints seen one or two at a time (768 px a long side is 1.8x the screen)
-  if (node.startsWith("lotstatue__lot_chapel_nave_") && !node.includes("saint")) return SACRED_HERO_MAP_MAX[tier];
+  // Mary: the 2K normal map carries the face and the folds; the marble's colour is soft (1K); the crucifix (a wood scan, seen from 3 m+): 1K normal
+  if (node === "lotstatue__lot_chapel_nave_mary") return { ...SACRED_HERO_MAP_MAX[tier], color: 1024, orm: phone ? 256 : 512 };
+  if (node === "lotstatue__lot_chapel_nave_crucifix") return { color: 1024, normal: 1024, orm: 512 };
   if (node.startsWith("lotart__lot_chapel_nave_station")) return { ...SACRED_MAP_MAX[tier], color: phone ? 512 : 768 };
   if (node.startsWith("lotart__lot_church_nave_")) return { ...SACRED_MAP_MAX[tier], color: phone ? 768 : 1280 };
   return SACRED_MAP_MAX[tier];
@@ -613,6 +615,7 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
     });
     // every texture on the GPU now, under the entry cover (the first frame inside never waits for an upload)
     const seen = new Set<Texture>();
+    const uploads: Texture[] = [];
     scene.traverse((o) => {
       if (!isMesh(o) || !o.visible) return;
       for (const m of matsOf(o))
@@ -621,14 +624,26 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
           const t = k === "lmNight" ? ((m as MeshStandardMaterial).userData.lmNight as Texture | undefined) : (m as MeshStandardMaterial)[k];
           if (t && !seen.has(t)) {
             seen.add(t);
-            try {
-              gl.initTexture(t);
-            } catch {
-              /* drawn three's way */
-            }
+            uploads.push(t);
           }
         }
     });
+    // (in slices: a 2K normal map is a 5 MB upload, ten of them in one task were one 300 ms frame; a pause of a frame between
+    // every ~3 MB keeps each frame under the cover short)
+    let sliced = 0;
+    for (const t of uploads) {
+      try {
+        gl.initTexture(t);
+      } catch {
+        /* drawn three's way */
+      }
+      const img = (t as Texture & { mipmaps?: Array<{ width: number; height: number }> }).mipmaps?.[0] ?? (t.image as { width?: number; height?: number } | null);
+      sliced += (img?.width ?? 0) * (img?.height ?? 0);
+      if (sliced > 3_000_000) {
+        sliced = 0;
+        await new Promise((r) => setTimeout(r, 16));
+      }
+    }
     const root = new Group();
     root.name = `lotroom__game_${unit}`;
     root.add(scene);
