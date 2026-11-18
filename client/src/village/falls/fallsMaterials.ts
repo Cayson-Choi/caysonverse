@@ -507,6 +507,8 @@ export function setFallsSky(sky: Texture | null, mapping: SkyMapping, noise: Tex
  */
 export const SEAM_GRASS: readonly [number, number, number] = [0.136, 0.245, 0.04];
 export const SEAM_FADE = 3.0;
+/** Metres from the box's east (south: +2) side where the gravel is wholly lawn (then it fades over SEAM_FADE more). */
+export const SEAM_SOLID = 3.5;
 /**
  * The ground materials' mean albedo luminance (linear, their texture's mean x W1's vertex tint ~0.8): the seam keeps
  * each one's grain as a ratio to it. T_falls_gravel (0.183, 0.167, 0.131), T_falls_turf (0.085, 0.085, 0.027).
@@ -519,7 +521,14 @@ const SEAM_GLSL = /* glsl */ `#ifdef FALLS_SEAM
   float fsN = vFallsWorld.z - ${f6(FALLS.site.minZ)};
   float fsS = ${f6(FALLS.site.maxZ)} - vFallsWorld.z;
   float fsX = smoothstep( -114.0, -110.5, vFallsWorld.x );
-  float fsW = max( 1.0 - smoothstep( 0.0, ${f6(SEAM_FADE)}, fsE ), max( 1.0 - smoothstep( 0.0, ${f6(SEAM_FADE)}, fsN ), 1.0 - smoothstep( 0.0, ${f6(SEAM_FADE)}, fsS ) ) * fsX );
+  // The gravel's own border (a stepped 1 m grid, 2-5 m inside the box on the east and 3-9 m inside the south side) lies under the
+  // wide, wobbling fade (fsB): beyond the channel's own banks the gravel breaks up into lawn, so no grey plate and no zig-zag edge.
+  float fsB = ( sin( vFallsWorld.x * 0.9 + sin( vFallsWorld.z * 0.7 ) ) + sin( vFallsWorld.z * 1.3 + vFallsWorld.x * 0.4 ) ) * 0.7;
+  float fsC = abs( vFallsWorld.x + 107.0 - ( vFallsWorld.z + 58.0 ) * 0.32 );
+  float fsWE = 1.0 - smoothstep( ${f6(SEAM_SOLID)}, ${f6(SEAM_SOLID + SEAM_FADE)}, fsE + fsB );
+  float fsWS = ( 1.0 - smoothstep( ${f6(SEAM_SOLID + 2)}, ${f6(SEAM_SOLID + 2 + SEAM_FADE)}, fsS + fsB ) ) * smoothstep( 2.0, 3.5, fsC );
+  float fsW = max( max( 1.0 - smoothstep( 0.0, ${f6(SEAM_FADE)}, fsE ), 1.0 - smoothstep( 0.0, ${f6(SEAM_FADE)}, fsN ) ), max( 1.0 - smoothstep( 0.0, ${f6(SEAM_FADE)}, fsS ), fsWS ) * fsX );
+  fsW = max( fsW, fsWE * fsX );
   vec2 fsQ = vFallsWorld.xz * vec2( 0.37, 0.41 );
   float fsV = 0.9 + 0.1 * sin( fsQ.x * 2.1 + sin( fsQ.y * 1.7 ) ) + 0.05 * sin( fsQ.y * 5.3 + fsQ.x * 3.1 );
   // the texture's own grain, as a ratio to this material's mean (gravel and turf then give the same lawn)
