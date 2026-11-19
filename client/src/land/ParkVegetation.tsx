@@ -15,6 +15,7 @@ import type { Bush } from "../village/veg/shrubs";
 import type { TreeSpec } from "../village/veg/treeSkeleton";
 import { circuitGround, taken } from "./ParkScenery";
 import { parkBorders, parkFlowerCrowns } from "./parkBorders";
+import { SHOP_WINDOW_BEDS } from "./parkShopWindows";
 import { applyVegetationDayNight } from "../village/villageModelPrep";
 import { dayNight } from "../village/dayNightDriver";
 
@@ -54,7 +55,7 @@ export function parkBeds(): { beds: Bed[]; cards: Card[] } {
       beds.push({ kind: "box", x0: cx - 0.9, x1: cx + 0.9, z0: cz - 0.6, z1: cz + 0.6, y: 0.1, out: null, plant: "border" });
     }
   }
-  beds.push(...parkBorders().flowers);
+  beds.push(...parkBorders().flowers, ...SHOP_WINDOW_BEDS);
   // a planting card standing in each bed (pink, yellow or purple row): the village's placement fills the whole bed round it
   const cards: Card[] = beds.map((b, id) => {
     if (b.kind !== "box") throw new Error("box beds only");
@@ -151,7 +152,7 @@ export function ParkVegetation() {
   // A low flowering crown stays on the soil after the individual petunias thin out.
   const planterBlooms = useMemo(() => {
     const pots = flowerBeds.beds.filter((bed): bed is Extract<Bed, { kind: "box" }> => bed.kind === "box" && bed.plant === "pot");
-    const blooms = flowerMassMesh(parkFlowerCrowns(pots), 8, 18, "park");
+    const blooms = flowerMassMesh([...parkFlowerCrowns(pots), ...SHOP_WINDOW_BEDS], 8, 18, "park");
     blooms.mesh.name = "park_planting_blooms";
     blooms.mesh.frustumCulled = true;
     blooms.mesh.userData[CLICK_PICK_KEY] = "ignore";
