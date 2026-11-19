@@ -24,19 +24,21 @@ export function pickSet(all: Texture[], set: ParkSet): PbrMaps {
 
 /**
  * A standard material from a set, repeated every `metres` m on a surface with world-metre UVs (`1 / metres` repeats a metre). The textures
- * are cloned so each material has its own repeat. `useColor` false leaves the colour map out (vertex colours paint it; the set gives only the
+ * are cloned so each material has its own repeat. Pass `ownedMaps` to configure private TextureLoader maps in place while they stream.
+ * `useColor` false leaves the colour map out (vertex colours paint it; the set gives only the
  * surface: bump and gloss).
  */
-export function parkMaterial(maps: PbrMaps, repeat: number | [number, number], params: Omit<MeshStandardMaterialParameters, "normalScale"> & { useColor?: boolean; normalScale?: number } = {}): MeshStandardMaterial {
-  const { useColor = true, normalScale = 0.8, ...rest } = params;
+export function parkMaterial(maps: PbrMaps, repeat: number | [number, number], params: Omit<MeshStandardMaterialParameters, "normalScale"> & { useColor?: boolean; normalScale?: number; ownedMaps?: boolean } = {}): MeshStandardMaterial {
+  const { useColor = true, normalScale = 0.8, ownedMaps = false, ...rest } = params;
   const prep = (t: Texture, srgb: boolean): Texture => {
-    const c = t.clone();
+    const c = ownedMaps ? t : t.clone();
     c.wrapS = c.wrapT = RepeatWrapping;
     if (typeof repeat === "number") c.repeat.set(repeat, repeat);
     else c.repeat.set(repeat[0], repeat[1]);
     c.anisotropy = isTouchDevice ? 2 : 8;
     if (srgb) c.colorSpace = SRGBColorSpace;
-    c.needsUpdate = true;
+    // TextureLoader requests the first upload when the image arrives. Setting it sooner submits a null image.
+    if (c.image != null) c.needsUpdate = true;
     return c;
   };
   return new MeshStandardMaterial({

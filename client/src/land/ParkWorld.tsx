@@ -260,12 +260,12 @@ function GateArch({ all }: { all: Texture[] }) {
   const sign = once("sign", () => gateSignTexture());
   const signMat = once("signMat", () => new MeshStandardMaterial({ map: sign, roughness: 0.5, emissive: new Color("#ffffff"), emissiveMap: sign, emissiveIntensity: 0.15 }));
   const stone = once("stone", () => {
-    const m = parkMaterial({ c: tex[0]!, n: tex[1]!, r: tex[2]! }, 1, { vertexColors: true, color: new Color("#fff2e6"), normalScale: 1.1 });
+    const m = parkMaterial({ c: tex[0]!, n: tex[1]!, r: tex[2]! }, 1, { ownedMaps: true, vertexColors: true, color: new Color("#fff2e6"), normalScale: 1.1 });
     m.name = "gate_stone";
     return m;
   });
   const roof = once("roof", () => {
-    const m = parkMaterial({ c: tex[3]!, n: tex[4]!, r: tex[5]! }, 1, { normalScale: 1.4 });
+    const m = parkMaterial({ c: tex[3]!, n: tex[4]!, r: tex[5]! }, 1, { ownedMaps: true, normalScale: 1.4 });
     m.onBeforeCompile = (shader) => {
       shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>", GLAZE_FRAGMENT);
     };
