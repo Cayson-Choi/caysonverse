@@ -71,42 +71,14 @@ def local_access(mesh):
     return access
 
 
-def face_visibility(xs, zs):
-    """Skylight reaching the sculpt, sampled on the frontal pigment island."""
-    from buddha_head import SKULL, fy, profile
-
-    # In the hall the face receives a uniform fill. The gilding underpaint
-    # carries the soft contact shadows of the actual brow, lids and nostrils.
-    step = .0025
-    x = np.arange(-.18, .1801, step)
-    z = np.arange(1.420, 1.8201, step)
-    height = np.array([[-fy(i,j) for i in x] for j in z])
-    margin = 16
-    padded = np.pad(height, margin, mode="edge")
-    blocked = np.zeros_like(height)
-    for dx, dz, weight in ((0,1,.44), (-1,1,.17), (1,1,.17),
-                           (-1,0,.09), (1,0,.09), (0,-1,.04)):
-        horizon = np.zeros_like(height)
-        for n in (1,2,4,7,11,margin):
-            row, col = margin+n*dz, margin+n*dx
-            neighbor = padded[row:row+len(z), col:col+len(x)]
-            slope = (neighbor-height)/(n*step*math.hypot(dx,dz))
-            np.maximum(horizon, slope, out=horizon)
-        blocked += weight*np.arctan(horizon)*(2/math.pi)
-    # The side rolls into the original gilt at the ear. Keep the planar
-    # island's cut edge invisible, even at the narrowest part of the jaw.
-    width = np.array([profile(SKULL,j)[0] for j in z])[:,None]
-    fade = np.clip((width-np.abs(x))/.030, 0, 1)
-    visibility = 1-.69*blocked*fade**2*(3-2*fade)
-    rows = np.array([np.interp(xs,x,row) for row in visibility])
-    return np.array([np.interp(zs,z,col) for col in rows.T]).T
-
-
 def dress(mesh, output, lod):
+    from buddha_head import HEAD_X
+
     access = local_access(mesh)
     tiles = {key:i for i,key in enumerate(KEYS)}
     face_limit = .180
     chin, crown = 1.420, 1.820
+    curl_lattice = mesh.uv_layers["Curl lattice"]
     uv = mesh.uv_layers.new(name="Leaf and pigment")
     for p in mesh.polygons:
         finish = mesh.materials[p.material_index].name
@@ -114,16 +86,22 @@ def dress(mesh, output, lod):
             index = mesh.loops[k].vertex_index
             x,y,z = mesh.vertices[index].co
             if finish == "Face pigment":
-                u = .5 + x/(2*face_limit)
+                u = .5 + (x-HEAD_X)/(2*face_limit)
                 v = min(.997, max(.003, (z-chin)/(crown-chin)))
                 uv.data[k].uv = (.5 + .5*u, v)
                 continue
             tile = tiles[finish]
+            if finish == "hair":
+                u,v = curl_lattice.data[k].uv
+                uv.data[k].uv = ((tile%4+u)/8,(tile//4+v)/2)
+                continue
             phase = .50 + .47*math.sin(7*x + 6*y + 9*z + .6*math.sin(5*y - 4*z))
             tone = access[index]
-            if finish == "skin" and 1.438 < z < 1.805 and y < -.068:
-                # Retain the wash beneath the jaw on the original neck.
-                tone = max(.05, tone-.29*math.exp(-((abs(x)-.020)/.095)**2-((z-1.454)/.016)**2))
+            if finish == "skin" and 1.42 < z < 1.48:
+                # Soft contact wash on the anterior neck directly under the chin.
+                under_chin = math.exp(-((x-HEAD_X)/.091)**2-((y-.075)/.043)**2
+                                      -((z-1.450)/.018)**2)
+                tone = max(.05, tone-.24*under_chin)
             uv.data[k].uv = ((tile%4 + .06 + .88*tone)/8,
                              (tile//4 + .06 + .88*phase)/2)
     for layer in list(mesh.uv_layers):
@@ -155,11 +133,11 @@ def dress(mesh, output, lod):
             if kind == "color":
                 for channel, value in enumerate(color):
                     # Subtle warm reflected light remains in leaf recesses.
-                    shade = .50 + .50*ao if key == "skin" else .73 + .27*ao
+                    shade = .86 + .14*ao if key == "skin" else .73 + .27*ao
                     linear = np.clip(value * shade * (1+.009*wave), 0, 1)
                     patch[:,:,channel] = np.where(linear <= .0031308, 12.92*linear, 1.055*linear**(1/2.4)-.055)
             elif kind == "orm":
-                patch[:,:,0] = .46 + .54*ao
+                patch[:,:,0] = .81 + .19*ao if key == "skin" else .46 + .54*ao
                 patch[:,:,1] = rough + .016*wave + .026*(1-ao)
                 patch[:,:,2] = metal
             else:
@@ -167,15 +145,37 @@ def dress(mesh, output, lod):
                 patch[:,:,0] = .5 + strength*wave
                 patch[:,:,1] = .5 + strength*np.sin(31*v+11*u)
                 patch[:,:,2] = 1
+            if key == "hair":
+                # Six identical whorls in one padded strip. Curl spacing comes
+                # from the scalp bands so the phone and PC casts agree.
+                x = 2*np.mod(6*(u-.04)/.92, 1)-1
+                y = 2*(v-.04)/.92-1
+                r = np.sqrt(x*x+y*y)
+                angle = np.arctan2(y,x)
+                dome = np.clip(1-r*r,0,1)**1.32
+                whorl = np.cos(angle-7.4*r-.72)
+                groove = .021*dome*(1-np.exp(-r*r/.045))*(.5+.5*whorl)**3
+                if kind == "normal":
+                    height = .77*dome-groove
+                    dy,dx = np.gradient(height, 2/(.92*(tile_height-1)),12/(.92*(tile_size-1)))
+                    length = np.sqrt(1+dx*dx+dy*dy)
+                    patch[:,:,0] = .5-.5*dx/length
+                    patch[:,:,1] = .5-.5*dy/length
+                    patch[:,:,2] = .5+.5/length
+                elif kind == "color":
+                    # The exposed upper crest of each bead is burnished;
+                    # the black lacquer still collects in the low turns.
+                    crest = np.exp(-((x+.10)/.48)**2-((y-.22)/.46)**2)
+                    for c,value in enumerate(color):
+                        linear = value*(.09+3.50*dome-groove)+(.053,.057,.060)[c]*crest
+                        patch[:,:,c] = np.where(linear<=.0031308,12.92*linear,1.055*linear**(1/2.4)-.055)
+                else:
+                    patch[:,:,0] = .54+.44*dome
+                    patch[:,:,1] = rough+.15*(1-dome)
+                    patch[:,:,2] = .83-.73*dome
         x = ((np.arange(w//2)+.5)/(w//2)*2 - 1)*face_limit
         z = chin + (np.arange(h)+.5)/h*(crown-chin)
-        face = face_patch(kind, x[None,:], z[:,None])
-        if kind == "color":
-            # Apply visibility in linear light, then return to sRGB storage.
-            light = face_visibility(x,z)[:,:,None]
-            linear = np.where(face <= .04045, face/12.92, ((face+.055)/1.055)**2.4)*light
-            face = np.where(linear <= .0031308, 12.92*linear, 1.055*linear**(1/2.4)-.055)
-        arr[:,w//2:,:3] = face
+        arr[:,w//2:,:3] = face_patch(kind, x[None,:], z[:,None], phone=lod == "phone")
         image = bpy.data.images.new(kind, w, h, alpha=False, float_buffer=False)
         image.colorspace_settings.name = "sRGB" if kind == "color" else "Non-Color"
         image.pixels.foreach_set(arr.ravel())

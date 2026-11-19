@@ -1,7 +1,9 @@
 /** Finish the original hall Buddha after the Blender build.
- * node buddha_pack.mjs <build-directory> <sacred-GLB-directory> [--preserve-from|--preserve-ears-from <prior-GLB-directory>]
+ * node buddha_pack.mjs <build-directory> <sacred-GLB-directory> [--preserve-from|--preserve-ears-from|--preserve-head-from|--textures-only-from <prior-GLB-directory>]
  * For a face revision, pass the shipped pair's directory to --preserve-from.
  * For an ear revision, --preserve-ears-from keeps the shipped face, body and KTX2 textures.
+ * For a full head revision, --preserve-head-from retains the body and ears around the new throat, face and hair.
+ * For a finish revision, --textures-only-from puts the new atlases on the exact shipped geometry, including its meshopt fallback.
  * It can also be the destination. Both LODs are built before either file is replaced.
  * Uses the locked KTX2 settings from sacred/node. The room loader needs the meshopt
  * extension's core fallback. Both paths carry the same faces and vertex attributes.
@@ -11,21 +13,28 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MeshoptEncoder, MeshoptDecoder } from "meshoptimizer";
+import { dressBuddhaLeaf } from "./node/buddha_leaf.mjs";
 import { preserveSurroundingStatue } from "./buddha_preserve.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const [work, destination, flag, seedDirectory, ...extra] = process.argv.slice(2);
-if (!work || !destination || (flag && (!["--preserve-from", "--preserve-ears-from"].includes(flag) || !seedDirectory)) || extra.length) {
-  throw new Error("Expected build directory, sacred GLB directory and optional --preserve-from or --preserve-ears-from <directory>");
+const regions = new Map([["--preserve-from", "face"], ["--preserve-ears-from", "ears"], ["--preserve-head-from", "head"]]);
+const texturesOnly = flag === "--textures-only-from";
+if (!work || !destination || (flag && ((!texturesOnly && !regions.has(flag)) || !seedDirectory)) || extra.length) {
+  throw new Error("Expected build directory, sacred GLB directory and an optional preservation flag and source directory");
 }
 const align = (n) => Math.ceil(n / 4) * 4;
 await Promise.all([MeshoptEncoder.ready, MeshoptDecoder.ready]);
 
-function compressGeometry(file) {
-  const input = readFileSync(file);
+function readGlb(file) {
+  const input = Buffer.isBuffer(file) ? file : readFileSync(file);
   const jsonLength = input.readUInt32LE(12);
   const doc = JSON.parse(input.toString("utf8", 20, 20 + jsonLength));
-  const original = input.subarray(28 + jsonLength);
+  return { doc, binary: input.subarray(28 + jsonLength) };
+}
+
+function compressGeometry(file) {
+  const { doc, binary: original } = readGlb(file);
   const chunks = [original];
   let offset = original.length;
   const extension = "EXT_meshopt_compression";
@@ -60,6 +69,10 @@ function compressGeometry(file) {
     offset += align(encoded.length);
   }
   (doc.extensionsUsed ??= []).push(extension);
+  return encodeGlb(doc, chunks, offset);
+}
+
+function encodeGlb(doc, chunks, offset) {
   doc.buffers[0].byteLength = offset;
   const json = Buffer.from(JSON.stringify(doc));
   const jsonPadded = Buffer.alloc(align(json.length), 32);
@@ -73,12 +86,48 @@ function compressGeometry(file) {
   return Buffer.concat([header, jsonPadded, binaryHeader, ...chunks]);
 }
 
+function coreAtlases(shipped, finish) {
+  const replacements = new Map();
+  for (const image of finish.doc.images) {
+    const original = shipped.doc.images.find(im => im.name === image.name);
+    if (image.mimeType !== "image/ktx2" || original?.mimeType !== image.mimeType) {
+      throw new Error("Missing matching KTX2 atlas: " + image.name);
+    }
+    const view = finish.doc.bufferViews[image.bufferView];
+    const start = view.byteOffset || 0;
+    replacements.set(shipped.doc.bufferViews[original.bufferView], finish.binary.subarray(start, start + view.byteLength));
+  }
+  return replacements;
+}
+
+function writeSpans({doc, binary}, replacements) {
+  // Move complete fallback and compressed views as opaque blocks. A Blender
+  // rebuild may choose different decimation edges even with the same sculpt.
+  const spans = [...doc.bufferViews];
+  for (const view of doc.bufferViews) {
+    const encoded = view.extensions?.EXT_meshopt_compression;
+    if (encoded) spans.push(encoded);
+  }
+  spans.sort((a, b) => (a.byteOffset || 0) - (b.byteOffset || 0));
+  const chunks = [];
+  let offset = 0;
+  for (const span of spans) {
+    const start = span.byteOffset || 0;
+    const bytes = replacements.get(span) ?? binary.subarray(start, start + span.byteLength);
+    span.byteOffset = offset;
+    span.byteLength = bytes.length;
+    chunks.push(bytes, Buffer.alloc(align(bytes.length) - bytes.length));
+    offset += align(bytes.length);
+  }
+  return encodeGlb(doc, chunks, offset);
+}
+
 const packed = new Map();
 for (const lod of ["pc", "phone"]) {
   const name = "lotstatue__lot_temple_hall_buddha" + (lod === "phone" ? "_phone" : "");
   let model = path.resolve(work, lod + ".glb");
-  if (seedDirectory) {
-    const region = flag === "--preserve-ears-from" ? "ears" : "face";
+  if (regions.has(flag)) {
+    const region = regions.get(flag);
     const graft = path.join(work, lod + "-" + region + ".glb");
     await preserveSurroundingStatue(path.join(seedDirectory, name + ".glb"), model, graft, region);
     model = graft;
@@ -89,6 +138,15 @@ for (const lod of ["pc", "phone"]) {
       model, ktx, "2048", "all", "2048"], {stdio: "inherit"});
     model = ktx;
   }
-  packed.set(path.join(destination, name + ".glb"), compressGeometry(model));
+  const source = texturesOnly ? path.join(seedDirectory, name + ".glb") : compressGeometry(model);
+  const statue = readGlb(source);
+  const replacements = texturesOnly ? coreAtlases(statue, readGlb(model)) : new Map();
+  const keepPaint = flag === "--preserve-ears-from";
+  // The historical ear-only workflow also accepts casts that predate the
+  // photographic finish, and promises to preserve their original textures.
+  if (!keepPaint || statue.doc.images.some(image => image.name === lod+"-photographic-fill")) {
+    await dressBuddhaLeaf(statue, lod, path.join(work,lod+"-color.png"), replacements, keepPaint);
+  }
+  packed.set(path.join(destination, name + ".glb"), writeSpans(statue, replacements));
 }
 for (const [file, bytes] of packed) writeFileSync(file, bytes);
