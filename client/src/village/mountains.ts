@@ -219,7 +219,7 @@ float mtnNoise( vec3 x ) {
 const FRAGMENT_MAP = /* glsl */ `
 #ifdef USE_MAP
 {
-  vec4 mtnTex = texture2D( map, vMapUv, 1.65 );
+  vec4 mtnTex = texture2D( map, vMapUv, 3.2 );
   float grove = smoothstep( 0.22, 0.78, mtnNoise( vMtnWorld * vec3( 0.027, 0.072, 0.027 ) ) );
   float grain = mtnNoise( vMtnWorld * vec3( 0.10, 0.16, 0.10 ) + 7.0 );
   mtnTex.rgb *= mix( vec3( 0.76, 0.87, 0.81 ), vec3( 1.26, 1.27, 1.02 ), grove ) * ( 0.91 + 0.18 * grain );
