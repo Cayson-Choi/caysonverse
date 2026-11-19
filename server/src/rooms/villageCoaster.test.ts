@@ -283,4 +283,31 @@ describe("VillageCoaster (server rules)", () => {
     expect(p0.rideSeat).toBe(-1);
     expect(p0.rideId).toBe(0);
   });
+  it("the drop tower: 16 seats fill face by face, a rider cannot get off aloft and is put off when the cycle ends", () => {
+    const r = rig();
+    const T0 = 21 * 60_000 + 10_000; // 10 s into a cycle: boarding
+    r.setNow(T0);
+    for (let i = 0; i < 17; i++) {
+      r.add(`d${i}`);
+      const p = r.players.get(`d${i}`)!;
+      p.x = -61;
+      p.z = -88;
+      r.send(`d${i}`, VillageMsg.RideBoard, { ride: "droptower" });
+    }
+    const p0 = r.players.get("d0")!;
+    expect(p0.rideId).toBe(5);
+    expect(p0.rideSeat).toBe(0);
+    expect(r.players.get("d3")!.rideSeat).toBe(3);
+    expect(r.players.get("d15")!.rideSeat).toBe(15);
+    expect(r.players.get("d16")!.rideSeat).toBe(-1); // full
+    // aloft: the leave is refused with a notice
+    r.setNow(21 * 60_000 + 36_000 + 18_000);
+    r.send("d0", VillageMsg.RideLeave);
+    expect(p0.rideSeat).toBe(0);
+    expect(r.sent.some((m) => m.sid === "d0" && (m.msg as { reason?: string }).reason === "aloft")).toBe(true);
+    r.setNow(22 * 60_000 + 300);
+    r.coaster.tick();
+    expect(p0.rideSeat).toBe(-1);
+    expect(p0.rideId).toBe(0);
+  });
 });

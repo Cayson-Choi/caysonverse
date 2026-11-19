@@ -10,6 +10,8 @@ from math import atan2, cos, exp, pi, sin
 import bmesh
 import bpy
 from mathutils import Vector
+from mathutils.bvhtree import BVHTree
+from mathutils.geometry import barycentric_transform
 
 from buddha_mesh import mat
 
@@ -101,10 +103,10 @@ class Surface:
 CHEST = [
     (.68, .198, .140, .172, .015), (.78, .223, .153, .179, .020),
     (.89, .227, .156, .164, .024), (1.00, .244, .171, .161, .024),
-    (1.105, .269, .187, .169, .020), (1.17, .283, .197, .174, .015),
-    (1.235, .302, .192, .178, .017), (1.307, .317, .172, .173, .023),
-    (1.354, .313, .154, .157, .025), (1.389, .272, .137, .142, .026),
-    (1.415, .207, .119, .127, .024), (1.439, .139, .102, .109, .022),
+    (1.105, .269, .188, .169, .020), (1.17, .286, .200, .174, .015),
+    (1.235, .305, .195, .178, .017), (1.307, .316, .179, .174, .022),
+    (1.354, .301, .158, .159, .025), (1.389, .263, .136, .143, .026),
+    (1.415, .207, .117, .127, .024), (1.439, .139, .102, .109, .022),
     (1.46, .110, .097, .101, .022), (1.49, .106, .097, .104, .022),
     (1.525, .112, .104, .108, .022)
 ]
@@ -113,10 +115,11 @@ CHEST = [
 def chest_point(z, theta):
     rx, front, back, y0 = interpolate(CHEST, z)
     sn, cs = sin(theta), cos(theta)
-    # A small continuous sternum transition; no anatomical muscle grooves.
-    hollow = .009 * exp(-(sn / .21) ** 2 - ((z - 1.20) / .085) ** 2)
-    return Vector((rx * sn, y0 - (front if cs >= 0 else back) * cs
-                   + hollow * max(0.0, cs), z))
+    # The soft swell of each breast sits above the scooped edge of the robe.
+    # It merges gradually with the sternum and rises into the bare shoulder.
+    swell = .011 * exp(-((abs(sn) - .47) / .40) ** 2 - ((z - 1.158) / .074) ** 2)
+    sternum = .003 * exp(-(sn / .30) ** 2 - ((z - 1.21) / .10) ** 2)
+    return Vector((rx * sn, y0 - (front + swell - sternum if cs >= 0 else back) * cs, z))
 
 
 def torso_and_arm(phone):
@@ -143,16 +146,16 @@ def torso_and_arm(phone):
     # The broad shoulder turns down into a soft elbow and a lifted forearm.
     # Palm stations continue the same mesh all the way to the finger webs.
     arm = [
-        (-.281, .025, 1.265, .135, .135), (-.309, .027, 1.223, .119, .113),
-        (-.322, .026, 1.158, .093, .098), (-.331, .022, 1.065, .084, .087),
-        (-.340, .013, .970, .082, .082), (-.347, -.008, .901, .080, .082),
-        (-.348, -.041, .867, .077, .079), (-.349, -.084, .872, .081, .079),
-        (-.347, -.131, .908, .083, .082), (-.340, -.191, .968, .078, .073),
-        (-.331, -.249, 1.030, .069, .062), (-.321, -.300, 1.096, .061, .053),
-        (-.314, -.327, 1.143, .057, .047), (-.310, -.339, 1.176, .065, .047),
-        (-.306, -.346, 1.212, .078, .048), (-.305, -.350, 1.249, .081, .042),
-        (-.307, -.348, 1.278, .077, .032), (-.307, -.344, 1.298, .067, .024),
-        (-.307, -.341, 1.307, .050, .017)
+        (-.277, .025, 1.262, .123, .126), (-.297, .027, 1.218, .108, .105),
+        (-.310, .026, 1.153, .087, .090), (-.322, .022, 1.061, .076, .078),
+        (-.335, .013, .962, .075, .075), (-.342, -.008, .887, .073, .077),
+        (-.345, -.041, .850, .068, .074), (-.346, -.084, .858, .073, .076),
+        (-.342, -.131, .897, .078, .078), (-.331, -.191, .964, .071, .068),
+        (-.321, -.249, 1.030, .061, .057), (-.318, -.300, 1.096, .053, .047),
+        (-.314, -.327, 1.143, .052, .044), (-.310, -.337, 1.175, .061, .045),
+        (-.306, -.341, 1.210, .071, .046), (-.306, -.343, 1.246, .074, .041),
+        (-.307, -.342, 1.274, .071, .034), (-.307, -.339, 1.293, .061, .025),
+        (-.307, -.337, 1.302, .049, .018)
     ]
     prev = opening
     palm = Surface()
@@ -226,24 +229,24 @@ def hands(phone, s):
     # Little, ring and index rise from the web in steps. The index leans
     # forward in profile while the middle curls down to the rising thumb pad.
     fingers = [
-        [(-.359, -.343, 1.257, .019, .022), (-.367, -.344, 1.306, .018, .020),
-         (-.366, -.342, 1.350, .015, .017), (-.362, -.350, 1.387, .013, .015),
-         (-.360, -.352, 1.396, .006, .006), (-.359, -.353, 1.398, .002, .002)],
-        [(-.331, -.340, 1.272, .022, .024), (-.333, -.336, 1.326, .020, .021),
-         (-.332, -.330, 1.374, .018, .019), (-.326, -.335, 1.420, .016, .017),
-         (-.324, -.337, 1.433, .010, .010), (-.323, -.338, 1.437, .002, .002)],
-        [(-.252, -.341, 1.271, .023, .025), (-.248, -.344, 1.332, .021, .023),
-         (-.249, -.354, 1.397, .020, .021), (-.251, -.368, 1.461, .017, .018),
-         (-.252, -.370, 1.474, .011, .012), (-.252, -.371, 1.479, .002, .002)],
-        [(-.298, -.342, 1.272, .022, .024), (-.299, -.347, 1.320, .021, .022),
-         (-.295, -.366, 1.353, .019, .020), (-.289, -.389, 1.357, .018, .019),
-         (-.279, -.409, 1.345, .016, .017), (-.271, -.416, 1.334, .013, .014),
-         (-.266, -.418, 1.327, .006, .007)],
-        [(-.295, -.334, 1.169, .011, .012), (-.280, -.348, 1.189, .032, .024),
-         (-.255, -.359, 1.220, .032, .028),
-         (-.232, -.372, 1.253, .025, .026), (-.228, -.393, 1.286, .021, .022),
-         (-.243, -.410, 1.310, .018, .019), (-.262, -.418, 1.323, .016, .017),
-         (-.270, -.416, 1.332, .012, .013), (-.275, -.414, 1.338, .005, .006)]
+        [(-.361, -.337, 1.251, .018, .020), (-.368, -.340, 1.300, .016, .018),
+         (-.367, -.336, 1.346, .014, .015), (-.363, -.343, 1.379, .012, .013),
+         (-.361, -.344, 1.388, .006, .006), (-.360, -.345, 1.390, .002, .002)],
+        [(-.333, -.336, 1.265, .020, .022), (-.335, -.330, 1.320, .018, .019),
+         (-.331, -.324, 1.370, .016, .017), (-.324, -.330, 1.415, .015, .016),
+         (-.322, -.332, 1.427, .009, .010), (-.321, -.333, 1.431, .002, .002)],
+        [(-.254, -.337, 1.264, .021, .022), (-.250, -.333, 1.325, .019, .020),
+         (-.252, -.342, 1.391, .018, .019), (-.255, -.355, 1.454, .015, .016),
+         (-.256, -.357, 1.467, .010, .011), (-.256, -.358, 1.472, .002, .002)],
+        [(-.299, -.336, 1.268, .020, .022), (-.300, -.339, 1.311, .019, .020),
+         (-.297, -.355, 1.342, .017, .018), (-.292, -.375, 1.346, .016, .017),
+         (-.284, -.392, 1.335, .015, .016), (-.277, -.400, 1.323, .012, .013),
+         (-.272, -.402, 1.316, .006, .007)],
+        [(-.295, -.332, 1.170, .011, .012), (-.280, -.340, 1.190, .029, .022),
+         (-.257, -.349, 1.217, .029, .025),
+         (-.241, -.359, 1.247, .023, .023), (-.238, -.378, 1.276, .019, .020),
+         (-.249, -.394, 1.300, .017, .017), (-.268, -.402, 1.313, .015, .016),
+         (-.276, -.400, 1.322, .011, .012), (-.281, -.398, 1.329, .005, .006)]
     ]
     for f in fingers:
         sweep(s, f, 8 if phone else 12, 8 if phone else 13, pads=True)
@@ -278,30 +281,43 @@ def hands(phone, s):
     return hand
 
 
-# Each column follows a fold from the breast around the left arm and back.
-# The low point of each swag moves towards the elbow as the fabric opens.
+# Each column follows one cloth crest around the figure. On the front the
+# courses are traced in the registered elevation: they sag on the bare-arm
+# side of the sternum, then rise and crowd together at the draped shoulder.
 DRAPE = [
-    # turn     hem    first  second  third  fourth   neckline
-    (.000,    .674,  .775,  .859,   .947,  1.015,    1.064),
-    (.046,    .674,  .779,  .864,   .959,  1.038,    1.087),
-    (.096,    .683,  .802,  .897,  1.009,  1.115,    1.218),
-    (.145,    .691,  .819,  .920,  1.048,  1.196,    1.407),
-    (.183,    .626,  .745,  .848,   .969,  1.140,    1.446),
-    (.220,    .497,  .609,  .731,   .866,  1.059,    1.451),
-    (.255,    .430,  .521,  .646,   .804,  1.084,    1.453),
-    (.282,    .427,  .507,  .652,   .860,  1.218,    1.453),
-    (.306,    .427,  .542,  .785,  1.082,  1.349,    1.451),
-    (.337,    .428,  .893, 1.186,  1.331,  1.409,    1.448),
-    (.361,    .429, 1.274, 1.350,  1.395,  1.425,    1.443),
-    (.390,    .430, 1.009, 1.173,  1.282,  1.359,    1.404),
-    (.428,    .431,  .684,  .882,  1.060,  1.176,    1.270),
-    (.495,    .431,  .553,  .733,   .900,  1.045,    1.157),
-    (.592,    .433,  .546,  .710,   .862,   .997,    1.091),
-    (.680,    .465,  .574,  .715,   .859,   .986,    1.085),
-    (.758,    .626,  .693,  .798,   .902,   .995,    1.080),
-    (.838,    .690,  .797,  .876,   .952,  1.018,    1.081),
-    (.918,    .683,  .787,  .866,   .945,  1.012,    1.071),
-    (1.00,    .674,  .775,  .859,   .947,  1.015,    1.064),
+    # Turn; lower edge, six fold crests, upper edge.
+    (.000, .675, .788, .853, .919, .977, 1.015, 1.068, 1.098),
+    (.023, .675, .798, .865, .938, 1.005, 1.046, 1.094, 1.124),
+    (.045, .675, .830, .905, .994, 1.040, 1.115, 1.152, 1.185),
+    (.055, .676, .858, .940, 1.033, 1.075, 1.167, 1.205, 1.241),
+    (.062, .679, .887, .973, 1.064, 1.100, 1.195, 1.234, 1.322),
+    (.073, .683, .936, 1.028, 1.103, 1.140, 1.217, 1.257, 1.374),
+    (.083, .687, .978, 1.071, 1.140, 1.175, 1.233, 1.304, 1.398),
+    (.095, .690, 1.021, 1.117, 1.185, 1.222, 1.250, 1.350, 1.410),
+    (.108, .690, 1.062, 1.158, 1.232, 1.268, 1.297, 1.389, 1.418),
+    (.122, .690, 1.100, 1.197, 1.274, 1.307, 1.345, 1.403, 1.424),
+    (.145, .690, 1.155, 1.272, 1.322, 1.350, 1.375, 1.412, 1.432),
+    (.170, .645, 1.199, 1.299, 1.340, 1.374, 1.397, 1.418, 1.434),
+    (.194, .555, 1.170, 1.264, 1.312, 1.348, 1.381, 1.416, 1.439),
+    (.213, .482, 1.023, 1.130, 1.208, 1.261, 1.320, 1.386, 1.445),
+    (.233, .433, .814, .897, .947, .995, 1.046, 1.155, 1.449),
+    (.257, .427, .583, .658, .715, .794, .916, 1.096, 1.451),
+    (.279, .427, .529, .607, .680, .776, .943, 1.157, 1.451),
+    (.300, .427, .508, .585, .687, .823, 1.003, 1.261, 1.450),
+    (.318, .427, .512, .622, .747, .934, 1.114, 1.347, 1.449),
+    (.337, .428, .555, .726, .909, 1.097, 1.277, 1.395, 1.447),
+    (.355, .428, .673, .946, 1.140, 1.265, 1.367, 1.416, 1.445),
+    (.374, .430, 1.140, 1.228, 1.291, 1.343, 1.377, 1.408, 1.433),
+    (.405, .431, .801, .978, 1.118, 1.215, 1.279, 1.326, 1.376),
+    (.466, .431, .565, .706, .850, .980, 1.064, 1.132, 1.203),
+    (.555, .431, .545, .658, .780, .886, .982, 1.049, 1.114),
+    (.655, .445, .539, .638, .753, .868, .958, 1.027, 1.086),
+    (.758, .626, .785, .874, .949, 1.009, 1.040, 1.077, 1.110),
+    (.830, .689, .797, .907, .997, 1.059, 1.084, 1.105, 1.126),
+    (.880, .687, .789, .875, .939, 1.011, 1.047, 1.076, 1.097),
+    (.935, .681, .785, .852, .916, .982, 1.014, 1.059, 1.089),
+    (.972, .678, .783, .850, .914, .968, 1.006, 1.059, 1.090),
+    (1.00, .675, .788, .853, .919, .977, 1.015, 1.068, 1.098),
 ]
 
 # Horizontal sections of the hanging cloth clear the resting arm and spread
@@ -309,9 +325,9 @@ DRAPE = [
 CLOTH_SECTIONS = [
     # height, left reach, right reach, front depth, back depth, centre Y
     (.400, .561, .553, .420, .402, .015),
-    (.460, .569, .556, .421, .412, .016),
-    (.550, .551, .525, .385, .397, .018),
-    (.640, .499, .439, .299, .348, .019),
+    (.460, .589, .556, .421, .412, .016),
+    (.550, .589, .525, .385, .397, .018),
+    (.640, .519, .439, .299, .348, .019),
     (.720, .433, .295, .201, .274, .020),
     (.800, .388, .233, .170, .222, .021),
     (.900, .371, .238, .168, .203, .022),
@@ -341,44 +357,48 @@ def mantle(phone):
     surf = Surface()
     # Keep the edge loops on the actual ridges and in their troughs at both
     # LODs. A broad convex face returns underneath each rounded lip.
-    profile = [(0, 1.), (.11, .80), (.30, .29), (.54, -.06),
-               (.73, -.12), (.84, .12), (.94, .78)]
+    profile = [(0, 1.), (.07, .78), (.22, .21), (.46, .02),
+               (.70, -.10), (.84, -.14), (.93, .16), (.975, .73)]
     if phone:
-        profile = [profile[i] for i in (0, 2, 4, 5)]
+        profile = [profile[i] for i in (0, 2, 5, 6)]
     n = 39 if phone else 87
     courses = len(DRAPE[0]) - 2
     # Extra rows follow a narrow fold just outside the neckline. It rolls
     # over the shoulder and flattens out as it reaches the sternum.
-    samples = [(k, t, r) for k in range(courses) for t, r in profile]
+    samples = [(k, t, r) for k in range(1, courses) for t, r in profile]
     samples = [entry for entry in samples if entry[0] < courses - 1 or entry[1] < .73]
     samples.extend((courses - 1, t, r) for t, r in
                    ((.73, -.1), (.82, .0), (.875, .9), (.91, .75), (.956, .0), (1., 1.)))
-    if not phone:
-        # The first course fans from the lotus to the back shoulder. Retain
-        # its curved silhouette even where one face of the fold is very wide.
-        samples.extend((0, t, r) for t, r in ((.20, .56), (.42, .07), (.64, -.11)))
-        samples.sort()
+    # Sample the subsidiary folds in the big forearm panel at their crests
+    # and troughs; letting decimation start from a flat span loses them.
+    lower_rows = [.0,.08,.20,.26,.32,.39,.48,.55,.62,.70,.76,.82,.90,.96]
+    samples.extend((0, t, interpolate(profile, t)[0]) for t in lower_rows)
+    samples.sort()
     rows = [[] for _ in samples]
     normals = [[], []]
     # Repeat the end stations so that even the tangent at the centre-front
     # seam is shared between its two sides.
     periodic = [(DRAPE[-2][0] - 1, *DRAPE[-2][1:]), *DRAPE,
                 (DRAPE[1][0] + 1, *DRAPE[1][1:])]
-    meridians = [(0, 0), (.11, .091), (.25, .183), (.40, .275), (.54, .349),
-                 (.64, .406), (.74, .492), (.83, .615), (.93, .847), (1, 1)]
+    meridians = [(0, 0), (.18, .092), (.31, .188), (.42, .266), (.53, .349),
+                 (.61, .408), (.70, .531), (.79, .716), (.88, .875), (1, 1)]
     for j in range(n):
         turn, = interpolate(meridians, j / n)
         phi = TAU * turn
         heights = interpolate(periodic, turn)
         sleeve = max(0, sin(phi))
         back = max(0, -cos(phi))
-        depth = .009 + .018 * sleeve + .015 * back
+        depth = .010 + .007 * sleeve + .020 * back
         # Where the cloth gathers behind the shoulder the spacing shrinks.
         # Reduce the relief there so neighbouring ridges stay separate.
         gather = exp(-((turn - .36) / .047) ** 2)
         depth *= 1 - .63 * gather
         for i, (row, (course, t, relief)) in enumerate(zip(rows, samples)):
-            z = mix(heights[course], heights[course + 1], t)
+            local_t = t
+            if course == 0:
+                spread = smooth((heights[1] - heights[0] - .16) / .20)
+                local_t += spread * .13 * sin(pi*t) * sin(16*(turn-.15))
+            z = mix(heights[course], heights[course + 1], local_t)
             p = cloth_section(z, phi)
             dz = cloth_section(z + .001, phi) - cloth_section(z - .001, phi)
             da = cloth_section(z, phi + .002) - cloth_section(z, phi - .002)
@@ -388,21 +408,20 @@ def mantle(phone):
             flank = max(0, -sin(phi)) * max(0, cos(phi))
             weight = (1 - .76 * flank) * (.84 + .16 * sin(pi * (course+t)/courses))
             if course == courses - 1 and .73 <= t < 1:
-                # Away from the shoulder this becomes the smooth face of the hem.
                 plain = smooth((t - .73) / .27)
                 relief = mix(plain, relief, sleeve ** 2)
-            # At the anterior shoulder the gathered cloth runs lengthwise.
-            # The waist and elbow swags fade into these continuous pleats.
-            seam = .149 + .028 * ((z - 1.12) / .36) ** 2
-            d = turn - seam
-            ends = smooth((z - .69) / .15) * (1 - smooth((z - 1.405) / .046))
-            if course == courses - 1:
-                ends *= 1 - smooth((t - .84) / .16)
-            waist = depth * weight * relief * (1 - .90 * ends * exp(-(d / .053) ** 4))
-            long_fold = (.017 * exp(-((d + .012) / .017) ** 2)
-                         - .003 * exp(-((d - .008) / .010) ** 2)
-                         + .014 * exp(-((d - .029) / .014) ** 2))
-            row.append(surf.pt(p + normal * (waist + ends * long_fold)))
+            # The loose triangular panel over the forearm has room for three
+            # soft gathers. They merge into the lowest swag above the elbow.
+            lower = 0.
+            if course == 0:
+                front_panel = smooth((turn-.04)/.06) * (1-smooth((turn-.24)/.085))
+                lower = spread * front_panel * (
+                    .019 * exp(-((t-.26)/.077)**2)
+                    + .023 * exp(-((t-.55)/.069)**2)
+                    + .018 * exp(-((t-.76)/.046)**2))
+            close = min(1., (heights[course + 1] - heights[course]) / .043)
+            offset = depth * weight * relief * (.55 + .45 * close) + lower
+            row.append(surf.pt(p + normal * offset))
             if i == 0 or i == len(rows) - 1:
                 normals[int(i > 0)].append((normal, dz.normalized()))
     for a, b in zip(rows, rows[1:]):
@@ -532,6 +551,83 @@ def join_wrist(body, hand):
     bpy.data.objects.remove(hand, do_unlink=True)
 
 
+# Shift each section of the seated figure relative to its bearing ring. Both
+# fore and aft offsets are needed: the pelvis sits forward between the knees
+# and the back rises nearly vertically from the rear edge of the mantle.
+# height, anterior and posterior offset, bare and draped lateral offsets (m)
+POSTURE = [
+    (.410, .035, .010, .000, .010), (.490, .033, .004, .000, .018),
+    (.560, .005, .012, .000, .018), (.625, .006, .047, .000, .020),
+    (.700, .042, .105, .004, .014), (.755, .088, .142, .002, -.005),
+    (.825, .125, .158, -.005, .015), (.960, .127, .164, -.009, .048),
+    (1.065, .130, .162, -.012, .043), (1.175, .133, .158, -.006, .027),
+    (1.280, .140, .152, .010, .023), (1.375, .145, .150, .001, .025),
+    (1.455, .150, .152, -.008, -.008), (1.530, .150, .152, -.008, -.008),
+]
+
+
+def fit_seated_posture(objects):
+    for obj in objects:
+        for v in obj.data.vertices:
+            x,y,z = v.co
+            fore, aft, bare, draped = interpolate(POSTURE, z)
+            dx = mix(bare, draped, smooth((x+.20)/.43))
+            dy = mix(fore, aft, smooth((y+.30)/.47))
+            # The mantle and the bare shoulder descend from the neck along a
+            # low round slope. Keep the neck seat and the raised hand intact.
+            shoulder = smooth((abs(x)-.11)/.11) * smooth((z-1.22)/.16)
+            if y > -.20:
+                v.co.z -= .030 * shoulder
+            elif x < -.22:
+                v.co.z += .022 * smooth((-x-.26)/.065) * smooth((z-1.33)/.07)
+                dx -= .010 * smooth((-x-.30)/.06) * smooth((z-1.29)/.09)
+            v.co.x += dx
+            v.co.y += dy
+        obj.data.update()
+
+
+def neck_folds(torso, phone):
+    """Seat three soft transverse rolls directly into the posed throat."""
+    mesh = torso.data
+    mesh.calc_loop_triangles()
+    points = [v.co for v in mesh.vertices]
+    triangles = [tuple(t.vertices) for t in mesh.loop_triangles]
+    tree = BVHTree.FromPolygons(points, triangles, all_triangles=True)
+    segments = 10 if phone else 16
+    # Fine relief over a broad sweep of the anterior neck. Reuse the smooth
+    # normals of the underlying throat so the edges dissolve into the skin.
+    section = [(-.012,-.0006,0.), (-.004,.0017,-.11), (.003,.0014,.14), (.010,-.0006,0.)]
+    if not phone:
+        section.insert(2, (-.001,.0021,0.))
+    folds = []
+    for number, (height, width) in enumerate(((1.387,.121),(1.410,.111),(1.431,.097)), 1):
+        surf = Surface()
+        normals = []
+        previous = None
+        for dz, relief, tilt in section:
+            row = []
+            for j in range(segments+1):
+                u = 2*j/segments-1.
+                x = -.008 + width*u
+                z = height + .021*u*u + dz
+                point, _, tri, _ = tree.ray_cast((x,-.60,z),(0.,1.,0.))
+                if point is None:
+                    raise ValueError(f"Neck roll {number} outside throat at {x:.3f}, {z:.3f}")
+                a,b,c = (mesh.vertices[i] for i in triangles[tri])
+                normal = barycentric_transform(point, a.co,b.co,c.co, a.normal,b.normal,c.normal)
+                fade = smooth((1.-abs(u))/.43)
+                normal.z += tilt * fade
+                normals.append(normal.normalized())
+                row.append(surf.pt((x,point.y-mix(-.0006,relief,fade),z)))
+            if previous is not None:
+                surf.strip(previous, row, wrap=False)
+            previous = row
+        roll = surf.finish(f"Trivali {number}", "skin")
+        roll.data.normals_split_custom_set_from_vertices(normals)
+        folds.append(roll)
+    return folds
+
+
 def build_body(phone):
     from buddha_lap import build_lap
     torso, palm = torso_and_arm(phone)
@@ -547,4 +643,7 @@ def build_body(phone):
             mod.ratio = limit / count
             bpy.ops.object.modifier_apply(modifier=mod.name)
     join_wrist(objects[0], objects[1])
-    return [objects[0], *objects[2:], *build_lap(phone)]
+    carvings = [objects[0], *objects[2:], *build_lap(phone)]
+    fit_seated_posture(carvings)
+    carvings.extend(neck_folds(carvings[0], phone))
+    return carvings

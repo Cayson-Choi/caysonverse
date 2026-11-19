@@ -224,7 +224,7 @@ export function waitForSelf(r: SelfWaitable, closed?: AbortSignal): Promise<void
 }
 
 /** 케이슨랜드 별똥별 급행: get on / off (the server picks the seat while boarding is open; docs/designs/caysonland/DESIGN.md). */
-export function sendRideBoard(ride: "coaster" | "carousel" | "wheel" | "moonboat" = "coaster"): void {
+export function sendRideBoard(ride: "coaster" | "carousel" | "wheel" | "moonboat" | "droptower" = "coaster"): void {
   room?.send(VillageMsg.RideBoard, { ride });
 }
 export function sendRideLeave(): void {

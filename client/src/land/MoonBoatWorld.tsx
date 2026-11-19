@@ -50,7 +50,7 @@ import {
 import { MOON_DECK, MOON_DECK_Y, MOON_STEPS } from "@caysonverse/shared/land/moonBoatGeometry";
 
 type V3 = [number, number, number];
-type MatKey = "velvet" | "hullOut" | "deck" | "metal" | "concrete" | "gold" | "indigoPaint" | "violet" | "cushion" | "white" | "earpink" | "ink" | "stone";
+type MatKey = "goldBright" | "velvet" | "hullOut" | "deck" | "metal" | "concrete" | "gold" | "indigoPaint" | "violet" | "cushion" | "white" | "earpink" | "ink" | "stone";
 
 /** Which keys get UVs in metres (their material tile, m) after merging; the rest keep their own UVs (cylinders' wrap, the hull's explicit ones). */
 /** Metres per texture tile. WoodFloor051 has about 24 plank rows to a tile: 3 m a tile makes a plank 12.5 cm wide (a boat deck plank is 12-15 cm). */
@@ -346,9 +346,9 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
       // a divider (an armrest and a back post): a carved board with a gold ball on its top, a rail along its top edge
       boat.box("deck", 0.05, 0.42, 0.52, xb, fy + 0.55, z - 0.03);
       boat.rod("gold", [xb, fy + 0.77, z - 0.26], [xb, fy + 0.77, z + 0.22], 0.025, 0.025, 8);
-      boat.ball("gold", 0.045, xb, fy + 0.77, z + 0.25, 1, 1, 1, 10);
+      boat.ball("goldBright", 0.028, xb, fy + 0.77, z + 0.25, 1, 1, 1, 10);
       boat.box("deck", 0.06, 0.82, 0.08, xb, fy + 0.7, z - 0.37); // the back post
-      boat.ball("gold", 0.055, xb, fy + 1.15, z - 0.37, 1, 1, 1, 12); // its finial
+      boat.ball("goldBright", 0.032, xb, fy + 1.15, z - 0.37, 1, 1, 1, 12); // its finial
       boat.rod("gold", [xb, fy + 0.15, z - 0.2], [xb, fy + 0.3, z + 0.25], 0.012, 0.012, 6); // a curved-iron bracket under the seat
     }
     // the slatted back: three planks between the posts and a carved top rail with a gold cap
@@ -373,7 +373,7 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
     boat.rod("indigoPaint", [-half + 0.18, by, z + 0.46], [half - 0.18, by, z + 0.46], 0.05, 0.05, 10);
     for (const s of [-1, 1]) {
       boat.rod("indigoPaint", [s * (half - 0.18), fy + 0.04, z + 0.46], [s * (half - 0.18), by, z + 0.46], 0.04, 0.04, 8);
-      boat.ball("gold", 0.06, s * (half - 0.18), by + 0.02, z + 0.46, 1, 1, 1, 8);
+      boat.ball("goldBright", 0.036, s * (half - 0.18), by + 0.02, z + 0.46, 1, 1, 1, 8);
     }
   }
   // the carved rail along both gunwales: turned balusters (a swelling and a ball) under a gold hand rail, a row of gilded scallops on the rim cap, gold posts at the horns
@@ -384,14 +384,14 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
       const [xi] = innerAt(zz, sg);
       const xm = (xo + xi) / 2;
       boat.rod("deck", [xm, yo, zz], [xm, yo + 0.3, zz], 0.018, 0.018, 8);
-      boat.ball("deck", 0.032, xm, yo + 0.1, zz, 1, 1.3, 1, 8);
-      boat.ball("gold", 0.026, xm, yo + 0.3, zz, 1, 1, 1, 8);
+      boat.ball("deck", 0.026, xm, yo + 0.1, zz, 1, 1.25, 1, 8);
+      boat.ball("goldBright", 0.017, xm, yo + 0.3, zz, 1, 1, 1, 8);
       rail.push(new Vector3(xm, yo + 0.31, zz));
     }
     boat.tube("gold", rail, 0.034, 6);
     for (let zz = -HZ * 0.9; zz <= HZ * 0.9 + 0.001; zz += 0.2) {
       const [xo, yo] = outerAt(zz, sg);
-      boat.ball("gold", 0.05, xo - sg * 0.01, yo + 0.015, zz, 1, 0.7, 0.8, 8);
+      boat.ball("goldBright", 0.03, xo - sg * 0.01, yo + 0.012, zz, 1, 0.7, 0.8, 8);
     }
   }
   // the swing arms: a pair each side, splayed fore and aft from the axle collar to brackets on the rim (gold)
@@ -411,7 +411,7 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
   boat.ball("gold", 0.26, 0, tipY - 0.1, HZ - 0.02, 1, 1, 1, 18);
   boat.add("violet", crescentPillow(0.55), new Matrix4().compose(new Vector3(0, tipY + 0.12, HZ - 0.55), new Quaternion().setFromEuler(new Euler(0, Math.PI / 2, 0)), new Vector3(1, 1, 1)));
   // the moon: a gold crescent upright in the boat's cross plane, behind the rabbit
-  boat.add("gold", crescentGeometry(0.62, 0.16), new Matrix4().compose(new Vector3(0, tipY + 0.82, HZ - 0.3), new Quaternion().setFromEuler(new Euler(0, 0, -0.25)), new Vector3(1, 1, 1)));
+  boat.add("goldBright", crescentGeometry(0.62, 0.16), new Matrix4().compose(new Vector3(0, tipY + 0.82, HZ - 0.3), new Quaternion().setFromEuler(new Euler(0, 0, -0.25)), new Vector3(1, 1, 1)));
   const rz = HZ - 0.58;
   const ry = tipY + 0.43;
   // the rabbit curled on its side, facing the bow: body, haunch, a head resting on its paws, cheeks and muzzle, two long ears laid back over the shoulder, a puff tail
@@ -472,7 +472,7 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
       frame.ball("gold", 0.05, lx + sx * 0.8, MOON_PIVOT_Y + Math.cos(a) * 0.55, Math.sin(a) * 0.55, 1, 1, 1, 8);
     }
     frame.ball("violet", 0.34, lx, MOON_PIVOT_Y + 0.98, 0, 1, 1, 1, 18);
-    frame.add("gold", crescentGeometry(0.5, 0.14), new Matrix4().compose(new Vector3(lx, MOON_PIVOT_Y + 1.75, 0), new Quaternion().setFromEuler(new Euler(0, Math.PI / 2, 0)), new Vector3(1, 1, 1)));
+    frame.add("goldBright", crescentGeometry(0.5, 0.14), new Matrix4().compose(new Vector3(lx, MOON_PIVOT_Y + 1.75, 0), new Quaternion().setFromEuler(new Euler(0, Math.PI / 2, 0)), new Vector3(1, 1, 1)));
     // small string-light bulbs up the legs
     for (const sz of [-1, 1])
       for (let k = 0; k < 8; k++) {
@@ -570,7 +570,8 @@ export function MoonBoatWorld({ all }: { all: Texture[] }) {
       metal: parkMaterial(metal, [2, 6], { useColor: false, color: new Color("#4a52dc"), normalScale: 0.5, metalness: 0.45 }),
       concrete: parkMaterial(conc, 1, { color: new Color("#e8e1d3"), normalScale: 0.8 }),
       stone: parkMaterial(conc, 1, { color: new Color("#d9d1c3"), normalScale: 0.9 }),
-      gold: flat("#f2c14e", { roughness: 0.32, metalness: 0.5, emissive: new Color("#6b4a08"), emissiveIntensity: 0.6, side: DoubleSide }),
+      gold: flat("#f4c752", { roughness: 0.3, metalness: 0.3, emissive: new Color("#8a6410"), emissiveIntensity: 0.9, side: DoubleSide }),
+      goldBright: flat("#ffd566", { roughness: 0.25, metalness: 0.15, emissive: new Color("#d6a024"), emissiveIntensity: 1.1, side: DoubleSide }),
       indigoPaint: flat("#3a3ea8", { roughness: 0.4, metalness: 0.2 }),
       violet: flat("#8b5cf6", { roughness: 0.45 }),
       cushion: flat("#ee9dbb", { roughness: 0.7, emissive: new Color("#40182a"), emissiveIntensity: 0.35 }),

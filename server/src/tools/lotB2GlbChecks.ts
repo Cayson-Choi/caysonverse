@@ -43,8 +43,19 @@ interface SacredExtra {
   file: string;
   phoneFile: string;
   phone: boolean;
-  triangles: { pc: number; phone: number };
+  /** Recorded at build time; entries added later (framed art, merged props) may omit it, then it is counted from the file. */
+  triangles?: { pc: number; phone: number };
   drawOnly?: string;
+}
+
+/** Triangles a sacred prop draws at this lod: the recorded count, else counted from its GLB (every scene root, or only drawOnly). */
+function sacredTrisOf(s: SacredExtra, lod: "pc" | "phone"): number {
+  if (s.triangles) return s.triangles[lod];
+  const f = lod === "phone" && s.phoneFile ? s.phoneFile : s.file;
+  const sg = parseGlb(new Uint8Array(fs.readFileSync(path.join(REPO, "client", "public", "models", "village", f)))).gltf as Gltf;
+  if (s.drawOnly) return drawnTris(sg, sg.nodes!.findIndex((n) => n.name === s.drawOnly));
+  const roots = sg.scenes?.[sg.scene ?? 0]?.nodes ?? [];
+  return roots.reduce((a, r) => a + drawnTris(sg, r), 0);
 }
 
 const glbOf = (f: string): { g: Gltf; bytes: number } => ({ g: parseGlb(new Uint8Array(fs.readFileSync(f))).gltf, bytes: fs.statSync(f).size });
@@ -267,7 +278,7 @@ export function describeB2Room(unitId: string, dir: string, sacredNodes: string[
         const root = g.nodes!.findIndex((n) => n.name === `lotroom__${unitId}`);
         const extras = (g.asset as { extras?: { sacred?: SacredExtra[] } }).extras ?? {};
         const sacred = (extras.sacred ?? []).filter((s) => lod === "pc" || s.phone);
-        const sacredTris = sacred.reduce((a, s) => a + s.triangles[lod], 0);
+        const sacredTris = sacred.reduce((a, s) => a + sacredTrisOf(s, lod), 0);
         const budget = spec.budget[lod];
         expect(drawnTris(g, root) + sacredTris).toBeLessThanOrEqual(budget.triangles);
         expect(draws(g, root) + sacred.length).toBeLessThanOrEqual(budget.draws);

@@ -70,7 +70,7 @@ describe("moon boat timeline", () => {
   it("is in the ride table with 32 distinct seats, the middle rows first", () => {
     const r = rideByKey("moonboat")!;
     expect(r.seats).toBe(32);
-    expect(RIDES.map((x) => x.id)).toEqual([1, 2, 3, 4]);
+    expect(RIDES.map((x) => x.id)).toEqual([1, 2, 3, 4, 5]);
     // the rows fill from the middle outward: the first rider has rows ahead (toward the bow) and behind
     const a = moonSeatLocal(0);
     expect(a[2]).toBeGreaterThan(-1.2);

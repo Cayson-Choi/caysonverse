@@ -1,4 +1,4 @@
-/** Retain the shipped statue around a replacement face or ears, including baked shading UVs. */
+/** Keep original positions, shading normals and atlas UVs outside the revised sculpture. */
 import { createRequire } from "node:module";
 import { MeshoptDecoder } from "meshoptimizer";
 
@@ -11,6 +11,10 @@ function partition(document, region) {
   const primitives = meshes[0]?.listPrimitives();
   if (meshes.length !== 1 || primitives?.length !== 1) throw new Error("Expected one Buddha primitive");
   const primitive = primitives[0];
+  // The second UV is derived from the final merged normals by the packer.
+  if (primitive.getMaterial()?.getEmissiveTexture()?.getName().endsWith("-photographic-fill")) {
+    primitive.getAttribute("TEXCOORD_1")?.dispose();
+  }
   if (primitive.getMode() !== 4 || primitive.listSemantics().sort().join() !== "NORMAL,POSITION,TEXCOORD_0") {
     throw new Error("Unexpected Buddha vertex layout");
   }
@@ -56,10 +60,11 @@ function partition(document, region) {
     component.minV = Math.min(component.minV, uv[2*i+1]);
   }
   // The oval spans the head from the underside of the chin to beneath the
-  // curls. Ears and separate curls only occupy one side or their own height.
-  const ovals = [...components.values()].filter(({ min, max }) =>
+  // curls. The registered sculpt has a shallower nasal projection than the
+  // legacy oval and can be recognized by its dedicated frontal pigment island.
+  const ovals = [...components.values()].filter(({ min, max, maxU }) =>
     min[0] < -.14 && max[0] > .14 && min[1] > 1.41 && min[1] < 1.47 &&
-    max[1] > 1.77 && max[1] < 1.915 && min[2] < -.11 && max[2] > .16);
+    max[1] > 1.77 && max[1] < 1.96 && (maxU > .5 || (min[2] < -.11 && max[2] > .16)));
   if (ovals.length !== 1) throw new Error("Cannot locate the seated Buddha's facial oval");
   const oval = ovals[0];
   // On the legacy mesh the oval uses only the skin swatch (U < 1/2).
@@ -80,15 +85,25 @@ function partition(document, region) {
       }
     }
     if (sides.size !== 2) throw new Error("Cannot locate both complete Buddha ears");
+  } else if (region === "head") {
+    if (!hasIsland) throw new Error("Head replacement requires the registered Buddha");
+    for (const { id, min, max, minU, maxU } of components.values()) {
+      // The neck reliefs straddle the midline. The only lateral skin-only
+      // pieces above the shoulders are the pinnae; keep their original carving.
+      const lateralEar = minU > .125 && maxU < .25 && (max[0] < 0 || min[0] > 0);
+      if (min[1] > 1.34 && min[0] > -.25 && max[0] < .25 && !lateralEar) selected.add(id);
+    }
+    if (!selected.has(oval.id)) throw new Error("Missing face in the head selection");
   } else {
     const paletteColumns = hasIsland ? 8 : 4;
     selected.add(oval.id);
     for (const { id, min, max, sample } of components.values()) {
       // Among the components on the front of the oval, only the urna and the
-      // old pigment strokes use malachite, vermilion, pearl or crease swatches.
+      // old pigment strokes use the pigment and forehead-jewel swatches.
       const tile = Math.floor(uv[2*sample]*paletteColumns) + 4*Math.floor((1-uv[2*sample+1])*2);
+      const frontDepth = tile === 6 ? 0 : .07; // The urna sits farther back than the lips.
       if (min[0] > -.145 && max[0] < .145 && min[1] > 1.45 && max[1] < 1.775 &&
-          min[2] > .07 && [3,4,6,7].includes(tile)) selected.add(id);
+          min[2] > frontDepth && [3,4,6,7].includes(tile)) selected.add(id);
     }
     if (selected.size < 2) throw new Error("Cannot locate the Buddha's forehead jewel");
   }

@@ -1182,7 +1182,8 @@ const CHAPEL_IN: LotInteriorSpec = {
     ...[0, 1, 2, 3, 4].flatMap((r) => [solid(`pew_l${r + 1}`, 0.7, 3.7, 2.6 + r * 1.5 - 0.35, 2.6 + r * 1.5 + 0.25, 1.0), solid(`pew_r${r + 1}`, 5.7, 8.7, 2.6 + r * 1.5 - 0.35, 2.6 + r * 1.5 + 0.25, 1.0)]),
   ],
   seats: [0, 1, 2, 3, 4].flatMap((r) => [iseat(`lot_chapel_pew_l${r + 1}`, 2.2, 2.6 + r * 1.5, "in", "backed", 3, 3), iseat(`lot_chapel_pew_r${r + 1}`, 7.2, 2.6 + r * 1.5, "in", "backed", 3, 3)]),
-  budget: { pc: { triangles: 140_000, textureMB: 48, draws: 60 }, phone: { triangles: 55_000, textureMB: 14, draws: 35 } },
+  // phone draws 35 -> 45 (2026-11-19): the 14 Stations of the Cross frames and the merged props file added ~10 draws; a room of 44 draws is far below the village view on a phone (100-300).
+  budget: { pc: { triangles: 140_000, textureMB: 48, draws: 60 }, phone: { triangles: 55_000, textureMB: 14, draws: 45 } },
   program: ["장의자 10 + 무릎틀(앉기)", "가운데 통로", "제대·감실·십자고상·독서대·제대 초", "성수대", "고해소", "십자가의 길 14처(부조)", "성모상", "성인상", "구상 스테인드글라스(측창·장미창, 바닥에 색 빛)", "리브 볼트 천장", "샹들리에", "성가대석(오르간 로프트)", "꽃"],
 };
 
@@ -1198,7 +1199,8 @@ const CHURCH_IN: LotInteriorSpec = {
     ...[0, 1, 2, 3].flatMap((r) => [solid(`pew_l${r + 1}`, 0.5, 3.1, 2.2 + r * 1.5 - 0.35, 2.2 + r * 1.5 + 0.25, 1.0), solid(`pew_r${r + 1}`, 4.7, 7.3, 2.2 + r * 1.5 - 0.35, 2.2 + r * 1.5 + 0.25, 1.0)]),
   ],
   seats: [0, 1, 2, 3].flatMap((r) => [iseat(`lot_church_pew_l${r + 1}`, 1.8, 2.2 + r * 1.5, "in", "backed", 2.6, 3), iseat(`lot_church_pew_r${r + 1}`, 6, 2.2 + r * 1.5, "in", "backed", 2.6, 3)]),
-  budget: { pc: { triangles: 70_000, textureMB: 28, draws: 40 }, phone: { triangles: 28_000, textureMB: 8, draws: 25 } },
+  // phone draws 25 -> 30 (2026-11-19): three framed paintings and the merged props file added 3 draws.
+  budget: { pc: { triangles: 70_000, textureMB: 28, draws: 40 }, phone: { triangles: 28_000, textureMB: 8, draws: 30 } },
   program: ["나무 장의자 8(앉기)", "강대상(설교단)", "성찬상", "단순한 나무 십자가", "찬송 번호판(숫자만)", "오르간 또는 피아노", "맑은 유리 또는 단순한 색유리", "노출 들보 천장", "펜던트 등", "꽃"],
 };
 

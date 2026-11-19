@@ -8,6 +8,7 @@ import { RIDE } from "@caysonverse/shared/land/rides";
 import { carouselSeatPose, type CarouselSeatPose } from "@caysonverse/shared/land/carousel";
 import { wheelSeatPose, type WheelSeatPose } from "@caysonverse/shared/land/wheel";
 import { moonSeatPose, type MoonSeatPose } from "@caysonverse/shared/land/moonBoat";
+import { dropSeatPose, type DropSeatPose } from "@caysonverse/shared/land/dropTower";
 import { villageClock } from "../village/villageClock";
 import { carSeatPose, coasterNow } from "./coasterRide";
 
@@ -48,10 +49,21 @@ export function moonBoatRiderPose(seat: number, nowMs: number, outPos: Vector3, 
   outQuat.setFromAxisAngle(axX, -mp.angle);
 }
 
+const dp: DropSeatPose = { x: 0, y: 0, z: 0, fx: 1, fz: 0, face: 0, vy: 0, gload: 1, stage: "idle" };
+
+/** The drop tower seat's avatar pose: hips on the cushion (root 0.397 m ahead of them), facing out over the park, legs dangling. */
+export function dropRiderPose(seat: number, nowMs: number, outPos: Vector3, outQuat: Quaternion): void {
+  dropSeatPose(seat, nowMs, dp);
+  outPos.set(dp.x + dp.fx * SIT_POSE.hipsBehindRoot, dp.y - SIT_POSE.contactY, dp.z + dp.fz * SIT_POSE.hipsBehindRoot);
+  eul.set(0, Math.atan2(dp.fx, dp.fz), 0, "YXZ");
+  outQuat.setFromEuler(eul);
+}
+
 /** The seat pose of `seat` on ride `rideId` now (the coaster's when `rideId` is 0: an older server). */
 export function rideSeatPose(rideId: number, seat: number, outPos: Vector3, outQuat: Quaternion): void {
   if (rideId === RIDE.carousel) carouselRiderPose(seat, villageClock.liveMs(), outPos, outQuat);
   else if (rideId === RIDE.wheel) wheelRiderPose(seat, villageClock.liveMs(), outPos, outQuat);
   else if (rideId === RIDE.moonboat) moonBoatRiderPose(seat, villageClock.liveMs(), outPos, outQuat);
+  else if (rideId === RIDE.droptower) dropRiderPose(seat, villageClock.liveMs(), outPos, outQuat);
   else carSeatPose(coasterNow().s, seat, outPos, outQuat);
 }

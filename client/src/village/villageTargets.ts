@@ -7,7 +7,7 @@ import { HOUSE_KEYPAD_REACH_M, keypadEntries } from "@caysonverse/shared/village
 import { GUIDE_ASK_LABEL, nearestGuide } from "@caysonverse/shared/village/guides";
 import type { InteractTarget } from "../game/interact";
 import { lotDoorTarget, lotExitTarget } from "./lots/lotTargets";
-import { CAROUSEL_PAD, COASTER_PAD, PARK_EXIT_PAD, WHEEL_PAD, MOON_BOAT_PAD, parkGateDoor } from "@caysonverse/shared/village/parkArea";
+import { CAROUSEL_PAD, COASTER_PAD, PARK_EXIT_PAD, WHEEL_PAD, MOON_BOAT_PAD, DROP_PAD, parkGateDoor } from "@caysonverse/shared/village/parkArea";
 import { BUS_SEATS, busPlaceOf, busSeatNumber, inExitZone, nearestFreeSpot, seatApproachOk } from "@caysonverse/shared/village/busCabin";
 
 /**
@@ -67,6 +67,7 @@ export const COASTER_BOARD_TARGET_ID = "ride_board:coaster";
 export const CAROUSEL_BOARD_TARGET_ID = "ride_board:carousel";
 export const WHEEL_BOARD_TARGET_ID = "ride_board:wheel";
 export const MOONBOAT_BOARD_TARGET_ID = "ride_board:moonboat";
+export const DROPTOWER_BOARD_TARGET_ID = "ride_board:droptower";
 export const RIDE_BOARD_PREFIX = "ride_board:";
 
 /** What the park offers at a spot: the way out under the arch, and the coaster at its queue gate. */
@@ -83,6 +84,8 @@ export function parkTargets(x: number, z: number): readonly InteractTarget[] {
   if (dW <= WHEEL_PAD.radius + RIDE_PROMPT_RANGE_M) out.push({ kind: "object", id: WHEEL_BOARD_TARGET_ID, dist: dW, icon: "🎡", label: "하늘 등불 바퀴 타기", short: "타기" });
   const dM = Math.hypot(x - MOON_BOAT_PAD.x, z - MOON_BOAT_PAD.z);
   if (dM <= MOON_BOAT_PAD.radius + RIDE_PROMPT_RANGE_M) out.push({ kind: "object", id: MOONBOAT_BOARD_TARGET_ID, dist: dM, icon: "🌙", label: "달배 타기", short: "타기" });
+  const dD = Math.hypot(x - DROP_PAD.x, z - DROP_PAD.z);
+  if (dD <= DROP_PAD.radius + RIDE_PROMPT_RANGE_M) out.push({ kind: "object", id: DROPTOWER_BOARD_TARGET_ID, dist: dD, icon: "☁️", label: "구름 낙하탑 타기", short: "타기" });
   return out;
 }
 

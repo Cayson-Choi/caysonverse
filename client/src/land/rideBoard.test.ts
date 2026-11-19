@@ -7,6 +7,8 @@ describe("tapping a ride", () => {
     expect(rideTapZone(205, -140)).toBe("wheel");
     expect(rideTapZone(-95, -140)).toBe("moonboat");
     expect(rideTapZone(-86, -140)).toBe("moonboat"); // its platform
+    expect(rideTapZone(-75, -88)).toBe("droptower");
+    expect(rideTapZone(-65, -88)).toBe("droptower"); // its platform
     expect(rideTapZone(2, -14)).toBe("coaster"); // the station apron
     expect(rideTapZone(40, -112)).toBeNull(); // the plaza
   });

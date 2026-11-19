@@ -39,6 +39,7 @@ import { CarouselWorld } from "./CarouselWorld";
 import { parkReady, setParkReady } from "./parkReady";
 import { WheelWorld } from "./WheelWorld";
 import { MoonBoatWorld } from "./MoonBoatWorld";
+import { DropTowerWorld } from "./DropTowerWorld";
 import { Shops } from "./ParkShops";
 import { ParkMountains, ParkScenery } from "./ParkScenery";
 import { ParkProps } from "./ParkProps";
@@ -641,6 +642,7 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       <CarouselWorld env={env} all={all} />
       <WheelWorld env={env} all={all} />
       <MoonBoatWorld all={all} />
+      <DropTowerWorld all={all} />
     </group>
   );
 }
