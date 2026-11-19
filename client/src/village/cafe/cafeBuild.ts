@@ -306,23 +306,61 @@ function bretzelBowl(b: MeshBuilder, x: number, z: number, y: number): void {
   }
 }
 
-/** A round loaf (boule), either on a board or resting in a shallow bread basket. */
+/** Cross section across a baker's score. The raised crust curls over the lighter crumb exposed in the split. */
+const LOAF_SECTION = [
+  [-90, 0, "heel"], [-62, 0, "crust"], [-36, 0, "crust"], [-16, 0, "crust"],
+  [-9, 0.11, "ear"], [-4, -0.09, "crumb"], [5, -0.07, "crumb"], [14, 0.035, "crust"],
+  [34, 0, "crust"], [60, 0, "heel"], [90, 0, "heel"],
+] as const;
+
+/** A hand-shaped, scored loaf on a board or in a shallow bread basket. */
 function loaf(b: MeshBuilder, x: number, z: number, y: number, R: number, seed: number, board = true): void {
   const r = rng(seed);
   if (board) b.box(x - R * 1.25, x + R * 1.25, y, y + 0.02, z - R * 1.1, z + R * 1.1, C.oak, WOOD);
   const bottom = y + (board ? 0.02 : 0);
-  const prof: [number, number][] = [];
-  for (let i = 0; i <= 6; i++) {
-    const a = (i / 6) * Math.PI * 0.5;
-    prof.push([R * Math.cos(a), bottom + R * 0.62 * Math.sin(a)]);
+  const yaw = seed + r() * Math.PI;
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  const colours = { crust: r() > 0.5 ? lin("#BF7B3F") : lin("#B27335"), crumb: lin("#DDB477"), ear: C.crustDark, heel: lin("#9B602E") };
+  let previous: V3[] = [];
+  for (let i = 0; i <= 10; i++) {
+    const phase = i * Math.PI / 10;
+    const along = -Math.cos(phase);
+    const width = Math.sin(phase);
+    const row = LOAF_SECTION.map(([degrees, ridge]): V3 => {
+      const t = degrees * Math.PI / 180;
+      // Bend the score diagonally while the outside edges stay on the board.
+      const a = t + (0.36 * along + 0.07) * Math.cos(t);
+      const across = 0.91 * width * Math.sin(a);
+      const rise = 0.75 * width * Math.cos(a) + ridge * width ** 2;
+      return [x + R * (along * cos - across * sin), bottom + R * rise, z + R * (along * sin + across * cos)];
+    });
+    if (previous.length) {
+      for (let j = 0; j < row.length - 1; j++) {
+        const colour = colours[LOAF_SECTION[j]![2]];
+        b.quad(previous[j]!, previous[j + 1]!, row[j + 1]!, row[j]!, colour, MATTE, [0, 1, 0]);
+      }
+    }
+    previous = row;
   }
-  b.lathe(x, z, prof, r() > 0.5 ? lin("#C68A45") : lin("#B97D3C"), MATTE, 12);
 }
 
-/** A glass jar with a steel lid and its contents' colour. */
+/** Glazed pantry canisters with a foot ring, rounded shoulder and a wire bail over the lid. */
 function jar(b: MeshBuilder, x: number, z: number, y: number, h: number, radius: number, content: string): void {
-  b.lathe(x, z, [[radius, y], [radius * 1.02, y + h * 0.85], [radius * 0.7, y + h * 0.9]], lin(content), POLISH, 8);
-  b.lathe(x, z, [[radius * 0.72, y + h * 0.9], [radius * 0.74, y + h], [0, y + h]], C.steel, BRASS, 8);
+  const foot = radius * 0.82;
+  const neck = radius * 0.73;
+  const glaze = lin(content);
+  b.lathe(x, z, [[foot, y], [foot, y + 0.005], [radius, y + 0.015], [radius, y + h * 0.64],
+    [radius, y + h * 0.68], [radius, y + h * 0.76], [radius * 0.95, y + h * 0.82],
+    [neck, y + h * 0.86], [neck, y + h * 0.90]], glaze, POLISH, 14,
+  [C.cream, glaze, glaze, C.cream, glaze, glaze, glaze, C.cream]);
+  b.lathe(x, z, [[neck, y + h * 0.90], [neck * 1.13, y + h * 0.91], [neck * 1.1, y + h * 0.95],
+    [neck * 0.84, y + h * 0.98], [0, y + h * 0.99]], C.cream, POLISH, 14);
+  const wire = 0.0024;
+  const bailZ = z + radius * 0.22;
+  b.tube([[x - radius, y + h * 0.79, bailZ], [x - neck * 1.12, y + h * 0.97, bailZ],
+    [x - neck * 0.55, y + h + wire, bailZ], [x + neck * 0.55, y + h + wire, bailZ],
+    [x + neck * 1.12, y + h * 0.97, bailZ], [x + radius, y + h * 0.79, bailZ]], wire, C.steel, BRASS, 4);
 }
 
 /** A stack of cups on saucers. */

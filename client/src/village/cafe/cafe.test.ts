@@ -89,6 +89,25 @@ describe("café furniture layout (local frame)", () => {
 describe("café furniture geometry", () => {
   const parts = buildCafe();
 
+  it("seats each bread basket on its shelf with a loaf rising above the rim", () => {
+    const positions = parts.fixed.getAttribute("position");
+    for (const [localX, radius] of [[5.85, 0.13], [6.2, 0.14], [6.52, 0.12]] as const) {
+      const centre = toWorld(localX, SHELF_UNIT.z0 + 0.175);
+      const heights: number[] = [];
+      const rim: number[] = [];
+      for (let i = 0; i < positions.count; i++) {
+        const y = positions.getY(i);
+        const distance = Math.hypot(positions.getX(i) - centre.x, positions.getZ(i) - centre.z);
+        if (y > 0.7 || distance > radius * 1.04) continue;
+        heights.push(y);
+        if (distance >= radius * 0.98) rim.push(y);
+      }
+      expect(Math.min(...heights)).toBeCloseTo(0.45);
+      expect(Math.max(...rim)).toBeCloseTo(0.507);
+      expect(Math.max(...heights)).toBeGreaterThan(Math.max(...rim) + 0.012);
+    }
+  });
+
   it("builds finite, bounded geometry inside the café's world box", () => {
     const a = toWorld(ROOM.x0, ROOM.zFront);
     const b = toWorld(ROOM.x1, ROOM.zBack);
