@@ -109,7 +109,7 @@ export function growFrom(req: GrowRequest, envs: readonly Envelope[], boxes: rea
 }
 
 /** Messages between the page and the worker. */
-export type WorkerIn = { type: "init"; envs: Envelope[]; boxes: Box[] } | { type: "grow"; id: number; req: GrowRequest } | { type: "flora"; id: number; cards: Card[]; beds?: Bed[] } | { type: "atlas"; id: number; drawPlant: boolean };
+export type WorkerIn = { type: "init"; envs: Envelope[]; boxes: Box[] } | { type: "grow"; id: number; req: GrowRequest } | { type: "flora"; id: number; cards: Card[]; beds?: Bed[] } | { type: "atlas"; id: number };
 export type WorkerOut = { type: "crown"; id: number; result: GrowResult } | { type: "flora"; id: number; result: FloraResult } | { type: "atlas"; id: number; result: Textures | null } | { type: "error"; id: number; message: string };
 
 export { floraTransfers, layFlora, plantAtlasPixels };
@@ -127,10 +127,10 @@ export interface Textures {
 }
 
 /** Make them (in the worker). */
-export function makeTextures(drawPlant: boolean): Textures {
+export function makeTextures(): Textures {
   let atlas: AtlasPixels | null = null;
   try {
-    atlas = drawPlant && typeof OffscreenCanvas !== "undefined" ? plantAtlasPixels() : null;
+    atlas = typeof OffscreenCanvas !== "undefined" ? plantAtlasPixels() : null;
   } catch {
     atlas = null;
   }
@@ -153,7 +153,7 @@ export interface CrownGrower {
   /** The flowers' layout and soil (floraWork.ts). */
   flora(cards: Card[], beds?: readonly Bed[]): Promise<FloraResult>;
   /** The textures drawn in code (the plant atlas, the barks), made off the page (null: make them here). */
-  atlas(drawPlant: boolean): Promise<Textures | null>;
+  atlas(): Promise<Textures | null>;
   /** Whether a worker does the growing (false: on the page, at `grow`). */
   readonly offPage: boolean;
   dispose(): void;
@@ -275,13 +275,13 @@ export function createCrownGrower(makeWorker?: () => Worker): CrownGrower {
       boxes = b;
       for (const w of workers) w.postMessage({ type: "init", envs, boxes } satisfies WorkerIn);
     },
-    atlas(drawPlant) {
+    atlas() {
       if (broken) return Promise.resolve(null);
       const id = next++;
       return new Promise((resolve) => {
         atlases.set(id, resolve);
         // the first worker: done long before the crowns are asked for
-        give(workers[0]!, id, { type: "atlas", id, drawPlant }, CROWNS_IN_FLIGHT);
+        give(workers[0]!, id, { type: "atlas", id }, CROWNS_IN_FLIGHT);
       });
     },
     flora(cards, beds) {
@@ -307,8 +307,6 @@ export function createCrownGrower(makeWorker?: () => Worker): CrownGrower {
       queue.length = 0;
       waiting.clear();
       floras.clear();
-      // Another vegetation build may be awaiting this worker's shared plant pixels.
-      for (const resolve of atlases.values()) resolve(null);
       atlases.clear();
     },
   };

@@ -19,7 +19,7 @@ scope.onmessage = (e: MessageEvent<WorkerIn>) => {
     return;
   }
   if (m.type === "atlas") {
-    const result = makeTextures(m.drawPlant);
+    const result = makeTextures();
     scope.postMessage({ type: "atlas", id: m.id, result } satisfies WorkerOut, textureTransfers(result));
     return;
   }

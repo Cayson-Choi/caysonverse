@@ -55,7 +55,7 @@ import { keepTriangles, readCards, type AttributeLike, type Card } from "./vegCa
 import { makeBlossomAtlas } from "./vegAtlas";
 import { GeoBuilder, blossomBunch, bunchSprite, leafSpray, willowSpray } from "./vegGeometry";
 import { BUSH_SPECIES, bushPlant, plantMeshes, type BushSpecies } from "./vegPlants";
-import { acquirePlantAtlas } from "./plantAtlasLease";
+import { makePlantAtlas } from "./vegPlantAtlas";
 import { soilTextures } from "./vegSoil";
 import { BARK_STYLE, BARK_SURFACE, barkPhotos, flatNormal, barkTexture, drawnBark, simplifyTwig, skeletonBark, skeletonBarkInto, taperSkeleton, twigBark, type BarkPattern } from "./barkGeometry";
 import { setCameraKeepOut } from "../../game/cameraCollision";
@@ -749,17 +749,8 @@ export class VillageVegetation {
    * then shows as it is grown). `cancelled()` true: stop and free what was made (resolves null).
    */
   static async build(root: Object3D, tier: VillageTier, mode: Exclude<VegMode, "old">, cancelled: () => boolean = () => false, options: BuildOptions = {}): Promise<VillageVegetation | null> {
-    const v = new VillageVegetation(tier, mode, options.flowersOnly === true);
-    try {
-      return await VillageVegetation.populate(v, root, tier, mode, cancelled, options);
-    } catch (error) {
-      v.abandon();
-      throw error;
-    }
-  }
-
-  private static async populate(v: VillageVegetation, root: Object3D, tier: VillageTier, mode: Exclude<VegMode, "old">, cancelled: () => boolean, options: BuildOptions): Promise<VillageVegetation | null> {
     const { focus, onShow, sliceMs, onProgress } = options;
+    const v = new VillageVegetation(tier, mode, options.flowersOnly === true);
     v.root = root;
     if (options.farThin) {
       // a copy (VEG_TIERS is shared with the village): the far level keeps fewer clusters, each grown to cover
@@ -776,10 +767,8 @@ export class VillageVegetation {
     // the crowns' workers start loading now, while the flowers are laid out (crownGrow.ts)
     const grower = createCrownGrower(options.makeWorker);
     // the plant atlas drawn in the first worker (an OffscreenCanvas) while the page reads the cards and the skeletons
+    const texturesJob = grower.atlas();
     v.stopGrowing = () => grower.dispose();
-    const atlasLease = acquirePlantAtlas();
-    v.own.push(atlasLease);
-    const texturesJob = atlasLease.startTextures(grower);
     const steps = v.statsData.steps;
     let work = 0;
     const start = performance.now();
@@ -838,8 +827,8 @@ export class VillageVegetation {
     let placed: { plants: Plant[]; replaced: Card[] } = { plants: [], replaced: [] };
     // the textures drawn in code, made in the first worker meanwhile (null: no worker, made here)
     const texMade = await texturesJob;
-    const plantAtlas = await atlasLease.texture(cancelled);
-    if (cancelled()) return v.abandon();
+    const plantAtlas: Texture | null = makePlantAtlas(texMade?.atlas ?? undefined);
+    if (plantAtlas) v.own.push(plantAtlas);
     const dressFlora = (fr: FloraResult) => {
       placed = { plants: fr.plants, replaced: fr.replaced.map((i) => floraCards[i]!) };
       // the beds' soil (vegSoil.ts, 2026-11-16 plants2): built round the placed plants, and the plants set on it (floraWork.ts)
