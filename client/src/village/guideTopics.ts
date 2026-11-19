@@ -212,7 +212,7 @@ export const GUIDE_TOPICS: readonly GuideTopic[] = Object.freeze([
         answer: "별똥별 급행은 12명, 구름 낙하탑은 16명, 달빛 회전목마는 24명, 하늘 등불 바퀴와 달배는 32명이 함께 탈 수 있어요.",
       },
       { id: "park_wheel", question: "하늘 등불 바퀴는 언제 내려요?", answer: "한 바퀴 도는 데 2분 30초 걸려요. 곤돌라가 승강장에 오면 내릴 수 있어요." },
-      { id: "park_tower", question: "구름 낙하탑은 얼마나 높아요?", answer: "42m 높이까지 올라갔다가 떨어져요. 높이 떠 있을 땐 내릴 수 없어요." },
+      { id: "park_tower", question: "구름 낙하탑은 얼마나 높아요?", answer: "85m 높이까지 올라갔다가 떨어져요. 높이 떠 있을 땐 내릴 수 없어요." },
       { id: "park_busy", question: "탈 수 없다고 나와요.", answer: "앉아 있거나 버스·낚시 중에는 탈 수 없어요. 일어난 뒤 다시 눌러 주세요." },
     ],
     map: { kind: "place", id: "lot_gate" },
