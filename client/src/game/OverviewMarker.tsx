@@ -81,7 +81,7 @@ export function OverviewMarker({ pose }: { pose: Pose }) {
         <circleGeometry args={[0.22, 24]} />
         <meshBasicMaterial color="#ffffff" side={DoubleSide} depthTest={false} toneMapped={false} />
       </mesh>
-      <Html center zIndexRange={[12, 0]} style={{ pointerEvents: "none" }}>
+      <Html center zIndexRange={[16, 0]} style={{ pointerEvents: "none" }}>
         <div ref={tagRef} className="cv-map-me" style={{ display: "none" }}>
           내 위치
         </div>

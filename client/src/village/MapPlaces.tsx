@@ -57,6 +57,10 @@ export function MapPlaces({ pose, seat }: { pose: Pose; seat: SeatState }) {
     // the map is zoomed in — the main places first (MAP_PLACES order), the picked one always
     if (!show || frame.current++ % 6 !== 0) return;
     const drawn: DOMRect[] = [];
+    // "내 위치" is on the map first (QA 2026-11-20: place chips sat over it on a phone): a chip that would touch it gives way
+    // (icon alone, then nothing), like any chip that would sit on one drawn before it
+    const me = document.querySelector<HTMLElement>(".cv-map-me:not(.cv-lake-map-label)");
+    if (me && me.style.display !== "none") drawn.push(me.getBoundingClientRect());
     const order = tags.current.map((t, i) => ({ t, i })).sort((a, b) => Number(b.t?.classList.contains("is-picked")) - Number(a.t?.classList.contains("is-picked")) || a.i - b.i);
     const hits = (r: DOMRect) => drawn.some((d) => r.left < d.right + 4 && r.right > d.left - 4 && r.top < d.bottom + 2 && r.bottom > d.top - 2);
     for (const { t } of order) {
@@ -71,7 +75,8 @@ export function MapPlaces({ pose, seat }: { pose: Pose; seat: SeatState }) {
       }
       const hit = hits(r) && !t.classList.contains("is-picked");
       t.style.visibility = hit ? "hidden" : "";
-      if (!hit) drawn.push(r);
+      // the picked place keeps its card's room too (the card stays readable over the chips around it)
+      if (!hit) drawn.push(t.classList.contains("is-picked") ? t.getBoundingClientRect() : r);
     }
   });
   if (!isOv) return null;
