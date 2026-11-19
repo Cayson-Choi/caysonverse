@@ -2,6 +2,8 @@
 from math import cos, exp, pi, sin
 
 import bpy
+from mathutils import Vector
+from mathutils.kdtree import KDTree
 from buddha_mesh import mat
 
 
@@ -9,49 +11,58 @@ from buddha_mesh import mat
 # while the position and thickness of the lobule are taken from the profile.
 # z, centre y, anteroposterior radius, centre x, mediolateral radius.
 SECTIONS = [
-    (1.451,.169,.002,.168,.002),(1.454,.168,.012,.169,.011),
-    (1.464,.167,.024,.170,.019),(1.480,.167,.031,.170,.023),
-    (1.502,.168,.032,.169,.024),(1.532,.170,.030,.166,.023),
-    (1.561,.171,.029,.164,.022),(1.591,.173,.030,.164,.023),
-    (1.617,.175,.034,.166,.025),(1.642,.178,.039,.169,.027),
-    (1.671,.182,.044,.173,.028),(1.695,.183,.045,.175,.028),
-    (1.712,.182,.041,.175,.027),(1.728,.181,.030,.174,.022),
-    (1.737,.180,.015,.172,.014),(1.740,.180,.003,.171,.004)]
+    (1.449,.176,.002,.155,.002),(1.454,.176,.014,.154,.015),
+    (1.466,.176,.025,.153,.026),(1.483,.176,.031,.153,.031),
+    (1.500,.176,.032,.154,.030),(1.531,.176,.030,.156,.026),
+    (1.563,.176,.029,.160,.025),(1.596,.177,.031,.165,.028),
+    (1.620,.179,.033,.172,.031),(1.645,.181,.037,.177,.031),
+    (1.674,.182,.042,.180,.030),(1.699,.182,.044,.177,.029),
+    (1.716,.180,.040,.172,.025),(1.730,.179,.031,.168,.022),
+    (1.739,.178,.016,.162,.014),(1.742,.178,.002,.159,.003)]
+
+
+def pinna(section, angle, z):
+    cy, ry, cx, rx = section
+    outer = cos(angle)
+    y = cy + ry*sin(angle)
+    # Turn the open bowl towards the viewer. Below it the lobe hangs nearly
+    # vertically and its pendant tip rounds back towards the cheek.
+    x = cx + .25*(y-cy) + rx*outer
+    if outer > 0.:
+        u = (y-.180)/.037
+        h = (z-1.681)/.054
+        # The helix curls under at its anterior root and tapers as it runs
+        # down the posterior edge. The antihelix bends around the concha.
+        bowl = exp(-1.28*((u+.14)**2+(.97*h+.05)**2))
+        rim = exp(-((u*u+(h-.01)**2-.82)/.36)**2)
+        rim *= 1.-.88*exp(-((h+.93)/.48)**2)
+        arch = .29-.71*(h-.04)**2
+        antihelix = exp(-((u-arch)/.30)**2-((h+.05)/.68)**4)
+        root = -.66-.31*sin(3.4*(h+.04))
+        crus = exp(-((u-root)/.25)**2-((h+.11)/.43)**4)
+        tragus = exp(-((u+.69)/.28)**2-((h+.43)/.25)**2)
+        canal = exp(-((u+.27)/.31)**2-((h+.39)/.33)**2)
+        shaft = exp(-((z-1.566)/.067)**4-((y-.177)/.014)**2)
+        x += outer**1.05*(-.023*bowl+.012*rim+.019*antihelix+
+                          .014*crus+.011*tragus-.004*canal-.003*shaft)
+    return x,y,z
 
 
 def make_ears(phone):
     from buddha_head import profile
     for side in (1, -1):
         vertices, faces = [], []
-        rings = 34
-        sides = 40
+        rings = 64
+        sides = 64
         for row in range(rings+1):
             # Finer cross-sections around the helix and the underside of the lobe.
             v = .5-.5*cos(pi*row/rings)
-            z = 1.451 + (1.740-1.451)*v
-            cy, ry, cx, rx = profile(SECTIONS,z)
+            z = SECTIONS[0][0] + (SECTIONS[-1][0]-SECTIONS[0][0])*v
+            section = profile(SECTIONS,z)
             for i in range(sides):
                 angle = 2*pi*i/sides
-                around = sin(angle)
-                outer = max(0.,cos(angle))
-                y = cy + ry*around
-                # The ear faces a little forward; its attachment runs behind
-                # the cheek. A raised outer rim surrounds a smooth recess.
-                x = cx + .30*(y-cy) + rx*cos(angle)
-                if outer:
-                    u=(y-.180)/.038
-                    h=(z-1.668)/.048
-                    bowl=exp(-1.45*((u+.095)**2+h*h))
-                    rim=exp(-((u*u+h*h-.94)/.41)**2)
-                    crus=exp(-((u+.11+.48*h)/.29)**2-((h+.16)/.61)**2)
-                    tragus=exp(-((u+.71)/.27)**2-((h+.24)/.29)**2)
-                    lobe=exp(-((z-1.483)/.042)**2-((y-.166)/.024)**2)
-                    x += outer**1.1*(-.029*bowl+.005*rim+.012*crus+.009*tragus+.003*lobe)
-                lobe_weight = exp(-((z-1.499)/.077)**4)
-                upper_weight = exp(-((z-1.674)/.045)**2)
-                x += .0065*upper_weight - .014*lobe_weight + .005*lobe_weight*cos(angle)
-                height = z - .004*lobe_weight - .012*exp(-((z-1.740)/.032)**2)
-                vertices.append((side*x,y,height))
+                x,y,_ = pinna(section,angle,z)
+                vertices.append((side*x,y,z))
         for r in range(rings):
             for i in range(sides):
                 a=r*sides+i
@@ -68,8 +79,23 @@ def make_ears(phone):
         obj=bpy.data.objects.new(mesh.name,mesh)
         bpy.context.collection.objects.link(obj)
         bpy.context.view_layer.objects.active=obj
+        # Transfer the dense casting's normals after reduction. Otherwise the
+        # phone's long triangles turn the soft inner fold into a flat notch.
+        field = KDTree(len(mesh.vertices))
+        normals = []
+        for vertex in mesh.vertices:
+            field.insert(vertex.co, vertex.index)
+            normals.append(vertex.normal.copy())
+        field.balance()
         modifier=obj.modifiers.new("Keep the helix at game resolution","DECIMATE")
         total=sum(len(f.vertices)-2 for f in mesh.polygons)
         modifier.ratio=(158 if phone else 427)/total
         modifier.use_collapse_triangulate=True
         bpy.ops.object.modifier_apply(modifier=modifier.name)
+        blended = []
+        for vertex in obj.data.vertices:
+            normal = Vector((0,0,0))
+            for _, index, distance in field.find_n(vertex.co, 6):
+                normal += normals[index] / (.0015+distance)**2
+            blended.append(normal.normalized())
+        obj.data.normals_split_custom_set_from_vertices(blended)

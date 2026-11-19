@@ -71,7 +71,7 @@ function partition(document, region) {
   // The newer oval wraps onto the dedicated right-hand pigment island.
   const hasIsland = oval.maxU > .5;
   const selected = new Set();
-  if (region === "oval" || region === "oval-and-scalp" || region === "scalp") {
+  if (region === "portrait" || region === "oval" || region === "oval-and-scalp" || region === "scalp") {
     if (!hasIsland) throw new Error("Expected a registered face with a dedicated pigment island");
     if (region !== "oval") {
       // All curl bands and their folded rim use the hair swatch in the
@@ -82,20 +82,28 @@ function partition(document, region) {
       if (!selected.size) throw new Error("Missing cast scalp in the hair swatch");
     }
     if (region !== "scalp") selected.add(oval.id);
-  } else if (region === "ears") {
+  }
+  if (region === "portrait" || region === "ears") {
     if (!hasIsland) throw new Error("Ear replacement requires the Buddha's current face atlas");
     const sides = new Set();
     for (const { id, min, max, minU, maxU, minV } of components.values()) {
       // The only gilt skin components entirely beside the face are the two
       // pinnae and their folds. Bounds are glTF coordinates (+Y up, +Z front).
       if ((min[0] > .055 || max[0] < -.055) && min[0] > -.245 && max[0] < .245 &&
-          min[1] > 1.41 && max[1] < 1.77 && min[2] > -.16 && max[2] < .085 &&
+          min[1] > 1.41 && max[1] < 1.77 && min[2] > -.25 && max[2] < .085 &&
           minU > .125 && maxU < .25 && minV > .5) {
         selected.add(id);
         if (min[1] < 1.52 && max[1] > 1.695) sides.add(Math.sign(min[0]));
       }
     }
     if (sides.size !== 2) throw new Error("Cannot locate both complete Buddha ears");
+    if (region === "portrait") {
+      const beads = [...components.values()].filter(({ min, max, minU, maxU, minV }) =>
+        minU > .25 && maxU < .375 && minV < .5 &&
+        min[1] > 1.69 && max[1] < 1.76 && min[2] > 0);
+      if (beads.length !== 1) throw new Error("Cannot locate the Buddha's forehead bead");
+      selected.add(beads[0].id);
+    }
   } else if (region === "head") {
     if (!hasIsland) throw new Error("Head replacement requires the registered Buddha");
     for (const { id, min, max, minU, maxU } of components.values()) {
@@ -105,7 +113,7 @@ function partition(document, region) {
       if (min[1] > 1.34 && min[0] > -.25 && max[0] < .25 && !lateralEar) selected.add(id);
     }
     if (!selected.has(oval.id)) throw new Error("Missing face in the head selection");
-  } else {
+  } else if (region === "face") {
     const paletteColumns = hasIsland ? 8 : 4;
     selected.add(oval.id);
     for (const { id, min, max, sample } of components.values()) {
@@ -160,7 +168,7 @@ export async function preserveSurroundingStatue(previous, replacement, output, r
   // A scalp graft discards the entire donor statue except its hair swatch.
   // Its new hairline changes hidden-oval culling, and Blender can choose
   // different decimation edges on the body even for the same sculpt.
-  if (region !== "scalp") {
+  if (region !== "scalp" && region !== "portrait") {
     const candidateBodyIndices = after.indices.reduce((n,i) => n + Number(!after.replace[i]), 0);
     if (kept !== candidateBodyIndices) throw new Error(`Triangle count outside the ${region} changed across Buddha builds`);
   }

@@ -36,11 +36,11 @@ def paint_hairline(result, kind, x, z):
     region = (np.abs(x) < .146) & (z > 1.770)
     a, height = np.abs(x[region]), z[region]
     angle = np.arcsin(a/.160)
-    u = 2.*(np.mod(angle*40./(2.*np.pi)+.5, 1.)-.5)
-    edge = (1.7944 - .0029*(1.-u*u)**2 + .0023*np.sin(.5*np.pi*np.minimum(a/.085, 1.))**2
+    u = 2.*(np.mod(angle*48./(2.*np.pi)+.5, 1.)-.5)
+    edge = (1.7950 - .0017*(1.-u*u)**2 + .0019*np.sin(.5*np.pi*np.minimum(a/.085, 1.))**2
             - .014*(np.maximum(a-.077, 0.)/.071)**2)
     mask = smooth(edge-.0013, edge+.0016, height) * (1.-smooth(.138, .146, a))
-    # The scalp has forty curls per turn at this height. Stagger this shallow
+    # The brow has six curls per 45 degree sector. Stagger this shallow
     # row by half a curl and taper its relief into the black lacquer between rows.
     v = 2.*(height-edge)/.014 - 1.
     pad = np.maximum(0., 1.-u*u-v*v)
@@ -164,12 +164,12 @@ def face_patch(kind, x, z, phone=False, half_width=None):
     # beneath it. Leave the strip of gold across the columella unbroken.
     bridge_side = spot(.024,1.675,.014,.052)
     lay(.34*bridge_side, (.66,.310,.028), (1.,.62,.78))
-    lay(.82*spot(.0,1.666,.016,.048), (1.,.752,.375), (1.,.69,.81))
-    lay(.85*spot(.0,1.631,.016,.018), (1.,.786,.422), (1.,.70,.80))
+    lay(.71*spot(.0,1.666,.018,.049), (1.,.702,.296), (1.,.70,.81))
+    lay(.68*spot(.0,1.631,.018,.021), (1.,.740,.320), (1.,.71,.80))
     # The source has a warm shadow on the left of the bridge through the
     # inner orbit. Keep the soft, pale reflection to the right of its edge.
-    bridge_return = np.exp(-((x+.0135)/.0075)**2-((z-1.672)/.027)**2)
-    lay(.57*bridge_return, (.524,.205,.016), (1.,.68,.78))
+    bridge_return = np.exp(-((x+.015)/.0095)**2-((z-1.672)/.030)**2)
+    lay(.42*bridge_return, (.560,.242,.025), (1.,.68,.78))
     # The wings turn away on either side of the bridge before their outer
     # rims catch the light. Their high point sits above the tucked apertures.
     flank=spot(.023,1.634,.011,.020)
@@ -179,14 +179,16 @@ def face_patch(kind, x, z, phone=False, half_width=None):
     lay(.50*spot(.025,1.610,.015,.010), (.67,.300,.022), (1.,.70,.79))
     # Each alar groove follows an arc, reaching furthest into the cheek at
     # mid-height. A soft roll inside it separates the bulb from the cheek.
-    wing_t = (z-1.614)/.018
-    groove_x = .0372-.0080*wing_t**2
-    groove = np.exp(-((a-groove_x)/.0043)**2-wing_t**4)
-    lay(.57*groove, (.502,.214,.021), (1.,.70,.78))
+    wing_t = (z-1.611)/.016
+    groove_x = .0338-.0065*wing_t**2
+    groove = np.exp(-((a-groove_x)/.0071)**2-wing_t**2)
+    lay(.38*groove, (.545,.251,.027), (1.,.70,.78))
     flank_shade = np.exp(-((x+.027)/.018)**2-((z-1.625)/.017)**2)
-    lay(.66*flank_shade, (.430,.195,.013), (1.,.70,.79))
-    wing_glint = spot(.029,1.616,.0065,.007)
-    lay(.53*wing_glint, (.95,.567,.103), (1.,.68,.81))
+    lay(.66*flank_shade, (.460,.200,.018), (1.,.70,.79))
+    alar_return = spot(.029,1.606,.016,.011)
+    lay(.42*alar_return, (.609,.254,.016), (1.,.69,.82))
+    wing_glint = spot(.027,1.614,.010,.009)
+    lay(.37*wing_glint, (.95,.553,.091), (1.,.69,.81))
     # Each short nostril turns upwards with the contour of its rounded ala.
     # The two occlusions fade separately over the bottom of the central ball.
     nostril_z = 1.5887 + .0064*smooth(.016,.035,a)
@@ -200,8 +202,8 @@ def face_patch(kind, x, z, phone=False, half_width=None):
     # Its outer end is visible just behind the tip in profile.
     lateral_opening=spot(.0335,1.590,.005,.0038)
     lay(.12*lateral_opening, (.260,.087,.009), (1.,.68,.65))
-    lateral_ala=spot(.043,1.610,.008,.012)
-    lay(.58*lateral_ala, (.985,.590,.128), (1.,.69,.82))
+    lateral_ala=spot(.0365,1.610,.011,.013)
+    lay(.34*lateral_ala, (.969,.551,.097), (1.,.70,.82))
     lay(.81*spot(.0,1.575,.016,.009), (.600,.222,.013), (1.,.64,.86))
 
     lip_t = np.clip(a/LIP_RADIUS, 0., 1.)
@@ -244,7 +246,7 @@ def face_patch(kind, x, z, phone=False, half_width=None):
     tuft += .71*spot(.000,1.4763,.0040,.0035)
     lay(.87*tuft, (.091,.079,.032), ink)
     # A shallow contact shadow seats the rounded forehead bead.
-    lay(.44*spot(.000,1.718,.007,.0050), (.565,.257,.024), (1.,.63,.84))
+    lay(.39*spot(.000,1.722,.0084,.0052), (.565,.257,.024), (1.,.63,.84))
 
     if not color:
         satin = np.maximum(spot(.0,1.687,.045,.075), spot(.08,1.695,.072,.094))

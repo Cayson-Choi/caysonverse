@@ -147,18 +147,21 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices) {
       response[2] += .115*noseLight;
       // The round outer wing sits behind the frontal bulb and picks up a
       // broader side light above the short aperture.
-      const ala = Math.exp(-(((Math.abs(faceX)-.042)/.011)**2+((height-1.610)/.013)**2));
-      response[0] += .18*ala;
-      response[1] += .15*ala;
-      response[2] += .070*ala;
+      const ala = Math.exp(-(((Math.abs(faceX)-.035)/.015)**2+((height-1.612)/.017)**2));
+      response[0] += .075*ala;
+      response[1] += .061*ala;
+      response[2] += .030*ala;
       // Vermilion takes a broad diffuse return from the doorway. Its moving
       // specular comes from the two modelled lip rolls in the PBR pass.
       const vermilion = clip((rgb[0]-3*rgb[1])/.35)
         * Math.exp(-((faceX/.047)**8+((height-1.552)/.021)**8));
       const lipLight = [.41,.20,.045];
       for (let j=0; j<3; j++) response[j] += .88*vermilion*(lipLight[j]-response[j]);
-      const reflected = [response[0]+.266*cheek+.110*muzzle+.185*temple+.133*lowerFace+.12*septum,
-        response[1]+.104*cheek+.085*muzzle+.085*temple+.027*lowerFace+.062*septum,
+      // The photographic left cheek is in softer light. Ease the reflected
+      // return across the face, keeping the nose and opposite cheek modelled.
+      const cheekFill = cheek*(.50+.28*Math.tanh(faceX/.043));
+      const reflected = [response[0]+.266*cheekFill+.085*muzzle+.185*temple+.133*lowerFace+.12*septum,
+        response[1]+.104*cheekFill+.066*muzzle+.085*temple+.027*lowerFace+.062*septum,
         response[2]*(1.-.26*cheek-.49*lowerFace)];
       // Where the lower cheek turns into the side of the head, transition to
       // the adjacent bare-leaf chart using the horizontal turn of the normal.
