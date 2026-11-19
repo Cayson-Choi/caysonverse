@@ -5,7 +5,8 @@ import { CanvasTexture, Color, DoubleSide, MeshStandardMaterial, SRGBColorSpace,
 import { PARK_SHOPS, type ParkShop } from "@caysonverse/shared/village/parkArea";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 import { parkMaterial, pickSet } from "./pbr";
-import { addShopWindow, shopWindows } from "./parkShopWindows";
+import { addShopWindow } from "./parkShopWindows";
+import { shopWindows } from "@caysonverse/shared/village/parkShopWindowLayout";
 
 const X: V3 = [1, 0, 0];
 const Y: V3 = [0, 1, 0];

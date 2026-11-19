@@ -1,26 +1,29 @@
 import { PARK_SHOPS } from "@caysonverse/shared/village/parkArea";
 import { describe, expect, it } from "vitest";
-import { DoubleSide, Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
+import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import { GeoBuilder } from "./geoBuilder";
-import { addShopWindow, SHOP_WINDOW_BEDS, shopWindows, WINDOW_BOX, windowBed } from "./parkShopWindows";
+import { addShopWindow, SHOP_WINDOW_BEDS, windowBed } from "./parkShopWindows";
+import { shopWindows, WINDOW_BOX } from "@caysonverse/shared/village/parkShopWindowLayout";
 
 describe("the promenade shop fronts", () => {
   it("puts each window's display behind the glazing and in front of the structural timbers", () => {
-    const material = new MeshBasicMaterial({ side: DoubleSide });
+    const material = new MeshBasicMaterial();
     for (const s of PARK_SHOPS) {
       for (const w of shopWindows(s)) {
         const wood = new GeoBuilder(), goods = new GeoBuilder(), glass = new GeoBuilder();
         addShopWindow(w, s.id, wood, goods, glass, [0.2, 0.42, 0.3]);
         const meshes = [wood, goods, glass].map(b => new Mesh(b.build(), material));
         const [nx, , nz] = w.out;
-        // Look through the top corner at a pleated curtain, clear of both muntins.
-        const eye = new Vector3(w.x + 2 * nx - 0.62 * nz, 2.45, w.z + 2 * nz + 0.62 * nx);
-        const ray = new Raycaster(eye, new Vector3(-nx, 0, -nz));
-        const hits = ray.intersectObjects(meshes);
-        expect(hits[0]?.object).toBe(meshes[2]);
-        const curtain = hits.find(hit => hit.object === meshes[1])!;
-        expect(curtain.distance - hits[0]!.distance).toBeGreaterThan(0.1);
-        expect(curtain.distance).toBeLessThan(2 - 0.21);
+        // Front-side rays through both upper corners hit the pane before the folded fabric.
+        for (const across of [-0.62, 0.62]) {
+          const eye = new Vector3(w.x + 2 * nx - across * nz, 2.45, w.z + 2 * nz + across * nx);
+          const ray = new Raycaster(eye, new Vector3(-nx, 0, -nz));
+          const hits = ray.intersectObjects(meshes);
+          expect(hits[0]?.object).toBe(meshes[2]);
+          const curtain = hits.find(hit => hit.object === meshes[1])!;
+          expect(curtain.distance - hits[0]!.distance).toBeGreaterThan(0.1);
+          expect(curtain.distance).toBeLessThan(2 - 0.21);
+        }
         expect(wood.triangles + glass.triangles + goods.triangles).toBeLessThan(1050);
         for (const mesh of meshes) mesh.geometry.dispose();
       }

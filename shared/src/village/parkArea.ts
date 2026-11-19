@@ -15,6 +15,7 @@
  */
 import { LOT_DOOR_REACH_M, lotDoorPoint, villageLot } from "./villageLots";
 import type { AABB } from "../collision";
+import { shopWindows, WINDOW_BOX } from "./parkShopWindowLayout";
 import type { Bounds, MapGeometry } from "../school/geometry";
 import { makeGeometry } from "../school/geometry";
 
@@ -231,7 +232,17 @@ export const PARK_TROUGHS: readonly ParkTrough[] = Object.freeze(buildTroughs())
 /** Everything a player body collides with. */
 function buildSolids(): AABB[] {
   const out: AABB[] = [];
-  for (const s of PARK_SHOPS) out.push(box(s.x - s.d / 2, s.x + s.d / 2, s.z - s.w / 2, s.z + s.w / 2));
+  for (const s of PARK_SHOPS) {
+    out.push(box(s.x - s.d / 2, s.x + s.d / 2, s.z - s.w / 2, s.z + s.w / 2));
+    // Each waist-high trough projects past the wall on its own brackets; the gaps between them stay walkable.
+    const halfDepth = (WINDOW_BOX.offset + WINDOW_BOX.depth / 2) / 2;
+    for (const w of shopWindows(s)) {
+      const cx = w.x + w.out[0] * halfDepth, cz = w.z + w.out[2] * halfDepth;
+      const hx = w.out[0] ? halfDepth : WINDOW_BOX.width / 2;
+      const hz = w.out[2] ? halfDepth : WINDOW_BOX.width / 2;
+      out.push(box(cx - hx, cx + hx, cz - hz, cz + hz));
+    }
+  }
   const p = PARK_PLATFORM;
   out.push(box(p.minX, p.maxX, p.minZ, p.maxZ));
   out.push(box(2 - 3.6, 2 + 3.6, p.minZ - 4.3, p.minZ)); // the station's north steps (the boarding pad is just beyond them)

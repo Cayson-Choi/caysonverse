@@ -1,29 +1,8 @@
-import { PARK_SHOPS, type ParkShop } from "@caysonverse/shared/village/parkArea";
+import { shopWindows, WINDOW_BOX, type ShopWindow } from "@caysonverse/shared/village/parkShopWindowLayout";
+import { PARK_SHOPS } from "@caysonverse/shared/village/parkArea";
 import type { Bed } from "../village/veg/flowerPlacement";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 import { addLathe } from "./parkShapes";
-
-export interface ShopWindow {
-  /** Centre of the opening on the plaster face and its outward normal. */
-  x: number;
-  z: number;
-  out: V3;
-  front: boolean;
-}
-
-export function shopWindows(s: ParkShop): ShopWindow[] {
-  const end = s.w / 2;
-  const face = s.x + s.faces * s.d / 2;
-  const back = s.x - s.faces * s.d / 2;
-  return [
-    ...[end - 4.6, end - 1.55].map((offset): ShopWindow => ({ x: face, z: s.z + offset, out: [s.faces, 0, 0], front: true })),
-    ...[-1, 1].map((side): ShopWindow => ({ x: back, z: s.z + side * end * 0.55, out: [-s.faces, 0, 0], front: false })),
-    ...[-1, 1].map((side): ShopWindow => ({ x: s.x, z: s.z + side * end, out: [0, 0, side], front: false })),
-  ];
-}
-
-/** The sill overhangs the box's back edge. Roots are in the exposed soil, below its lip. */
-export const WINDOW_BOX = { offset: 0.62, soilY: 1.335, depth: 0.32, width: 1.65, side: 0.045 } as const;
 
 export function windowBed(w: ShopWindow): Extract<Bed, { kind: "box" }> {
   const { offset, depth, width, side, soilY } = WINDOW_BOX;
@@ -50,12 +29,17 @@ function curtains(cloth: GeoBuilder, at: WindowPoint, face: V3): void {
       const color: V3 = [0.90 * shade, 0.77 * shade, 0.60 * shade];
       for (const top of [false, true]) {
         const y = top ? 2.72 : 1.99 + 0.12 * t + 0.025 * pleat;
-        const across = side * (0.705 - t * (top ? 0.43 : 0.24));
-        cloth.rawVertex(at(0.30 + 0.026 * pleat, y, across), face, t, Number(top), color);
+        const width = top ? 0.43 : 0.24;
+        const across = side * (0.705 - t * width);
+        const slope = 0.026 * 5 * Math.PI * Math.sin(phase) / (side * width);
+        const scale = 1 / Math.hypot(1, slope);
+        const normal: V3 = [(face[0] + face[2] * slope) * scale, 0, (face[2] - face[0] * slope) * scale];
+        cloth.rawVertex(at(0.30 + 0.026 * pleat, y, across), normal, t, Number(top), color);
       }
       if (i > 0) {
         const j = start + 2 * i;
-        cloth.idx.push(j - 2, j - 1, j, j, j - 1, j + 1);
+        if (side < 0) cloth.idx.push(j - 2, j - 1, j, j, j - 1, j + 1);
+        else cloth.idx.push(j, j - 1, j - 2, j + 1, j - 1, j);
       }
     }
   }
