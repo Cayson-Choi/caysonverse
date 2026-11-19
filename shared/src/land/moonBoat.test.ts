@@ -30,7 +30,7 @@ describe("moon boat timeline", () => {
     expect(Math.abs(moonBoatAt(MOON_CYCLE_MS - 500).angle)).toBeLessThan(0.002);
     expect(moonBoatAt(MOON_CYCLE_MS * 3).status).toBe("unloading");
   });
-  it("builds the swing up to 55 degrees, never past it", () => {
+  it("builds the swing up to 82 degrees, never past it", () => {
     let max = 0;
     let early = 0;
     for (let t = 0; t < 90; t += 0.02) {
@@ -52,9 +52,9 @@ describe("moon boat timeline", () => {
       const s = moonBoatAt(ms);
       expect(s.omega).toBeCloseTo((a1 - a0) / (2 * h / 1000), 1);
     }
-    expect(MOON_OMEGA).toBeGreaterThan(0.9);
+    expect(MOON_OMEGA).toBeGreaterThan(0.75);
   });
-  it("weighs about 0.57 g at the 55 degree turn and about 2 g through the bottom", () => {
+  it("weighs about 0.14 g (nearly weightless) at the 82 degree turn and about 2.5 g (under 3) through the bottom", () => {
     let lo = 9;
     let hi = 0;
     for (let t = 58; t < 70; t += 0.01) {
@@ -62,10 +62,10 @@ describe("moon boat timeline", () => {
       lo = Math.min(lo, g);
       hi = Math.max(hi, g);
     }
-    expect(lo).toBeGreaterThan(0.5);
-    expect(lo).toBeLessThan(0.65);
-    expect(hi).toBeGreaterThan(1.7);
-    expect(hi).toBeLessThan(2.3);
+    expect(lo).toBeGreaterThan(0.05);
+    expect(lo).toBeLessThan(0.3);
+    expect(hi).toBeGreaterThan(2.2);
+    expect(hi).toBeLessThan(3);
   });
   it("is in the ride table with 32 distinct seats, the middle rows first", () => {
     const r = rideByKey("moonboat")!;

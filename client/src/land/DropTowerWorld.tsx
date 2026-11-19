@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import {
   CanvasTexture,
+  CircleGeometry,
   Color,
+  DoubleSide,
   Euler,
   ExtrudeGeometry,
   Group,
@@ -27,9 +29,9 @@ import { parkMaterial, pickSet } from "./pbr";
 import { Parts, type V3 } from "./artParts";
 import { villageClock } from "../village/villageClock";
 import { DROP_CAR, DROP_DECK_Y, DROP_PLATFORM_INNER, DROP_PLATFORM_R, DROP_SEATS_PER_FACE, DROP_SITE, DROP_STATION_Y, DROP_TOWER_H, dropAt, type DropState } from "@caysonverse/shared/land/dropTower";
-import { DROP_CROWN_Y } from "@caysonverse/shared/land/dropTowerGeometry";
+import { DROP_BEAM_YS, DROP_CROWN_Y, DROP_FRAME, dropFrameD } from "@caysonverse/shared/land/dropTowerGeometry";
 
-type K = "plaster" | "concrete" | "deck" | "indigo" | "violet" | "gold" | "cloud" | "glass" | "leather" | "pad" | "white" | "ink" | "steel";
+type K = "plaster" | "concrete" | "deck" | "indigo" | "violet" | "gold" | "cloud" | "glass" | "leather" | "pad" | "white" | "ink" | "steel" | "panel" | "moon";
 
 /** Metres per texture tile of each PBR set (the sets' real-world scale: WoodFloor051 has ~24 plank rows to a tile, so 3 m makes a plank ~13 cm; trowelled plaster; poured concrete). */
 const TILES: Partial<Record<K, number>> = { plaster: 1.5, concrete: 2.0, deck: 3.0 };
@@ -67,7 +69,7 @@ function signTexture(): CanvasTexture {
 }
 
 /** A five-point star, extruded (the gold finial). */
-function starGeometry(r: number, depth: number) {
+function starGeometry(r: number, depth: number, bevelSegments = 2) {
   const s = new Shape();
   for (let i = 0; i < 10; i++) {
     const a = (i / 10) * Math.PI * 2 + Math.PI / 2;
@@ -76,17 +78,17 @@ function starGeometry(r: number, depth: number) {
     else s.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
   }
   s.closePath();
-  const g = new ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelSize: 0.03, bevelThickness: 0.03, bevelSegments: 2 });
+  const g = new ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelSize: 0.03, bevelThickness: 0.03, bevelSegments });
   g.translate(0, 0, -depth / 2);
   return g;
 }
 
 /** A crescent moon, extruded (the finial's moon). */
-function crescentGeometry(r: number, depth: number) {
+function crescentGeometry(r: number, depth: number, curveSegments = 24) {
   const s = new Shape();
   s.absarc(0, 0, r, Math.PI * 0.2, Math.PI * 1.8, false);
   s.absarc(r * 0.42, 0, r * 0.8, Math.PI * 1.72, Math.PI * 0.28, true);
-  const g = new ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelSize: 0.05, bevelThickness: 0.05, bevelSegments: 3, curveSegments: 24 });
+  const g = new ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelSize: 0.05, bevelThickness: 0.05, bevelSegments: 3, curveSegments });
   g.translate(0, 0, -depth / 2);
   return g;
 }
@@ -105,14 +107,27 @@ function build(mats: Record<K, Material>): Build {
   const carBulbs: V3[] = [];
   const th = DROP_CAR.towerHalf;
 
-  // ── the tower: a white plaster column on a concrete plinth, indigo bands, gold corner rails with collars, lit arched windows, moon medallions ──
+  // ── the tower: a white plaster column on a concrete plinth with sculpted indigo-and-gold bands, lit arched windows and moon medallions; round it a taper-legged frame
+  // (four leaning legs with indigo knuckles, ring beams, glowing arched panels and braces) that stays outside the car's swept cylinder (dropFrameReach, unit-tested) ──
+  const CY = DROP_CROWN_Y;
+  const BEAMS = DROP_BEAM_YS;
   t.soft("concrete", 3.6, 1.0, 3.6, 0, 0.5, 0, 0.08);
   t.box("gold", 3.72, 0.1, 3.72, 0, 1.0, 0);
   t.box("plaster", th * 2, DROP_TOWER_H - 5 - 1.0, th * 2, 0, 1.0 + (DROP_TOWER_H - 5 - 1.0) / 2, 0);
-  for (let y = 5; y < DROP_CROWN_Y - 1; y += 6) {
-    t.box("indigo", th * 2 + 0.2, 0.55, th * 2 + 0.2, 0, y, 0);
-    t.box("gold", th * 2 + 0.26, 0.07, th * 2 + 0.26, 0, y + 0.31, 0);
-    t.box("gold", th * 2 + 0.26, 0.07, th * 2 + 0.26, 0, y - 0.31, 0);
+  // wide indigo bands at the beams' levels (a gold stud row on every face), thin bands between
+  for (const y of BEAMS.slice(1)) {
+    t.box("indigo", th * 2 + 0.24, 1.0, th * 2 + 0.24, 0, y, 0);
+    t.box("gold", th * 2 + 0.32, 0.08, th * 2 + 0.32, 0, y + 0.54, 0);
+    t.box("gold", th * 2 + 0.32, 0.08, th * 2 + 0.32, 0, y - 0.54, 0);
+    for (let f = 0; f < 4; f++) {
+      const a = (f * Math.PI) / 2;
+      for (let k = -4; k <= 4; k++) t.box("gold", 0.08, 0.1, 0.1, Math.cos(a) * (th + 0.15) - Math.sin(a) * k * 0.22, y, Math.sin(a) * (th + 0.15) + Math.cos(a) * k * 0.22, 0, -a, 0);
+    }
+  }
+  for (const y of BEAMS.slice(1).map((v) => v - 5)) {
+    t.box("indigo", th * 2 + 0.2, 0.4, th * 2 + 0.2, 0, y, 0);
+    t.box("gold", th * 2 + 0.26, 0.06, th * 2 + 0.26, 0, y + 0.23, 0);
+    t.box("gold", th * 2 + 0.26, 0.06, th * 2 + 0.26, 0, y - 0.23, 0);
   }
   for (const sx of [-1, 1])
     for (const sz of [-1, 1]) {
@@ -121,46 +136,164 @@ function build(mats: Record<K, Material>): Build {
       t.rod("gold", [cx, 1.1, cz], [cx, DROP_CROWN_Y - 0.4, cz], 0.12, 0.12, 14);
       for (let y = 3.0; y < DROP_CROWN_Y - 1; y += 3) {
         t.rod("steel", [cx, y - 0.05, cz], [cx, y + 0.05, cz], 0.2, 0.2, 14);
-        towerBulbs.push([cx + sx * 0.2, y + 1.5, cz + sz * 0.2]);
+        if (y % 6 === 0) towerBulbs.push([cx + sx * 0.2, y + 1.5, cz + sz * 0.2]);
       }
     }
-  // lit arched windows (a rounded box with a dome) on every face, and a gold moon medallion at 41 m
+  // lit arched windows between the bands, and a gold moon medallion above the top band
   for (let f = 0; f < 4; f++) {
     const a = (f * Math.PI) / 2;
     const nx = Math.cos(a);
     const nz = Math.sin(a);
     const ry = -a;
-    for (let y = 8; y < DROP_CROWN_Y - 3; y += 6) {
-      if (y > 38.5 && y < 43.5) continue;
+    for (let y = 7.5; y < 82; y += 5) {
       t.box("glass", 0.1, 1.1, 0.5, nx * (th + 0.02), y, nz * (th + 0.02), 0, ry, 0);
       t.ball("glass", 0.25, nx * (th + 0.02), y + 0.55, nz * (th + 0.02), 0.2, 1, 1, 12);
       t.box("gold", 0.06, 1.3, 0.64, nx * (th + 0.0), y + 0.05, nz * (th + 0.0), 0, ry, 0);
     }
-    t.rod("gold", [nx * (th + 0.04), 41, nz * (th + 0.04)], [nx * (th + 0.1), 41, nz * (th + 0.1)], 0.55, 0.55, 28);
-    t.rod("violet", [nx * (th + 0.1), 41, nz * (th + 0.1)], [nx * (th + 0.14), 41, nz * (th + 0.14)], 0.42, 0.42, 28);
+    t.rod("gold", [nx * (th + 0.04), 86.9, nz * (th + 0.04)], [nx * (th + 0.1), 86.9, nz * (th + 0.1)], 0.55, 0.55, 28);
+    t.rod("violet", [nx * (th + 0.1), 86.9, nz * (th + 0.1)], [nx * (th + 0.14), 86.9, nz * (th + 0.14)], 0.42, 0.42, 28);
+  }
+  // the capital: the column flares in stepped courses above the highest rider (the car stops at 85 m; its riders heads reach 86.5 m)
+  t.box("indigo", 3.0, 0.5, 3.0, 0, CY - 1.3, 0);
+  t.box("gold", 3.1, 0.07, 3.1, 0, CY - 1.02, 0);
+  t.box("plaster", 4.2, 0.55, 4.2, 0, CY - 0.72, 0);
+  t.box("gold", 4.34, 0.08, 4.34, 0, CY - 0.4, 0);
+  t.box("indigo", 5.0, 0.4, 5.0, 0, CY - 0.16, 0);
+  for (let i = 0; i < 20; i++) {
+    const a = (i / 20) * Math.PI * 2;
+    towerBulbs.push([Math.cos(a) * 3.2, CY - 0.1, Math.sin(a) * 3.2]);
   }
 
-  // ── the cloud crown: sculpted puffs (smooth, lumpy), a golden crescent and star above ──
-  const ring = 2.9;
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2 + 0.2;
-    const r = 1.75 + 0.5 * Math.sin(i * 2.3);
-    t.puff("cloud", r, Math.cos(a) * ring, DROP_CROWN_Y + 2.0 + 0.4 * Math.cos(i * 1.9), Math.sin(a) * ring, i * 1.37, 0.78);
+  // the frame: four leaning legs (taper, indigo knuckles with gold rings) at the beams' levels
+  const frameD = dropFrameD;
+  const legR = (y: number): number => 0.8 - 0.42 * (y / CY);
+  const knuckles = [DROP_DECK_Y, ...BEAMS.slice(1), CY + 0.4];
+  for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as [number, number][]) {
+    for (let i = 0; i + 1 < knuckles.length; i++) {
+      const y0 = knuckles[i]!;
+      const y1 = knuckles[i + 1]!;
+      t.rod("plaster", [sx * frameD(y0), y0, sz * frameD(y0)], [sx * frameD(y1), y1, sz * frameD(y1)], legR(y0), legR(y1), 14);
+    }
+    for (const y of knuckles.slice(1, -1)) {
+      const x = sx * frameD(y);
+      const z = sz * frameD(y);
+      const r = legR(y) * 1.32;
+      t.rod("indigo", [x, y - 0.5, z], [x, y + 0.5, z], r, r, 14);
+      t.rod("gold", [x, y - 0.56, z], [x, y - 0.46, z], r * 1.1, r * 1.1, 14);
+      t.rod("gold", [x, y + 0.46, z], [x, y + 0.56, z], r * 1.1, r * 1.1, 14);
+      t.ball("white", 0.2, x + sx * r * 0.95, y, z + sz * r * 0.95, 1, 1.15, 1, 12);
+      towerBulbs.push([x + sx * r * 0.95, y, z + sz * r * 0.95]);
+    }
+    // the foot: a stepped pedestal on the deck
+    const fx = sx * frameD(DROP_DECK_Y);
+    const fz = sz * frameD(DROP_DECK_Y);
+    t.soft("concrete", 1.9, 0.9, 1.9, fx, DROP_DECK_Y + 0.45, fz, 0.06);
+    t.box("gold", 2.0, 0.07, 2.0, fx, DROP_DECK_Y + 0.92, fz);
+    t.soft("indigo", 1.5, 0.5, 1.5, fx, DROP_DECK_Y + 1.2, fz, 0.05);
+    t.box("gold", 1.58, 0.06, 1.58, fx, DROP_DECK_Y + 1.48, fz);
+  }
+  // beams, arches with glowing panels, braces: on every face
+  const starG = starGeometry(0.24, 0.05, 1);
+  const moonG = crescentGeometry(0.62, 0.06, 8);
+  const bayTop = [...BEAMS.slice(1), CY - 0.3];
+  for (let f = 0; f < 4; f++) {
+    const a = (f * Math.PI) / 2;
+    const nx = Math.cos(a);
+    const nz = Math.sin(a);
+    const ry = -a;
+    // a frame whose z is the face's outward normal and whose x runs along the face (right-handed), at distance d from the axis and height y
+    const basis = (d: number, y: number): Matrix4 => new Matrix4().makeBasis(new Vector3(nz, 0, -nx), new Vector3(0, 1, 0), new Vector3(nx, 0, nz)).setPosition(nx * d, y, nz * d);
+    for (let b = 0; b < BEAMS.length + 1; b++) {
+      const y = b < BEAMS.length ? BEAMS[b]! : CY - 0.3;
+      const d = frameD(y);
+      const len = 2 * d - 0.5;
+      t.box("indigo", DROP_FRAME.beamHalf * 2, 0.5, len, nx * d, y, nz * d, 0, ry, 0);
+      t.box("gold", DROP_FRAME.beamHalf * 2 + 0.06, 0.06, len + 0.06, nx * d, y + 0.28, nz * d, 0, ry, 0);
+      t.box("gold", DROP_FRAME.beamHalf * 2 + 0.06, 0.06, len + 0.06, nx * d, y - 0.28, nz * d, 0, ry, 0);
+      for (let k = -1; k <= 1; k++) if (b % 2 === 0 || k !== 0) towerBulbs.push([nx * (d + 0.3) - nz * k * (len / 3), y + 0.2, nz * (d + 0.3) + nx * k * (len / 3)]);
+    }
+    for (let b = 0; b < BEAMS.length; b++) {
+      const y = BEAMS[b]!;
+      const d = frameD(y);
+      const rho = d - 0.8;
+      const cy = y + 0.3;
+      // the glowing panel (a half disc just inside the arch), a gold arch and a white inner moulding
+      t.add("panel", new CircleGeometry(rho - 0.05, 32, 0, Math.PI), basis(d - 0.06, cy));
+      t.add("gold", new TorusGeometry(rho, 0.11, 6, 28, Math.PI), basis(d, cy));
+      t.add("white", new TorusGeometry(rho - 0.3, 0.05, 5, 24, Math.PI), basis(d - 0.03, cy));
+      // a crescent and stars on the panel
+      t.add("moon", moonG, new Matrix4().multiplyMatrices(basis(d - 0.02, cy + rho * 0.38), new Matrix4().makeRotationZ(0.35)));
+      for (const [u, v] of [[-0.55, 0.3], [0.55, 0.3], [-0.3, 0.72], [0.38, 0.66]] as [number, number][]) t.add("moon", starG, new Matrix4().multiplyMatrices(basis(d - 0.02, cy + rho * v), new Matrix4().makeTranslation(u * rho, 0, 0)));
+      // bulbs along the arch
+      for (let k = 0; k <= 6; k++) {
+        const ang = (k / 6) * Math.PI;
+        towerBulbs.push([nx * (d + 0.2) - nz * Math.cos(ang) * (rho + 0.05), cy + Math.sin(ang) * (rho + 0.05), nz * (d + 0.2) + nx * Math.cos(ang) * (rho + 0.05)]);
+      }
+      // braces over the arch up to the next beam
+      const yA = cy + rho + 0.5;
+      const yB = bayTop[b]! - 0.35;
+      if (yB - yA > 1.6 && y < 79) {  // the top bay stays open: the riders at the 85 m hold look out over it
+        const w = d - 0.7;
+        const p = (u: number, yy: number): V3 => [nx * d - nz * u, yy, nz * d + nx * u];
+        t.rod("gold", p(-w, yA), p(w, yA), 0.045, 0.045, 6);
+        t.rod("gold", p(-w, yA), p(w, yB), 0.065, 0.065, 6);
+        t.rod("gold", p(w, yA), p(-w, yB), 0.065, 0.065, 6);
+        t.ball("gold", 0.13, nx * d, (yA + yB) / 2, nz * d, 1, 1, 1, 10);
+      }
+    }
+  }
+
+  // ── the cloud crown: a wide cloud bank over the frame's heads (a flat lens with sculpted puffs round it, tiers rising to the centre), the gold moon and a wheel of stars on its finial; scaled 1.3 for the tall tower ──
+  const S = 1.3;
+  const cloud = (r: number, x: number, dy: number, z: number, seed: number, squash: number, detail: number): void => t.puff("cloud", r * S, x * S, CY + dy * S, z * S, seed, squash, detail);
+  cloud(6.2, 0, 0.7, 0, 2.2, 0.26, 4);
+  for (let i = 0; i < 4; i++) {
+    const sx = i < 2 ? 1 : -1;
+    const sz = i % 2 === 0 ? 1 : -1;
+    const dd = frameD(CY);
+    t.puff("cloud", 2.6, sx * dd, CY + 1.3, sz * dd, 4 + i * 1.7, 0.78, 4);
+    cloud(1.5, sx * (dd + 0.9) / S, 0.3, sz * (dd - 0.8) / S, 9 + i, 0.8, 3);
+  }
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 + Math.PI / 10;
+    const rr = 5.3 + 0.4 * Math.sin(i * 2.1);
+    cloud(1.6 + 0.35 * Math.cos(i * 1.7), Math.cos(a) * rr, 0.9 + 0.35 * Math.sin(i * 1.3), Math.sin(a) * rr, 20 + i * 1.3, 0.78, 3);
+  }
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2 + 0.2;
+    cloud(1.8 + 0.3 * Math.sin(i * 2.3), Math.cos(a) * 3.2, 2.3 + 0.4 * Math.cos(i * 1.9), Math.sin(a) * 3.2, i * 1.37, 0.78, 3);
   }
   for (let i = 0; i < 5; i++) {
     const a = (i / 5) * Math.PI * 2 + 0.6;
-    t.puff("cloud", 1.7 + 0.25 * Math.sin(i), Math.cos(a) * 1.8, DROP_CROWN_Y + 4.1 + 0.3 * Math.sin(i * 2), Math.sin(a) * 1.8, 11 + i * 1.9, 0.82);
+    cloud(1.5 + 0.25 * Math.sin(i), Math.cos(a) * 1.7, 4.2 + 0.3 * Math.sin(i * 2), Math.sin(a) * 1.7, 11 + i * 1.9, 0.82, 3);
   }
-  t.puff("cloud", 2.9, 0, DROP_CROWN_Y + 4.3, 0, 3.3, 0.85);
-  t.puff("cloud", 1.9, 0.3, DROP_CROWN_Y + 6.4, -0.2, 6.1, 0.85);
-  // the finial: a gold crescent with a star in its mouth, on a gold stem
-  t.rod("gold", [0, DROP_CROWN_Y + 7.4, 0], [0, DROP_CROWN_Y + 8.4, 0], 0.09, 0.07, 10);
-  t.add("gold", crescentGeometry(0.9, 0.22), new Matrix4().makeTranslation(0, DROP_CROWN_Y + 9.3, 0));
-  t.add("gold", starGeometry(0.3, 0.16), new Matrix4().makeTranslation(0.18, DROP_CROWN_Y + 9.3, 0));
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
-    towerBulbs.push([Math.cos(a) * (th + 1.0), DROP_CROWN_Y - 0.1, Math.sin(a) * (th + 1.0)]);
+  cloud(2.5, 0, 4.6, 0, 3.3, 0.85, 4);
+  cloud(1.5, 0.2, 6.5, -0.2, 6.1, 0.85, 3);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.9;
+    cloud(0.7 + 0.1 * (i % 3), Math.cos(a) * 6.4, 0.4 + 0.3 * (i % 2), Math.sin(a) * 6.4, 40 + i, 0.8, 2);
   }
+  // the finial: a gold stem under a glowing moon orb ringed by a tilted gold orbit with three stars, and a wheel of six stars on gold spokes
+  const FY = (dy: number): number => CY + dy * S;
+  t.rod("gold", [0, FY(7.4), 0], [0, FY(10.2), 0], 0.14, 0.09, 10);
+  t.ball("moon", 1.25 * S, 0, FY(11.5), 0, 1, 1, 1, 28);
+  const orbitQ = new Quaternion().setFromEuler(new Euler(1.15, 0.5, 0));
+  t.add("gold", new TorusGeometry(2.1 * S, 0.1, 8, 48), new Matrix4().compose(new Vector3(0, FY(11.5), 0), orbitQ, new Vector3(1, 1, 1)));
+  for (let i = 0; i < 3; i++) {
+    const th3 = (i / 3) * Math.PI * 2 + 0.5;
+    const p = new Vector3(Math.cos(th3) * 2.1 * S, Math.sin(th3) * 2.1 * S, 0).applyQuaternion(orbitQ).add(new Vector3(0, FY(11.5), 0));
+    t.add("moon", starGeometry(0.5 * S, 0.2), new Matrix4().compose(p, orbitQ, new Vector3(1, 1, 1)));
+    towerBulbs.push([p.x, p.y, p.z]);
+  }
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const rr = 3.1 * S;
+    const ye = FY(8.6 + (i % 2) * 0.9);
+    t.rod("gold", [0, FY(7.6), 0], [Math.cos(a) * rr, ye, Math.sin(a) * rr], 0.06, 0.04, 6);
+    t.add("moon", starGeometry((0.46 + (i % 2) * 0.12) * S, 0.18), new Matrix4().compose(new Vector3(Math.cos(a) * rr, ye + 0.35 * S, Math.sin(a) * rr), new Quaternion().setFromEuler(new Euler(0, -a + Math.PI / 2, 0)), new Vector3(1, 1, 1)));
+    towerBulbs.push([Math.cos(a) * rr, ye + 0.35 * S, Math.sin(a) * rr]);
+  }
+  towerBulbs.push([0, FY(11.5), 0], [0, FY(12.9), 0]);
 
   // ── the platform: a concrete podium with a plank deck (tile 1 m), baluster rails, an east gate with a crescent arch, steps, the queue fence, lamps ──
   const R = DROP_PLATFORM_R;
@@ -236,6 +369,39 @@ function build(mats: Record<K, Material>): Build {
     const xa = R + 0.4;
     const xb = stepEnd + 4.6;
     for (const dy of [0.45, 0.85]) t.rod("gold", [xa, Math.max(0, DROP_DECK_Y * (1 - (xa - R) / (stepEnd - R)) * 0.9) + dy, z], [xb, dy, z], 0.028, 0.028, 6);
+  }
+
+  // the podium's fascia: inset indigo panels in gold frames round the concrete sides (the east side leaves the steps free)
+  for (let f = 0; f < 4; f++) {
+    const a = (f * Math.PI) / 2;
+    const nx = Math.cos(a);
+    const nz = Math.sin(a);
+    const n = 6;
+    for (let k = 0; k < n; k++) {
+      const u = (k - (n - 1) / 2) * ((2 * R - 1.6) / n);
+      if (f === 0 && Math.abs(u) < 2.3) continue;
+      const cx = nx * (R + 0.02) - nz * u;
+      const cz = nz * (R + 0.02) + nx * u;
+      t.box("gold", 0.04, 0.5, 1.7, cx, 0.42, cz, 0, -a, 0);
+      t.box("indigo", 0.06, 0.4, 1.58, cx + nx * 0.02, 0.42, cz + nz * 0.02, 0, -a, 0);
+      t.ball("gold", 0.07, cx + nx * 0.06, 0.42, cz + nz * 0.06, 1, 1, 1, 8);
+    }
+  }
+  // lamp standards at the deck's four corners: a gold post, a crescent bracket and a glowing lantern
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as [number, number][]) {
+    const x = sx * (R - 0.25);
+    const z = sz * (R - 0.25);
+    t.rod("gold", [x, DROP_DECK_Y, z], [x, DROP_DECK_Y + 3.4, z], 0.09, 0.06, 10);
+    t.ball("gold", 0.16, x, DROP_DECK_Y + 0.5, z, 1, 1, 1, 10);
+    t.add("gold", new TorusGeometry(0.34, 0.035, 6, 20, Math.PI * 1.2), new Matrix4().compose(new Vector3(x, DROP_DECK_Y + 3.45, z), new Quaternion().setFromEuler(new Euler(0, Math.atan2(-sz, sx), Math.PI * 0.4)), new Vector3(1, 1, 1)));
+    t.ball("white", 0.26, x, DROP_DECK_Y + 3.75, z, 1, 1.2, 1, 14);
+    t.rod("gold", [x, DROP_DECK_Y + 4.02, z], [x, DROP_DECK_Y + 4.2, z], 0.06, 0.02, 8);
+    towerBulbs.push([x, DROP_DECK_Y + 3.75, z]);
+  }
+  // star inlays in the deck (indigo disc, gold star) on the three closed sides
+  for (const [x, z] of [[0, -(R + I) / 2], [0, (R + I) / 2], [-(R + I) / 2, 0]] as [number, number][]) {
+    t.rod("indigo", [x, DROP_DECK_Y + 0.011, z], [x, DROP_DECK_Y + 0.02, z], 1.15, 1.15, 28);
+    t.add("gold", starGeometry(0.95, 0.012), new Matrix4().compose(new Vector3(x, DROP_DECK_Y + 0.035, z), new Quaternion().setFromEuler(new Euler(-Math.PI / 2, 0, 0)), new Vector3(1, 1, 1)));
   }
 
   // ── the ring car (its frame: hips at y = 0, the tower's axis at the origin) ──
@@ -323,14 +489,16 @@ export function DropTowerWorld({ all }: { all: Texture[] }) {
       deck: parkMaterial(wood, 1, { color: new Color(1.5, 1.32, 1.12), normalScale: 0.8 }),
       indigo: paint("#3338a8", { emissive: new Color("#1a1e70"), emissiveIntensity: 0.4 }),
       violet: paint("#7d55e8"),
-      gold: flat("#f2c14e", { roughness: 0.3, metalness: 0.85 }),
-      cloud: flat("#ffffff", { roughness: 0.92, emissive: new Color("#c8d6ff"), emissiveIntensity: 0.55 }),
+      gold: flat("#f4c752", { roughness: 0.3, metalness: 0.3, emissive: new Color("#8a6410"), emissiveIntensity: 0.8 }),
+      cloud: flat("#ffffff", { roughness: 0.92, emissive: new Color("#eef0ff"), emissiveIntensity: 0.8 }),
       glass: flat("#ffe2a8", { roughness: 0.2, emissive: new Color("#ffb85a"), emissiveIntensity: 0.55 }),
       leather: flat("#6a45b8", { roughness: 0.55 }),
       pad: flat("#f6d36b", { roughness: 0.5 }),
       white: flat("#fbf4e6", { roughness: 0.8, emissive: new Color("#7a6e56"), emissiveIntensity: 0.25 }),
       ink: flat("#2c2440", { roughness: 0.8 }),
       steel: flat("#aeb4cc", { roughness: 0.35, metalness: 0.7 }),
+      panel: flat("#2a2f8f", { roughness: 0.5, emissive: new Color("#3a3fd0"), emissiveIntensity: 0.6, side: DoubleSide }),
+      moon: flat("#ffe9a0", { roughness: 0.3, metalness: 0.1, emissive: new Color("#ffcf55"), emissiveIntensity: 0.95, side: DoubleSide }),
     };
   }, [all]);
   const built = useMemo(() => build(mats), [mats]);

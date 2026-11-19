@@ -63,8 +63,8 @@ export class Parts<K extends string> {
     this.add(key, new TubeGeometry(new CatmullRomCurve3(pts), Math.max(8, pts.length * 4), r, seg, false));
   }
   /** A smooth-shaded lumpy cloud puff: an icosphere welded (no seams) and pushed in and out by a few low-frequency waves, `seed` varies each. */
-  puff(key: K, r: number, x: number, y: number, z: number, seed: number, squash = 0.8): void {
-    const g = new IcosahedronGeometry(r, 4);
+  puff(key: K, r: number, x: number, y: number, z: number, seed: number, squash = 0.8, detail = 4): void {
+    const g = new IcosahedronGeometry(r, detail);
     g.deleteAttribute("normal");
     g.deleteAttribute("uv");
     const w = mergeVertices(g, 1e-4);

@@ -22,7 +22,7 @@ import {
   dropSeatPose,
   type DropStage,
 } from "./dropTower";
-import { DROP_COLUMN, DROP_CROWN, DROP_PLATFORM_BOXES, dropRidingPoints, pointBoxDistance } from "./dropTowerGeometry";
+import { DROP_CAR_REACH, DROP_COLUMN, DROP_CROWN, DROP_CROWN_Y, DROP_PLATFORM_BOXES, dropFrameReach, dropRidingPoints, pointBoxDistance } from "./dropTowerGeometry";
 import { RIDES, rideByKey } from "./rides";
 
 const motion = (t: number): { y: number; v: number; a: number; stage: DropStage } => {
@@ -42,9 +42,9 @@ describe("drop tower timeline", () => {
     expect(end.status).toBe("riding");
     expect(end.y).toBeCloseTo(DROP_STATION_Y, 6);
     expect(dropAt(DROP_CYCLE_MS * 4).status).toBe("unloading");
-    expect(DROP_RIDE_MS / 1000).toBeGreaterThan(22.3);
+    expect(DROP_RIDE_MS / 1000).toBeGreaterThan(29.9);
   });
-  it("lifts slowly to 42 m, holds, free-falls at g, brakes at about 1.3 g, and the height is continuous", () => {
+  it("lifts slowly to 85 m, holds, free-falls at g, brakes at about 1.3 g, and the height is continuous", () => {
     let prev = DROP_STATION_Y;
     let maxUp = 0;
     let maxDown = 0;
@@ -54,7 +54,7 @@ describe("drop tower timeline", () => {
     let maxA = 0;
     for (let t = 0; t <= DROP_RIDE_MS / 1000; t += 0.005) {
       const m = motion(t);
-      expect(Math.abs(m.y - prev)).toBeLessThan(0.15);
+      expect(Math.abs(m.y - prev)).toBeLessThan(0.2); // 31 m/s at the end of the fall = 0.155 m per 5 ms
       prev = m.y;
       top = Math.max(top, m.y);
       maxUp = Math.max(maxUp, m.v);
@@ -66,14 +66,14 @@ describe("drop tower timeline", () => {
     }
     expect(top).toBeCloseTo(DROP_TOP_Y, 3);
     expect(holdSeen).toBe(true);
-    expect(maxUp).toBeLessThan(4.6); // a slow lift
+    expect(maxUp).toBeLessThan(6.6); // a slow lift (a 20 s eased lift over 84 m peaks at 6.3 m/s)
     expect(-maxDown).toBeCloseTo(DROP_FALL_V, 1);
     expect(DROP_BRAKE_A / DROP_G).toBeGreaterThan(1.1);
     expect(DROP_BRAKE_A / DROP_G).toBeLessThan(1.5);
-    expect(DROP_FALL_S).toBeGreaterThan(2);
-    expect(DROP_BRAKE_S).toBeGreaterThan(1.4);
+    expect(DROP_FALL_S).toBeGreaterThan(3); // a long fall: 49 m
+    expect(DROP_BRAKE_S).toBeGreaterThan(2);
     expect(dropGLoad({ a: -DROP_G })).toBeCloseTo(0, 9);
-    expect(dropGLoad({ a: maxA })).toBeLessThan(2.4);
+    expect(dropGLoad({ a: maxA })).toBeLessThan(2.5);
     expect(minA).toBeCloseTo(-DROP_G, 6);
     expect(DROP_BRAKE_Y).toBeGreaterThan(DROP_STATION_Y + 10);
   });
@@ -119,5 +119,11 @@ describe("drop tower clearances through the whole ride", () => {
     }
     expect(minFloorY).toBeGreaterThanOrEqual(DROP_DECK_Y - 1e-9);
     expect(minGap).toBeGreaterThan(0.25);
+  });
+  it("the tower's outer frame (legs, beams, arches) stays 0.5 m clear of the car's swept cylinder at every height, and the widening capital is above every rider", () => {
+    for (let y = 0; y <= DROP_CROWN_Y; y += 0.25) expect(dropFrameReach(y) - DROP_CAR_REACH).toBeGreaterThan(0.5);
+    let topRider = 0;
+    for (let t = 0; t <= DROP_RIDE_MS / 1000; t += dt) for (const { p } of dropRidingPoints(motion(t).y)) topRider = Math.max(topRider, p[1]);
+    expect(DROP_CROWN_Y - 1.6 - topRider).toBeGreaterThan(1.2);
   });
 });

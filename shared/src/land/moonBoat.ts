@@ -7,7 +7,7 @@
  * Boat frame: origin at the axle, y up, z toward the bow (south at rest), x across. The hull's two horns rise out of the keel; 32 seats stand on
  * eight flat terraces in the hull's bowl (seat = row * 4 + column, row 0 at the bow), all facing the bow.
  *
- * Ride: 5 s unloading, 29 s boarding, 6 s gate, then 90 s of swinging: the amplitude builds to 55 degrees over 58 s, holds, and is braked in the last
+ * Ride: 5 s unloading, 29 s boarding, 6 s gate, then 90 s of swinging: the amplitude builds to 82 degrees over 58 s, holds, and is braked in the last
  * 20 s; the swing has a fixed period (a real pendulum's), so angle(t) = amplitude(t) * sin(2 pi t / period). One cycle is 130 s.
  */
 
@@ -26,8 +26,8 @@ export const MOON_SEAT = Object.freeze({ dx: 0.85, dz: 1.0, z0: 3.6, cushion: 0.
 /** The frame's feet and legs. */
 export const MOON_FRAME = Object.freeze({ legX: 3.9, footZ: 9.5, armX: 2.45 });
 
-export const MOON_MAX_ANGLE = (55 * Math.PI) / 180;
-export const MOON_PERIOD_S = 6.4;
+export const MOON_MAX_ANGLE = (82 * Math.PI) / 180;
+export const MOON_PERIOD_S = 7.8;
 export const MOON_OMEGA = (2 * Math.PI) / MOON_PERIOD_S;
 const BUILD_S = 58;
 const BRAKE_S = 20;
