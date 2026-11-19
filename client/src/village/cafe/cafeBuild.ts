@@ -125,23 +125,40 @@ function reach(base: V3, d: readonly [number, number]): number {
   return Math.max(0, r);
 }
 
-/** A leaf: an oval from `base` along the (unit) horizontal direction `d`, length L, width W, tipped by `lift` and drooping. */
-function leaf(b: MeshBuilder, base: V3, d: readonly [number, number], L0: number, W: number, lift: number, color: V3): void {
+/** Cross sections of the blade: fraction of length and half-width. The vine leaves have broad shoulders near their petiole. */
+const BLADES = {
+  oval: [[0.17, 0.55], [0.44, 1], [0.74, 0.78]],
+  heart: [[0.09, 0.8], [0.26, 1], [0.63, 0.68]],
+  lance: [[0.2, 0.66], [0.48, 1], [0.78, 0.55]],
+} as const;
+
+function leaf(b: MeshBuilder, base: V3, d: readonly [number, number], L0: number, W: number, lift: number, color: V3, shape: keyof typeof BLADES = "oval"): void {
   const L = Math.min(L0, reach(base, d));
   if (L < 0.02) return;
-  const side: V3 = [-d[1] * W * 0.5, 0, d[0] * W * 0.5];
-  const mid: V3 = [base[0] + d[0] * L * 0.45, base[1] + lift * 0.7, base[2] + d[1] * L * 0.45];
   const tip: V3 = [base[0] + d[0] * L, base[1] + lift, base[2] + d[1] * L];
-  const q1: V3 = [base[0] + d[0] * L * 0.18, base[1] + lift * 0.2, base[2] + d[1] * L * 0.18];
-  const q2: V3 = [base[0] + d[0] * L * 0.78, base[1] + lift * 0.95, base[2] + d[1] * L * 0.78];
-  const pl = (p: V3, s: number): V3 => [p[0] + side[0] * s, p[1], p[2] + side[2] * s];
-  b.tri(base, pl(q1, 0.7), pl(mid, 1), color, LEAF, [0, 1, 0]);
-  b.tri(base, pl(mid, 1), pl(q2, 0.7), color, LEAF, [0, 1, 0]);
-  b.tri(base, pl(q1, -0.7), pl(mid, -1), color, LEAF, [0, 1, 0]);
-  b.tri(base, pl(mid, -1), pl(q2, -0.7), color, LEAF, [0, 1, 0]);
-  b.tri(pl(q2, 0.7), tip, pl(q2, -0.7), color, LEAF, [0, 1, 0]);
-  b.tri(pl(mid, 1), pl(q2, 0.7), pl(q2, -0.7), color, LEAF, [0, 1, 0]);
-  b.tri(pl(mid, 1), pl(q2, -0.7), pl(mid, -1), color, LEAF, [0, 1, 0]);
+  const up: V3 = [0, 1, 0];
+  let left = base, mid = base, right = base;
+  for (const [t, width] of BLADES[shape]) {
+    const r = 0.5 * W * width;
+    const x = base[0] + d[0] * L * t;
+    const y = base[1] + lift * t + L * 0.13 * Math.sin(Math.PI * t);
+    const z = base[2] + d[1] * L * t;
+    const l: V3 = [x - d[1] * r, y - r * (0.16 + t * 0.28), z + d[0] * r];
+    const m: V3 = [x, y, z];
+    const rr: V3 = [x + d[1] * r, y - r * (0.46 - t * 0.25), z - d[0] * r];
+    if (mid === base) {
+      b.tri(base, l, m, color, LEAF, up);
+      b.tri(base, m, rr, color, LEAF, up);
+    } else {
+      b.quad(left, l, m, mid, color, LEAF, up);
+      b.quad(mid, m, rr, right, color, LEAF, up);
+    }
+    left = l;
+    mid = m;
+    right = rr;
+  }
+  b.tri(left, tip, mid, color, LEAF, up);
+  b.tri(mid, tip, right, color, LEAF, up);
 }
 
 function pot(b: MeshBuilder, x: number, z: number, r: number, h: number, y = 0): void {
@@ -175,7 +192,7 @@ function palm(b: MeshBuilder, x: number, z: number, H: number, seed: number): vo
       const L = 0.3 * (1 - (i - 3) * 0.1);
       for (const s of [-1, 1]) {
         const d: [number, number] = [Math.cos(a + s * 1.15), Math.sin(a + s * 1.15)];
-        leaf(b, [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2], d, L, 0.07, -0.1, C.frond[(i + k) % 3]!);
+        leaf(b, [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2], d, L, 0.07, -0.1, C.frond[(i + k) % 3]!, "lance");
       }
     }
   }
@@ -184,9 +201,13 @@ function palm(b: MeshBuilder, x: number, z: number, H: number, seed: number): vo
 /** A pothos in a hanging pot: trailing vines with small heart leaves. */
 function hangingPlant(b: MeshBuilder, x: number, z: number, y: number, seed: number): void {
   const r = rng(seed);
-  b.lathe(x, z, [[0.07, y], [0.11, y + 0.14], [0.12, y + 0.17]], C.white, POLISH, 10);
-  for (const a of [0, 2.1, 4.2]) b.tube([[x + Math.cos(a) * 0.115, y + 0.16, z + Math.sin(a) * 0.115], [x, y + 0.55, z]], 0.004, C.black, MATTE, 3);
-  b.lathe(x, z, [[0.12, y + 0.16], [0, y + 0.16]], C.soil, MATTE, 10);
+  b.lathe(x, z, [[0, y], [0.056, y], [0.08, y + 0.018], [0.112, y + 0.12], [0.117, y + 0.15], [0.124, y + 0.155], [0.124, y + 0.17], [0.112, y + 0.17], [0.11, y + 0.15]], C.white, POLISH, 16);
+  b.lathe(x, z, [[0.111, y + 0.151], [0, y + 0.151]], C.soil, MATTE, 16);
+  const join = y + 0.55;
+  for (const a of [0, 2.1, 4.2]) b.tube([[x + Math.cos(a) * 0.118, y + 0.16, z + Math.sin(a) * 0.118], [x, join, z]], 0.004, C.wicker, MATTE, 4);
+  b.lathe(x, z, [[0.009, join - 0.016], [0.014, join], [0.009, join + 0.015]], C.brass, BRASS, 8);
+  b.tube([[x, join, z], [x, ROOM.ceil - 0.012, z]], 0.005, C.wicker, MATTE, 5);
+  b.lathe(x, z, [[0, ROOM.ceil - 0.018], [0.031, ROOM.ceil - 0.018], [0.035, ROOM.ceil]], C.brass, BRASS, 10);
   for (let v = 0; v < 6; v++) {
     const a = (v / 6) * Math.PI * 2 + r();
     const len = 0.5 + r() * 0.6;
@@ -196,7 +217,7 @@ function hangingPlant(b: MeshBuilder, x: number, z: number, y: number, seed: num
       pts.push([x + Math.cos(a) * (0.1 + 0.12 * Math.sin(t * Math.PI)), y + 0.15 - len * t, z + Math.sin(a) * (0.1 + 0.12 * Math.sin(t * Math.PI))]);
     }
     b.tube(pts, 0.004, lin("#4C6B34"), LEAF, 3);
-    for (let i = 1; i <= 6; i++) leaf(b, pts[i]!, [Math.cos(a + i), Math.sin(a + i)], 0.075, 0.055, -0.02, C.leaf[(i + v) % 4]!);
+    for (let i = 1; i <= 6; i++) leaf(b, pts[i]!, [Math.cos(a + i), Math.sin(a + i)], 0.075, 0.055, -0.02, C.leaf[(i + v) % 4]!, "heart");
   }
 }
 
