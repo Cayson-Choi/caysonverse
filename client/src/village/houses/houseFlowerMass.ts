@@ -118,7 +118,8 @@ export function flowerMassGeometry(beds: readonly BoxBed[]): { geometry: BufferG
         uv.push(x * 1.6 + (along === "x" ? 0 : z * 1.6), (along === "x" ? z : x) * 1.6 + y * 1.6);
         if (i < nu && j < nv) {
           const p = base + j * (nu + 1) + i;
-          idx.push(p, p + nu + 1, p + 1, p + 1, p + nu + 1, p + nu + 2);
+          if (along === "x") idx.push(p, p + nu + 1, p + 1, p + 1, p + nu + 1, p + nu + 2);
+          else idx.push(p, p + 1, p + nu + 1, p + 1, p + nu + 2, p + nu + 1);
         }
       }
     // the drape: a skirt from the mound's outer edge down over the rim (a box: its outer side; a pot or basket: all round)
@@ -126,9 +127,8 @@ export function flowerMassGeometry(beds: readonly BoxBed[]): { geometry: BufferG
       const ring: Array<[number, number]> = [];
       if (kind === "window" && out) {
         // the grid row on the out side
-        const jOut = along === "x" ? (out[1] > 0 ? nv : 0) : out[0] > 0 ? nu : 0;
-        if (along === "x") for (let i = 0; i <= nu; i++) ring.push([base + jOut * (nu + 1) + i, i]);
-        else for (let j = 0; j <= nv; j++) ring.push([base + j * (nu + 1) + jOut, j]);
+        const jOut = (along === "x" ? out[1] : out[0]) > 0 ? nv : 0;
+        for (let i = 0; i <= nu; i++) ring.push([base + jOut * (nu + 1) + i, i]);
       } else {
         for (let i = 0; i <= nu; i++) ring.push([base + i, 0]);
         for (let j = 1; j <= nv; j++) ring.push([base + j * (nu + 1) + nu, 0]);
@@ -159,7 +159,12 @@ export function flowerMassGeometry(beds: readonly BoxBed[]): { geometry: BufferG
         const c = ring[k + 1]![0];
         const a2 = sb + k;
         const c2 = sb + k + 1;
-        idx.push(a, a2, c, c, a2, c2);
+        const dx = pos[c * 3]! - pos[a * 3]!;
+        const dz = pos[c * 3 + 2]! - pos[a * 3 + 2]!;
+        const ox = out?.[0] ?? pos[a * 3]! - cx;
+        const oz = out?.[1] ?? pos[a * 3 + 2]! - cz;
+        if (dx * oz - dz * ox > 0) idx.push(a, a2, c, c, a2, c2);
+        else idx.push(a, c, a2, c, c2, a2);
       }
     }
   }

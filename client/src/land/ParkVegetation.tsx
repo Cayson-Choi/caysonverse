@@ -6,6 +6,8 @@ import { PARK_BOUNDS, PARK_PLANTERS, PARK_TREES, PARK_TROUGHS } from "@caysonver
 import { PARK_PONDS } from "./ParkScenery";
 import type { Bed } from "../village/veg/flowerPlacement";
 import type { Card } from "../village/veg/vegCards";
+import { flowerMassMesh } from "../village/houses/houseFlowerMass";
+import { CLICK_PICK_KEY } from "../game/clickPick";
 import { isTouchDevice } from "../device";
 import { selfRide } from "./coasterRide";
 import { createVegetation, type VillageVegetation } from "../village/veg/villageVegetation";
@@ -142,6 +144,16 @@ export function ParkVegetation() {
   const [veg, setVeg] = useState<VillageVegetation | null>(null);
   const specs = useMemo(parkTreeSpecs, []);
   const flowerBeds = useMemo(parkBeds, []);
+  // A low flowering crown stays on the soil after the individual petunias thin out.
+  const planterBlooms = useMemo(() => {
+    const pots = flowerBeds.beds.filter((bed): bed is Extract<Bed, { kind: "box" }> => bed.kind === "box" && bed.plant === "pot");
+    const blooms = flowerMassMesh(pots, 8, 18);
+    blooms.mesh.name = "park_planter_blooms";
+    blooms.mesh.frustumCulled = true;
+    blooms.mesh.userData[CLICK_PICK_KEY] = "ignore";
+    return blooms;
+  }, [flowerBeds]);
+  useEffect(() => () => planterBlooms.dispose(), [planterBlooms]);
   const lastSweep = useRef(-1);
   useEffect(() => {
     let dead = false;
@@ -189,5 +201,8 @@ export function ParkVegetation() {
       });
     }
   });
-  return veg ? <primitive object={veg.group} dispose={null} /> : null;
+  return <>
+    <primitive object={planterBlooms.mesh} dispose={null} />
+    {veg && <primitive object={veg.group} dispose={null} />}
+  </>;
 }
