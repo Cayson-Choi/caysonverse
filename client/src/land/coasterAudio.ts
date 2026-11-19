@@ -27,8 +27,9 @@ try {
   /* default */
 }
 
+/** The ride panel's own mute OR the menu's master "소리 켜기" switch: either one silences every ride sound (the menu's is the master). */
 export function rideMuted(): boolean {
-  return muted;
+  return muted || useSoundStore.getState().muted;
 }
 export function setRideMuted(m: boolean): void {
   muted = m;
@@ -37,7 +38,7 @@ export function setRideMuted(m: boolean): void {
   } catch {
     /* ignore */
   }
-  if (voices) voices.master.gain.value = m ? 0 : 0.9;
+  if (voices) voices.master.gain.value = rideMuted() ? 0 : 0.9;
 }
 
 export function startRideAudio(): void {
@@ -45,7 +46,7 @@ export function startRideAudio(): void {
   try {
     const ctx = new AudioContext();
     const master = ctx.createGain();
-    master.gain.value = muted ? 0 : 0.9;
+    master.gain.value = rideMuted() ? 0 : 0.9;
     master.connect(ctx.destination);
     // one second of white noise, looped, shared by the wind and the rumble
     const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
@@ -106,6 +107,7 @@ export function stepRideAudio(nowMs: number): void {
   v.master.gain.setTargetAtTime(muted || useSoundStore.getState().muted ? 0 : 0.9, t, 0.1);
   const sp = rideProbe.speed;
   const k = Math.min(1, sp / 26);
+  v.master.gain.setTargetAtTime(rideMuted() ? 0 : 0.9, t, 0.1); // follows the menu's master switch mid-ride
   v.wind.gain.setTargetAtTime(0.05 + 0.5 * k * k, t, 0.12);
   v.windFilter.frequency.setTargetAtTime(350 + 1500 * k, t, 0.12);
   v.rumble.gain.setTargetAtTime(sp > 0.5 ? 0.06 + 0.4 * k : 0, t, 0.1);

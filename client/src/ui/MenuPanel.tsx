@@ -427,7 +427,8 @@ export function MenuPanel({ graphics = false, onToggleView, onShowGuide }: MenuP
           </h3>
           <div className="cv-menu-row">
             <span id="cv-menu-first-person" className="cv-menu-label">
-              1인칭으로 보기 (V)
+              {/* V is a keyboard key: a phone has none, so its menu does not name it */}
+              {isTouchDevice ? "1인칭으로 보기" : "1인칭으로 보기 (V)"}
             </span>
             <Switch labelledBy="cv-menu-first-person" on={isFp} onChange={() => onToggleView()} />
           </div>
