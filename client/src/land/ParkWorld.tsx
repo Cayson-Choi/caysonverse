@@ -1,5 +1,5 @@
 import { groundOld } from "../village/ground/groundMode";
-import { Suspense, useEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame, useLoader, useThree } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
 import {
@@ -53,6 +53,10 @@ import { parkSkyTexture } from "./parkSkyTexture";
 import { ALL_PARK_URLS, featherTexture, parkMaterial, pickSet } from "./pbr";
 import { addBellRoof, addHedge, addLathe } from "./parkShapes";
 import { boxwoodTextures } from "./boxwoodTexture";
+import { parkBorders } from "./parkBorders";
+import { grassTuft } from "../village/veg/vegGeometry";
+import { soilTextures } from "../village/veg/vegSoil";
+import { CLICK_PICK_KEY } from "../game/clickPick";
 import { PARK_MARBLE_URL_HI, PARK_MARBLE_URL_LO, PARK_PINE_URL_HI, PARK_PINE_URL_LO, useParkAssets } from "./parkAssets";
 import { dayNight } from "../village/dayNightDriver";
 import { BulbHalos, LampPools } from "./nightGlow";
@@ -143,17 +147,25 @@ function Ground({ all }: { all: Texture[] }) {
     // the village lawn's own set (Poly Haven leafy_grass), graded green-gold like the village lawn (GROUND_GRADE LM_grass: sunny, lime; the raw albedo is dry straw)
     const m = parkMaterial(pickSet(all, "LeafyGrass"), 1, { color: new Color(0.4, 1.2, 0.26), normalScale: 0.9 });
     setRepeat(m, 1 / 5, 1 / 5); // the terrain's uv is world metres: one tile per 5 m
-    // the tile is sampled twice (rotated, other scale) and tinted by broad world-space noise (grassVariation.ts): no stripes, no grid on wide lawns
+    // The scanned blades retain their close-up detail. The maintained fairground has long,
+    // gently turning mower passes that fade out before the rough beyond the coaster.
     m.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader
         .replace("#include <common>", "#include <common>\nvarying vec3 vGvWorld;")
         .replace("#include <project_vertex>", "#include <project_vertex>\nvGvWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
       shader.fragmentShader = shader.fragmentShader
         .replace("#include <common>", `#include <common>\nvarying vec3 vGvWorld;\n${GRASS_VARIATION_PARS}`)
-        .replace("#include <map_fragment>", "#ifdef USE_MAP\n diffuseColor *= gvVary( map, vMapUv, vGvWorld, texture2D( map, vMapUv ) );\n#endif");
-
+        .replace("#include <map_fragment>", `#ifdef USE_MAP
+          diffuseColor *= gvVary(map, vMapUv, vGvWorld, texture2D(map, vMapUv));
+          vec2 p = vGvWorld.xz;
+          vec2 inside = min(p - vec2(-155.0, -188.0), vec2(375.0, 10.0) - p);
+          float fairground = smoothstep(0.0, 19.0, min(inside.x, inside.y));
+          float course = p.x * 0.93 + p.y * 0.36 + 2.7 * sin(p.y * 0.034);
+          float swath = smoothstep(-0.64, 0.64, cos(course * 0.49)) * 2.0 - 1.0;
+          diffuseColor.rgb *= 1.0 + fairground * swath * vec3(0.17, 0.135, 0.09);
+        #endif`);
     };
-    m.customProgramCacheKey = () => "park-grass-variation";
+    m.customProgramCacheKey = () => "park-mown-grass";
     return m;
   }, [all]);
   // the sunny lime lawn cools to a dark moonlit green with the night (the village's lawns do the same: GROUND_GRADE_NIGHT)
@@ -499,7 +511,52 @@ function Lamps() {
   );
 }
 
-/** Flower beds ring the fountain and line the promenade; park benches stand along the paths (decor: no seat ids yet). */
+/** One mulch surface, one stone edging mesh and one batch of arching grass clumps for the borders. */
+function PathBorders({ stone }: { stone: MeshStandardMaterial }) {
+  const border = parkBorders();
+  const grass = useMemo(() => grassTuft(true, "reed"), []);
+  const tufts = useRef<InstancedMesh>(null);
+  useLayoutEffect(() => {
+    const inst = tufts.current!;
+    border.grasses.forEach((matrix, i) => inst.setMatrixAt(i, matrix));
+    inst.instanceMatrix.needsUpdate = true;
+    inst.computeBoundingSphere();
+  }, [border]);
+  const mulch = useRef<MeshStandardMaterial>(null);
+  useEffect(() => {
+    const mat = mulch.current!;
+    let alive = true;
+    soilTextures(true, (map, normal) => {
+      if (alive) {
+        mat.map = map;
+        mat.normalMap = normal;
+        mat.color.set(0xffffff);
+        mat.needsUpdate = true;
+      } else {
+        map.dispose();
+        normal.dispose();
+      }
+    });
+    return () => {
+      alive = false;
+      mat.map?.dispose();
+      mat.normalMap?.dispose();
+    };
+  }, []);
+  useEffect(() => () => grass.dispose(), [grass]);
+  return (
+    <group name="park_path_borders" userData={{ [CLICK_PICK_KEY]: "ignore" }}>
+      <mesh geometry={border.soil} receiveShadow>
+        <meshStandardMaterial ref={mulch} color="#583d2e" roughness={0.96} vertexColors />
+      </mesh>
+      <mesh geometry={border.edging} material={stone} receiveShadow />
+      <instancedMesh ref={tufts} args={[grass, undefined, border.grasses.length]} receiveShadow>
+        <meshStandardMaterial vertexColors roughness={0.83} side={DoubleSide} />
+      </instancedMesh>
+    </group>
+  );
+}
+
 function Beds({ pine, all }: { pine: Texture; all: Texture[] }) {
   const troughGeo = useMemo(() => {
     const b = new GeoBuilder();
@@ -557,6 +614,7 @@ function Beds({ pine, all }: { pine: Texture; all: Texture[] }) {
   }, [pine]);
   return (
     <group>
+      <PathBorders stone={troughMat} />
       <mesh geometry={troughGeo} material={troughMat} castShadow receiveShadow />
       <mesh geometry={hedgeGeo} material={hedgeMat} castShadow receiveShadow />
       <mesh geometry={bedGeo} material={benchMat} castShadow receiveShadow />

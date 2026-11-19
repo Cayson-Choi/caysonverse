@@ -14,6 +14,7 @@ import { createVegetation, type VillageVegetation } from "../village/veg/village
 import type { Bush } from "../village/veg/shrubs";
 import type { TreeSpec } from "../village/veg/treeSkeleton";
 import { circuitGround, taken } from "./ParkScenery";
+import { parkBorders } from "./parkBorders";
 
 /** A phone draws the park's trees to 380 m and its bushes to 170 m (the tier's bands go to 600 and 300): the wheel's top sees the whole park. */
 export const PHONE_FAR_RANGE = { trees: 380, bush: 170 } as const;
@@ -51,6 +52,7 @@ export function parkBeds(): { beds: Bed[]; cards: Card[] } {
       beds.push({ kind: "box", x0: cx - 0.9, x1: cx + 0.9, z0: cz - 0.6, z1: cz + 0.6, y: 0.1, out: null, plant: "border" });
     }
   }
+  beds.push(...parkBorders().flowers);
   // a planting card standing in each bed (pink, yellow or purple row): the village's placement fills the whole bed round it
   const cards: Card[] = beds.map((b, id) => {
     if (b.kind !== "box") throw new Error("box beds only");
@@ -136,7 +138,7 @@ export function parkTreeSpecs(): { trees: TreeSpec[]; bushes: Bush[] } {
     const s = 0.9 + rnd() * 0.5;
     hedge.push({ x, y: 0, z: -2.7, h: 1.15 * s, r: 1.45 * s, seed: rnd(), cards: [] });
   }
-  return { trees, bushes: [...bushes, ...hedge, ...understorey] };
+  return { trees, bushes: [...bushes, ...hedge, ...understorey, ...parkBorders().bushes] };
 }
 
 export function ParkVegetation() {
@@ -148,7 +150,7 @@ export function ParkVegetation() {
   const planterBlooms = useMemo(() => {
     const pots = flowerBeds.beds.filter((bed): bed is Extract<Bed, { kind: "box" }> => bed.kind === "box" && bed.plant === "pot");
     const blooms = flowerMassMesh(pots, 8, 18);
-    blooms.mesh.name = "park_planter_blooms";
+    blooms.mesh.name = "park_planting_blooms";
     blooms.mesh.frustumCulled = true;
     blooms.mesh.userData[CLICK_PICK_KEY] = "ignore";
     return blooms;
