@@ -61,6 +61,8 @@ export interface Plant {
   seed: number;
   /** One of the meadow's wild flowers (come up among the grass: no bed, no soil). */
   wild?: boolean;
+  /** The bed has a modeled soil surface at this root height. */
+  soilProvided?: boolean;
 }
 
 /** A raised bed on the plaza: plants are kept on its soil, and those near its rim lean out over it. */
@@ -81,6 +83,7 @@ export type Bed =
       out?: [number, number] | null;
       /** "window" (geraniums and trailing petunias, dense), "pot" (the same in a terracotta pot or basket), "border" (a mixed edge). */
       plant?: "window" | "pot" | "border";
+      soilProvided?: boolean;
     }
   | { kind: "square"; x: number; z: number; half: number; hole: number; lean: number }
   | { kind: "fountain"; half: number; rMin: number; lean: number };
@@ -424,6 +427,7 @@ export function placeFlowers(cards: readonly Card[], beds: readonly Bed[] = PLAZ
       seed: rand(),
       wild: c.wild ?? false,
     };
+    if (box?.soilProvided) p.soilProvided = true;
     plants.push(p);
     const k = key(Math.floor(x / cell), Math.floor(z / cell));
     let list = grid.get(k);

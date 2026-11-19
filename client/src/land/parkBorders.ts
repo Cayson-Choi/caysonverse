@@ -30,7 +30,7 @@ export function buildParkBorders() {
   for (const [cx, cz, degrees, length, width, bow] of islands) {
     const yaw = degrees * Math.PI / 180;
     const c = Math.cos(yaw), s = Math.sin(yaw);
-    const point = (u: number, v: number, y = soilY): V3 => {
+    const point = (u: number, v: number, y = soilY - 0.04 * Math.hypot(u, v)): V3 => {
       const along = u * length;
       const across = (1 + 0.12 * u) * v * width + bow * (1 - u * u);
       return [cx + along * c - across * s, y, cz + along * s + across * c];
@@ -60,7 +60,7 @@ export function buildParkBorders() {
     }
     for (const [u, v] of [[-0.41, -0.26], [0.21, 0.29], [0.77, -0.15]] as const) {
       const [x, y, z] = point(u, v);
-      flowers.push({ kind: "box", x0: x - 0.53, x1: x + 0.53, z0: z - 0.44, z1: z + 0.44, y, plant: "pot", out: null });
+      flowers.push({ kind: "box", x0: x - 0.53, x1: x + 0.53, z0: z - 0.44, z1: z + 0.44, y: y - 0.008, plant: "pot", out: null, soilProvided: true });
     }
     for (const [u, v] of [[-0.76, 0.31], [-0.51, 0.49], [-0.28, 0.53], [0.0, -0.52], [0.47, -0.46], [0.72, 0.38]] as const) {
       const [x, , z] = point(u, v);
