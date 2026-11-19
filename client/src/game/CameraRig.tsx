@@ -27,6 +27,7 @@ import {
   clampOverviewHeight,
   clampOverviewCenter,
   overviewPanDelta,
+  OV_FOCUS_HEIGHT,
 } from "./overview";
 import { onHotkey } from "./hotkeys";
 import { isUiCaptured } from "./uiCapture";
@@ -1139,6 +1140,15 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
       viewState.ovCenterX = (mapBounds.minX + mapBounds.maxX) / 2;
       viewState.ovCenterZ = (mapBounds.minZ + mapBounds.maxZ) / 2;
       viewState.ovHeight = fitHeight.current;
+    }
+    // A place to show (the guide's "지도에서 보기", viewState.showOnMap): centre on it, zoomed in to a part of the map. Read on
+    // any overview frame, so an open map is re-framed too; dropped once applied (MapPlaces opens the card of `ovPick`).
+    if (viewState.mode === "ov" && viewState.ovFocus) {
+      const c = clampOverviewCenter(viewState.ovFocus.x, viewState.ovFocus.z, mapBounds);
+      viewState.ovCenterX = c.x;
+      viewState.ovCenterZ = c.z;
+      viewState.ovHeight = clampOverviewHeight(fitHeight.current * OV_FOCUS_HEIGHT, fitHeight.current);
+      viewState.ovFocus = null;
     }
     lastFrameMode.current = viewState.mode;
 

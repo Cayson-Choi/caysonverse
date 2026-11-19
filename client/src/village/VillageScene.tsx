@@ -573,7 +573,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <HouseEntryCover />
           <CubbyView />
           <MemorialOverlays />
-          <GuideDialog />
+          <GuideDialog pose={pose} seat={seat} />
           <StarFinder orbit={orbit} />
           {area === "village" && <LakeHud pose={pose} seat={seat} orbit={orbit} />}
           {area === "village" && <CrosswalkHintPill pose={pose} />}

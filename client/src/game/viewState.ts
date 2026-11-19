@@ -51,6 +51,13 @@ export interface ViewState {
   /** Overview camera height (m) — the zoom level. 0 until CameraRig seeds a fit. */
   ovHeight: number;
   /**
+   * Where the next overview opens (the guide's "지도에서 보기"): CameraRig frames this spot, zoomed in, on the entry frame instead
+   * of the whole map, and drops it. Null: the whole map.
+   */
+  ovFocus: { x: number; z: number } | null;
+  /** The map place whose card the next overview opens with (MapPlaces takes it), set with `ovFocus`. */
+  ovPick: string | null;
+  /**
    * Where the TP orbit should glide to because the player asked (R, double tap), or
    * null. CameraRig steps it every frame and drops it on arrival; a drag, wheel, pinch,
    * Z / C, entering first-person or a door cancels it.
@@ -73,6 +80,8 @@ export const viewState: ViewState = {
   ovCenterX: 0,
   ovCenterZ: 0,
   ovHeight: 0,
+  ovFocus: null,
+  ovPick: null,
   orbitGoal: null,
 };
 
@@ -164,6 +173,21 @@ export function enterOverview(): void {
   viewState.prevMode = viewState.mode; // 'tp' or 'fp'
   viewState.mode = "ov";
   syncButton();
+}
+
+/**
+ * Open the overview framed on (x, z), zoomed in, with the map place `pick`'s card open (the guide's "지도에서 보기"). Where no
+ * overview is allowed (inside a building) nothing happens and the focus is dropped. An overview already open is re-framed.
+ */
+export function showOnMap(x: number, z: number, pick: string | null = null): void {
+  if (!overviewAllowed(getActiveMap().cameraLimit)) {
+    viewState.ovFocus = null;
+    viewState.ovPick = null;
+    return;
+  }
+  viewState.ovFocus = { x, z };
+  viewState.ovPick = pick;
+  enterOverview();
 }
 
 /** Exit the overview back to whatever mode it was opened from (design 20). */
@@ -282,6 +306,8 @@ export function resetViewMode(): void {
   viewState.ovCenterX = 0;
   viewState.ovCenterZ = 0;
   viewState.ovHeight = 0;
+  viewState.ovFocus = null;
+  viewState.ovPick = null;
   viewState.orbitGoal = null;
   syncButton();
 }

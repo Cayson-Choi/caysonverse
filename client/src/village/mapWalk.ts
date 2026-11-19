@@ -9,7 +9,7 @@ import { clearClickTarget, clickGeneration, endWalk, peekClickTarget, setClickTa
 import { planClickMove, walkStart } from "../game/clickPlan";
 import type { Pose, SeatState } from "../game/types";
 import { useClickHint } from "../stores/clickHintStore";
-import { mapPlace, wayTo } from "./villagePlaces";
+import { mapPlace, wayTo, type MapPlace } from "./villagePlaces";
 import type { Point2 } from "@caysonverse/shared/village/villageLayout";
 
 /** How often the walk looks at its leg (ms). */
@@ -108,9 +108,20 @@ function tick(): void {
 
 /** Walk to the map place `id` from where the player is (`pose`, `seat`: the live objects). False when it cannot start. */
 export function startMapWalk(id: string, pose: Pose, seat: SeatState): boolean {
-  stop();
   const place = mapPlace(id);
-  if (!place) return false;
+  if (!place) {
+    stop();
+    return false;
+  }
+  return startWalkTo(place, pose, seat);
+}
+
+/**
+ * Walk to `place` (a map place, or a spot shaped like one: the guide's "같이 가요" to the fountain) along its way, as
+ * startMapWalk does. False when it cannot start (already there says so: "<name>에 도착했어요.").
+ */
+export function startWalkTo(place: MapPlace, pose: Pose, seat: SeatState): boolean {
+  stop();
   // This destination replaces the previous click even when the planner says we are already here.
   clearClickTarget();
   const legs = wayTo(place, pose.x, pose.z);

@@ -44,6 +44,12 @@ export function MapPlaces({ pose, seat }: { pose: Pose; seat: SeatState }) {
   useEffect(() => () => cancelMapWalk(), []);
   const frame = useRef(0);
   useFrame(() => {
+    // the guide's "지도에서 보기" (viewState.showOnMap): its place's card opens with the map
+    if (viewState.ovPick && viewState.mode === "ov") {
+      const pick = viewState.ovPick;
+      viewState.ovPick = null;
+      setPicked(pick);
+    }
     const show = viewState.ovBlend > OV_VIS_BLEND;
     for (const t of tags.current) if (t) t.style.display = show ? "" : "none";
     // a crowded map (a phone sees the whole village from 200 m up): a name that would sit on one already drawn waits until

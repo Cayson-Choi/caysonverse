@@ -54,6 +54,9 @@ export function overviewFitHeight(
   return Math.max(hForDepth, hForWidth);
 }
 
+/** A map opened on one place (the guide's "지도에서 보기") starts at this share of the whole-map fit height: zoomed in on it. */
+export const OV_FOCUS_HEIGHT = 0.4;
+
 /** The far plane is kept at least this multiple of the overview camera height (see overviewFar). */
 export const OV_FAR_FACTOR = 1.6;
 

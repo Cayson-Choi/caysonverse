@@ -1,5 +1,6 @@
 /**
- * 케이슨 마을's guides (Task 9A). The plaza guide answers a few fixed questions, in words only: the voice clips were taken out
+ * 케이슨 마을's guides (Task 9A). The plaza guide answers in words only — since 2026-11-20 with topic pages (the client's
+ * village/guideTopics.ts: cards, steps, Q&As, "지도에서 보기" and "같이 가요"; its earlier six Q&As live on there, under their topics): the voice clips were taken out
  * (owner 2026-11-17: "음성 만드는데 리소스를 많이 잡아 먹는것 같으니 일단 안내원의 음성은 모두 빼자"); the old clips
  * (VoxCPM2, a designed voice) are in git history before this change if they ever come back. Chat is never spoken.
  *
@@ -17,15 +18,6 @@ import type { AreaId } from "./villageLayout";
 import type { NpcId } from "./npcLooks";
 
 export type GuideId = "plaza_guide";
-
-export interface GuideQA {
-  /** The question as the player picks it. */
-  question: string;
-  /** The answer shown in the dialog (1-3 short sentences, "~요"). */
-  answer: string;
-  /** The answer's key in the dialog (unique across the guides). */
-  id: string;
-}
 
 export interface Guide {
   id: GuideId;
@@ -46,7 +38,6 @@ export interface Guide {
   npc?: NpcId;
   /** A fixed look on the toy figure: the guide's look when it has no NPC look, or while npc.glb cannot be had. */
   appearance: Appearance;
-  qas: readonly GuideQA[];
 }
 
 /** Within this distance (m, on the ground) "문의하기" is offered. */
@@ -79,42 +70,6 @@ export const GUIDES: readonly Guide[] = deepFreeze([
       { hat: null, hair: "bob", face: "smile", top: "shirt_tie", bottom: "pants", shoes: "sneakers", item: "map" },
       { hatColor: 2, hairColor: 1, skin: 1, topColor: 4, bottomColor: 7, shoesColor: 10, itemColor: 2, voice: 1 },
     ),
-    qas: [
-      {
-        question: "여기는 어떤 곳이에요?",
-        answer: "여기는 케이슨 마을이에요. 건물이 하나씩 천천히 늘어나는 조용한 시골 마을이에요.",
-        id: "plaza_guide_1",
-      },
-      {
-        question: "추모관은 어디에 있어요?",
-        answer: "추모관은 광장 북쪽에 있어요. 분수를 지나 쭉 걸어가시면 추모관 문이 보여요.",
-        id: "plaza_guide_2",
-      },
-      {
-        // lots v2 (L5v2, 2026-11-17): the empty plots are built — the old "하늘색 테두리 빈 땅" question went with them. Text only
-        // (a new id: a voice recorded for plaza_guide_3 never plays over these words).
-        question: "새로 생긴 건물들은 뭐예요?",
-        answer: "학교, 도서관, 성당, 교회, 절이 새로 생겼어요. 문 앞에 가면 안으로 들어가 둘러보고 의자나 방석에 앉아 볼 수 있어요. 남쪽 둑의 케이슨랜드 정문은 곧 열려요.",
-        id: "plaza_guide_lots",
-      },
-      {
-        question: "여기도 밤이 오나요?",
-        answer: "네, 이 마을은 한국의 실제 시간을 따라가요. 저녁이 되면 마을에도 해가 지고 밤이 찾아와요.",
-        id: "plaza_guide_4",
-      },
-      {
-        // the fishing lake (A10, owner 2026-11-16)
-        question: "낚시터는 어디에 있어요?",
-        answer: "낚시터는 동쪽 길을 따라가면 있어요.",
-        id: "plaza_guide_5",
-      },
-      {
-        // the houses (집 실내 G, owner 2026-11-16: the guide may tell the code)
-        question: "집에는 어떻게 들어가요?",
-        answer: "집 문 옆 번호키에 1004를 누르면 들어갈 수 있어요. 한 집에 여덟 분까지 함께 계실 수 있어요.",
-        id: "plaza_guide_6",
-      },
-    ],
   },
 ] satisfies Guide[]);
 

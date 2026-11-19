@@ -1,11 +1,26 @@
-/* A guide's questions (케이슨 마을 Task 9A): the same quiet, warm card as the cubby close-up, readable on a phone. */
+/*
+ * The plaza guide's help (케이슨 마을 Task 9A, topic pages 2026-11-20): the same quiet, warm card as the cubby close-up, in the
+ * brand's indigo. A fixed head (the title), a body that scrolls (the topic cards, or a page: summary, numbered steps, Q&As) and a
+ * fixed foot (지도에서 보기 / 같이 가요, then 뒤로 / 닫기). One type scale: title 18 / summary 15 / steps and questions 14.5 /
+ * small 12. Nothing in it can be selected (taps and drags on a phone used to paint the text), every button is at least 48 px
+ * tall, and Korean words never break in the middle (keep-all).
+ */
+.cv-guide,
+.cv-guide * {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
 .cv-guide {
   position: fixed;
   inset: 0;
   z-index: 35; /* above the HUD (20-30), below the covers (40) and the menu (60) */
   display: grid;
-  place-items: end center;
-  padding: 16px 16px 96px;
+  place-items: center;
+  box-sizing: border-box;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
   touch-action: manipulation;
   animation: cv-guide-fade 0.2s ease-out;
 }
@@ -20,129 +35,204 @@
 .cv-guide-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(36, 30, 26, 0.18);
+  background: rgba(36, 30, 26, 0.28);
 }
 .cv-guide-panel {
   position: relative;
-  width: min(380px, 100%);
-  max-height: calc(100% - 8px);
-  overflow-y: auto;
+  width: min(560px, 100%);
+  max-height: min(720px, 100%);
   box-sizing: border-box;
-  padding: 16px 16px 14px;
-  border-radius: 18px;
+  border-radius: 20px;
   background: #f7f3ec;
   color: #3b322b;
-  box-shadow: 0 18px 48px rgba(40, 30, 20, 0.28);
+  box-shadow: 0 18px 48px rgba(40, 30, 20, 0.3);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  overflow: hidden;
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
+
+/* ── head ── */
 .cv-guide-head {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid #ebe2d6;
 }
-.cv-guide-name {
-  font-size: 17px;
+.cv-guide-head-ic {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: #4b4fd8;
+  color: #fff;
+  box-shadow: 0 3px 8px rgba(75, 79, 216, 0.28);
+}
+.cv-guide-head-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cv-guide-kicker {
+  font-size: 12px;
   font-weight: 700;
+  color: #6a6ee6;
+  letter-spacing: 0.02em;
 }
-.cv-guide-hint {
+.cv-guide-title {
   margin: 0;
-  font-size: 14px;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.3;
+  color: #2f2620;
+}
+.cv-guide-lead {
+  font-size: 13.5px;
   color: #7a6a5c;
 }
-/*
- * The answer (owner 2026-11-17: "답변 글이 다른 질문 메뉴와 다른 모습으로"): the asked question as small "나 …" text, then
- * a speech bubble from the guide's avatar (tail pointing at it, a soft indigo tint, no border, nothing to press), then a
- * "다른 질문" divider before the question buttons, which keep their white bordered button look.
- */
-.cv-guide-convo {
+
+/* ── body (scrolls) ── */
+.cv-guide-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding: 14px 18px 16px;
+  scrollbar-width: thin;
+  scrollbar-color: #d6cab9 transparent;
+}
+
+/* the topic cards: three across */
+.cv-guide-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.cv-guide-card {
+  width: 100%;
+  height: 100%;
+  min-height: 100px;
+  box-sizing: border-box;
+  padding: 12px 8px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  border: 1px solid #e3d9cb;
+  border-radius: 16px;
+  background: #fffdf9;
+  color: #3b322b;
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(60, 40, 20, 0.04);
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.cv-guide-card-ic {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #ecebfb;
+  color: #4b4fd8;
+}
+.cv-guide-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+}
+@media (hover: hover) {
+  .cv-guide-card:hover {
+    border-color: #b9bbf0;
+    box-shadow: 0 4px 12px rgba(75, 79, 216, 0.12);
+    transform: translateY(-1px);
+  }
+}
+.cv-guide-card:active {
+  background: #f1ebe2;
+  transform: none;
+}
+
+/* a topic page */
+.cv-guide-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cv-guide-summary {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #e9e9fb;
+  color: #2f2c55;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.cv-guide-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-.cv-guide-me {
-  margin: 0;
-  align-self: flex-end;
-  max-width: 85%;
-  font-size: 12.5px;
-  line-height: 1.4;
-  color: #8a7a6b;
-  text-align: right;
-}
-.cv-guide-me-who {
-  font-weight: 700;
-  color: #7a6a5c;
-}
-.cv-guide-me-who::after {
-  content: ":";
-}
-.cv-guide-says {
-  display: flex;
-  align-items: flex-start;
+.cv-guide-step {
+  display: grid;
+  grid-template-columns: 24px 40px minmax(0, 1fr);
+  align-items: center;
   gap: 10px;
+  padding: 8px 12px 8px 10px;
+  border-radius: 14px;
+  background: #fffdf9;
+  border: 1px solid #ece3d7;
 }
-.cv-guide-avatar {
-  flex: none;
-  width: 32px;
-  height: 32px;
+.cv-guide-step-n {
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   background: #4b4fd8;
   color: #fff;
-  box-shadow: 0 2px 6px rgba(75, 79, 216, 0.25);
+  font-size: 12.5px;
+  font-weight: 800;
 }
-.cv-guide-answer {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  padding: 9px 13px 11px;
-  border-radius: 4px 16px 16px 16px;
-  background: #e9e9fb;
-  color: #2f2c55;
+.cv-guide-step-ic {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: #f3eee6;
+  color: #8b5cf6;
 }
-/* the tail, pointing left at the avatar */
-.cv-guide-answer::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: -8px;
-  width: 9px;
-  height: 12px;
-  background: #e9e9fb;
-  clip-path: polygon(100% 0, 0 0, 100% 100%);
+.cv-guide-step-text {
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: #3b322b;
 }
-.cv-guide-speaker {
-  display: block;
-  margin-bottom: 2px;
-  font-size: 11.5px;
-  font-weight: 700;
-  color: #4b4fd8;
-  letter-spacing: 0.02em;
-}
-.cv-guide-answer p {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.55;
-  color: #2f2c55;
-}
-.cv-guide-answer p::before {
-  content: "“";
-  margin-right: 1px;
-  color: #8b8fe6;
-}
-.cv-guide-answer p::after {
-  content: "”";
-  margin-left: 1px;
-  color: #8b8fe6;
-}
+
 .cv-guide-divider {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: 4px;
   font-size: 12px;
+  font-weight: 700;
   color: #8a7a6b;
 }
 .cv-guide-divider::before,
@@ -160,19 +250,45 @@
   flex-direction: column;
   gap: 8px;
 }
+.cv-guide-questions li {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .cv-guide-questions button {
   width: 100%;
   min-height: 48px;
-  padding: 8px 12px;
+  padding: 8px 12px 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   text-align: left;
   border: 1px solid #ddd2c4;
   border-radius: 12px;
   background: #fffdf9;
   color: #3b322b;
   font: inherit;
-  font-size: 14px;
+  font-size: 14.5px;
   cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
+}
+.cv-guide-q {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+}
+.cv-guide-chev {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-right: 2px solid #9a8b7c;
+  border-bottom: 2px solid #9a8b7c;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.15s ease;
+}
+.cv-guide-questions button.is-asked .cv-guide-chev {
+  transform: translateY(2px) rotate(-135deg);
+  border-color: #4b4fd8;
 }
 @media (hover: hover) {
   .cv-guide-questions button:hover {
@@ -187,16 +303,178 @@
   border-color: #4b4fd8;
   box-shadow: inset 0 0 0 1px #4b4fd8;
 }
-.cv-guide-close {
-  align-self: center;
-  min-width: 120px;
+/* the answer: the guide's speech bubble under its question (a soft indigo tint, no border, nothing to press) */
+.cv-guide-answer {
+  position: relative;
+  margin: 0 4px 2px 18px;
+  padding: 9px 13px 11px;
+  border-radius: 4px 16px 16px 16px;
+  background: #e9e9fb;
+  color: #2f2c55;
+}
+.cv-guide-answer::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  left: 0;
+  width: 12px;
+  height: 8px;
+  background: #e9e9fb;
+  clip-path: polygon(0 0, 0 100%, 100% 100%);
+}
+.cv-guide-speaker {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #4b4fd8;
+  letter-spacing: 0.02em;
+}
+.cv-guide-answer p {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: #2f2c55;
+}
+
+/* ── foot (fixed) ── */
+.cv-guide-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 18px 14px;
+  border-top: 1px solid #ebe2d6;
+  background: #f7f3ec;
+}
+.cv-guide-actions,
+.cv-guide-nav {
+  display: flex;
+  gap: 8px;
+}
+.cv-guide-btn {
+  flex: 1 1 0;
+  min-width: 0;
   min-height: 48px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 14px;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cv-guide-btn.is-primary {
   border: none;
-  border-radius: 20px;
   background: #4b4fd8;
   color: #fff;
-  font: inherit;
-  font-size: 14px;
+  box-shadow: 0 3px 10px rgba(75, 79, 216, 0.3);
+}
+.cv-guide-btn.is-soft {
+  border: 1px solid #c9caf3;
+  background: #ecebfb;
+  color: #3a3db8;
+}
+.cv-guide-btn.is-plain {
+  border: 1px solid #ddd2c4;
+  background: #fffdf9;
+  color: #5a4b3e;
   font-weight: 600;
-  cursor: pointer;
+}
+@media (hover: hover) {
+  .cv-guide-btn.is-primary:hover {
+    background: #4044c9;
+  }
+  .cv-guide-btn.is-soft:hover {
+    background: #e2e1fa;
+  }
+  .cv-guide-btn.is-plain:hover {
+    background: #fff;
+    border-color: #cbbfae;
+  }
+}
+.cv-guide-btn:active {
+  transform: translateY(1px);
+}
+.cv-guide-btn:focus-visible,
+.cv-guide-card:focus-visible,
+.cv-guide-questions button:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+/* ── a phone in portrait ── */
+@media (max-width: 520px) {
+  .cv-guide {
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+  .cv-guide-panel {
+    border-radius: 18px;
+  }
+  .cv-guide-head {
+    padding: 14px 14px 10px;
+  }
+  .cv-guide-body {
+    padding: 12px 14px 14px;
+  }
+  .cv-guide-foot {
+    padding: 10px 14px 12px;
+  }
+  .cv-guide-cards {
+    gap: 8px;
+  }
+  .cv-guide-card {
+    min-height: 96px;
+    padding: 10px 4px 8px;
+  }
+  .cv-guide-card-ic {
+    width: 42px;
+    height: 42px;
+  }
+  .cv-guide-card-title {
+    font-size: 13px;
+  }
+  .cv-guide-step {
+    grid-template-columns: 22px 34px minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px 10px 8px 8px;
+  }
+  .cv-guide-step-n {
+    width: 22px;
+    height: 22px;
+  }
+  .cv-guide-step-ic {
+    width: 34px;
+    height: 34px;
+  }
+  .cv-guide-step-text,
+  .cv-guide-questions button,
+  .cv-guide-answer p {
+    font-size: 14px;
+  }
+  .cv-guide-btn {
+    font-size: 14px;
+    padding: 0 8px;
+  }
+}
+/* a short landscape screen: the head and foot slimmer so the page keeps room to read */
+@media (max-height: 480px) {
+  .cv-guide-head {
+    padding-top: 10px;
+    padding-bottom: 8px;
+  }
+  .cv-guide-foot {
+    flex-direction: row;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .cv-guide-actions,
+  .cv-guide-nav {
+    flex: 1 1 0;
+  }
 }

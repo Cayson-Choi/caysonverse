@@ -165,8 +165,10 @@ export const showHud = (p) =>
     for (const el of window.__hidden ?? []) el.style.visibility = "";
   });
 
-/** A guide's question button by index (the dialog must be open). */
+/** A guide's question button by index (a topic page must be open). */
 export const question = (p, i) => p.page.locator(".cv-guide-questions button").nth(i);
+/** A topic card of the guide's home screen (guideTopics.ts id). */
+export const guideCard = (p, id) => p.page.locator(`.cv-guide-card[data-topic="${id}"]`);
 /** The music's state (the guides speak in words only since 2026-11-17: nothing ducks it). */
 export const audioState = (p) =>
   p.page.evaluate(() => {
@@ -175,10 +177,10 @@ export const audioState = (p) =>
     return { music: bgm ? { level: r(bgm.level()), duck: r(bgm.duckLevel()), paused: bgm.element()?.paused ?? null } : null };
   });
 
-/** The guide's answer as shown: the "나: …" line, the bubble's speaker and words, and whether the page ever asked for a voice clip. */
+/** The guide's open answer as shown (the bubble under its question): the asked question, the speaker and words, the Q&A divider, and whether the page ever asked for a voice clip. */
 export const guideAnswer = (p) =>
   p.page.evaluate(() => ({
-    me: (document.querySelector(".cv-guide-me")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+    asked: (document.querySelector(".cv-guide-questions button.is-asked")?.textContent ?? "").replace(/\s+/g, " ").trim(),
     speaker: document.querySelector(".cv-guide-speaker")?.textContent ?? null,
     answer: document.querySelector(".cv-guide-answer p")?.textContent ?? null,
     divider: document.querySelector(".cv-guide-divider")?.textContent ?? null,
@@ -353,14 +355,16 @@ export async function runVillageScenario({ name, device }) {
       await act(A);
       await A.page.locator(".cv-guide").waitFor({ state: "visible", timeout: 5000 });
       await sleep(500);
-      run.check("the dialog is the 마을 안내원's, with 6 questions (the 5th: the fishing lake, the 6th: the houses)", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "plaza_guide" && (await A.page.locator(".cv-guide-questions button").count()) === 6);
+      run.check("the dialog is the 마을 안내원's, opening on its 9 topic cards (2026-11-20)", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "plaza_guide" && (await A.page.locator(".cv-guide-card").count()) === 9);
       run.check("no AI 음성 label (the voice was taken out, 2026-11-17)", !(await A.page.locator(".cv-guide").textContent()).includes("AI 음성"));
+      await press(A, guideCard(A, "first"));
+      await A.page.waitForFunction(() => document.querySelector(".cv-guide")?.getAttribute("data-guide-page") === "first", null, { timeout: 3000 });
       await press(A, question(A, 0));
       await sleep(600);
       const g = await guideAnswer(A);
       const s = await audioState(A);
       summary.guide = { ...g, music: s.music };
-      run.check("the answer shows in the guide's bubble, the question above it as '나: …', then '다른 질문'", g.answer?.startsWith("여기는 케이슨 마을이에요.") && g.me === "나 여기는 어떤 곳이에요?" && g.speaker === "안내원" && g.divider === "다른 질문" && g.bubbleBg !== g.buttonBg, g);
+      run.check("처음 왔어요 → '여기는 어떤 곳이에요?': the answer shows in the guide's bubble under it", g.answer?.startsWith("여기는 케이슨 마을이에요.") && g.asked === "여기는 어떤 곳이에요?" && g.speaker === "안내원" && g.divider === "자주 묻는 질문" && g.bubbleBg !== g.buttonBg, g);
       run.check("no voice: no clip requested, the music is not ducked", g.voiceRequests.length === 0 && s.music && Math.abs(s.music.duck - 1) < 0.001, { req: g.voiceRequests, music: s.music });
       await run.shot(A, "guide-plaza-answer.png");
       await press(A, A.page.locator(".cv-guide-close"));

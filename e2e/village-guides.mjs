@@ -1,12 +1,12 @@
 /**
  * e2e/village-guides.mjs — 케이슨 마을 안내원 (1단계 Task 9A): 광장의 마을 안내원과 추모관 안내 데스크에 다가가 E로 문의하기,
- * 질문을 고르면 답이 안내원의 말풍선으로 나오는지(질문 버튼과 다른 모양, 위에 작은 "나: 질문", 아래 "다른 질문" 구분선), 안내원이
+ * 주제 카드 → 주제 페이지의 질문을 고르면 답이 그 질문 아래 안내원의 말풍선으로 나오는지(질문 버튼과 다른 모양), 안내원이
  * 글로만 답하는지(2026-11-17 음성을 뺐음: 음성 파일 요청 없음, 배경음악이 작아지지 않음), 안내원을 뚫고 지나갈 수 없는지 본다.
  *
  *   npm run dev   (다른 창에서)
  *   node e2e/village-guides.mjs [--out=<폴더>]
  *
- * 남기는 것(폴더): guide-plaza.png, guide-plaza-q1.png … guide-plaza-q6.png, guide-hall-none.png, assertions-village-guides.json.
+ * 남기는 것(폴더): guide-plaza.png, guide-plaza-<주제>.png (주제 9개), guide-hall-none.png, assertions-village-guides.json.
  */
 import { mkdirSync } from "node:fs";
 import { guideAnswer, standAtPlazaGuide } from "./lib/village.mjs";
@@ -89,25 +89,31 @@ try {
     const text = await dialogText(A);
     run.check("the dialog is the 마을 안내원's", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "plaza_guide" && text.includes("마을 안내원"), text);
     run.check("no AI 음성 label (the voice was taken out, 2026-11-17)", !text.includes("AI 음성"), text);
-    run.check("6 questions (the 5th: the fishing lake, the 6th: the houses)", (await A.page.locator(".cv-guide-questions button").count()) === 6, null);
+    run.check("9 topic cards (2026-11-20 topic pages)", (await A.page.locator(".cv-guide-card").count()) === 9, null);
     run.check("no '!' in the dialog", !text.includes("!"), text);
     await run.shot(A, "guide-plaza.png");
   });
 
-  await run.step("each question: the answer shows as the guide's speech bubble, words only (no clip, the music stays)", async () => {
-    const qas = await A.page.evaluate(async () => (await window.__imp("/shared/src/village/guides.ts")).guideById("plaza_guide").qas.map((q) => ({ question: q.question, answer: q.answer })));
+  await run.step("each topic's questions: the answer shows as the guide's speech bubble, words only (no clip, the music stays)", async () => {
+    const topics = await A.page.evaluate(async () => (await window.__imp("/src/village/guideTopics.ts")).GUIDE_TOPICS.map((t) => ({ id: t.id, qas: t.qas.map((q) => ({ id: q.id, question: q.question, answer: q.answer })) })));
     summary.plaza = [];
-    for (let i = 0; i < qas.length; i++) {
-      await question(A, i).click();
-      await sleep(400);
-      const g = await guideAnswer(A);
-      const s = await audio(A);
-      summary.plaza.push({ ...g, duck: s.music.duck });
-      run.check(`q${i + 1}: the bubble says the answer, '나: ${qas[i].question}' above it, '다른 질문' below`, g.answer === qas[i].answer && g.me === `나 ${qas[i].question}` && g.speaker === "안내원" && g.divider === "다른 질문", g);
-      run.check(`q${i + 1}: the bubble does not look like a button (its own tint)`, g.bubbleBg !== g.buttonBg, { bubble: g.bubbleBg, button: g.buttonBg });
-      run.check(`q${i + 1}: the asked question is marked`, (await question(A, i).getAttribute("aria-pressed")) === "true", null);
-      run.check(`q${i + 1}: no voice: no clip requested, no audio element, the music not ducked`, g.voiceRequests.length === 0 && g.audioElements === 0 && Math.abs(s.music.duck - 1) < 0.001, { req: g.voiceRequests, audio: g.audioElements, music: s.music });
-      await run.shot(A, `guide-plaza-q${i + 1}.png`);
+    for (const t of topics) {
+      await A.page.locator(`.cv-guide-card[data-topic="${t.id}"]`).click();
+      await A.page.waitForFunction((id) => document.querySelector(".cv-guide")?.getAttribute("data-guide-page") === id, t.id, { timeout: 3000 });
+      for (let i = 0; i < t.qas.length; i++) {
+        await question(A, i).click();
+        await sleep(300);
+        const g = await guideAnswer(A);
+        const s = await audio(A);
+        summary.plaza.push({ topic: t.id, ...g, duck: s.music.duck });
+        const q = t.qas[i];
+        run.check(`${t.id} q${i + 1}: the bubble under '${q.question}' says its answer`, g.answer === q.answer && g.asked === q.question && g.speaker === "안내원" && g.divider === "자주 묻는 질문", g);
+        run.check(`${t.id} q${i + 1}: the bubble does not look like a button (its own tint)`, g.bubbleBg !== g.buttonBg, { bubble: g.bubbleBg, button: g.buttonBg });
+        run.check(`${t.id} q${i + 1}: no voice: no clip requested, no audio element, the music not ducked`, g.voiceRequests.length === 0 && g.audioElements === 0 && Math.abs(s.music.duck - 1) < 0.001, { req: g.voiceRequests, audio: g.audioElements, music: s.music });
+      }
+      await run.shot(A, `guide-plaza-${t.id}.png`);
+      await A.page.locator('[data-guide-act="back"]').click();
+      await A.page.waitForFunction(() => document.querySelector(".cv-guide")?.getAttribute("data-guide-page") === "home", null, { timeout: 3000 });
     }
     const sb = await guideAnswer(B);
     run.check("the other player sees no dialog", (await B.page.locator(".cv-guide").count()) === 0 && sb.voiceRequests.length === 0, sb);

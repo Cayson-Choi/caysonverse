@@ -21,14 +21,10 @@ const L = VILLAGE_LAYOUT;
 const overlaps = (a: AABB, b: AABB) => a.minX < b.maxX && b.minX < a.maxX && a.minZ < b.maxZ && b.minZ < a.maxZ;
 
 describe("guides (Task 9A)", () => {
-  it("has the plaza guide only (the hall's desk guide was removed, owner 2026-11-17), 3-6 questions, unique answer ids", () => {
+  it("has the plaza guide only (the hall's desk guide was removed, owner 2026-11-17)", () => {
     expect(GUIDES.map((g) => g.id)).toEqual(["plaza_guide"]);
     expect(guideById("hall_desk")).toBeNull();
-    const ids = GUIDES.flatMap((g) => g.qas.map((q) => q.id));
-    expect(new Set(ids).size).toBe(ids.length);
     for (const g of GUIDES) {
-      expect(g.qas.length).toBeGreaterThanOrEqual(3);
-      expect(g.qas.length).toBeLessThanOrEqual(6) // the plaza guide: 6 with the houses' code (집 실내 G);
       expect(g.tag).toBe("안내원");
       expect(validateAppearance(g.appearance)).toEqual(g.appearance);
       expect(guideById(g.id)).toBe(g);
@@ -36,23 +32,10 @@ describe("guides (Task 9A)", () => {
     expect(guideById("nobody")).toBeNull();
   });
 
-  it("answers are short, gentle '~요' Korean with no '!'", () => {
-    for (const g of GUIDES)
-      for (const q of g.qas) {
-        expect(q.answer).not.toContain("!");
-        expect(q.question).not.toContain("!");
-        const sentences = q.answer.split(/(?<=[.?])\s+/).filter(Boolean);
-        expect(sentences.length).toBeGreaterThanOrEqual(1);
-        expect(sentences.length).toBeLessThanOrEqual(3);
-        expect(q.answer).toMatch(/요\.$/);
-        expect(q.answer).not.toMatch(/\d+\s*원|만 원/); // no prices
-      }
-  });
-
+  // The guide's words (topic pages, Q&As) are the client's village/guideTopics.ts since 2026-11-20 (guideTopics.test.ts checks them).
   it("the guides speak in words only: no voice clips are shipped (owner 2026-11-17)", () => {
     const clips = existsSync(VOICE_DIR) ? readdirSync(VOICE_DIR).filter((f) => /\.(m4a|mp3|ogg|wav)$/.test(f)) : [];
     expect(clips).toEqual([]);
-    for (const g of GUIDES) for (const q of g.qas) expect(Object.keys(q).sort()).toEqual(["answer", "id", "question"]);
   });
 
   it("plaza_guide stands at (5, 12) facing the spawn, clear of the spawn jitter and the plaza's colliders", () => {
