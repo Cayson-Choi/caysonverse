@@ -105,9 +105,9 @@ export async function waitSeen(p, names, ms, from = 0) {
 }
 
 /** The scripted angler inside the page: `mode` "follow" | "hold" | "none", `reactMs` a human's reaction after each new command. */
-export async function startFightAnglerInPage(p, { mode = "follow", reactMs = 140 } = {}) {
+export async function startFightAnglerInPage(p, { mode = "follow", reactMs = 140, via = "net" } = {}) {
   await p.page.evaluate(
-    async ([mode, reactMs]) => {
+    async ([mode, reactMs, via]) => {
       window.__cvAngler?.stop();
       const net = await window.__imp("/src/lake/lakeNet.ts");
       const ff = await window.__imp("/shared/src/village/fishFight.ts");
@@ -129,7 +129,11 @@ export async function startFightAnglerInPage(p, { mode = "follow", reactMs = 140
           const at = ff.fightSegAt(sched, since);
           log.push({ want, kind: at.seg.kind, lagMs: Math.round(since - at.seg.startMs), idx: at.index });
         } catch {}
-        net.sendHold(want);
+        if (via === "button") {
+          // the real button's own pointer handlers, from inside the page (no Playwright round trip): pointer down = hold, up = let go
+          const b = document.querySelector(".cv-lake-btn");
+          b?.dispatchEvent(new PointerEvent(want ? "pointerdown" : "pointerup", { bubbles: true, cancelable: true, pointerId: 1, pointerType: "mouse", isPrimary: true, button: 0, buttons: want ? 1 : 0 }));
+        } else net.sendHold(want);
       };
       const id = setInterval(() => {
         const el = document.querySelector("[data-fight-cmd]");
@@ -157,7 +161,7 @@ export async function startFightAnglerInPage(p, { mode = "follow", reactMs = 140
         },
       };
     },
-    [mode, reactMs],
+    [mode, reactMs, via],
   );
   return {
     log: () => p.page.evaluate(() => window.__cvAngler?.log ?? []).catch(() => []),

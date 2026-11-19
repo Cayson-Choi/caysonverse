@@ -178,8 +178,9 @@ async function oneCast(n) {
     bite = await waitPhase(["bite"], 6000);
     const bb = await buttonSoon((x) => x?.label === "당겨요!");
     run.check(`cast ${n}: bite — red 당겨요!`, !!bite && bb?.label === "당겨요!" && bb.tone === "alert", { bite, bb });
-    await once("bite-" + (bite?.sig ?? 0), `09-bite-sig${bite?.sig ?? 0}`);
+    // the strike first, the screenshot after: a screenshot between the sight of the bite and the press takes longer than the bite window on a loaded machine
     if (bb) await tapButton(bb);
+    await once("bite-" + (bite?.sig ?? 0), `09-bite-sig${bite?.sig ?? 0}`);
   }
   // the phase LOG, not a poll: a small fish goes hooked -> lifting -> landed in about 2 s, which a slow poll can step over
   const after = await waitSeen(p, ["hooked", "lifting", "fighting", "missed"], 3000 * K, hookMark);

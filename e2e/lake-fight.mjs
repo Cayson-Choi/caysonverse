@@ -154,7 +154,7 @@ await run.step(`fight (${MODE}): the whole fight, scripted`, async () => {
     run.check(`cast ${n}: a bite comes`, !!bite, bite);
     if (!bite) continue;
     // the in-page angler is set up before the strike (its setup eats the first stage's grace on a slow page)
-    const pageAngler = MODE !== "through" && opt("angler", "pointer") === "page" ? await startFightAnglerInPage(p, { mode: MODE }) : null;
+    const pageAngler = MODE !== "through" && ["page", "button"].includes(opt("angler", "pointer")) ? await startFightAnglerInPage(p, { mode: MODE, via: opt("angler", "pointer") === "button" ? "button" : "net" }) : null;
     if (MODE === "through" && INPUT === "key") {
       await p.page.keyboard.down("Space"); // the strike by key, and the key stays down
     } else {
