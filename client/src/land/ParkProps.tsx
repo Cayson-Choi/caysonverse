@@ -78,15 +78,18 @@ export function ParkProps({ all }: { all: Texture[] }) {
     // Both printed sides follow the same folds. The sewn top sleeve stays on the crossbar.
     const faces = bannerPosts.flatMap((post, i) => {
       const x = post.x + (post.x < 40 ? 0.9 : -0.9);
+      // Leave clearance above the neighbouring rain hood even at the lowest fold.
+      const height = 2.15;
+      const sleeveY = 3.47;
       return [0, Math.PI].map((yaw) => {
-        const face = new PlaneGeometry(0.8, 2.4, 10, 8).rotateY(yaw);
+        const face = new PlaneGeometry(0.8, height, 10, 8).rotateY(yaw);
         const p = face.getAttribute("position");
         for (let k = 0; k < p.count; k++) {
           const u = p.getX(k) / 0.8 + 0.5;
-          const drop = 0.5 - p.getY(k) / 2.4;
+          const drop = 0.5 - p.getY(k) / height;
           const pleat = Math.sin(u * 10.5 + 1.2 * drop + i * 1.7);
           const billow = 0.10 * Math.sin(Math.PI * drop) + drop * (0.08 + 0.12 * pleat);
-          p.setXYZ(k, x + p.getX(k) + 0.055 * drop * drop, 2.27 + p.getY(k) + 0.035 * drop * pleat, post.z + billow);
+          p.setXYZ(k, x + p.getX(k) + 0.055 * drop * drop, sleeveY - height * drop + 0.035 * drop * pleat, post.z + billow);
         }
         face.computeVertexNormals();
         return face;
