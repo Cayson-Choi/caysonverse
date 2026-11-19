@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BufferGeometry, Float32BufferAttribute, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Texture } from "three";
-import { LAKE_AREA, LAKE_DECKS, LAKE_LAMPS } from "@caysonverse/shared/village/lakeLayout";
+import { LAKE_AREA, LAKE_DECKS, LAKE_LAMPS, LAKE_SHOP } from "@caysonverse/shared/village/lakeLayout";
+import { clapboardGeometry } from "./lakeOfficeJoinery";
 import { DEFAULT_SEAM, cellKey, prepareLakeStructures, seamOf, structureMaterial } from "./lakeModelPrep";
 import { lakeShoreField } from "./lakeWater";
 
@@ -13,6 +14,28 @@ describe("the lake's lamps (D1 put 2-4 in the water; F stands them on the pier, 
 });
 
 describe("the facilities' light-mapped materials", () => {
+  it("cuts cedar courses around the counter opening and samples its original lightmap at the raised lips", () => {
+    const src = new BufferGeometry();
+    const z = LAKE_SHOP.maxZ;
+    src.setAttribute("position", new Float32BufferAttribute([100, 1.5, z, 104, 1.5, z, 104, 0.4, z, 100, 0.4, z], 3));
+    src.setAttribute("normal", new Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], 3));
+    src.setAttribute("color", new Float32BufferAttribute(new Array(12).fill(1), 3));
+    src.setAttribute("uv1", new Float32BufferAttribute([0, 1, 1, 1, 1, 0, 0, 0], 2));
+    src.setIndex([0, 2, 1, 0, 3, 2]);
+    const boards = clapboardGeometry(src);
+    const p = boards.getAttribute("position"), bake = boards.getAttribute("uv1");
+    const depths = new Set<number>();
+    for (let i = 0; i < p.count; i++) {
+      depths.add(Math.round((p.getZ(i) - z) * 1000));
+      expect(p.getY(i)).toBeLessThanOrEqual(1.5);
+      expect(bake.getX(i)).toBeCloseTo((p.getX(i) - 100) / 4, 4);
+      expect(bake.getY(i)).toBeCloseTo((p.getY(i) - 0.4) / 1.1, 4);
+    }
+    expect(depths.has(24)).toBe(true);
+    expect(depths.has(0)).toBe(true);
+    boards.dispose();
+    src.dispose();
+  });
   const src = (over: Partial<MeshStandardMaterial> = {}) => Object.assign(new MeshStandardMaterial({ name: "M_lake_wood", color: "#aa8855", vertexColors: true }), over);
   it("a lit wood material becomes one light-mapped basic copy (the same copy every time), with B's colour and vertex colours", () => {
     const day = new Texture();

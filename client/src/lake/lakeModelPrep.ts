@@ -20,6 +20,7 @@
 
 import { groundOld } from "../village/ground/groundMode";
 import { clipAtSidewalk, wornEdges } from "./lakeTrailEdge";
+import { dressLakeOffice } from "./lakeOfficeJoinery";
 import {
   BufferAttribute,
   BufferGeometry,
@@ -262,7 +263,7 @@ export function prepareLakeStructures(root: Object3D, day: Texture | null = null
   if (night) configureLightmap(night);
   structuresNightMap.value = night;
   const glows: LakeDressed["glows"] = [];
-  const own: BufferGeometry[] = [];
+  const own = dressLakeOffice(root);
   const lampHeads: Vector3[] = [];
   root.updateWorldMatrix(true, true);
   root.traverse((o) => {
