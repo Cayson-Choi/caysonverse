@@ -23,7 +23,7 @@ import {
   LinearMipmapLinearFilter,
 } from "three";
 import { coasterTrack } from "@caysonverse/shared/land/coaster";
-import { PARK_PLAZA, PARK_QUEUE_HALL, PARK_SHOPS } from "@caysonverse/shared/village/parkArea";
+import { PARK_PLAZA, PARK_SHOPS } from "@caysonverse/shared/village/parkArea";
 import { LIGHTING } from "../game/sceneLighting";
 import { dayNight } from "../village/dayNightDriver";
 import { type MountainUniforms, MOUNTAINS_GRID_URL, MOUNTAINS_TEXTURE_URL, applyMountains, buildMountainGeometry, createMountainMaterial, parseMountains } from "../village/mountains";
@@ -67,9 +67,7 @@ export function taken(x: number, z: number, ground: ReturnType<typeof circuitGro
   if (Math.hypot(x - PARK_PLAZA.x, z - PARK_PLAZA.z) < PARK_PLAZA.radius + 5) return true;
   if (x > 26 && x < 54 && z < -132) return true;
   if (z > -120 && z < -104 && x > -25 && x < 348) return true;
-  if (x > -25 && x < -9 && z > -120 && z < -40) return true;
-  const q = PARK_QUEUE_HALL;
-  if (x > q.minX - 6 && x < q.maxX + 6 && z > q.minZ - 8 && z < q.maxZ + 8) return true;
+  if (x > -10 && x < 14 && z > -120 && z < -6) return true; // the station approach and apron
   if (x > -24 && x < 24 && z > -12 && z < 8) return true;
   if (PARK_SHOPS.some((s) => Math.abs(x - s.x) < s.d / 2 + 5 && Math.abs(z - s.z) < s.w / 2 + 4)) return true;
   void pond;

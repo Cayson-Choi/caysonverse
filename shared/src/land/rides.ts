@@ -6,7 +6,7 @@
 import { COASTER_SEATS, coasterAt } from "./coaster";
 import { CAROUSEL_SEATS, carouselAt } from "./carousel";
 import { WHEEL_RIDE_CYCLES, WHEEL_SEATS, boardingSeatsOfWheel, wheelAt, wheelSeatAtPlatform } from "./wheel";
-import { CAROUSEL_PAD, COASTER_BOARD_REACH_M, COASTER_QUEUE_PAD, WHEEL_PAD } from "../village/parkArea";
+import { CAROUSEL_PAD, COASTER_BOARD_REACH_M, COASTER_PAD, WHEEL_PAD } from "../village/parkArea";
 
 /** How far (m) past a ride's boarding pad the "board" prompt is offered: the press walks to the pad and boards (client/src/land/rideBoard.ts). */
 export const RIDE_PROMPT_RANGE_M = 45;
@@ -42,7 +42,7 @@ export interface RideDef {
 }
 
 export const RIDES: readonly RideDef[] = Object.freeze([
-  { id: RIDE.coaster, key: "coaster", name: "별똥별 급행", seats: COASTER_SEATS, pad: COASTER_QUEUE_PAD, reach: COASTER_BOARD_REACH_M, statusAt: (t: number): RideStatus => coasterAt(t) },
+  { id: RIDE.coaster, key: "coaster", name: "별똥별 급행", seats: COASTER_SEATS, pad: COASTER_PAD, reach: COASTER_BOARD_REACH_M, statusAt: (t: number): RideStatus => coasterAt(t) },
   { id: RIDE.carousel, key: "carousel", name: "달빛 회전목마", seats: CAROUSEL_SEATS, pad: CAROUSEL_PAD, reach: 6, statusAt: (t: number): RideStatus => carouselAt(t) },
   { id: RIDE.wheel, key: "wheel", name: "하늘 등불 바퀴", seats: WHEEL_SEATS, pad: WHEEL_PAD, reach: 6, statusAt: (t: number): RideStatus => wheelAt(t), rideCycles: WHEEL_RIDE_CYCLES, boardingSeats: boardingSeatsOfWheel, canLeave: wheelSeatAtPlatform },
 ]);

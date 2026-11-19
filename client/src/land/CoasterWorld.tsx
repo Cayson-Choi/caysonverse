@@ -107,7 +107,7 @@ function BoardingGates({ cx, z, y }: { cx: number; z: number; y: number }) {
   );
 }
 
-/** The station: a timber platform on the train's LEFT (-z, the queue's side), a canopy, posts, the name board and the boarding gates. */
+/** The station: a timber platform on the train's LEFT (-z, the steps' side), a canopy, posts, the name board and the boarding gates. */
 function Station({ concrete, pine }: { concrete: ReturnType<typeof pickSet>; pine: Texture }) {
   const deck = useMemo(() => {
     const t = pine.clone();
@@ -118,7 +118,7 @@ function Station({ concrete, pine }: { concrete: ReturnType<typeof pickSet>; pin
     return new MeshStandardMaterial({ map: t, roughness: 0.78, color: new Color("#e6d3b5") });
   }, [pine]);
   const base = useMemo(() => parkMaterial(concrete, 1, { vertexColors: true, color: new Color("#e6dfd2"), normalScale: 0.7 }), [concrete]);
-  // the platform's two stone-faced walls (the track side and the queue side), built with metre UVs so the concrete keeps its grain
+  // the platform's two stone-faced walls (the track side and the steps' side), built with metre UVs so the concrete keeps its grain
   // at every size (a stretched unit-box UV smeared it), with a plinth, a cap course and a yellow edge strip
   const baseGeo = useMemo(() => {
     const b = new GeoBuilder();
@@ -132,6 +132,12 @@ function Station({ concrete, pine }: { concrete: ReturnType<typeof pickSet>; pin
     b.box([2, 0.08, -4.1], X, Y, 17.08, 0.08, 2.78, [0.62, 0.6, 0.56], 2);
     b.box([2, top - 0.04, -4.1], X, Y, 17.08, 0.04, 2.76, [0.96, 0.94, 0.9], 2);
     b.box([2, top + 0.005, -1.45], X, Y, 17, 0.012, 0.12, [0.95, 0.78, 0.2], 1);
+    // the north steps (the way up from the boarding pad at z -12): seven stone treads, a cap course and a yellow nosing on the top one
+    for (let i = 0; i < 7; i++) {
+      const h = (top * (7 - i)) / 7;
+      b.box([2, h / 2, -7.15 - 0.42 * i], X, Y, 2.6, h / 2, 0.21, [0.86, 0.83, 0.78], 2);
+    }
+    b.box([2, top + 0.005, -7.0], X, Y, 2.6, 0.012, 0.1, [0.95, 0.78, 0.2], 1);
     return b.build();
   }, []);
   const post = useMemo(() => new MeshPhysicalMaterial({ color: "#eee7d8", roughness: 0.45, metalness: 0.15, clearcoat: 0.4 }), []);

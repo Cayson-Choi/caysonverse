@@ -7,7 +7,7 @@ import { HOUSE_KEYPAD_REACH_M, keypadEntries } from "@caysonverse/shared/village
 import { GUIDE_ASK_LABEL, nearestGuide } from "@caysonverse/shared/village/guides";
 import type { InteractTarget } from "../game/interact";
 import { lotDoorTarget, lotExitTarget } from "./lots/lotTargets";
-import { CAROUSEL_PAD, COASTER_QUEUE_PAD, PARK_EXIT_PAD, WHEEL_PAD, parkGateDoor } from "@caysonverse/shared/village/parkArea";
+import { CAROUSEL_PAD, COASTER_PAD, PARK_EXIT_PAD, WHEEL_PAD, parkGateDoor } from "@caysonverse/shared/village/parkArea";
 import { BUS_SEATS, busPlaceOf, busSeatNumber, inExitZone, nearestFreeSpot, seatApproachOk } from "@caysonverse/shared/village/busCabin";
 
 /**
@@ -74,8 +74,8 @@ export function parkTargets(x: number, z: number): readonly InteractTarget[] {
   const out: InteractTarget[] = [];
   const dExit = Math.hypot(x - PARK_EXIT_PAD.x, z - PARK_EXIT_PAD.z);
   if (dExit <= PARK_EXIT_PAD.radius + DOOR_OFFER_REACH_M) out.push({ kind: "door", id: PARK_DOOR_ID, dist: dExit, icon: "🚪", label: "케이슨랜드 나가기", short: "나가기" });
-  const dQ = Math.hypot(x - COASTER_QUEUE_PAD.x, z - COASTER_QUEUE_PAD.z);
-  if (dQ <= COASTER_QUEUE_PAD.radius + RIDE_PROMPT_RANGE_M) out.push({ kind: "object", id: COASTER_BOARD_TARGET_ID, dist: dQ, icon: "🎢", label: "별똥별 급행 타기", short: "타기" });
+  const dQ = Math.hypot(x - COASTER_PAD.x, z - COASTER_PAD.z);
+  if (dQ <= COASTER_PAD.radius + RIDE_PROMPT_RANGE_M) out.push({ kind: "object", id: COASTER_BOARD_TARGET_ID, dist: dQ, icon: "🎢", label: "별똥별 급행 타기", short: "타기" });
   const dC = Math.hypot(x - CAROUSEL_PAD.x, z - CAROUSEL_PAD.z);
   if (dC <= CAROUSEL_PAD.radius + RIDE_PROMPT_RANGE_M) out.push({ kind: "object", id: CAROUSEL_BOARD_TARGET_ID, dist: dC, icon: "🎠", label: "달빛 회전목마 타기", short: "타기" });
   const dW = Math.hypot(x - WHEEL_PAD.x, z - WHEEL_PAD.z);

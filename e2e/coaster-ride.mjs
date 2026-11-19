@@ -114,8 +114,8 @@ await run.step("join", async () => {
   await run.shot(A, "00b-park-arrival.png");
   const tris = await A.page.evaluate(() => window.__cvCoasterTris ?? null);
   run.check("the coaster's static geometry is built (triangles)", typeof tris === "number" && tris > 20000, { tris });
-  // look round the park: the plaza and the queue approach, first-person eyes at 1.5 m
-  for (const [name, x, z, tx, ty, tz] of [["01a-promenade", 40, -168, 40, 2.5, -112], ["01b-plaza", 40, -140, 40, 3, -112], ["01c-queue-approach", -17, -100, -17, 3, -40]]) {
+  // look round the park: the plaza and the station approach, first-person eyes at 1.5 m
+  for (const [name, x, z, tx, ty, tz] of [["01a-promenade", 40, -168, 40, 2.5, -112], ["01b-plaza", 40, -140, 40, 3, -112], ["01c-station-approach", 2, -100, 2, 3, -12], ["01d-station-steps", 2, -26, 2, 1.8, -6], ["01e-station-side", -14, -22, 2, 2, -8]]) {
     await A.page.evaluate(([x, z, tx, ty, tz]) => { window.__cvShot = { x, y: 1.7, z, tx, ty, tz, fov: 62 }; }, [x, z, tx, ty, tz]);
     await sleep(900);
     await run.shot(A, `${name}.png`);
@@ -127,14 +127,14 @@ await run.step("join", async () => {
 const renderInfo = (p) => p.page.evaluate(() => (window.__ri ? { maxCalls: window.__ri.calls, maxTriangles: window.__ri.triangles, meanCalls: Math.round(window.__ri.sumCalls / Math.max(1, window.__ri.n)), meanTriangles: Math.round(window.__ri.sumTris / Math.max(1, window.__ri.n)) } : null));
 
 await run.step("board", async () => {
-  // A walks from the arch to the coaster queue's gate (park metres) ...
+  // A walks from the arch to the coaster station's boarding pad, at the foot of the platform's north steps (park metres) ...
   await goTo(A, 40, -120, 2);
-  await goTo(A, -17, -112, 2);
-  await goTo(A, -17, -50, 1.5);
-  await goTo(B, -15, -50, 2.5); // B waits beside A at the gate: the second rider
+  await goTo(A, 2, -112, 2);
+  await goTo(A, 2, -12, 1.5);
+  await goTo(B, 0, -13, 2.5); // B waits beside A at the pad: the second rider
   const at = await pos(A);
-  run.check("A stands at the queue gate", Math.hypot(at.x + 17, at.z + 46) < 6, at);
-  await run.shot(A, "01-queue-gate.png");
+  run.check("A stands at the boarding pad", Math.hypot(at.x - 2, at.z + 12) < 6, at);
+  await run.shot(A, "01-boarding-pad.png");
   // ... and waits for the boarding window (the station loads 29 s of every 130 s cycle)
   const t0 = Date.now();
   let st = await probe(A);
@@ -290,8 +290,10 @@ await run.step("rules", async () => {
   } else {
     await act(A);
     await sleep(900);
-    const note = await A.page.locator("[data-testid=coaster-notice]").count();
-    run.check("boarding outside the window is refused and says so", note === 1 && (await probe(A)).slot === -1);
+    // a press outside the window is a RESERVATION (never a silent refusal): the card says 자리 맡음 once (the status line; no repeated toast), no seat yet
+    await A.page.locator("[data-testid=coaster-hud]").first().waitFor({ timeout: 6000 }).catch(() => undefined);
+    const card = await A.page.locator("[data-testid=coaster-hud]").first().innerText({ timeout: 3000 }).catch(() => "");
+    run.check("boarding outside the window is not a seat but a reservation, and the card says so", /자리 맡음/.test(card) && (await probe(A)).slot === -1, { card: card.split("\n").join(" | ") });
   }
 });
 

@@ -20,7 +20,7 @@ interface P {
   x: number;
   z: number;
 }
-const newPlayer = (): P => ({ rideSeat: -1, rideId: 0, seatIndex: -1, busSeat: -1, fishSpot: -1, area: "park", x: -17, z: -46 });
+const newPlayer = (): P => ({ rideSeat: -1, rideId: 0, seatIndex: -1, busSeat: -1, fishSpot: -1, area: "park", x: 2, z: -12 });
 const T0 = 1_900_000_000_000 - (1_900_000_000_000 % COASTER_CYCLE_MS);
 
 function rig() {

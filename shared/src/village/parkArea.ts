@@ -8,7 +8,7 @@
  *
  *     z = -190  gate arch (the way out) ........ the main promenade south to the star plaza
  *     z = -112  star plaza (fountain), paths west to the coaster queue and east to the future rides
- *     z = -46   the coaster's queue gate (boarding pad) .. -8 the queue pavilion .. -1.4 the station platform
+ *     z = -12   the coaster's boarding pad, at the foot of the station platform's north steps (-6.8 .. -1.4 the platform)
  *     z >= 0    the coaster's circuit (fenced off: the park's south edge is z = -2.2)
  *
  * Seat ids: this file adds NONE to the village's seat table (docs/designs/caysonland/DESIGN.md section 2: 400+ is reserved, rides use rideSeat).
@@ -35,8 +35,8 @@ export const PARK_ARRIVAL = Object.freeze({ x: 40, z: -171, yaw: Math.PI }); // 
 /** The star plaza and its fountain. */
 export const PARK_PLAZA = Object.freeze({ x: 40, z: -112, radius: 26, fountainHalf: 4 });
 
-/** The coaster's queue gate: the boarding pad (the server's RideBoard reach is `COASTER_BOARD_REACH_M` from its centre). */
-export const COASTER_QUEUE_PAD = Object.freeze({ x: -17, z: -46, radius: 3.2 });
+/** The coaster's boarding pad: on the paving at the foot of the station platform's north steps (the server's RideBoard reach is `COASTER_BOARD_REACH_M` from its centre). */
+export const COASTER_PAD = Object.freeze({ x: 2, z: -12, radius: 3.2 });
 export const COASTER_BOARD_REACH_M = 6;
 
 /** The carousel's boarding pad (its entrance gate, south of the platform) and the wheel's (phase 2c). */
@@ -98,8 +98,7 @@ export const PARK_SHOPS: readonly ParkShop[] = Object.freeze([
   { id: "photo", x: 63, z: -133, w: 12, d: 8, faces: -1, wall: [0.82, 0.8, 0.92], beam: [0.3, 0.2, 0.13], roofH: 3.8 },
 ]);
 
-/** The coaster's queue pavilion (a roofed hall the queue switchbacks through) and the station platform. */
-export const PARK_QUEUE_HALL = Object.freeze({ minX: -31, maxX: -3, minZ: -40, maxZ: -9 });
+/** The coaster's station platform (the queue hall that stood north of it was taken away: owner 2026-11-19; boarding is from the platform's steps, like every ride). */
 export const PARK_PLATFORM = Object.freeze({ minX: -14, maxX: 17, minZ: -6.8, maxZ: -1.4 });
 
 /** Trees: deterministic scatter on the lawn, never on a path, the plaza, a building or the coaster's ground. */
@@ -116,7 +115,8 @@ function onPath(x: number, z: number, m: number): boolean {
   if (x > 28 - m && x < 52 + m && z < -134 + m) return true; // the promenade
   if (x > -24 - m && x < 24 + m && z > -20 - m) return true; // the station's frontage
   if (z > -118 - m && z < -106 + m && x > -23 - m && x < 345 + m) return true; // the east-west avenue
-  if (x > -23 - m && x < -11 + m && z > -118 && z < -40) return true; // the queue approach
+  if (x > -4 - m && x < 8 + m && z > -118 && z < -26) return true; // the station approach (gravel)
+  if (x > -7 - m && x < 11 + m && z > -26 - m && z < -7) return true; // the station apron (paving)
   return false;
 }
 
@@ -128,8 +128,6 @@ function buildTrees(): ParkTree[] {
     if (x < PARK_BOUNDS.minX + 6 || x > PARK_BOUNDS.maxX - 6 || z < PARK_BOUNDS.minZ + 6 || z > -7) return false;
     if (onPath(x, z, 5)) return false;
     if (PARK_SHOPS.some((s) => Math.abs(x - s.x) < s.d / 2 + 5 && Math.abs(z - s.z) < s.w / 2 + 4)) return false;
-    const q = PARK_QUEUE_HALL;
-    if (x > q.minX - 8 && x < q.maxX + 8 && z > q.minZ - 8 && z < q.maxZ + 8) return false;
     if (Math.hypot(x - PARK_EXIT_PAD.x, z - PARK_EXIT_PAD.z) < 14) return false;
     if (Math.hypot(x - 110, z + 135) < 30 || Math.hypot(x - 205, z + 135) < 34) return false; // the ride plots (the carousel's, the wheel's) stay open
     return true;
@@ -171,7 +169,7 @@ function buildLamps(): { x: number; z: number }[] {
   for (let x = -10; x >= -20; x -= 10) out.push({ x, z: -119 });
   // (none at x = 110: the carousel's entrance sign and its boarding pad sit on that axis)
   for (let x = 70; x <= 330; x += 20) if (x !== 110) out.push({ x, z: -119 }, { x, z: -105 });
-  for (let z = -100; z <= -52; z += 16) out.push({ x: -24, z }, { x: -10, z });
+  for (let z = -100; z <= -28; z += 18) out.push({ x: -6, z }, { x: 10, z });
   return out;
 }
 export const PARK_LAMPS: readonly { x: number; z: number }[] = Object.freeze(buildLamps());
@@ -183,6 +181,11 @@ export const PARK_PLANTERS: readonly { x: number; z: number; w: number; d: numbe
   { x: 46.5, z: -137, w: 3, d: 1.6 },
   { x: 33.5, z: -182, w: 3, d: 1.6 },
   { x: 46.5, z: -182, w: 3, d: 1.6 },
+  // flower beds flanking the station apron (where the queue hall stood)
+  { x: -8.5, z: -20, w: 3, d: 1.6 },
+  { x: 12.5, z: -20, w: 3, d: 1.6 },
+  { x: -8.5, z: -9.5, w: 3, d: 1.6 },
+  { x: 12.5, z: -9.5, w: 3, d: 1.6 },
 ]);
 export const PARK_BINS: readonly { x: number; z: number }[] = Object.freeze([
   { x: 32.2, z: -164 },
@@ -223,9 +226,6 @@ export const PARK_TROUGHS: readonly ParkTrough[] = Object.freeze(buildTroughs())
 function buildSolids(): AABB[] {
   const out: AABB[] = [];
   for (const s of PARK_SHOPS) out.push(box(s.x - s.d / 2, s.x + s.d / 2, s.z - s.w / 2, s.z + s.w / 2));
-  const q = PARK_QUEUE_HALL;
-  // the queue pavilion: walled but for the entrance on its north side (the boarding pad stands in front of it)
-  out.push(box(q.minX, q.maxX, q.minZ + 3, q.maxZ));
   const p = PARK_PLATFORM;
   out.push(box(p.minX, p.maxX, p.minZ, p.maxZ));
   // the fountain and its ring

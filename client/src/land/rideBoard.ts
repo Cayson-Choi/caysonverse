@@ -7,7 +7,7 @@
 import { RIDES, rideByKey, type RideKey } from "@caysonverse/shared/land/rides";
 import { CAROUSEL_CENTER, CAROUSEL_RADIUS } from "@caysonverse/shared/land/carousel";
 import { WHEEL_SITE } from "@caysonverse/shared/land/wheel";
-import { PARK_PLATFORM, PARK_QUEUE_HALL } from "@caysonverse/shared/village/parkArea";
+import { PARK_PLATFORM } from "@caysonverse/shared/village/parkArea";
 
 /** A tap's armed board stays armed this long (ms): the walk across the whole park (the coaster from the wheel is 250 m). */
 export const RIDE_ARM_MS = 240_000;
@@ -44,10 +44,9 @@ export function rideTapZone(x: number, z: number): RideKey | null {
   if (Math.hypot(x - CAROUSEL_CENTER.x, z - CAROUSEL_CENTER.z) <= CAROUSEL_RADIUS + 3) return "carousel";
   // the wheel: its frame spans x +-24 about the hub, from the north feet to the south steps and the platform
   if (Math.abs(x - WHEEL_SITE.x) <= 24 && z >= WHEEL_SITE.z - 6 && z <= WHEEL_SITE.z + 12) return "wheel";
-  const q = PARK_QUEUE_HALL;
-  if (x >= q.minX - 2 && x <= q.maxX + 2 && z >= q.minZ - 2 && z <= q.maxZ + 2) return "coaster";
+  // the coaster: the station platform and its apron (the boarding pad is at the foot of the platform's north steps)
   const p = PARK_PLATFORM;
-  if (x >= p.minX - 4 && x <= p.maxX + 4 && z >= p.minZ - 4 && z <= p.maxZ + 4) return "coaster";
+  if (x >= p.minX - 4 && x <= p.maxX + 4 && z >= p.minZ - 16 && z <= p.maxZ + 4) return "coaster";
   return null;
 }
 
