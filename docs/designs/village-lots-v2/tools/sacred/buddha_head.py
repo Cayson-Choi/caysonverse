@@ -68,18 +68,26 @@ def depth(image_column):
     return (image_column-PROFILE_ORIGIN)/PIXELS_PER_METRE
 
 
+def face_section_z(image_row):
+    # The underside of the nasal bulb turns into a short philtrum. Below the
+    # mouth the jaw rises gently into the throat without lifting the lip seam.
+    t=max(0.,min(1.,(image_row-137.)/34.))
+    nose_base=.0050*exp(-((image_row-133.8)/4.9)**2)
+    return section_z(image_row)+nose_base+.0070*t*t*(3-2*t)
+
+
 # Profile row, frontal skull half-width (px), anterior facial plane and occiput.
 # The short underside of the chin turns back toward the narrow neck.
 SECTIONS = [
-    (171.0, 4, 592, 602), (169.8, 9.4, 584, 607), (168, 15.7, 579.5, 614),
-    (165, 21.5, 574.5, 622), (162, 25.7, 571.4, 630), (158, 30.0, 569.2, 635),
-    (154, 33.0, 568.0, 640), (150, 35.4, 567.2, 643), (147, 36.8, 566.8, 645),
-    (142, 38.8, 566.2, 648), (136, 40.5, 565.7, 650), (130, 41.6, 565.2, 652),
-    (122, 42.3, 564.3, 654), (115, 42.5, 563.1, 657), (108, 42.5, 561.7, 658),
+    (171.0, 3, 592, 602), (169.8, 7.7, 584, 607), (168, 13.3, 579.5, 613),
+    (165, 18.9, 574.5, 620), (162, 23.6, 571.4, 627), (158, 27.8, 569.2, 632),
+    (154, 31.1, 568.0, 637), (150, 33.6, 567.2, 641), (147, 35.2, 566.8, 644),
+    (142, 37.7, 566.2, 648), (136, 40.0, 565.7, 650), (130, 41.8, 565.2, 652),
+    (122, 42.9, 564.3, 654), (115, 42.8, 563.1, 657), (108, 42.5, 561.7, 658),
     (103, 42.5, 560.8, 659), (96, 42.6, 559.9, 660), (90, 42.6, 559.8, 660),
     (82, 42.6, 560.3, 659), (75, 42, 561, 658), (65, 39, 565, 652),
     (55, 34, 572, 648), (45, 24, 583, 637), (38, 10, 600, 622)]
-SKULL = [(section_z(v), w/PIXELS_PER_METRE, depth(f), depth(b)) for v,w,f,b in SECTIONS]
+SKULL = [(face_section_z(v), w/PIXELS_PER_METRE, depth(f), depth(b)) for v,w,f,b in SECTIONS]
 
 # Actual profile of the small nasal bulb and the shallow S below it. The bridge
 # slopes nearly linearly from the root before flattening into the rounded tip.
@@ -92,7 +100,7 @@ PROFILE_EDGE = [
     (114,554.9),(110,556.5),(106,557.9),(102,558.9),(96,559.5),
     (92,559.7),(90,559.8),(82,560.3),
     (75,561),(65,565),(55,572),(45,583),(38,600)]
-MIDLINE = [(section_z(v),depth(u)) for v,u in PROFILE_EDGE]
+MIDLINE = [(face_section_z(v),depth(u)) for v,u in PROFILE_EDGE]
 
 
 def eye_line(x):
@@ -122,19 +130,19 @@ def relief(x,z):
     dome=lid+.008+.007*arc
     lids=arc*(.021*exp(-((z-dome)/.020)**2)
               + .004*exp(-((z-lid+.009)/.012)**2))
-    cheeks=(.042*paired(.117,1.623,.067,.056)
-            + .005*paired(.081,1.584,.062,.048))
+    cheeks=(.040*paired(.114,1.631,.069,.056)
+            + .003*paired(.081,1.589,.060,.043))
     # The wing descends into the underside of the tip. Its shallow return
     # sits below the widest part so the nostrils recede in a frontal view.
-    wings=(.014*paired(.021,1.599,.014,.017)
-           + .009*paired(.023,1.607,.010,.011))
+    wings=(.014*paired(.021,1.602,.014,.017)
+           + .009*paired(.023,1.609,.010,.011))
     seam=lip_line(x)
     mouth=(.0030*paired(.018,seam+.005,.019,.0058)
            + .0039*paired(.014,seam-.006,.022,.0068)
            - .0013*paired(.044,seam,.009,.0075))
     return (brow_plane + lids + cheeks + wings + mouth
             + .0014*paired(.010,1.571,.012,.014)
-            + .004*paired(.038,1.485,.035,.026))
+            + .003*paired(.030,1.493,.032,.025))
 
 
 def fy(x,z):
@@ -165,7 +173,7 @@ def soften_face_normals(mesh):
     for vertex in mesh.vertices:
         x,y,z=vertex.co
         width,front,back=profile(SKULL,z)
-        weight=max(0.,min(1.,(width-abs(x)-.009)/.022,(z-1.451)/.028))
+        weight=max(0.,min(1.,(width-abs(x)-.009)/.022,(z-1.445)/.020))
         if y>=(front+back)*.5 or not weight:
             normals.append((0.,0.,0.))
             continue
@@ -178,6 +186,10 @@ def soften_face_normals(mesh):
         cheek=exp(-((abs(x)-.088)/.047)**4-((z-1.631)/.044)**4)
         dx *= 1-.40*nose-.12*bulb-.32*cheek
         dz = dz*(1-.47*nose-.18*bulb-.28*cheek) + .12*cheek
+        # The lower bevel turns under the goatee over a continuous arc. Its
+        # normals receive doorway light even when seen from the player's floor.
+        chin_roll=exp(-(x/.120)**4-((z-1.475)/.032)**2)
+        dz -= .47*min(0.,dz)*chin_roll
         lacquer=Vector((dx,-1.,dz)).normalized()
         weight=weight*weight*(3-2*weight)
         normals.append(vertex.normal.lerp(lacquer,weight).normalized())
@@ -198,7 +210,7 @@ def make_face(phone):
     if not phone:
         rows += [167,160,156,152,148.5,146.4,144,139.5,137,135.4,131.1,126.5,
                  121,116,112,108,104.5,101,98,94,89,83,76]
-    zs=sorted(section_z(v) for v in rows)
+    zs=sorted(face_section_z(v) for v in rows)
     vs,fs=[],[]
     for z in zs:
         w,f,b=profile(SKULL,z)
@@ -278,15 +290,15 @@ HAIR = [(section_z(v),w/PIXELS_PER_METRE,(b-f)/(2*PIXELS_PER_METRE),depth(.5*(f+
 def hair_floor(a):
     p=abs(atan2(sin(a),cos(a)))
     # Measured forehead and temples in the pitched frontal photograph.
-    row=[(0,77),(.42,77.8),(.65,78.5),(.82,79.6),(.96,80.7),
-         (1.08,82.2),(1.19,84.9),(1.30,89.6),(1.41,97.8),(1.49,111),
+    row=[(0,76.3),(.42,76.7),(.65,77.4),(.82,78.3),(.96,79.5),
+         (1.08,81.1),(1.19,83.7),(1.30,88.6),(1.41,97.2),(1.49,111),
          (1.56,108),(1.65,95),(1.73,91),(1.90,97),(2.02,118),(2.14,135),
          (2.32,145),(2.53,148.5),(2.76,150),(pi,146)]
     z=section_z(profile(row,p)[0])
     _,f,b=profile(SKULL,z)
     y=(f+b)/2-(b-f)/2*cos(a)
     front=max(0.,cos(a))
-    return z-CAMERA_PITCH*y*front-.0009*front*cos(40*a)
+    return z-CAMERA_PITCH*y*front
 
 def hair_pos(a,z):
     w,d,cy=profile(HAIR,z)

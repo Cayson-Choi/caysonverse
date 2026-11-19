@@ -3,7 +3,7 @@
 Render the exported GLB in the fixed reference coordinate system. With --scene
 save the editable model, cameras and two photographic alignment planes outside
 the repository. First run buddha_measure.mjs prepare to create the calibration.
-Pass portrait as the only view for a soft frontal light and the registered face crop.
+Pass portrait or full-portrait for the registered face or full figure under the same soft light.
 """
 import json
 from pathlib import Path
@@ -123,10 +123,13 @@ def camera(scene, name, outward, target, span):
     return obj
 
 
-def portrait(scene, reg, output):
+def portrait(scene, reg, output, full_figure=False):
     # The owner's front crop covers (130,16) through (255,178) on the
     # registered panel. Keep the same sight line and magnification for every LOD.
-    left, top, width, height = 130, 16, 125, 162
+    if full_figure:
+        left, top, width, height = 0, 0, reg["width"], reg["height"]
+    else:
+        left, top, width, height = 130, 16, 125, 162
     p = reg["pixelsPerMetre"]
     direction = Vector((0,-1,reg["pitchTangent"])).normalized()
     right = Vector((1,0,0))
@@ -164,8 +167,9 @@ def portrait(scene, reg, output):
     scene.view_settings.look = "None"
     scene.view_settings.exposure = -.45
     scene.cycles.samples = 48
-    scene.render.resolution_x,scene.render.resolution_y = 4*width,4*height
-    scene.render.filepath = str(output/"portrait.png")
+    scale = 2 if full_figure else 4
+    scene.render.resolution_x,scene.render.resolution_y = scale*width,scale*height
+    scene.render.filepath = str(output/("full-portrait.png" if full_figure else "portrait.png"))
     bpy.ops.render.render(write_still=True)
 
 
@@ -212,8 +216,8 @@ def main():
     scene = bpy.context.scene
     render_settings(scene)
     reg = json.loads((refs/"calibration.json").read_text(encoding="utf-8"))
-    if options == ["portrait"]:
-        portrait(scene,reg,output)
+    if options in (["portrait"], ["full-portrait"]):
+        portrait(scene,reg,output,full_figure=options == ["full-portrait"])
         return
     studio(scene)
     p, t = reg["pixelsPerMetre"], reg["pitchTangent"]

@@ -12,7 +12,7 @@ def smooth(lo, hi, value):
 
 def eyelid_height(t, arc):
     # The outer third of the upper lid settles back down toward the temple.
-    return 1.6825 - .0055*arc + .0027*t - .0053*t**3
+    return 1.6799 - .0055*arc + .0027*t - .0053*t**3
 
 
 def brow_height(t, arc):
@@ -97,7 +97,7 @@ def face_patch(kind, x, z, phone=False):
 
     # The tip rolls over one warm, diffuse shadow. The openings face the
     # ground and need no painted outlines in a frontal portrait.
-    lay(.26*spot(.018,1.592,.010,.0056), (.64,.32,.052), skin)
+    lay(.26*spot(.018,1.596,.010,.0056), (.64,.32,.052), skin)
 
     lip_t = np.clip(a/.0435, 0., 1.)
     seam = lip_height(lip_t)
@@ -129,10 +129,16 @@ def face_patch(kind, x, z, phone=False):
     whisker = np.exp(-((z-whisker_z)/(.0014+.0014*load))**2)*load
     lay(.98*whisker, (.052,.036,.009), ink)
     # Three brush dabs form the short inverted triangle on the chin.
-    tuft = spot(.013,1.487,.0028,.0036) + spot(.0,1.481,.0031,.0027)
+    tuft = spot(.013,1.494,.0028,.0036) + spot(.0,1.488,.0031,.0027)
     lay(.92*tuft, (.086,.054,.012), ink)
 
-    if color:
+    if not color:
+        # Satin leaf across the mask of the face. Feather back into the
+        # matching leaf at the temples and throat, and preserve the painted ink.
+        face = (1.-smooth(.130,.163,a))*smooth(1.446,1.489,z)
+        high_planes = np.maximum(spot(.084,1.643,.064,.055),spot(.0,1.636,.033,.066))
+        result[...,1] += (.062+.030*high_planes)*face*(1.-smooth(.39,.56,result[...,1]))
+    else:
         # Keep the eye ink and vermilion at their accepted desktop density.
         if not phone:
             pigment = np.maximum.reduce((lips, opening, lash, brow_mask))

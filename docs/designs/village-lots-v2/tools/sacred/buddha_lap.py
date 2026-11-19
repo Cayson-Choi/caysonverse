@@ -56,20 +56,25 @@ def knee(side, phone):
         for j in range(count):
             angle = tau*j/count
             c, sn = cos(angle), sin(angle)
-            # Both low points hang well below the corner that returns under
-            # the crossed ankle. The taper is strongest near that inner end.
-            cx = .316 + front*(1-r)*.067
+            # The free hems sag over the kneecap and climb to the inner
+            # ankle. Their shallow top return disappears under the shin.
+            cx = .316 + front*(1-r)*.030
             x = cx + r*.290*c
             if side > 0:
                 # This knee disappears under the hanging sleeve at the hip.
                 x -= .074*max(0., min(1., (depth+.27)/.29)) * (.35+.65*max(0,c))
-            belly = 1 + front*.33*c
-            z = .550 + front*.089*(1-r) + r*(.148*sn*belly + front*.054*c)
-            # A broad rounded pad catches light inside the two turned hems.
-            # The bands thin out over the hidden top at the returning ankle.
-            y = depth + front*(.054*c*c - .018*c)
+            inner = max(0., -c)
+            x -= front*.076*r*(1-r)*inner**2
+            belly = 1 - front*.57*inner**1.35
+            z = .550 + front*(.025+.031*(1-r))
+            z += r*(.149*sn*belly + front*(.098*inner**1.6+.010*c))
+            # Ease the two turned edges into the fabric as they roll over
+            # the top; keep their overhang on the lower, freely hanging lip.
+            top = max(0., sn) * (.70+.30*inner)
+            smooth_depth = -.497 + .36*r**2.65
+            y = depth + front*r**1.45*(.050*c*c - .018*c + .75*top*(smooth_depth-depth))
             if side < 0:
-                z += .013*r*(.45-c)*front
+                z += .006*r*(.45-c)*front
             row.append((side*x,y,z))
         current = surface.row(row)
         if previous is not None:
@@ -99,35 +104,42 @@ def transition(table, t):
 def cascade(phone):
     s = Carving()
     rows = []
-    # Root underneath the crossed feet, crest above the knees, final return on
-    # the lotus. The extra width below is distributed into diverging flutes.
-    stations = [(0,-.043,.073,-.255,.722),(.18,-.046,.100,-.335,.716),
-                (.38,-.052,.137,-.409,.691),(.58,-.051,.182,-.474,.632),
-                (.79,-.041,.233,-.529,.539),(.93,-.030,.277,-.565,.460),
-                (1,-.025,.299,-.583,.418)]
-    n,m = (24,8) if phone else (64,16)
-    for j in range(m+1):
-        t = j/m
-        center,width,y,z = transition(stations,t)
+    # Left and right cut edges, forward throw and height of the fan. Its
+    # pleated half spills towards the bare-arm knee. A single broad leaf on
+    # the other side turns back under the ankle above the lotus rim.
+    stations = [(0,-.085,.015,-.264,.705),(.16,-.118,.029,-.336,.699),
+                (.34,-.165,.054,-.409,.680),(.53,-.227,.089,-.466,.637),
+                (.73,-.306,.113,-.503,.566),(.87,-.358,.122,-.540,.500),
+                (.93,-.389,.119,-.559,.463),(.965,-.406,.111,-.567,.439),
+                (.984,-.412,.104,-.557,.428),(1,-.409,.096,-.531,.433)]
+    # Spend the last three rows on the lip itself so its rounded return is
+    # present even on the phone. The hidden cut edge doubles back towards
+    # the knees after the bearing surface has touched the seat.
+    along = ([0,.18,.35,.54,.73,.87,.93,.965,.984,1] if phone else
+             [0,.06,.12,.18,.26,.34,.44,.53,.62,.71,.79,.86,.90,.93,.95,.965,.976,.984,1])
+    n = 24 if phone else 64
+    for t in along:
+        left,right,y,z = transition(stations,t)
         points = []
         for k in range(n+1):
             u = 2*k/n-1
-            # The loose panel opens into a broad central turnover. Three
-            # closer gathers enter from the outer ankle. Their crests fan
-            # outward as the edge falls onto the lotus.
             arc = sin(pi*t)
-            q = u + .18*arc*(1-u*u)
-            crests = ((-.82-.06*t, .064), (-.56-.10*t, .074),
-                      (-.29-.10*t, .072), (.04-.16*t, .066),
-                      (.48+.14*arc, .096), (.88+.02*t, .082))
-            ridge = sum(exp(-((q-pos)/width)**2) for pos,width in crests)
-            valley = sum(exp(-((q-pos-.078)/(width*.78))**2) for pos,width in crests)
-            broad = exp(-((q-.23-.10*arc)/(.15+.08*t))**2)
-            amount = (.007+.021*t)*ridge - (.003+.007*t)*valley + (.014+.020*t)*broad
-            x = center+width*u - .058*arc*(1-u*u)
-            yy = y + (.020+.070*t*t)*u*u - amount*sin(.17+1.40*t)
-            zz = z + amount*cos(.17+1.40*t) - .015*u*u*(1-t)
-            zz += .012*t**5*broad
+            q = u - .16*arc*(1-u*u)
+            # Narrow rolled lips give way to broad shallow valleys. The last
+            # crest is the turned margin of the unpleated triangular field.
+            crests = ((-.72,.072),(-.32,.082),(.09,.095),(.80+.11*arc,.060))
+            ridges = sum(exp(-((q-pos)/width)**2) for pos,width in crests)
+            valleys = sum(exp(-((q-pos-.14)/.14)**2) for pos,_ in crests)
+            broad = exp(-((q-.46)/.32)**2)
+            amount = (.004+.012*t)*ridges - (.002+.004*t)*valleys + (.006+.008*t)*broad
+            x = left+(right-left)*(u+1)/2
+            # Press the lateral margins into the shins. Across the hem,
+            # consecutive tongues turn up by different amounts onto the lap.
+            setback = (.028+.112*t*t)*u*u*(1-.22*u)
+            hem = t**6 * (.003 + .017*broad + .010*max(0.,u)**2 - .005*ridges)
+            tongue = t**5 * (.021*ridges + .018*broad - .006*valleys)
+            yy = y + setback - amount*sin(.24+1.24*t) - .017*t - tongue
+            zz = z + amount*cos(.24+1.24*t) - .010*u*u*(1-t) + hem
             points.append((x,yy,zz))
         rows.append(s.row(points))
     for a,b in zip(rows,rows[1:]):
@@ -149,17 +161,35 @@ def underfold(phone):
               (.487,.562,.525,.358),(.519,.554,.508,.343),(.552,.532,.478,.331),
               (.595,.463,.441,.305),(.636,.371,.391,.283),(.657,.291,.318,.258)]
     count = 32 if phone else 72
-    for z,rx,front,back in course:
+    # Two rolled edges of the same gathered cloth run out from the inside
+    # ankle. Their spacing opens as they reach the underside of the knee.
+    height_weight = (0,.06,.22,.42,.69,.80,.83,.36,.08)
+    relief = (0,.003,-.003,.057,-.012,.062,.016,-.004,0)
+    turns = [(0,0),(.21,.118),(.34,.255),(.73,.735),(1,1)]
+    for row_index,(z,rx,front,back) in enumerate(course):
         row = []
         for j in range(count):
-            a = tau*j/count
+            turn, = transition(turns,j/count)
+            a = tau*turn
             sn,cs=sin(a),cos(a)
             across = abs(sn)
             ripple = (.003 + .007*across)*sin(21*a+z*11) * exp(-((z-.465)/.09)**2)
             depth = front if cs>0 else back
             # Pull the front between the knees underneath the outward-flaring hem.
             inset = .065*across**.85 if cs>0 else 0
-            row.append(((rx+ripple)*sn,-.030-(depth-inset+ripple)*cs,z))
+            raised = 0.
+            lift = 0.
+            if cs > 0:
+                # Leave space behind the central fan for its shallow valleys
+                # and the turned triangular end, including the phone mesh.
+                inset += .106 * exp(-((z-.505)/.101)**2 - ((sn+.105)/.56)**4)
+                x = .55*sn
+                gather = exp(-((x-.236)/.180)**4)
+                fall = max(0.,min(1.,(x-.084)/.278))
+                fall = fall*fall*(3-2*fall)
+                lift = height_weight[row_index] * gather * (.065-.166*fall)
+                raised = relief[row_index] * gather
+            row.append(((rx+ripple)*sn,-.030-(depth-inset+ripple+raised)*cs,z+lift))
         current = s.row(row)
         if previous:
             s.bridge(previous,current,True)
