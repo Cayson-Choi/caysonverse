@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial } from "three";
-import { clearGlassMaterial, clearOfficeGlass, prepareShopInterior, SHOP_INTERIOR_URL } from "./LakeShopInterior";
+import { applyShopExposure, clearGlassMaterial, clearOfficeGlass, prepareShopInterior, SHOP_INTERIOR_URL } from "./LakeShopInterior";
 
 function meshOf(name: string): Mesh {
   return new Mesh(new BoxGeometry(), new MeshStandardMaterial({ name }));
@@ -40,6 +40,20 @@ describe("the fishing shop's interior (lake_shop_interior.glb)", () => {
     const made = prepareShopInterior(root);
     expect(made.length).toBe(1);
     expect((root.children[0] as Mesh).material).toBe((root.children[1] as Mesh).material);
+  });
+
+  it("preserves printed detail as the outdoor camera adapts to night and restores the daylight bake", () => {
+    const root = new Group();
+    for (const name of ["atlas", "floor", "emit", "glass"]) root.add(meshOf(name));
+    const materials = prepareShopInterior(root);
+    const original = materials.map((m) => m.color.clone());
+    applyShopExposure(materials, 1.95);
+    for (const [i, material] of materials.entries()) {
+      if (material.vertexColors) expect(material.color.r * 1.95).toBeCloseTo(2 * .78);
+      else expect(material.color.equals(original[i]!)).toBe(true);
+    }
+    applyShopExposure(materials, .6);
+    expect(materials.every((m, i) => m.color.equals(original[i]!))).toBe(true);
   });
 
   it("clears only the office's window glass: its M_lake_glass mesh gets the clear material, the huts' glass keeps the shared one", () => {
