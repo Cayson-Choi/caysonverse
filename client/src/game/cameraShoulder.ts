@@ -90,15 +90,16 @@ export const CENTER = {
   /** …and is whole from here on. */
   full: 0,
   /** How far behind the head (m) the centred camera stands at most (the arm's own spot is never passed). */
-  maxBack: 2.2,
-  /** Height over the head (m), wide screen and portrait. */
-  lift: 1.05,
-  liftPortrait: 1.7,
-  /** Never closer to the head than this (m). */
-  minHeadDist: 2.3,
-  /** Where the head's centre lands on screen vertically (NDC): low, so it is a small dome at the bottom and the middle is the room. */
-  headV: -0.95,
-  headVPortrait: -0.9,
+  maxBack: 2.6,
+  /** Height of the chibi's hair top over HEAD_HEIGHT (m), measured from the game's own shots (about 2.25 m), and the head's radius (m). */
+  headTop: 1.05,
+  headRadius: 0.45,
+  /** Where the head's top lands on screen vertically (NDC): the back of the head and the shoulders fill the bottom ~25 %, solid. */
+  headTopV: -0.46,
+  /** The look's tilt below the horizon (rad). */
+  tilt: 0.02,
+  /** Never closer to the head than this (m): a close wall raises the lens, the head slides down out of the frame. */
+  minHeadDist: 1.6,
   /** Easing time constant (s) of the blend between the centred and the side view. */
   tau: 0.3,
 } as const;
@@ -108,6 +109,9 @@ export const CENTER = {
  * own body while the lens sits right behind the head, so the head does not stand in front of what the player faces.
  */
 export const centerLive = { weight: 0 };
+
+/** How far under the place's ceiling (m) the centred view's lens stays. */
+export const CENTER_CEILING_GAP = 0.5;
 
 /** The centred blend wanted for an arm `armBack` m long behind the head: 0 (side view) .. 1 (centred), smooth in between. */
 export function centerWeight(armBack: number): number {
@@ -251,7 +255,11 @@ export function shoulderPose(
   const cw = Number.isNaN(centerEase) ? cwWanted : Math.min(1, Math.max(0, centerEase));
   if (cw > 0) {
     const cb = Math.min(CENTER.maxBack, armBack);
-    const cLift = Math.max(lerp(CENTER.lift, CENTER.liftPortrait, pw), Math.sqrt(Math.max(0, CENTER.minHeadDist ** 2 - cb * cb)));
+    // Where the lens must be so the back of the head and the shoulders sit solid in the bottom of the frame: the head's top lands at
+    // NDC CENTER.headTopV with the look tilted CENTER.tilt down. Raised further where the wall is close (the head then slides out below).
+    const tanVc = Math.tan(((BASE_FOV + SHOULDER.portraitFovAdd * pw) * Math.PI) / 360);
+    const alpha = CENTER.tilt + Math.atan(-CENTER.headTopV * tanVc);
+    const cLift = Math.max(CENTER.headTop + Math.max(0.3, cb - CENTER.headRadius) * Math.tan(alpha), Math.sqrt(Math.max(0, CENTER.minHeadDist ** 2 - cb * cb)));
     offX = lerp(offX, bx * cb, cw);
     offZ = lerp(offZ, bz * cb, cw);
     horiz = Math.hypot(offX, offZ);
@@ -268,7 +276,7 @@ export function shoulderPose(
   const tanV = Math.tan(((BASE_FOV + fovAdd) * Math.PI) / 360);
   const tanH = tanV * Math.max(0.1, aspect);
   const u = lerp(SHOULDER.headU, SHOULDER.headUPortrait, pw) * (1 - cw);
-  const v = lerp(lerp(SHOULDER.headV, SHOULDER.headVPortrait, pw), lerp(CENTER.headV, CENTER.headVPortrait, pw), cw);
+  const v = lerp(SHOULDER.headV, SHOULDER.headVPortrait, pw);
   const hx = x - out.x;
   const hz = z - out.z;
   const hy = SHOULDER.headY - out.y;
@@ -287,8 +295,9 @@ export function shoulderPose(
   const maxDown = (lerp(SHOULDER.maxLookDown, SHOULDER.maxLookDownCramped, cramped) * Math.PI) / 180;
   if (elev < -maxDown) elev = -maxDown;
   // never looking up (the side view); the centred view tilts down a little more (about 6 deg) so a low ceiling above stays a small strip
-  const maxUp = -0.1 * cw;
-  if (elev > maxUp) elev = maxUp;
+  if (elev > 0) elev = 0;
+  // the centred view looks level with a slight tilt down (CENTER.tilt)
+  elev = lerp(elev, -CENTER.tilt, cw);
   const ahead = 6;
   const tx = out.x + vx * ahead * Math.cos(elev);
   const tz = out.z + vz * ahead * Math.cos(elev);

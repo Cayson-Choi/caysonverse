@@ -72,7 +72,6 @@ import { BlobShadow } from "./BlobShadow";
 import { PICK_AS_SELF } from "./clickPick";
 import { SELF_FADE_OPACITY } from "./clickRing";
 import { createSelfFade, endSelfFade, indoorCloseHidden, registerSelfBody, selfBody, stepSelfFade } from "./selfBody";
-import { centerLive } from "./cameraShoulder";
 import { createNametag } from "./nametag";
 import { registerLabel } from "./labelRegistry";
 import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
@@ -722,16 +721,14 @@ export function LocalPlayer({
     // on the body, all the way there).
     // Indoors, a wall behind that pushed the camera near the head (the over-the-shoulder view, cameraShoulder.ts): the body
     // fades part way while it would cover the view (round 6 review), eased, its front surface only.
-    // The centred view (cameraShoulder.ts CENTER) puts the lens right behind the head: the body fades further there, so the head is no wall in front of the Buddha.
-    const centred = centerLive.weight > 0.5;
-    coverFadeRef.current = indoorCloseHidden(coverFadeRef.current, indoorTp && !inCloseUp, centred ? Math.min(headDist, SELF_COVER_FADE_DISTANCE - 0.1) : headDist, SELF_COVER_FADE_DISTANCE, SELF_COVER_SHOW_DISTANCE);
+    coverFadeRef.current = indoorCloseHidden(coverFadeRef.current, indoorTp && !inCloseUp, headDist, SELF_COVER_FADE_DISTANCE, SELF_COVER_SHOW_DISTANCE);
     const cover = group.visible && coverFadeRef.current;
     stepSelfFade(
       selfFadeRef.current,
       avatar,
       group.visible && (selfBody.hidingRing || cover),
       delta,
-      cover ? Math.min(centred ? SELF_FADE_OPACITY : SELF_COVER_FADE_OPACITY, selfBody.hidingRing ? SELF_FADE_OPACITY : 1) : undefined,
+      cover ? Math.min(SELF_COVER_FADE_OPACITY, selfBody.hidingRing ? SELF_FADE_OPACITY : 1) : undefined,
     );
 
     // Focus guard: while the chat input owns keyboard input — OR while the

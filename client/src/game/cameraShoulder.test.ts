@@ -5,7 +5,7 @@ import { CAMERA_LOOK_LIFT } from "./cameraControls";
 import { HALL_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
 import { HALL_CAMERA_LIMIT } from "./indoorCamera";
 import { createFollowRig, createFollowSpot, stepFollowRig, type FollowSpot } from "./followRig";
-import { CENTER, SHOULDER, centerWeight, createShoulderPose, shoulderPose, shoulderTarget } from "./cameraShoulder";
+import { SHOULDER, centerWeight, createShoulderPose, shoulderPose, shoulderTarget } from "./cameraShoulder";
 import { resetViewMode } from "./viewState";
 
 const DT = 1 / 60;
@@ -28,18 +28,6 @@ function settle(x: number, z: number, yaw: number, aspect: number, pitch = 0.35,
   const spot = createFollowSpot();
   for (let i = 0; i < seconds / DT; i++) stepFollowRig(rig, orbit, x, z, aspect, DT, true, spot);
   return spot;
-}
-
-/** Angle (deg) between the camera's view axis and the direction to the head. */
-function headOffAxis(spot: FollowSpot, x: number, z: number): number {
-  const tx = x + spot.lookX - spot.x;
-  const ty = HEAD_HEIGHT + CAMERA_LOOK_LIFT + spot.lookLift - spot.y;
-  const tz = z + spot.lookZ - spot.z;
-  const hx = x - spot.x;
-  const hy = HEAD_HEIGHT - spot.y;
-  const hz = z - spot.z;
-  const cos = (tx * hx + ty * hy + tz * hz) / (Math.hypot(tx, ty, tz) * Math.hypot(hx, hy, hz));
-  return (Math.acos(Math.min(1, cos)) * 180) / Math.PI;
 }
 
 /** The view's tilt below the horizon (deg). */

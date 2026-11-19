@@ -37,7 +37,7 @@ import {
   type Vec3,
 } from "./indoorCamera";
 import { ARM_FREE, armBoxes, armHeightScaleAt, armLookLiftAt, cameraPad, indoorArmShape, segmentHitFraction, springArmDistance, stepArmLimit } from "./cameraCollision";
-import { centerLive, createShoulderPose, portraitWeight, shoulderPose, shoulderTarget, stepShoulder, stepShoulderCenter, stepShoulderSide } from "./cameraShoulder";
+import { CENTER_CEILING_GAP, centerLive, createShoulderPose, portraitWeight, shoulderPose, shoulderTarget, stepShoulder, stepShoulderCenter, stepShoulderSide } from "./cameraShoulder";
 import { getActiveMap } from "./activeMap";
 import { HUNG, cameraSolids } from "./cameraSolids";
 import type { Orbit } from "./types";
@@ -274,7 +274,8 @@ export function stepFollowRig(
 
   centerLive.weight = rig.shoulder * rig.shoulderCenter;
   // the centred view's raised lens stays under the place's ceiling like every spot (indoorCamera.ts)
-  if (rig.shoulder > 0 && engage > 0) tpY = limitedY(tpY, rig.limit, engage);
+  // (half a metre under it, so the ceiling's underside does not fill the top of the frame)
+  if (rig.shoulder > 0 && engage > 0) tpY = limitedY(tpY, { ...rig.limit, maxY: Math.max(head + 0.4, rig.limit.maxY - CENTER_CEILING_GAP) }, engage);
 
   // Under what hangs from the hall's ceiling (the lounge's louvres, the soffit: round 8 review) the camera is held below it — a
   // ceiling, so it may (owner 2026-11-16). The hall's furniture (sofa backs, tables) no longer pulls the arm in: props never do.
