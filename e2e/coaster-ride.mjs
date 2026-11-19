@@ -18,11 +18,12 @@ import { act } from "./lib/village.mjs";
 
 const phone = process.argv.includes("--phone");
 const outArg = process.argv.find((a) => a.startsWith("--out="));
-const run = createRun(phone ? "coaster-ride-phone" : "coaster-ride-desktop");
+const run = createRun(`${phone ? "coaster-ride-phone" : "coaster-ride-desktop"}${process.argv.includes("--night") ? "-night" : ""}`);
 if (outArg) run.evidence = outArg.slice("--out=".length);
 mkdirSync(run.evidence, { recursive: true });
 
-const NOON = "2026-11-03T12:30";
+// --night rides at 21:30 (the lit park); the default is noon
+const NOON = process.argv.includes("--night") ? "2026-11-03T21:30" : "2026-11-03T12:30";
 let nickSeq = 0;
 async function joinLand(p, prefix) {
   await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(NOON)}`, { waitUntil: "domcontentloaded", timeout: 120000 });
@@ -200,16 +201,34 @@ await run.step("ride", async () => {
     const t = c.coasterTrack();
     return { ds: t.ds, length: t.length, liftFrom: t.liftFrom, liftTo: t.liftTo, marks: t.marks, duration: t.duration, dwell: c.COASTER_DWELL_MS };
   });
+  const M = meta.marks;
+  const mid = (a, b, f = 0.5) => (a + (b - a) * f) * meta.ds;
+  // the 2026-11-19 layout: the 66 m lift, the 80 degree drop, the camelback, the high turnaround, then the back half (the dive, the
+  // loop, the zero-g roll, three bunny hops, the 540 degree helix, the head-chopper under its top lap, the tunnel) and the brakes
   const moments = [
     ["04-lift-middle", ((meta.liftFrom + meta.liftTo) / 2) * meta.ds],
-    ["05-lift-top", meta.liftTo * meta.ds - 4],
-    ["06-drop", meta.liftTo * meta.ds + 20],
-    ["07-pullout", meta.liftTo * meta.ds + 52],
-    ["08-loop-climb", (meta.marks.loopFrom + (meta.marks.loopTo - meta.marks.loopFrom) * 0.2) * meta.ds],
-    ["09-loop-top", (meta.marks.loopFrom + (meta.marks.loopTo - meta.marks.loopFrom) * 0.5) * meta.ds],
-    ["10-turn", (meta.marks.trimFrom + 55) * meta.ds],
+    ["05a-lift-top-look-left", meta.liftTo * meta.ds - 14],
+    ["05-lift-top", meta.liftTo * meta.ds + 3],
+    ["06-drop", meta.liftTo * meta.ds + 16],
+    ["07-pullout", M.dropTo * meta.ds - 8],
+    ["07b-camelback", mid(M.dropTo, M.turnFrom, 0.62)],
+    ["10-turn", mid(M.turnFrom, M.turnTo, 0.45)],
+    ["10b-dive", M.trimTo * meta.ds + 14],
+    ["08-loop-climb", mid(M.loopFrom, M.loopTo, 0.2)],
+    ["09-loop-top", mid(M.loopFrom, M.loopTo, 0.5)],
+    ["11a-roll-inverted", mid(M.rollFrom, M.rollTo, 0.5)],
+    ["11b-hops", mid(M.hopsFrom, M.hopsTo, 0.18)],
+    ["11c-helix", mid(M.helixFrom, M.helixTo, 0.45)],
+    ["11d-head-chopper", M.helixTo * meta.ds + 1],
+    ["11e-tunnel", mid(M.tunnelFrom, M.tunnelTo, 0.4)],
     ["11-brake", meta.length - 22],
   ];
+  const lookAt = (yaw, pitch) => A.page.evaluate(async ([yaw, pitch]) => {
+    const v = (await window.__imp("/src/game/viewState.ts")).viewState;
+    v.fpYaw = yaw;
+    v.fpPitch = pitch;
+  }, [yaw, pitch]);
+  const watch = { "06-drop": [16, 5, -20], "09-loop-top": [-20, 4, -16], "11a-roll-inverted": [-6, -2, -24], "11c-helix": [0, 14, -30], "11e-tunnel": [10, 3, -12] };
   const shot = new Set();
   const t0 = Date.now();
   let last = null;
@@ -221,11 +240,20 @@ await run.step("ride", async () => {
       for (const [name, s] of moments) {
         if (!shot.has(name) && st.s >= s) {
           shot.add(name);
+          if (name === "05a-lift-top-look-left") {
+            // near the top: the head turned left over the park (and the village beyond its gate)
+            await lookAt(1.35, 0.32);
+            await sleep(700);
+            await run.shot(A, `${name}.png`);
+            await lookAt(0, 0.1);
+            await sleep(300);
+            continue;
+          }
           await run.shot(A, `${name}.png`);
-          if (name === "06-drop" || name === "09-loop-top") {
-            await aimAtRider(B, 0, name === "06-drop" ? [16, 5, -20] : [-20, 4, -16]);
+          if (watch[name]) {
+            await aimAtRider(B, 0, watch[name]);
             await sleep(250);
-            await run.shot(B, name === "06-drop" ? "12-B-watching-the-drop.png" : "12b-B-watching-the-loop.png");
+            await run.shot(B, `12-B-watching-${name}.png`);
           }
         }
       }
@@ -238,7 +266,7 @@ await run.step("ride", async () => {
   const maxVert = Math.max(...log.map((l) => l.vert));
   const minVert = Math.min(...log.map((l) => l.vert));
   const maxFov = Math.max(...log.map((l) => l.fov));
-  run.check("the ride reached drop speed (> 20 m/s)", maxV > 20, { maxV });
+  run.check("the ride reached drop speed (> 32 m/s)", maxV > 32, { maxV });
   run.check("the camera felt the pull (the probe saw > 2 g and a light moment)", maxVert > 2 && minVert < 0.5, { maxVert, minVert });
   run.check("the lens opened with the speed (FOV kick > 3 deg)", maxFov > 3, { maxFov });
   const upside = log.some((l) => Math.abs(l.pitch) > 1.2);
@@ -293,7 +321,10 @@ await run.step("rules", async () => {
     // a press outside the window is a RESERVATION (never a silent refusal): the card says 자리 맡음 once (the status line; no repeated toast), no seat yet
     await A.page.locator("[data-testid=coaster-hud]").first().waitFor({ timeout: 6000 }).catch(() => undefined);
     const card = await A.page.locator("[data-testid=coaster-hud]").first().innerText({ timeout: 3000 }).catch(() => "");
-    run.check("boarding outside the window is not a seat but a reservation, and the card says so", /자리 맡음/.test(card) && (await probe(A)).slot === -1, { card: card.split("\n").join(" | ") });
+    // (the press can land in the unload's last second: then the reservation is honoured at once and A is seated as the station opens)
+    const after = await probe(A);
+    const seatedByReservation = after.slot >= 0 && after.status === "boarding";
+    run.check("boarding outside the window is not a seat but a reservation, and the card says so (or the reservation seated A as boarding opened)", (/자리 맡음/.test(card) && after.slot === -1) || seatedByReservation, { card: card.split("\n").join(" | "), slot: after.slot, status: after.status });
   }
 });
 

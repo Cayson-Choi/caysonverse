@@ -5,6 +5,7 @@ import { BufferGeometry, Color, DoubleSide, Mesh, Group, InstancedMesh, Matrix4,
 import { COASTER_CARS, carArc, coasterTrack, emptyFrame, frameAt, STATION_Y } from "@caysonverse/shared/land/coaster";
 import { isTouchDevice } from "../device";
 import { buildTrack, type TrackBuild, type TrackDetail } from "./coasterGeometry";
+import { buildTunnel } from "./coasterTunnel";
 import { coasterNow } from "./coasterRide";
 import { parkMaterial, pickSet } from "./pbr";
 import { applyFarSteel, farSteelUniform } from "./farSteel";
@@ -222,6 +223,9 @@ export function CoasterWorld({ all, pine, env }: { all: Texture[]; pine: Texture
     const h = gl.getDrawingBufferSize(buf).y;
     if (h > 0) farSteelUniform.value = 2 / h;
   });
+  // the tunnel on the brake run (coasterTunnel.ts): painted render over the concrete set's grain
+  const tunnelGeo = useMemo(() => buildTunnel(track), [track]);
+  const tunnelMat = useMemo(() => parkMaterial(maps.concrete, 1, { vertexColors: true, color: new Color(1.3, 1.26, 1.2), normalScale: 0.5 }), [maps]);
   // (no dispose on cleanup: React's dev double-mount would delete the programs the memoised materials still use)
   if (import.meta.env.DEV && typeof window !== "undefined") (window as unknown as { __cvCoasterTris?: number }).__cvCoasterTris = built.triangles;
   return (
@@ -229,6 +233,7 @@ export function CoasterWorld({ all, pine, env }: { all: Texture[]; pine: Texture
       {built.chunks.map((ch, i) => (
         <mesh key={i} geometry={ch.steel} material={steelMat} receiveShadow />
       ))}
+      {tunnelGeo && <mesh geometry={tunnelGeo} material={tunnelMat} castShadow receiveShadow />}
       <Train env={env} ao={ao} />
       <Station concrete={maps.concrete} paving={maps.paving} pine={pine} />
     </group>

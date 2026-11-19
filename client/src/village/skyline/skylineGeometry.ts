@@ -24,6 +24,7 @@ import {
   coasterTrack,
   type CoasterTrack,
 } from "@caysonverse/shared/land/coaster";
+import { coasterSupports } from "@caysonverse/shared/land/coasterSupports";
 import { GONDOLA_BOXES, frameCapsules, RIM_Z } from "@caysonverse/shared/land/wheelGeometry";
 import { WHEEL_HUB_Y, WHEEL_N, WHEEL_R, WHEEL_SITE } from "@caysonverse/shared/land/wheel";
 import { CAROUSEL_CANOPY_Y, CAROUSEL_CENTER, CAROUSEL_DECK_Y, CAROUSEL_RADIUS } from "@caysonverse/shared/land/carousel";
@@ -355,24 +356,40 @@ export function buildSkyline(tier: SkylineTier, ground: GroundLocal = () => 0): 
     s.sweep(right, bA, bB, 0.34, 4, C.steel, 0.1);
     s.sweep(spine, bA, bB, 0.85, 5, C.indigoBright, 0.1);
 
-    // supports: tapered column pairs from the spine down to the ground, none where the loop's ring crosses
-    const every = high ? 34 : 48;
-    for (let i = 0; i < n; i += every) {
-      if (i > loopFrom + 6 && i < loopTo - 6) continue;
-      const p = at(i);
-      const r = norm(cross(tanv(i), upv(i)));
-      for (const k of [-1, 1]) {
-        const x = p[0] + r[0] * 1.5 * k;
-        const z = p[2] + r[2] * 1.5 * k;
-        const g0 = ground(x, z) - 0.8;
-        const top = p[1] - 1.0 - (k === 1 ? 0 : 0);
-        if (top - g0 < 2.2) continue;
-        s.cylinder([x, g0, z], [x, top, z], 1.1, 0.7, 5, C.cream);
+    // supports: the park's own (shared/land/coasterSupports.ts, the phone set: a braced pair per column, a mast and an arm under the
+    // upside-down stretches), every other one, widened so they read at this scale
+    const sups = coasterSupports(track, "light");
+    for (let k = 0; k < sups.length; k += high ? 1 : 2) {
+      const sp = sups[k]!;
+      for (const leg of sp.legs) {
+        const g0 = ground(leg.foot[0], leg.foot[2]) - 0.8;
+        if (leg.top[1] - g0 < 2.2) continue;
+        s.cylinder([leg.foot[0], g0, leg.foot[2]], leg.top, 1.1, 0.7, 5, C.cream);
       }
-      // a cross brace between the pair, half way up
-      const g1 = ground(p[0], p[2]);
-      const my = (p[1] - 1.0 + g1) / 2 + 0.6;
-      if (p[1] - g1 > 6) s.cylinder([p[0] - r[0] * 1.5, my, p[2] - r[2] * 1.5], [p[0] + r[0] * 1.5, my, p[2] + r[2] * 1.5], 0.28, 0.28, 4, C.steel);
+      if (sp.kind === "arm" && sp.armFrom) s.cylinder(sp.armFrom, sp.spine, 0.6, 0.6, 4, C.cream);
+      else if (sp.legs.length === 2 && sp.spine[1] > 6) {
+        const [l0, l1] = sp.legs;
+        const m0: V3 = [(l0!.foot[0] + l0!.top[0]) / 2, (l0!.foot[1] + l0!.top[1]) / 2, (l0!.foot[2] + l0!.top[2]) / 2];
+        const m1: V3 = [(l1!.foot[0] + l1!.top[0]) / 2, (l1!.foot[1] + l1!.top[1]) / 2, (l1!.foot[2] + l1!.top[2]) / 2];
+        s.cylinder(m0, m1, 0.28, 0.28, 4, C.steel);
+      }
+    }
+    // the tunnel on the brake run: a cream shed under an indigo vault
+    {
+      const a0 = track.marks.tunnelFrom;
+      const a1 = track.marks.tunnelTo;
+      if (a0 !== undefined && a1 !== undefined) {
+        for (let i = a0 - 4; i < a1 + 4; i += 12) {
+          const p = at(i);
+          const q = at(Math.min(a1 + 4, i + 12));
+          const ax = norm([q[0] - p[0], 0, q[2] - p[2]]);
+          const c: V3 = [(p[0] + q[0]) / 2, 0, (p[2] + q[2]) / 2];
+          const half = Math.hypot(q[0] - p[0], q[2] - p[2]) / 2 + 0.1;
+          const gy0 = ground(c[0], c[2]);
+          s.box([c[0], gy0 + 1.4, c[2]], ax, Y, half, 2.2, 4.1, C.cream);
+          s.box([c[0], gy0 + 4.0, c[2]], ax, Y, half, 0.9, 3.4, C.indigoBright);
+        }
+      }
     }
     // string lights along the lift hill and round the loop (lit at night)
     const liftFrom = track.liftFrom;
