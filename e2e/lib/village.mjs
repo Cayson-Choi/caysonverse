@@ -419,14 +419,22 @@ export async function runVillageScenario({ name, device }) {
       for (const [x, z] of DOOR_ROUTE) await walkAndWait(A, x, z, 40000, 1.2);
       const ts = await A.page.evaluate(async () => (await window.__imp("/src/game/interactTargets.ts")).getTargets(window.__cv.getPos()).map((t) => ({ id: t.id, label: t.label })));
       run.check("추모관 들어가기 is offered at the door", ts.some((t) => t.id === "memorial_door" && t.label === "추모관 들어가기"), ts);
-      await act(A);
       // the door's curtain (DoorFade.tsx, .cv-door-fade only: T11 review I2) closes while the hall loads, then opens
       const curtain = () => {
         const e = document.querySelector(".cv-door-fade");
         return e ? parseFloat(getComputedStyle(e).opacity) : -1;
       };
-      const veil = await A.page.waitForFunction(() => { const e = document.querySelector(".cv-door-fade"); return !!e && parseFloat(getComputedStyle(e).opacity) > 0.05; }, null, { timeout: 8000 }).then(() => true, () => false);
-      run.check("the door curtain (.cv-door-fade) showed", veil);
+      // The short transition can finish before keyboard.press or tap returns. Arm the frame poll inside the page first.
+      const watch = await A.page.evaluateHandle(() => ({ armed: false }));
+      const curtainShown = A.page.waitForFunction((watch) => {
+        watch.armed = true;
+        const e = document.querySelector(".cv-door-fade");
+        return !!e && parseFloat(getComputedStyle(e).opacity) > 0.05;
+      }, watch, { timeout: 8000 }).then(() => true, () => false);
+      await A.page.waitForFunction((watch) => watch.armed, watch, { timeout: 8000 });
+      await act(A);
+      run.check("the door curtain (.cv-door-fade) showed", await curtainShown);
+      await watch.dispose();
       await A.page.waitForFunction(async () => (await window.__imp("/src/village/villageArea.ts")).localArea() === "hall", null, { timeout: 15000 });
       await A.page.waitForFunction(() => !!window.__cvHall, null, { timeout: 60000 });
       // the curtain must open again: a timeout is a failure, not swallowed (T11 review I1)
