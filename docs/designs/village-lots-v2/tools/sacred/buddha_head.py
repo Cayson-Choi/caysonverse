@@ -3,6 +3,7 @@ from bisect import bisect_right
 from math import atan2, cos, exp, pi, sin, sqrt
 import bpy
 from mathutils import Vector
+from buddha_ears import make_ears
 from buddha_mesh import mat
 from buddha_pigment import brow_height, eyelid_height
 
@@ -188,62 +189,6 @@ def bead(name,center,radii,material,n=12,rings=5):
 def make_urna(phone):
     z=1.718
     bead('Urna',(0,fy(0,z)-.001,z),(.0050,.0039,.0059),'pearl',8 if phone else 12,4)
-
-
-EAR=[(1.466,.159,.007,.043,.008),(1.473,.160,.020,.043,.021),
-     (1.490,.161,.026,.042,.030),(1.512,.160,.025,.040,.031),
-     (1.539,.160,.018,.040,.029),(1.569,.158,.017,.043,.029),
-     (1.598,.159,.021,.044,.034),(1.627,.160,.028,.044,.041),
-     (1.659,.161,.031,.046,.047),(1.685,.161,.030,.048,.050),
-     (1.707,.162,.022,.050,.043),(1.722,.161,.013,.050,.028),(1.728,.160,.003,.052,.007)]
-
-
-def make_ears(phone):
-    n=8 if phone else 15
-    zs=[row[0] for row in EAR]
-    if not phone:
-        zs=sorted(zs+[1.642,1.670,1.695])
-    for s in (-1,1):
-        vs,fs=[],[]
-        for z in zs:
-            cx,rx,cy,ry=profile(EAR,z)
-            for k in range(n):
-                a=2*pi*k/n
-                y=cy+ry*sin(a)
-                bowl=.032*exp(-((y-.044)/.027)**2-((z-1.662)/.041)**2)
-                ridge=.014*exp(-((y-.049-.012*sin((z-1.630)*45))/.009)**2-((z-1.654)/.031)**2)
-                tragus=.011*exp(-((y-.020)/.012)**2-((z-1.639)/.012)**2)
-                x=cx+rx*cos(a)+max(0,cos(a))**1.4*(-bowl+ridge+tragus)
-                vs.append((s*x,y,z))
-        connect(fs,n,len(zs))
-        cap(fs,n,len(vs))
-        if s<0:
-            fs=[tuple(reversed(f)) for f in fs]
-        surface('Long carved earlobe',vs,fs,'skin')
-        if phone:
-            continue
-        # Inner helical ridge turns in toward the concha and fades into the bowl.
-        vs,fs=[],[]
-        path=[(.023,1.674,.002),(.026,1.685,.005),(.034,1.693,.006),
-              (.046,1.696,.0065),(.057,1.692,.006),(.064,1.684,.006),
-              (.067,1.669,.005),(.061,1.654,.005),(.055,1.648,.002)]
-        ns=6
-        for j,(y,z,r) in enumerate(path):
-            cx,rx,cy,ry=profile(EAR,z)
-            cs=sqrt(max(0,1-((y-cy)/ry)**2))
-            bowl=.032*exp(-((y-.044)/.027)**2-((z-1.662)/.041)**2)
-            ridge=.014*exp(-((y-.049-.012*sin((z-1.630)*45))/.009)**2-((z-1.654)/.031)**2)
-            x=cx+rx*cs+cs**1.4*(-bowl+ridge)-.001
-            lo=path[max(0,j-1)]
-            hi=path[min(len(path)-1,j+1)]
-            d=Vector((0,hi[1]-lo[1],lo[0]-hi[0])).normalized()
-            for i in range(ns):
-                a=2*pi*i/ns
-                vs.append((s*(x+r*cos(a)),y+d.y*r*sin(a),z+d.z*r*sin(a)))
-        connect(fs,ns,len(path))
-        if s>0:
-            fs=[tuple(reversed(f)) for f in fs]
-        surface('Inner helix',vs,fs,'skin')
 
 
 # Nape, rounded cap and the narrower ushnisha, in a single profile.

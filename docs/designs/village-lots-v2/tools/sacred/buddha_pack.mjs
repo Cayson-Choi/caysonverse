@@ -1,6 +1,7 @@
 /** Finish the original hall Buddha after the Blender build.
- * node buddha_pack.mjs <build-directory> <sacred-GLB-directory> [--preserve-from <prior-GLB-directory>]
+ * node buddha_pack.mjs <build-directory> <sacred-GLB-directory> [--preserve-from|--preserve-ears-from <prior-GLB-directory>]
  * For a face revision, pass the shipped pair's directory to --preserve-from.
+ * For an ear revision, --preserve-ears-from keeps the shipped face, body and KTX2 textures.
  * It can also be the destination. Both LODs are built before either file is replaced.
  * Uses the locked KTX2 settings from sacred/node. The room loader needs the meshopt
  * extension's core fallback. Both paths carry the same faces and vertex attributes.
@@ -14,8 +15,8 @@ import { preserveSurroundingStatue } from "./buddha_preserve.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const [work, destination, flag, seedDirectory, ...extra] = process.argv.slice(2);
-if (!work || !destination || (flag && (flag !== "--preserve-from" || !seedDirectory)) || extra.length) {
-  throw new Error("Expected build directory, sacred GLB directory and optional --preserve-from <directory>");
+if (!work || !destination || (flag && (!["--preserve-from", "--preserve-ears-from"].includes(flag) || !seedDirectory)) || extra.length) {
+  throw new Error("Expected build directory, sacred GLB directory and optional --preserve-from or --preserve-ears-from <directory>");
 }
 const align = (n) => Math.ceil(n / 4) * 4;
 await Promise.all([MeshoptEncoder.ready, MeshoptDecoder.ready]);
@@ -77,13 +78,17 @@ for (const lod of ["pc", "phone"]) {
   const name = "lotstatue__lot_temple_hall_buddha" + (lod === "phone" ? "_phone" : "");
   let model = path.resolve(work, lod + ".glb");
   if (seedDirectory) {
-    const graft = path.join(work, lod + "-face.glb");
-    await preserveSurroundingStatue(path.join(seedDirectory, name + ".glb"), model, graft);
+    const region = flag === "--preserve-ears-from" ? "ears" : "face";
+    const graft = path.join(work, lod + "-" + region + ".glb");
+    await preserveSurroundingStatue(path.join(seedDirectory, name + ".glb"), model, graft, region);
     model = graft;
   }
-  const ktx = path.join(work, lod + "-ktx.glb");
-  execFileSync(process.execPath, [path.join(here, "node", "ktx2_glb.mjs"),
-    model, ktx, "2048", "all", "2048"], {stdio: "inherit"});
-  packed.set(path.join(destination, name + ".glb"), compressGeometry(ktx));
+  if (flag !== "--preserve-ears-from") {
+    const ktx = path.join(work, lod + "-ktx.glb");
+    execFileSync(process.execPath, [path.join(here, "node", "ktx2_glb.mjs"),
+      model, ktx, "2048", "all", "2048"], {stdio: "inherit"});
+    model = ktx;
+  }
+  packed.set(path.join(destination, name + ".glb"), compressGeometry(model));
 }
 for (const [file, bytes] of packed) writeFileSync(file, bytes);
