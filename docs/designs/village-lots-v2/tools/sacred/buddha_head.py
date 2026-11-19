@@ -106,17 +106,35 @@ for row,width,front,back in SECTIONS:
 # Midpoints of the two reflected profile silhouettes. The root has a short
 # saddle at eye level and the lobule turns back under the end of the bridge.
 PROFILE_EDGE = [
-    (171,594.5),(169.5,591.9),(168.5,586.9),(166.5,580.4),(163.5,572.9),
-    (161.5,569.0),(158.5,567.4),(154.5,566.9),(150.5,567.0),(149.5,566.9),
+    (171,594.5),(169.5,592.0),(168.5,587.4),(166.5,580.6),(163.5,573.1),
+    (161.5,569.1),(158.5,567.35),(156.5,567.10),(154.5,567.10),(150.5,567.40),(149.5,567.2),
     (147.5,564.8),(145.5,563.4),(143.5,563.1),(142.5,562.5),(141.5,561.4),
     (140.0,561.1),(138.5,561.3),(136.5,561.8),(135.5,561.2),
-    (134.5,557.6),(133.5,554.7),(132.5,553.5),(131.5,552.4),(130.5,551.8),
-    (128.5,551.3),(126.5,551.4),(124.5,552.0),(122.5,552.9),(118.5,554.6),
-    (114.5,556.4),(111.5,557.6),(108.5,558.8),(105.5,559.5),(102.5,559.2),
-    (99.5,559.0),(96.5,559.3),
+    (134.5,558.0),(133.5,554.76),(132.5,553.59),(131.5,552.42),(130.5,551.91),
+    (128.5,551.66),(126.5,551.91),(124.5,552.38),(122.5,553.13),(118.5,554.85),
+    (114.5,556.76),(111.5,558.01),(108.5,559.32),(105.5,559.94),(102.5,559.56),
+    (99.5,559.25),(96.5,559.3),
     (92,559.7),(90,559.8),(82,560.3),
     (75,561),(65,565),(55,572),(45,583),(38,600)]
 MIDLINE = [(section_z(v),depth(u)) for v,u in PROFILE_EDGE]
+
+# Posterior half-sections approaching the existing neck. At 1.525 m the
+# neck's top ring is .112 m wide on either side of its axis, centred at
+# y=.174 m and reaching y=.282 m behind. The head overlaps it below that rim.
+# Height, half-width and posterior extent, all in metres.
+NAPE = [(1.438,.081,.253),(1.475,.098,.268),(1.492,.106,.275),
+        (1.506,.112,.280),(1.525,.118,.286),(1.550,.125,.291),
+        (1.585,.139,.297),(1.640,.155,.305),(1.680,.161,.308)]
+
+
+def rear_skin(a,z,w,f,b):
+    nape_width,nape_back=profile(NAPE,z)
+    to_vault=max(0.,min(1.,(z-1.57)/.10))
+    rear=max(0.,min(1.,-cos(a)/.43))
+    blend=(1-to_vault*to_vault*(3-2*to_vault))*rear*rear*(3-2*rear)
+    x=w*sin(a)
+    y=(f+b)/2-(b-f)/2*cos(a)
+    return x+blend*(nape_width*sin(a)-x), y+blend*(.174-(nape_back-.174)*cos(a)-y)
 
 
 def eye_line(x):
@@ -154,7 +172,7 @@ def relief(x,z):
             + .0080*paired(.099,1.601,.078,.060))
     # The lobes round over the alar crease on the cheek and return underneath
     # into the nostril. Their low edge sits above the rounded columella.
-    wings=(.0215*paired(.030,1.609,.015,.017)
+    wings=(.0110*paired(.030,1.604,.017,.017)
            - .0120*paired(.037,1.609,.027,.030)
            - .0025*paired(.020,1.613,.008,.016)
            - .0024*paired(.031,1.628,.015,.009)
@@ -176,7 +194,7 @@ def fy(x,z):
     bulb=exp(-((z-1.600)/.025)**2)
     muzzle=1/(1+exp(min(80.,(z-1.576)/.0085)))
     chin=1/(1+exp(min(80.,(z-1.517)/.010)))
-    spread=(.0235 + .0082*bulb - .0076*exp(-((z-1.580)/.009)**2)
+    spread=(.0235 + .0102*bulb - .0076*exp(-((z-1.580)/.009)**2)
             + .0050*exp(-((z-1.71)/.039)**2) + .020*muzzle + .046*chin)
     # Ease the cross section continuously from the bridge to the rounded tip
     # and over the columella, preserving the measured midline at every height.
@@ -220,13 +238,20 @@ def soften_face_normals(mesh):
         # Turn the leaf around the broad tip and each smaller wing. Across the
         # base the sagittal profile alone would reflect one horizontal strip.
         lateral=abs(local_x)
-        wing=.78*exp(-((lateral-.030)/.0125)**4-((z-1.610)/.017)**4)
-        wing_slope=.52*(lateral-.030)/.014 * (1 if local_x>=0 else -1)
+        wing=.89*exp(-((lateral-.031)/.015)**4-((z-1.605)/.019)**4)
+        wing_slope=.35*(lateral-.031)/.016 * (1 if local_x>=0 else -1)
         dx+=wing*(wing_slope-dx)
-        dz+=wing*(.46*tanh((z-1.610)/.009)-dz)
-        dorsum=.90*exp(-(local_x/.026)**4-((z-1.626)/.042)**6)
+        dz+=wing*(.32*tanh((z-1.605)/.015)-dz)
+        dorsum=.90*exp(-(local_x/.023)**4-((z-1.626)/.042)**6)
         dx+=dorsum*(.40*local_x/.026-dx)
-        dz+=dorsum*(.45*tanh((z-1.607)/.012)-dz)
+        dz+=dorsum*(.51*tanh((z-1.603)/.013)-dz)
+        # At grazing incidence the ala turns sideways before it rolls under.
+        # A continuous lateral normal keeps the bridge reflection off its rim.
+        outer=max(0.,min(1.,(lateral-.030)/.011))
+        flank=.94*outer*outer*(3-2*outer)*exp(-((lateral-.038)/.014)**4-((z-1.612)/.018)**4)
+        turn=(.84+.38*tanh((lateral-.035)/.011))*(1 if local_x>=0 else -1)
+        dx+=flank*(turn-dx)
+        dz+=flank*(.23*tanh((z-1.610)/.012)-dz)
         columella=exp(-(local_x/.012)**2-((z-1.590)/.013)**2)
         dz-=.34*min(0.,dz)*columella
         under_lip=exp(-(local_x/.055)**4-((z-1.530)/.024)**2)
@@ -245,7 +270,7 @@ def make_face(phone):
     front=([0,.034,.068,.100,.135,.175,.215,.26,.33,.43,.55,.68,.82,1.00,1.24,pi/2] if phone else
            [0,.023,.047,.071,.093,.115,.139,.163,.19,.22,.25,.29,.34,.40,
             .47,.55,.64,.74,.85,.97,1.09,1.22,1.38,pi/2])
-    back=3 if phone else 5
+    back=6 if phone else 9
     half=front+[pi/2+pi/2*k/back for k in range(1,back+1)]
     angles=half+[-a for a in reversed(half[1:-1])]
     # Carry each horizontal edge through the measured lips and nasal underside;
@@ -273,7 +298,7 @@ def make_face(phone):
                 height+=(eye_line(local_x)-1.680)*exp(-((abs(local_x)-.084)/.062)**4-((z-1.680)/.021)**2)
                 y=fy(x,height)
             else:
-                y=(f+b)/2-(b-f)/2*cos(a)
+                x,y=rear_skin(a,z,w,f,b)
             vs.append((x,y,height))
     connect(fs,len(angles),len(zs))
     cap(fs,len(angles),len(vs))
@@ -337,14 +362,19 @@ HAIR = [(section_z(v),w/PIXELS_PER_METRE,(b-f)/(2*PIXELS_PER_METRE),depth(.5*(f+
         for v,w,f,b in HAIR_SECTIONS]
 
 
+# Azimuth from the brow and profile image row. The tab rolls under in
+# front of the helix, arches above it and descends behind it to the nape.
+HAIRLINE = [(0,76.3),(.42,76.7),(.65,77.4),(.82,78.3),(.96,79.5),
+            (1.08,81.1),(1.19,83.7),(1.30,88.6),(1.37,99.7),(1.41,105.0),
+            (1.46,107.6),(1.51,108.2),(1.56,107.8),(1.60,105.6),(1.64,101.3),
+            (1.71,96.5),(1.80,94.0),(1.86,93.7),(1.93,96.4),(1.98,107.0),
+            (2.02,129.0),(2.08,141.6),(2.18,146.0),(2.36,147.8),
+            (2.55,148.7),(2.78,149.0),(pi,148.8)]
+
+
 def hair_floor(a):
     p=abs(atan2(sin(a),cos(a)))
-    # Measured forehead and temples in the pitched frontal photograph.
-    row=[(0,76.3),(.42,76.7),(.65,77.4),(.82,78.3),(.96,79.5),
-         (1.08,81.1),(1.19,83.7),(1.30,88.6),(1.41,97.2),(1.49,111),
-         (1.56,108),(1.65,95),(1.73,91),(1.90,97),(2.02,118),(2.14,135),
-         (2.32,145),(2.53,148.5),(2.76,150),(pi,146)]
-    z=section_z(profile(row,p)[0])
+    z=section_z(profile(HAIRLINE,p)[0])
     _,f,b=profile(SKULL,z)
     y=(f+b)/2-(b-f)/2*cos(a)
     front=max(0.,cos(a))
@@ -361,6 +391,26 @@ def hair_normal(a,z):
     return tangent.cross(rise).normalized()
 
 
+def hair_skin(a,z):
+    # Seat the folded rim on the chin-to-neck sections behind the ear.
+    # The anterior rim follows the forehead ellipse.
+    w,f,b=profile(SKULL,z)
+    x,y=rear_skin(a,z,w,f,b)
+    return Vector((x,y,z))
+
+
+def hair_root(a,z):
+    # Below the back of the ear the last row projects over the neck. Roll its
+    # underside into the skin without pulling the visible curls flat against it.
+    rear=max(0.,min(1.,(-cos(a)-.32)/.22))
+    rear=rear*rear*(3-2*rear)
+    root=hair_skin(a,z).lerp(hair_pos(a,z),.9*rear)
+    # Four whorls per sector on the last occipital row. Lift the rim between
+    # the whorls, leaving their rounded undersides visible against the neck.
+    root.z+=.0038*rear*(cos(16*a)**2-.45)
+    return root
+
+
 def scalloped_scalp(phone):
     # A continuous casting. Each band maps a row of small whorls around
     # the vault; both LODs therefore show the same spacing at the hairline.
@@ -370,31 +420,47 @@ def scalloped_scalp(phone):
     levels += [1.850,1.870,1.887,1.904,1.921,1.938,1.953,1.966,1.976,1.984,1.991,1.9945]
     vs,fs,coords,normals=[],[],[],[]
     sectors=8
-    # The rear quarters have no forehead arc and need fewer longitudinal cuts.
-    divisions=[(3 if phone else 10) if 2<=s<6 else (4 if phone else 12) for s in range(sectors)]
+    if phone:
+        # Spend the available meridians on the tab and helix. The broad
+        # occiput and brow carry the same painted curl spacing on both LODs.
+        half=[[0,1/3,2/3,1], [0,.53,.82,.93,1],
+              [0,.11,.35,.55,.68,1], [0,.5,1]]
+    else:
+        half=[[k/12 for k in range(13)],
+              [0,.11,.22,.33,.44,.55,.64,.71,.76,.81,.85,.89,.93,.965,1],
+              [0,.05,.10,.17,.25,.33,.40,.46,.52,.58,.65,.78,1],
+              [k/8 for k in range(9)]]
+    columns=half+[[1-u for u in reversed(samples)] for samples in reversed(half)]
     vertical=1 if phone else 2
     for j,(low,high) in enumerate(zip(levels,levels[1:])):
         w,d,_=profile(HAIR,(low+high)/2)
         repeats=max(1,min(5,round(2*pi*sqrt(w*d)/(.0275*sectors))))
-        phase=.5*(j%2)
+        # Centre a full whorl on the end of each temple tab.
+        phase=.5*((j+int(high<front-.085))%2)
         for sector in range(sectors):
-            across=divisions[sector]
+            samples=columns[sector]
             rings=[]
             for m in range(vertical+1):
                 ring=[]
                 t=m/vertical
-                for k in range(across+1):
-                    a=2*pi*(sector+k/across)/sectors
+                for u in samples:
+                    a=2*pi*(sector+u)/sectors
                     floor=hair_floor(a)
                     # Bend the frontal rows with the measured temple arch.
                     wrap=abs(atan2(sin(a),cos(a)))
                     dip=(hair_floor(min(wrap,1.15))-front)*max(0.,cos(a))**.6
+                    # Set the last row on the rounded end of the tab and the
+                    # nape. A local bend keeps the rows level over the ear.
+                    anchor=front-(.125 if wrap<1.78 else .275)
+                    delta=floor-anchor
+                    edge_bend=delta*exp(-(delta/.024)**2)
                     def bent(level):
-                        return level+dip*exp(-((level-front)/.083)**2)
+                        return (level+dip*exp(-((level-front)/.083)**2)
+                                +edge_bend*exp(-((level-anchor)/.048)**2))
                     bottom,top=bent(low),bent(high)
                     z=max(floor,bottom+(top-bottom)*t)
                     row_v=min(1.,(z-bottom)/(top-bottom))
-                    column=repeats*k/across+phase
+                    column=repeats*u+phase
                     relief=sin(pi*row_v)**2*sin(pi*column)**2
                     at_edge=max(0.,min(1.,(z-floor)/.008))
                     n=hair_normal(a,z)
@@ -404,16 +470,13 @@ def scalloped_scalp(phone):
                     # ellipse, where the original casting turns into the temple.
                     blend=max(0.,min(1.,(z-floor)/.035))
                     blend=blend*blend*(3-2*blend)
-                    attach=max(0.,min(1.,(1.84-wrap)/.24))*(1-blend)
-                    sw,sf,sb=profile(SKULL,z)
-                    skin=Vector((sw*sin(a),(sf+sb)/2-(sb-sf)/2*cos(a),z))
                     ring.append(len(vs))
-                    vs.append(pos.lerp(skin+n*.0008,attach))
+                    vs.append(pos.lerp(hair_root(a,z)+n*.0008,1-blend))
                     normals.append(n)
                     coords.append(((column/6)*.92+.04,row_v*.92+.04))
                 rings.append(ring)
             for lower,upper in zip(rings,rings[1:]):
-                for k in range(across):
+                for k in range(len(samples)-1):
                     corners=[lower[k],lower[k+1]]
                     if vs[upper[k+1]]!=vs[lower[k+1]]:
                         corners.append(upper[k+1])
@@ -424,17 +487,13 @@ def scalloped_scalp(phone):
     # Turn the lower edge inward to meet the temple and forehead. It follows
     # a single curve even from below; no loose polygon tips hang onto the skin.
     start=len(vs)
-    angles=[2*pi*(s+k/steps)/sectors for s,steps in enumerate(divisions) for k in range(steps)]
-    for inset in (.004,0):
+    angles=[2*pi*(s+u)/sectors for s,samples in enumerate(columns) for u in samples[:-1]]
+    for inner in (True,False):
         for a in angles:
             z=hair_floor(a)
-            pos=hair_pos(a,z)
             normal=hair_normal(a,z)
-            wrap=abs(atan2(sin(a),cos(a)))
-            attach=max(0.,min(1.,(1.84-wrap)/.24))
-            sw,sf,sb=profile(SKULL,z)
-            skin=Vector((sw*sin(a),(sf+sb)/2-(sb-sf)/2*cos(a),z))
-            vs.append(pos.lerp(skin+normal*.0008,attach)-normal*inset)
+            pos=hair_skin(a,z)-normal*.0032 if inner else hair_root(a,z)+normal*.0008
+            vs.append(pos)
             normals.append(normal)
             coords.append((.04,.04))
     connect(fs,len(angles),2,start)
