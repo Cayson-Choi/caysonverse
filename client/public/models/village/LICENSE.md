@@ -63,7 +63,7 @@ Poly Haven CC0 1.0 자산만 썼습니다.
 
 | 자산 | 출처 | 라이선스 | 쓰는 곳 |
 | --- | --- | --- | --- |
-| Noto Sans KR (`NotoSansKR-VF.ttf`) | Copyright The Noto Project Authors (https://github.com/notofonts/noto-cjk) | SIL Open Font License 1.1 | 모델 안 표지 글씨(구역 명패, "기억의 자리", 브랜드 벽, 안내도, 키오스크 화면, 우체통, 티 코너, 헌화 꽃)를 `T_m_signs`에 그림으로 구운 것. 글꼴 파일은 배포하지 않음 |
+| Noto Sans KR (`NotoSansKR-VF.ttf`) | Copyright The Noto Project Authors (https://github.com/notofonts/noto-cjk) | SIL Open Font License 1.1 | 실내 표지 글씨(구역 명패, "기억의 자리", 브랜드 벽, 안내도, 키오스크 화면, 우체통, 티 코너, 헌화 꽃)를 구운 `T_m_signs` 텍스처와 외벽 명판의 입체 글자 `memorial_facade_letters`. |
 | white_plaster_02 (Poly Haven) | https://polyhaven.com/a/white_plaster_02 | CC0 1.0 | 흰 벽·천장 결 (위 표와 같음) |
 | kloppenheim_06_puresky (HDRI 2k) | https://polyhaven.com/a/kloppenheim_06_puresky | CC0 1.0 | 낮 굽기의 하늘빛, 창밖 정원 그림의 하늘 |
 | leafy_grass, precast_stone_paving, island_tree_01(잎), japanese_zelkova_bark, sakura_bark (Poly Haven) | 위 표들 | CC0 1.0 | 창밖 정원 그림(낮 `T_m_garden`, 밤 `memorial_garden_night.webp`은 같은 그림을 어둡게 고쳐 별·달·정원등을 그린 것) |
