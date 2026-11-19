@@ -7,7 +7,8 @@ import { GRASS_VARIATION_PARS } from "./grassVariation";
 import { GROUND_GRADE } from "./villageModelPrep";
 import type { VillageNodes } from "./villageModelPrep";
 import { cutFarBackdrop, mountainLandTint } from "./mountains";
-import { buildOuterGround, groundMeshesIn } from "./outerGround";
+import { skylineClearsForest, skylineMode } from "./skyline/skylinePlacement";
+import { buildOuterGround, groundMeshesIn, setOuterGround } from "./outerGround";
 
 /** The far trees beyond this radius stand on the outer ground (the old backdrop's triangles beyond it are cut). */
 export const OUTER_CUT_RADIUS = 140;
@@ -65,7 +66,12 @@ export function OuterGround({ nodes }: { nodes: VillageNodes }) {
   }, [nodes, scene, lakeDrawn]);
 
   useLayoutEffect(() => {
-    const cut = cutFarBackdrop(nodes.root, OUTER_CUT_RADIUS, built.ground.heightAt);
+    setOuterGround(built.ground);
+    return () => setOuterGround(null);
+  }, [built]);
+
+  useLayoutEffect(() => {
+    const cut = cutFarBackdrop(nodes.root, OUTER_CUT_RADIUS, built.ground.heightAt, skylineMode() === "on" ? skylineClearsForest : undefined);
     return () => cut.restore();
   }, [nodes, built]);
 
