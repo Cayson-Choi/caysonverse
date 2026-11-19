@@ -27,9 +27,10 @@ it("ships one mipmapped garden panorama for both rooms and a separate equirectan
 });
 
 /** Read one shipped primitive with the same Draco library used by the village clearance tests. */
-async function primitive(room: string, material: string) {
+async function primitive(room: string, material: string, part?: string) {
   const { gltf, bin } = parseGlb(readFileSync(path.join(lots, `lot_${room}.glb`)));
-  const prim = gltf.meshes!.flatMap((m) => m.primitives).find((p) => gltf.materials![p.material!]?.name === material)!;
+  const prim = gltf.meshes!.filter((m) => !part || m.name?.endsWith(part))
+    .flatMap((m) => m.primitives).find((p) => gltf.materials![p.material!]?.name === material)!;
   const ext = prim.extensions!.KHR_draco_mesh_compression as { bufferView: number; attributes: Record<string, number> };
   const view = gltf.bufferViews![ext.bufferView]!;
   const data = bin!.subarray(view.byteOffset ?? 0, (view.byteOffset ?? 0) + view.byteLength);
@@ -77,6 +78,22 @@ it("covers the outer classroom glazing and every canted reading-nook pane right 
           for (const t of [0, 0.5, 1]) for (const y of [0.55, 1.9, 3.2])
             covered(470 + (1 - t) * a[0]! + t * b[0]!, y, (1 - t) * a[1]! + t * b[1]!);
         }
+      }
+    }
+  }
+});
+
+it("faces both bay ceilings and floors into their alcoves", async () => {
+  for (const [material, y, inwardY] of [["LM_library_floor", 0, 1], ["LM_library_plaster", 3.3, -1]] as const) {
+    const { points, normals, triangles } = await primitive("library_reading", material, "_shell");
+    for (const centre of [472.6, 480.8]) {
+      const caps = triangles.filter((face) => face.every((i) =>
+        Math.abs(points[i]!.y - y) < 0.002 && Math.abs(points[i]!.x - centre) < 1.21 && points[i]!.z < 0.002));
+      expect(caps).toHaveLength(2);
+      for (const [a, b, c] of caps) {
+        const face = new Triangle(points[a!]!, points[b!]!, points[c!]!);
+        expect(face.getNormal(new Vector3()).y * inwardY).toBeGreaterThan(0.99);
+        for (const i of [a!, b!, c!]) expect(normals[i]![1]! * inwardY).toBeGreaterThan(0.99);
       }
     }
   }

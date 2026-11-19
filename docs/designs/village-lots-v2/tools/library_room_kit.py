@@ -193,8 +193,9 @@ def bay(kit, f, a, b):
     cant = 0.5
     A, B, C, Dd = (a, 0.0), (a + cant, zb), (b - cant, zb), (b, 0.0)
     # alcove floor, ceiling (3.3), the reveal of the opening
-    S_.poly([(a, 0.0, 0.0), (b, 0.0, 0.0), (C[0], 0.0, zb), (B[0], 0.0, zb)][::-1], FLOOR)
-    S_.poly([(a, 3.3, 0.0), (b, 3.3, 0.0), (C[0], 3.3, zb), (B[0], 3.3, zb)], CEIL)
+    footprint = [A, Dd, C, B]  # counter-clockwise seen from above
+    S_.poly([(x, 0.0, z) for x, z in footprint], FLOOR)
+    S_.poly([(x, 3.3, z) for x, z in reversed(footprint)], CEIL)
     for (p, q) in ((A, B), (B, C), (C, Dd)):
         L = math.dist(p, q)
         d = ((q[0] - p[0]) / L, (q[1] - p[1]) / L)
