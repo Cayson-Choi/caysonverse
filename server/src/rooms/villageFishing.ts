@@ -65,7 +65,7 @@ interface Session {
 }
 
 const BOARD_PER_KIND = 5;
-const FIGHT_SEND_MS = 250;
+const FIGHT_SEND_MS = 150;
 /** The board's day turns over at 04:00 Korean time (design 9.6). */
 const BOARD_TURN_MS = 4 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -346,9 +346,11 @@ export class VillageFishing {
       signal: plan ? plan.signal : null,
       windowOpensInMs: plan ? Math.round(plan.windowOpensAt - now) : null,
       windowClosesInMs: plan ? Math.round(plan.windowClosesAt - now) : null,
-      holdMs: Math.round(fs.holdMs),
-      holdNeedMs: fs.holdNeedMs,
+      holdMs: Math.round(fs.fightProgress * 1000),
+      holdNeedMs: 1000,
       holdDown: fs.holdDown,
+      fightTension: Math.round(fs.fightTension * 1000),
+      lostWhy: fs.lostWhy,
       lastResult: fs.lastResult,
       catch: fish,
       action,

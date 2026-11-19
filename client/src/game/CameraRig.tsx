@@ -70,7 +70,7 @@ import { overviewAllowed } from "./indoorCamera";
 import { createFollowRig, createFollowSpot, noteAreaLimit, stepFollowRig } from "./followRig";
 import { rememberOrbit, restoreOrbit } from "./cameraMemory";
 import { cameraProbe } from "./cameraProbe";
-import { activeBounds, activePickBounds, activeSeats, getActiveMap } from "./activeMap";
+import { activeBounds, activePickBounds, activeSeats, getActiveMap, mapBounds, type ActiveMap } from "./activeMap";
 import { localGlide } from "./seatMotion";
 import { seatApproachGoal, seatUnderTap, warmSeatApproachGoals } from "./seatTap";
 import { isLotSeat } from "@caysonverse/shared/village/benchSeats";
@@ -113,6 +113,7 @@ function showUnreachableHint(): void {
 import { getRemoteSeatIndices } from "./remoteStore";
 
 interface CameraRigProps {
+  map: ActiveMap;
   pose: Pose;
   orbit: Orbit;
   /** The local player's server-confirmed seat (read, never written): a held-back tap-walk checks it. */
@@ -236,7 +237,7 @@ function spread(pointers: Map<number, { x: number; y: number }>): number {
  * All per-frame state lives in the shared `orbit` object, the rig and the module
  * `viewState` (all mutated in place) — never React state.
  */
-export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_FAR, decal = null }: CameraRigProps) {
+export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAMERA_FAR, decal = null }: CameraRigProps) {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
@@ -326,25 +327,10 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     };
   }, []);
 
-  // The tapped chairs' goals (seatTap.ts) worked out ahead, one seat per timer tick, whenever the map's seats change
-  // (entering the village, a house): the first tap on a chair then never runs that search in its pointerup handler.
+  // Prewarm the chairs within this area's bounds. The village and its interiors share one seat list.
   useEffect(() => {
-    let seen: readonly unknown[] | null = null;
-    let cancel = (): void => {};
-    const look = (): void => {
-      const seats = activeSeats();
-      if (seats === seen) return;
-      seen = seats;
-      cancel();
-      cancel = seats.length > 0 ? warmSeatApproachGoals(seats, getActiveMap().geometry.obstacles, activeBounds()) : () => {};
-    };
-    look();
-    const id = window.setInterval(look, 1000);
-    return () => {
-      window.clearInterval(id);
-      cancel();
-    };
-  }, []);
+    if (map.seats) return warmSeatApproachGoals(map.seats, map.geometry.obstacles, mapBounds(map));
+  }, [map]);
 
   useEffect(() => {
     const el = gl.domElement;
@@ -935,8 +921,17 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
             // riding: a click on a seat sits there (busSeatTap), nothing else walks
             if (!busSeatTap(e.clientX, e.clientY)) {
             let generation = clickGeneration();
+            // The pick (a raycast against the whole scene) and the plan run just AFTER this event, on the camera as it is now (the
+            // look-half tap's rule: lookTapWalk): INP "event handlers blocked UI updates" (Vercel Toolbar, 207 ms on a phone) counts the
+            // handler, and the page answers the press first. A key, the stick or another click meanwhile is a take-over (clickGeneration).
+            const cam = camera as PerspectiveCamera;
+            cam.updateMatrixWorld();
+            const snap = new PerspectiveCamera().copy(cam, false);
+            const cx = e.clientX;
+            const cy = e.clientY;
+            clickWork.hold(() => {
             planClick(
-              pickAt(e.clientX, e.clientY),
+              pickAt(cx, cy, snap),
               (plan, provisional) => {
                 // a key, the stick, Esc or a sit while its way round was looked for: the player took over
                 if (clickGeneration() !== generation) return;
@@ -959,8 +954,10 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
                   stopWalk();
                   generation = clickGeneration();
                 },
+                snap,
               },
             );
+            }, 0);
             }
           }
         }

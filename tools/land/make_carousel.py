@@ -253,8 +253,8 @@ S.disc("column_cap", CANOPY - 0.9, CANOPY, 2.35, "cr_gold", 24, 0.05)
 for k in range(12):
     a = (k + 0.5) / 12 * math.tau
     x, z = math.sin(a) * 1.72, -math.cos(a) * 1.72
-    S.box(f"mirror_{k}", (0.95, 5.2, 0.05), (x, DECK + 3.6, z), "cr_mirror", 0.01, 2, rot_y=-math.degrees(a))
-    S.box(f"mirror_frame_{k}", (1.05, 5.3, 0.04), (x * 0.995, DECK + 3.6, z * 0.995), "cr_gold", 0.012, 2, rot_y=-math.degrees(a))
+    S.box(f"mirror_{k}", (0.95, 5.2, 0.05), (x, DECK + 3.6, z), "cr_mirror", 0.01, 2, rot_y=math.degrees(a))
+    S.box(f"mirror_frame_{k}", (1.05, 5.3, 0.04), (x * 0.995, DECK + 3.6, z * 0.995), "cr_gold", 0.012, 2, rot_y=math.degrees(a))
     a2 = k / 12 * math.tau
     S.cyl(f"pilaster_{k}", (math.sin(a2) * 1.75, DECK + 0.7, -math.cos(a2) * 1.75), (math.sin(a2) * 1.75, CANOPY - 0.9, -math.cos(a2) * 1.75), 0.1, 0.1, "cr_gold", 10)
 # the rounding board: a band under the canopy rim, painted panels in gilded frames
@@ -266,15 +266,15 @@ S.disc("band_trim_bottom_in", CANOPY - 1.3, CANOPY - 1.18, 13.2, "cr_gold", 64, 
 for k in range(24):
     a = (k + 0.5) / 24 * math.tau
     x, z = math.sin(a) * 13.2, -math.cos(a) * 13.2
-    S.box(f"panel_{k}", (1.7, 0.78, 0.06), (x, CANOPY - 0.62, z), "cr_cream" if k % 2 else "cr_red", 0.015, 2, rot_y=-math.degrees(a))
-    S.box(f"panel_frame_{k}", (1.84, 0.92, 0.04), (x * 0.998, CANOPY - 0.62, z * 0.998), "cr_gold", 0.02, 2, rot_y=-math.degrees(a))
+    S.box(f"panel_{k}", (1.7, 0.78, 0.06), (x, CANOPY - 0.62, z), "cr_cream" if k % 2 else "cr_red", 0.015, 2, rot_y=math.degrees(a))
+    S.box(f"panel_frame_{k}", (1.84, 0.92, 0.04), (x * 0.998, CANOPY - 0.62, z * 0.998), "cr_gold", 0.02, 2, rot_y=math.degrees(a))
     # a scalloped flap hanging below the band
-    S.ellipsoid(f"scallop_{k}", (math.sin(a) * 13.15, CANOPY - 1.4, -math.cos(a) * 13.15), (0.74, 0.34, 0.14), "cr_gold" if k % 2 else "cr_cream", seg=10, rings=6, rot_y=-math.degrees(a))
+    S.ellipsoid(f"scallop_{k}", (math.sin(a) * 13.15, CANOPY - 1.4, -math.cos(a) * 13.15), (0.74, 0.34, 0.14), "cr_gold" if k % 2 else "cr_cream", seg=10, rings=6, rot_y=math.degrees(a))
 for k in range(24):
     a = (k + 0.5) / 24 * math.tau
     x, z = math.sin(a) * 13.04, -math.cos(a) * 13.04
-    S.box(f"inner_mirror_{k}", (1.5, 0.62, 0.03), (x, CANOPY - 0.62, z), "cr_mirror", 0.01, 2, rot_y=-math.degrees(a))
-    S.box(f"inner_frame_{k}", (1.66, 0.78, 0.03), (x * 1.002, CANOPY - 0.62, z * 1.002), "cr_gold", 0.02, 2, rot_y=-math.degrees(a))
+    S.box(f"inner_mirror_{k}", (1.5, 0.62, 0.03), (x, CANOPY - 0.62, z), "cr_mirror", 0.01, 2, rot_y=math.degrees(a))
+    S.box(f"inner_frame_{k}", (1.66, 0.78, 0.03), (x * 1.002, CANOPY - 0.62, z * 1.002), "cr_gold", 0.02, 2, rot_y=math.degrees(a))
 # the painted ceiling under the canopy: 24 radial wedges in three rows (sky, cream, rose), gilded rafters, a rosette in each panel
 APEX_IN = APEX - 0.55
 
@@ -391,7 +391,7 @@ def skin_body(name, verts, edges, mname, sub=2):
     bpy.ops.object.modifier_apply(modifier="skin")
     bpy.ops.object.modifier_apply(modifier="sub")
     dm = obj.modifiers.new("dec", "DECIMATE")
-    dm.ratio = 0.4 if LOD else 0.42
+    dm.ratio = 0.5 if LOD else 0.6
     bpy.ops.object.modifier_apply(modifier="dec")
     obj.select_set(False)
     obj.data.materials.append(H.M[mname])
@@ -412,18 +412,79 @@ V = [
     (0, 0.4, 1.36, 0.072, 0.085),  # 8 muzzle
 ]
 E = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8)]
-for sx in (-1, 1):
-    n = len(V)
-    x = sx * 0.15
-    V += [
-        (x, -0.28, 0.46, 0.1, 0.1), (x, -0.6, 0.78, 0.07, 0.07), (x, -0.93, 0.7, 0.045, 0.045),  # foreleg: shoulder, knee (raised), fetlock
-        (x * 1.05, -0.3, -0.48, 0.12, 0.12), (x, -0.66, -0.7, 0.07, 0.07), (x, -0.99, -0.5, 0.045, 0.045),  # hind: haunch, hock, fetlock
-    ]
-    E += [(3, n), (n, n + 1), (n + 1, n + 2), (1, n + 3), (n + 3, n + 4), (n + 4, n + 5)]
 skin_body("horse_body", V, E, "horse_paint", 2)
+def catmull(pts, n):
+    """n points along the Catmull-Rom curve through pts (game coords)."""
+    out = []
+    m = len(pts) - 1
+    for i in range(n):
+        u = i / (n - 1) * m
+        k = min(int(u), m - 1)
+        t = u - k
+        p0, p1, p2, p3 = pts[max(k - 1, 0)], pts[k], pts[k + 1], pts[min(k + 2, m)]
+        out.append(tuple(0.5 * ((2 * p1[j]) + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t * t + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t ** 3) for j in range(len(p1))))
+    return out
+
+
+def loft(name, pts, radii, side, mname, sides=14, groove=0.0, k=6, twist=0.0, tip=True):
+    """One carved mass along a path: an elliptical section (rs across `side`, rn along the other axis) per point, a groove ridge pattern (`k` strands, spiralling by `twist`)
+    in the surface, the far end closed to a soft rounded tip. pts/radii in game coords; radii[i] = (rs, rn)."""
+    sd = Vector(side).normalized()
+    bm = bmesh.new()
+    rings = []
+    n = len(pts)
+    for i, p in enumerate(pts):
+        pa = Vector(pts[max(i - 1, 0)])
+        pb = Vector(pts[min(i + 1, n - 1)])
+        T = (pb - pa).normalized()
+        S = (sd - T * sd.dot(T)).normalized()
+        N = T.cross(S)
+        rs, rn = radii[i]
+        s = i / (n - 1)
+        ring = []
+        for j in range(sides):
+            th = j / sides * math.tau
+            g = 1.0 + groove * math.cos(k * th + twist * s * math.tau) * (0.35 + 0.65 * min(1.0, s * 3.0)) * (1.0 - 0.7 * max(0.0, (s - 0.85) / 0.15))
+            c = Vector(p) + S * (rs * math.cos(th) * g) + N * (rn * math.sin(th) * g)
+            ring.append(bm.verts.new(B(c.x, c.y, c.z)))
+        rings.append(ring)
+    for i in range(n - 1):
+        for j in range(sides):
+            bm.faces.new([rings[i][j], rings[i][(j + 1) % sides], rings[i + 1][(j + 1) % sides], rings[i + 1][j]])
+    bm.faces.new(rings[0][::-1])
+    if tip:
+        e = Vector(pts[-1]) + (Vector(pts[-1]) - Vector(pts[-2])).normalized() * radii[-1][1] * 0.8
+        ev = bm.verts.new(B(e.x, e.y, e.z))
+        for j in range(sides):
+            bm.faces.new([rings[-1][j], rings[-1][(j + 1) % sides], ev])
+    else:
+        bm.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    obj = H._link(name, bm)
+    return H._finish(obj, mname)
+
+
+def limb(name, joints, mname="horse_paint"):
+    """One carved, tapered leg: a single smooth loft through the joints (x, y, z, radius), so the knee/hock and fetlock swell out of one surface (no seams) and the cannon runs slim."""
+    n = 7 if LOD else 13
+    cp = catmull(joints, n)
+    return loft(name, [c[:3] for c in cp], [(c[3] * 0.92, c[3] * 1.08) for c in cp], (1, 0, 0), mname, 6 if LOD else 10, tip=False)
+
+
+HOOF_BOTTOM = -0.92  # the lowest point of every hoof below the saddle (m); carousel.ts HORSE_HOOF_DROP must match
 for sx in (-1, 1):
-    H.cyl(f"fore_hoof_{sx}", (sx * 0.15, -0.93, 0.7), (sx * 0.15, -1.07, 0.7), 0.055, 0.075, "horse_gold", 14)
-    H.cyl(f"hind_hoof_{sx}", (sx * 0.15, -0.99, -0.5), (sx * 0.15, -1.13, -0.5), 0.055, 0.075, "horse_gold", 14)
+    x = sx * 0.165
+    # foreleg, raised and bent in the carousel stride: broad forearm, carved knee, slim cannon, fetlock, pastern, gold-capped hoof
+    limb(f"fore_{sx}", [(x, -0.24, 0.46, 0.12), (x, -0.36, 0.6, 0.1), (x, -0.46, 0.7, 0.07), (x, -0.52, 0.745, 0.07), (x, -0.57, 0.745, 0.05), (x, -0.66, 0.71, 0.04), (x, -0.74, 0.68, 0.038), (x, -0.77, 0.68, 0.052), (x, -0.8, 0.7, 0.042), (x, -0.83, 0.7, 0.045)])
+    if not LOD:
+        H.cyl(f"fore_cuff_{sx}", (x, -0.775, 0.685), (x, -0.8, 0.7), 0.058, 0.054, "horse_gold", 12)
+    H.cyl(f"fore_hoof_{sx}", (x, -0.8, 0.7), (x, HOOF_BOTTOM, 0.7), 0.054, 0.078, "horse_gold", 10 if LOD else 12)
+    # hind leg: heavy thigh, backward hock, slim cannon, fetlock, hoof
+    limb(f"hind_{sx}", [(x * 1.05, -0.28, -0.46, 0.13), (x, -0.4, -0.56, 0.105), (x, -0.52, -0.68, 0.075), (x, -0.58, -0.73, 0.072), (x, -0.64, -0.7, 0.05), (x, -0.74, -0.62, 0.04), (x, -0.8, -0.56, 0.038), (x, -0.82, -0.55, 0.054), (x, -0.85, -0.55, 0.046), (x, -0.87, -0.55, 0.046)])
+    if not LOD:
+        H.ellipsoid(f"hind_thigh_{sx}", (x * 1.12, -0.26, -0.5), (0.115, 0.2, 0.2), "horse_paint", rot_x=25.0, seg=8, rings=5)
+        H.cyl(f"hind_cuff_{sx}", (x, -0.82, -0.55), (x, -0.85, -0.55), 0.06, 0.056, "horse_gold", 12)
+    H.cyl(f"hind_hoof_{sx}", (x, -0.84, -0.55), (x, HOOF_BOTTOM, -0.55), 0.056, 0.08, "horse_gold", 10 if LOD else 12)
     # ears (pricked), eyes with a gold lid, nostril
     H.ellipsoid(f"ear_{sx}", (sx * 0.062, 0.79, 0.96), (0.03, 0.058, 0.024), "horse_paint", rot_x=-14.0, seg=10, rings=8)
     if not LOD:
@@ -440,19 +501,27 @@ if not LOD:
     H.ellipsoid("jaw", (0, 0.335, 1.31), (0.06, 0.04, 0.085), "horse_paint", rot_x=-10.0, seg=12, rings=8)
 for k in range(0 if LOD else 5):
     H.ellipsoid(f"tooth_{k}", (-0.04 + k * 0.02, 0.366, 1.405), (0.009, 0.014, 0.008), "horse_tooth", seg=5, rings=4)
-# the carved mane: flowing locks that run down the crest, curling to one side at the ends
-for k in range(3 if LOD else 6):
-    f = k / (2 if LOD else 5)
-    y0, z0 = 0.62 - f * 0.22, 0.95 - f * 0.3
-    side = 0.06 + 0.02 * (k % 2)
-    pts = [(0.0, y0 + 0.12, z0 + 0.04), (side * 0.5, y0 + 0.07, z0 - 0.05), (side, y0 - 0.06, z0 - 0.14), (side * 1.6, y0 - 0.16, z0 - 0.15), (side * 1.4, y0 - 0.2, z0 - 0.1)]
-    H.tube(f"mane_{k}", pts, 0.05 - 0.01 * f, "horse_mane", 10, taper_end=0.35)
+# the carved mane: ONE flowing mass down the crest (grooved into strands), swept to one side, ending in a soft curl
+NM = 10 if LOD else 18
+mane_pts = catmull([(0.0, 0.84, 0.88), (0.02, 0.7, 0.8), (0.05, 0.5, 0.67), (0.08, 0.32, 0.54), (0.11, 0.17, 0.44), (0.15, 0.08, 0.4), (0.19, 0.04, 0.44)], NM)
+mane_r = []
+for i in range(NM):
+    s_ = i / (NM - 1)
+    body = 0.045 + 0.04 * math.sin(math.pi * min(1.0, s_ * 1.15))
+    mane_r.append((body, 0.062 + 0.05 * math.sin(math.pi * min(1.0, s_ * 1.1))))
+loft("mane", mane_pts, mane_r, (1, 0, 0), "horse_paint", 8 if LOD else 16, groove=0.2, k=4, twist=0.6)
 if not LOD:
-    H.tube("forelock", [(0, 0.8, 1.08), (0, 0.84, 1.17), (0, 0.76, 1.24), (0.03, 0.64, 1.25)], 0.04, "horse_mane", 8, taper_end=0.3)
-# the tail: several flowing locks swept back and down
-for k in range(2 if LOD else 4):
-    sx = (k - (0.5 if LOD else 1.5)) * 0.1
-    H.tube(f"tail_{k}", [(0, 0.0, -0.72), (sx * 0.5, 0.0, -0.95), (sx * 1.4, -0.2, -1.18), (sx * 2.0, -0.55, -1.25), (sx * 2.4, -0.86, -1.16)], 0.07 - abs(k - 1.5) * 0.012, "horse_mane", 10, taper_end=0.25)
+    loft("forelock", catmull([(0, 0.8, 1.06), (0, 0.86, 1.15), (0, 0.8, 1.23), (0.03, 0.66, 1.26)], 8), [(0.04 - 0.012 * i / 7, 0.045 - 0.013 * i / 7) for i in range(8)], (1, 0, 0), "horse_paint", 8, groove=0.15, k=4)
+# the tail: ONE carved mass from the dock, flowing back and down in a gentle S and fanning slightly, grooved into strands, ending in a soft tip
+NT = 9 if LOD else 16
+tail_pts = catmull([(0, 0.02, -0.66), (0, 0.04, -0.9), (0.01, -0.08, -1.1), (0.03, -0.3, -1.22), (0.035, -0.52, -1.24), (0.02, -0.7, -1.18), (0.0, -0.8, -1.12)], NT)
+tail_r = []
+for i in range(NT):
+    s_ = i / (NT - 1)
+    tip_ = 1.0 if s_ < 0.78 else math.sqrt(max(0.02, 1 - ((s_ - 0.78) / 0.22) ** 2) * 0.9 + 0.1)
+    tail_r.append(((0.075 + 0.06 * math.sin(math.pi * min(1.0, s_ * 0.85))) * tip_, (0.06 + 0.035 * math.sin(math.pi * s_)) * tip_))
+loft("tail", tail_pts, tail_r, (1, 0, 0), "horse_paint", 12 if LOD else 24, groove=0.2, k=4 if LOD else 6, twist=0.9)
+H.cyl("tail_dock", (0, 0.03, -0.74), (0, 0.04, -0.82), 0.096, 0.088, "horse_gold", 14)
 # tack: indigo blanket with gold braid, a deep red saddle with high cantle and pommel, gold, roses and jewels
 H.ellipsoid("blanket", (0, 0.04, 0.0), (0.33, 0.06, 0.4), "horse_indigo", seg=16, rings=8)
 if not LOD:

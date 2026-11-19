@@ -145,10 +145,14 @@ export function resetRideCamera(): void {
 }
 
 function spring(x: number, v: number, target: number, dt: number, omega: number, zeta: number): [number, number] {
-  // semi-implicit damped spring toward `target`
-  const a = -2 * zeta * omega * v - omega * omega * (x - target);
-  const nv = v + a * dt;
-  return [x + nv * dt, nv];
+  // A 100 ms frame destabilizes the head spring. Use smaller integration steps on slow frames.
+  const steps = Math.max(1, Math.ceil(dt * 30));
+  const h = dt / steps;
+  for (let i = 0; i < steps; i++) {
+    v += (-2 * zeta * omega * v - omega * omega * (x - target)) * h;
+    x += v * h;
+  }
+  return [x, v];
 }
 
 const hash = (n: number): number => {

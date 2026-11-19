@@ -11,7 +11,7 @@ import type { Appearance } from "@caysonverse/shared/appearance";
 import { VillageMsg } from "@caysonverse/shared/village/messages";
 import { SERVER_URL } from "./endpoint";
 import { joinErrorNotice } from "./reconnectPolicy";
-import { attachResilience } from "./resilience";
+import { confirmVillageEntry } from "./resilience";
 import { readyDeviceKey } from "../village/memorial/deviceKey";
 
 /** Options of a village (케이슨 마을) join: validated server-side against the join contract (no admin code). */
@@ -76,10 +76,7 @@ export async function joinVillage(params: VillageJoinParams): Promise<Room<World
     throw new Error(joinErrorNotice(err));
   }
 
-  setRoom(joined);
-  attachResilience(joined);
-  await waitForSelf(joined);
-  return joined;
+  return confirmVillageEntry(joined, params);
 }
 
 /**
@@ -207,21 +204,22 @@ function hasSelf(r: SelfWaitable): boolean {
  * arrives. Wait (briefly) for our player so the caller reads the real spawn, not
  * a default. Exported so the resilience drivers reuse the exact same gate.
  */
-export function waitForSelf(r: SelfWaitable): Promise<void> {
-  if (hasSelf(r)) return Promise.resolve();
+export function waitForSelf(r: SelfWaitable, closed?: AbortSignal): Promise<void> {
+  if (closed?.aborted || hasSelf(r)) return Promise.resolve();
   return new Promise((resolve) => {
-    const done = () => {
-      if (!hasSelf(r)) return;
-      r.onStateChange.remove(done);
+    const finish = () => {
+      r.onStateChange.remove(onState);
+      closed?.removeEventListener("abort", finish);
       clearTimeout(timer);
       resolve();
     };
+    const onState = () => {
+      if (hasSelf(r)) finish();
+    };
     // Fallback so a missed patch never strands the join promise.
-    const timer = setTimeout(() => {
-      r.onStateChange.remove(done);
-      resolve();
-    }, 2000);
-    r.onStateChange(done);
+    const timer = setTimeout(finish, 2000);
+    r.onStateChange(onState);
+    closed?.addEventListener("abort", finish);
   });
 }
 

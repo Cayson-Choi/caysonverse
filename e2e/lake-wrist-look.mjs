@@ -1,8 +1,8 @@
 /**
- * e2e/lake-grip-look.mjs - the angler's hand and arm on the rod (owner 2026-11-19: "낚시대를 잡은 손이 어색", "팔과 손이 많이 꺾여"): sits like lake-catch,
+ * e2e/lake-wrist-look.mjs - the angler's wrist on the rod (owner 2026-11-19: "손목이 꺾인 것 같아"): sits like lake-catch,
  * then close-ups of the right hand from the side, behind and in front while waiting, casting, and on a bite; a second player looks at the same angler
  * (the other player's view). Screenshots only (<out>/<tag>-*.png), plus the rod's grip / forearm angles measured in the scene.
- *   CV_CLIENT_URL=http://localhost:5621 node e2e/lake-grip-look.mjs --out=<folder> [--device=pc|phone]
+ *   CV_CLIENT_URL=http://localhost:5621 node e2e/lake-wrist-look.mjs --out=<folder> [--device=pc|phone]
  */
 import { join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -24,7 +24,7 @@ const FRAMES = opt("frames", "1") === "1";
 const FIRST_PERSON = opt("fp", "0") === "1";
 const caught = [];
 const tag = `${dev}-${time.slice(11, 13)}`;
-const run = createRun("lake-grip-" + tag);
+const run = createRun("lake-wrist-" + tag);
 run.evidence = OUT;
 mkdirSync(OUT, { recursive: true });
 run.allow("D3D X3595 (village shaders, baseline)", /X3595/);
@@ -149,42 +149,30 @@ const orbitTo = (yaw, pitch, dist) =>
     const o = window.__cvOrbitLive();
     o.yaw = yaw; o.pitch = pitch; o.distance = dist;
   }, [yaw, pitch, dist]);
-const WHAT = opt("what", "hand");
-if (WHAT === "chair") {
-  // the seated avatar and the chair, from behind, the side, the front quarter and above (arm rests and backrest clearance)
-  await run.step("the chair and the sitter", async () => {
-    await sleep(1500);
-    const base = await p.page.evaluate(() => window.__cvOrbitLive().yaw);
-    for (const [name, dy, pitch, dist] of [["behind", 0, 0.12, 4.0], ["side", Math.PI / 2, 0.05, 4.0], ["front34", Math.PI * 0.75, 0.12, 4.0], ["above", 0.4, 0.9, 4.0]]) {
-      await orbitTo(base + dy, pitch, dist);
-      await sleep(900);
-      await shot(`chair-${name}`);
+const setRelax = (v) => p.page.evaluate((v) => { window.__cvWristRelax = v; }, v);
+/** before (relax 0 = the clips as they are) and after (the shipped amount), from the side and the front, at the normal camera and a closer one. */
+const pair = async (name, base) => {
+  for (const [vname, dy, pitch, dist] of [["side", Math.PI / 2, 0.35, 3.4], ["side-close", Math.PI / 2, 0.35, 1.6], ["front-close", Math.PI, 0.35, 1.6]]) {
+    await orbitTo(base + dy, pitch, dist);
+    for (const [which, amt] of [["before", 0], ["after", undefined]]) {
+      await setRelax(amt);
+      await sleep(700);
+      await handShot(`${name}-${vname}-${which}`);
     }
-  });
-  const code0 = run.finish();
-  await browser.close();
-  process.exit(code0);
-}
-await run.step("the hand on the rod, close up", async () => {
+  }
+};
+await run.step("the wrist on the rod: before and after", async () => {
   await sleep(1500);
   const base = await p.page.evaluate(() => window.__cvOrbitLive().yaw);
-  for (const [name, dy, pitch, dist] of [["side", Math.PI / 2, 0.35, 2.3], ["behind", 0, 0.5, 2.3], ["front", Math.PI, 0.35, 2.3], ["above", Math.PI / 2, 1.0, 2.3]]) {
-    await orbitTo(base + dy, pitch, dist);
-    await sleep(900);
-    await handShot(`idle-${name}`);
-  }
-  // the cast and the bite
-  await orbitTo(base + Math.PI / 2, 0.35, 2.3);
+  await pair("idle", base);
   await press3("던지기");
-  for (let k = 0; k < 4; k++) { await sleep(250); await handShot(`cast-${k}`); }
   const bite = await waitPhase(["bite"], 40000);
   if (bite) {
     const bb = await buttonSoon((x) => x?.label === "당겨요!");
     if (bb) await tapButton(bb);
-    for (let k = 0; k < 3; k++) { await sleep(300); await handShot(`strike-${k}`); }
-    const f = await waitPhase(["fighting", "lifting"], 6000);
-    await sleep(800);
-    await handShot("fight-or-lift");
+    const f = await waitPhase(["fighting"], 6000);
+    run.check("a fight started", !!f, f);
+    if (f) await pair("fight", base);
   }
 });
 

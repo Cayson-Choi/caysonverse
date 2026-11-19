@@ -1,7 +1,6 @@
 /**
  * The own rider of the 하늘 등불 바퀴: first-person camera inside the gondola. The eye sits 0.86 m over the cushion; the rider faces SOUTH, out of the
- * wheel's plane (the rim trusses are behind). The cabin hangs from its pivot and swings with the wheel's acceleration (a few degrees of roll), so the
- * horizon tips a little as the wheel starts and stops. Free look is the first-person drag. Comfort scales the swing.
+ * wheel's plane (the rim trusses are behind). The wheel turns steadily and the cabin hangs level: the horizon never tips. Free look is the first-person drag.
  */
 import { PerspectiveCamera } from "three";
 import { wheelAt, wheelSeatPose, type WheelSeatPose, type WheelState } from "@caysonverse/shared/land/wheel";
@@ -31,7 +30,7 @@ export function stepWheelCamera(camera: PerspectiveCamera, _dt: number, lookYaw:
   camera.position.set(ex, ey, P.z);
   const heading = Math.atan2(-P.fx, -P.fz);
   // the rider looks south, along +z: a swing about the world z axis is a ROLL of the view (about its own axis, the opposite way round)
-  const roll = -P.sway * k;
+  const roll = 0; // the cabin hangs level: the horizon never tips
   const micro = st.status === "riding" ? Math.sin(wall / 1300) * 0.003 * k : 0;
   camera.rotation.order = "YXZ";
   camera.rotation.set(-lookPitch + micro, heading + Math.max(-1.9, Math.min(1.9, lookYaw)), roll);

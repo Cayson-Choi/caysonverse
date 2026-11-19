@@ -11,10 +11,12 @@
 // The rod folds to 1.15 m for walking and opens to 3.6 m over 0.6 s when the angler sits.
 
 import { AnimationMixer, LoopOnce, LoopRepeat, Object3D, Quaternion, Vector3, type AnimationAction, type AnimationClip, type Camera } from "three";
-import { FISHING_CLIPS, GRIP_OFFSET, ROD_AXIS_R, ROD_GLB_AXIS, type FishingClip } from "@caysonverse/shared/village/fishingAnims";
+import { relaxWrist, restoreWrist, WRIST_RELAX } from "./wristRelax";
+import { FISHING_CLIPS, GRIP_OFFSET, ROD_AXIS_R, type FishingClip } from "@caysonverse/shared/village/fishingAnims";
 import type { BuiltAvatar } from "../game/characterAvatar";
 import { fishingAnimsNow, loadFishingAnims, withoutRightArm } from "./fishAnims";
 import { elapsedSince, readFishView } from "./lakeNet";
+import { reelTension } from "./fishFightView";
 import { FISH_PHASE, emptyFishView, type FishView } from "./lakeProtocol";
 import { createRod, lakeGearReady, loadLakeGear, type Rod } from "./lakeProps";
 import { createCatchRig, fpNarrow } from "./catchRig";
@@ -26,8 +28,6 @@ const FADE = 0.22;
 /** The rod opens in this long (design 6.1). */
 const UNFOLD_S = 0.6;
 const Y = new Vector3(0, 1, 0);
-/** While a rod is held the hands are drawn this much smaller (both, so they match): a mitten ball the size of the rod handle's grip, not a ball it is skewered through. */
-export const GRIP_HAND_SCALE = 0.7;
 
 export interface RigContext {
   /** remoteSeat's mode: `up` standing, `sitting`, `seated`, `standing` (getting up). */
@@ -156,7 +156,11 @@ export function rodBend(view: FishView, t: number): number {
       return 0.5;
     case FISH_PHASE.fighting:
       // held: bent hard under the load; let go: the tension drops (the fish takes line)
-      return (view.reel & 128) !== 0 ? 0.82 + 0.14 * Math.sin(t * 6.5) + 0.04 * Math.sin(t * 17) : 0.42 + 0.12 * Math.sin(t * 3.1);
+      {
+        // the rod bends with the line's tension (Player.fishReel), a little more while the angler pulls; it trembles faster when it is tight
+        const tn = reelTension(view.reel);
+        return Math.min(1, 0.28 + 0.62 * tn + ((view.reel & 128) !== 0 ? 0.1 : 0) + 0.05 * Math.sin(t * (5 + 14 * tn)));
+      }
     case FISH_PHASE.lifting:
       // reeled in hard, then the fish's weight on the line as it swings, then the hand takes it
       if (t < REEL_S) return 0.72 + 0.14 * Math.sin(t * 9.5) + 0.06 * Math.sin(t * 23);
@@ -194,6 +198,8 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
   const q = new Quaternion();
   let handR: Object3D | null = null;
   let handL: Object3D | null = null;
+  let wristAmt = 0;
+  const rodQ0 = new Quaternion();
 
   const ensureActions = (): boolean => {
     const clips = fishingAnimsNow();
@@ -220,10 +226,11 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     handR = handR ?? bone(root, "handslot.r");
     if (!handR) return;
     rod = createRod();
-    // the stand-in points along +Y; lake_gear.glb's rod is authored along ROD_GLB_AXIS: turned onto ROD_AXIS_R (along the forearm,
-    // the wrist only slightly cocked: owner 2026-11-19, "팔과 손이 꺾여 있어") and set so the hand holds it ROD_HAND_AT along its axis
-    rod.root.quaternion.copy(q.setFromUnitVectors(rod.real ? new Vector3(...ROD_GLB_AXIS).normalize() : Y, new Vector3(...ROD_AXIS_R).normalize()));
+    // the stand-in points along +Y; lake_gear.glb's rod is authored along ROD_AXIS_R in the slot's frame already
+    if (rod.real) rod.root.quaternion.identity();
+    else rod.root.quaternion.copy(q.setFromUnitVectors(Y, new Vector3(...ROD_AXIS_R).normalize()));
     rod.root.position.set(GRIP_OFFSET[0], GRIP_OFFSET[1], GRIP_OFFSET[2]);
+    rodQ0.copy(rod.root.quaternion);
     // the held item goes to the shop: the rod hangs from the proxy of the shrunk hand slot
     if (hasItem && !stow) {
       stow = stowHandItem(handR);
@@ -232,10 +239,6 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     const host = stow ? stow.proxy : handR;
     host.add(rod.root);
     rodHost = host;
-    // smaller hands: the rod and the slot are children of hand.r, so the rod is scaled back to its own size
-    for (const n of ["hand.r", "hand.l"]) bone(root, n)?.scale.setScalar(GRIP_HAND_SCALE);
-    rod.root.scale.setScalar(1 / GRIP_HAND_SCALE);
-    rod.root.position.multiplyScalar(1 / GRIP_HAND_SCALE);
     unregisterTip = registerRodTip(sid, rod.tip);
   };
   const detachRod = (): void => {
@@ -243,7 +246,8 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     unregisterTip?.();
     unregisterTip = null;
     rodHost?.remove(rod.root);
-    for (const n of ["hand.r", "hand.l"]) bone(root, n)?.scale.setScalar(1);
+    restoreWrist(root);
+    wristAmt = 0;
     rod.dispose();
     rod = null;
     unfold = 0;
@@ -348,6 +352,18 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
         rod.setUnfold(unfold);
         rod.setBend(atSpot ? rodBend(view, t) : 0);
       }
+      // the wrist (owner 2026-11-19): the clips turn the hand far off the forearm; eased back after the mixer, the rod keeps its world direction
+      if (rod) {
+        wristAmt += ((atSpot && seated ? ((globalThis as { __cvWristRelax?: number }).__cvWristRelax ?? WRIST_RELAX) : 0) - wristAmt) * Math.min(1, delta * 10);
+        if (wristAmt < 1e-3) {
+          if (wristAmt > 0) restoreWrist(root);
+          wristAmt = 0;
+          rod.root.quaternion.copy(rodQ0);
+        } else {
+          const fix = relaxWrist(root, wristAmt, rodHost);
+          if (fix) rod.root.quaternion.copy(rodQ0).premultiply(fix);
+        }
+      }
       // the fish (lake v2, catchRig.ts): under the water, out on the line, into the hand, taken in the arms, let go
       handR = handR ?? bone(root, "handslot.r");
       handL = handL ?? bone(root, "handslot.l");
@@ -384,7 +400,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
           const nk = fpNarrow(fpCam);
           const grip = fpV.grip.copy(cp).addScaledVector(rt, 0.24 * nk).addScaledVector(up, -0.32).addScaledVector(fw, 0.3);
           const aim = fpV.aim.copy(cp).addScaledVector(rt, 0.62 * nk).addScaledVector(up, 1.0).addScaledVector(fw, 3.0).sub(grip).normalize();
-          const axis = fpRod.real ? fpV.axis.set(ROD_GLB_AXIS[0], ROD_GLB_AXIS[1], ROD_GLB_AXIS[2]).normalize() : fpV.axis.set(0, 1, 0);
+          const axis = fpRod.real ? fpV.axis.set(ROD_AXIS_R[0], ROD_AXIS_R[1], ROD_AXIS_R[2]).normalize() : fpV.axis.set(0, 1, 0);
           fpV.q.setFromUnitVectors(axis, aim);
           fpRod.root.matrix.compose(grip, fpV.q, fpV.one);
           fpRod.root.matrixWorldNeedsUpdate = true;

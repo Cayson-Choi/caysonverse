@@ -270,7 +270,7 @@ export function peekClickRing(): Readonly<ClickTarget> | null {
 }
 
 /** Drop the walk's target only (it arrived, or made no progress): a tap waiting out its double-tap wait keeps its ring. */
-function endWalk(): void {
+export function endWalk(): void {
   state.target = null;
   state.viaIndex = 0;
   state.anchored = false;
@@ -312,14 +312,14 @@ export function dirToIntent(dir: GroundVec, cameraYaw: number): Intent {
 }
 
 /**
- * Per-frame steering. Returns the unit world-direction from (px, pz) toward the
- * target, or null when idle — clearing the target first on arrival or on a
+ * Per-frame steering. Returns the unit world-direction and remaining distance to the next waypoint
+ * (or the destination), or null when idle — clearing the target first on arrival or on a
  * no-progress verdict (net displacement under STUCK_MIN_DIST across the last
  * STUCK_WINDOW_SEC — pushing a wall). The caller feeds the direction through
  * dirToIntent so the regular movement path does the actual moving. clickPlan.ts
  * simulateWalk replays exactly this rule to predict where a walk stops.
  */
-export function stepClickMove(px: number, pz: number, dt: number): GroundVec | null {
+export function stepClickMove(px: number, pz: number, dt: number): (GroundVec & { remaining: number }) | null {
   const target = state.target;
   if (!target) return null;
 
@@ -365,5 +365,5 @@ export function stepClickMove(px: number, pz: number, dt: number): GroundVec | n
   const dx = aim.x - px;
   const dz = aim.z - pz;
   const len = Math.hypot(dx, dz); // ≥ VIA_REACH (a corner not reached) or ARRIVE_DIST here, never 0
-  return { x: dx / len, z: dz / len };
+  return { x: dx / len, z: dz / len, remaining: len };
 }

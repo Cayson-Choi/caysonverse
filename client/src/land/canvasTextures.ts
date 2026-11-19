@@ -70,36 +70,6 @@ export function gateSignTexture(): CanvasTexture {
   return t;
 }
 
-/** The queue hall's name board over the entrance: "줄 서는 곳" in cream on indigo with a gold rim and a star at each end. */
-export function queueBoardTexture(): CanvasTexture {
-  const c = document.createElement("canvas");
-  c.width = 1024;
-  c.height = 132;
-  const ctx = c.getContext("2d")!;
-  const grd = ctx.createLinearGradient(0, 0, 0, 132);
-  grd.addColorStop(0, "#4B4FD8");
-  grd.addColorStop(1, "#2f3399");
-  ctx.fillStyle = grd;
-  ctx.fillRect(0, 0, 1024, 132);
-  ctx.strokeStyle = "#f2c14e";
-  ctx.lineWidth = 6;
-  ctx.strokeRect(8, 8, 1008, 116);
-  star(ctx, 78, 66, 40, 17);
-  star(ctx, 946, 66, 40, 17);
-  ctx.fillStyle = "#f3efea";
-  ctx.font = "bold 70px 'Jua', 'Malgun Gothic', 'Noto Sans KR', sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("별똥별 급행  ·  줄 서는 곳", 512, 56);
-  ctx.font = "26px 'Jua', 'Malgun Gothic', 'Noto Sans KR', sans-serif";
-  ctx.fillStyle = "#f2c14e";
-  ctx.fillText("SHOOTING STAR EXPRESS  ·  QUEUE", 512, 106);
-  const t = new CanvasTexture(c);
-  t.colorSpace = SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
-}
-
 /** A small hanging shop board (canvas, 512 x 256): `title` large, `sub` under it, on `base` with a gold rim. For the park's booths. */
 export function boothBoardTexture(title: string, sub: string, base: [string, string] = ["#4B4FD8", "#2f3399"]): CanvasTexture {
   const c = document.createElement("canvas");

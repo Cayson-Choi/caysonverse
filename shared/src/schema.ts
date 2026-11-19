@@ -85,7 +85,7 @@ export class Player extends Schema {
   @type("uint32") fishAt = 0; // when this stage began: the server clock (ServerTime ms) modulo 2^32, so every screen is in step
   // lake v2 (owner 2026-11-17: the fish dragged in while the line is pulled): the big fish's fight on every screen — bit 7 = the angler
   // holds (reels), bits 0..6 = how far it is brought in (0..100). Only while fighting; sent at most every FIGHT_SEND_MS and on presses.
-  @type("uint8") fishReel = 0;
+  @type("uint16") fishReel = 0;
   // 케이슨랜드 (design docs/designs/caysonland/DESIGN.md): -1 = not on a ride; 0..11 = the seat of the 별똥별 급행 (shared/land/coaster.ts) the
   // player rides. Appended at the END of the schema (older clients ignore an unknown trailing field). The ride itself is not state: every
   // screen computes the train from the wall clock (coasterAt), so only "who sits where" travels. Written only by villageCoaster.ts.

@@ -15,6 +15,7 @@ import { mkdirSync } from "node:fs";
 import { DESKTOP, PHONE, REPO, createRun, launchBrowser, openPlayer, pos, press, sleep, touchDown, touchUp, visibleButtons, walkAndWait, layoutReport } from "./lib/common.mjs";
 import { joinVillage } from "./lib/village.mjs";
 import { bigButton, waitButton } from "./lib/lakeMock.mjs";
+import { startFightAngler } from "./lib/lakeFight.mjs";
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => (args.find((a) => a.startsWith(`--${name}=`)) ?? `--${name}=${fallback}`).slice(name.length + 3);
@@ -176,23 +177,17 @@ async function oneCast(n) {
   await once("hooked", "10-hooked");
   const next = await waitPhase(["lifting", "fighting"], 2000);
   if (next?.name === "fighting") {
-    const hb = await waitButton(p, "꾹 누르고 있어요", 3000);
-    run.check(`cast ${n}: a big fish asks to be held`, !!hb, hb);
+    const hb = await waitButton(p, "당기세요", 3000);
+    run.check(`cast ${n}: a big fish asks to be pulled (the prompt says 당기세요)`, !!hb, hb);
     await shot("14-fight-before");
     if (hb) {
-      const cx = hb.x + hb.w / 2;
-      const cy = hb.y + hb.h / 2;
-      if (touch) await touchDown(p, cx, cy);
-      else {
-        await p.page.mouse.move(cx, cy);
-        await p.page.mouse.down();
-      }
+      // the fight is a pull / release rhythm: the scripted angler does what the prompt says (lib/lakeFight.mjs)
+      const angler = startFightAngler(p, { touch });
       await sleep(1200);
       await shot("15-fighting");
-      const netting = await waitPhase(["lifting", "landed"], 9000);
-      if (touch) await touchUp(p);
-      else await p.page.mouse.up();
-      run.check(`cast ${n}: holding brought the fish in (lifted out on the line: no net since lake v2)`, !!netting, netting);
+      const netting = await waitPhase(["lifting", "landed", "missed"], 40000);
+      await angler.stop();
+      run.check(`cast ${n}: following the prompt (pull / let go) brought the fish in (lifted out on the line)`, netting?.name === "lifting" || netting?.name === "landed", netting);
       await sleep(700);
       await shot("16-lifting-big");
     }

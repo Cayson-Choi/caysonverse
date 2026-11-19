@@ -46,7 +46,7 @@ describe("the one big button (design 7.2)", () => {
       [FISH_PHASE.bite, "당겨요!", "alert", true],
       [FISH_PHASE.hooked, "올리는 중…", "wait", false],
       [FISH_PHASE.lifting, "올리는 중…", "wait", false],
-      [FISH_PHASE.fighting, "꾹 누르고 있어요", "hold", true],
+      [FISH_PHASE.fighting, "당기세요", "hold", true],
       [FISH_PHASE.landed, "잡았어요!", "done", false],
       [FISH_PHASE.releasing, "놓아주는 중…", "wait", false],
       [FISH_PHASE.missed, "놓쳤어요…", "wait", false],

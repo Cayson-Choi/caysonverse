@@ -26,13 +26,16 @@ describe("lot_temple_hall.glb sacred props (design 11.2, contract 11)", () => {
   const unit = villageLot("lot_temple").units[0]!;
   const spec = LOT_INTERIORS.find((i) => i.unit === "lot_temple_hall")!;
 
-  it("marks the 본존불, the two 협시보살 (the right one mirrored) and the 후불탱화, each with its PC and phone file on disk", () => {
+  it("marks the 본존불 and its 광배, the two 협시보살 (the right one mirrored), the 후불탱화 and the two 족자 (the right one mirrored), each with its PC and phone file on disk", () => {
     const sac = extras.sacred ?? [];
     expect(sac.map((s) => s.node).sort()).toEqual([
+      "lotart__lot_temple_hall_scroll_l",
+      "lotart__lot_temple_hall_scroll_r",
       "lotart__lot_temple_hall_taenghwa",
       "lotstatue__lot_temple_hall_bodhisattva_l",
       "lotstatue__lot_temple_hall_bodhisattva_r",
       "lotstatue__lot_temple_hall_buddha",
+      "lotstatue__lot_temple_hall_buddha_halo",
     ]);
     for (const s of sac) {
       for (const f of [s.file, s.phone]) expect(fs.existsSync(path.join(LOTS, f)), f).toBe(true);
@@ -40,19 +43,35 @@ describe("lot_temple_hall.glb sacred props (design 11.2, contract 11)", () => {
       expect(n, s.node).toBeDefined();
       expect((n.scale?.[0] ?? 1) < 0, s.node).toBe(s.mirrorX);
     }
-    expect(sac.filter((s) => s.mirrorX).map((s) => s.node)).toEqual(["lotstatue__lot_temple_hall_bodhisattva_r"]);
+    expect(sac.filter((s) => s.mirrorX).map((s) => s.node).sort()).toEqual(["lotart__lot_temple_hall_scroll_r", "lotstatue__lot_temple_hall_bodhisattva_r"]);
+    // the 광배 stands at the 본존불's own node (one place, two files)
+    const at = (name: string) => g.nodes!.find((q) => q.name === name)!.translation!;
+    expect(at("lotstatue__lot_temple_hall_buddha_halo")).toEqual(at("lotstatue__lot_temple_hall_buddha"));
   });
 
-  it("stands the figures on the 수미단 (inside its solid, on its top) and hangs the 탱화 behind them", () => {
+  it("stands the figures on the 수미단 (inside its solid, on its top), hangs the 탱화 behind them and the 족자 on the back wall either side", () => {
     const sumidan = spec.solids.find((s) => s.name === "sumidan")!;
+    const scrolls = (extras.sacred ?? []).filter((s) => s.node.startsWith("lotart__lot_temple_hall_scroll_"));
+    expect(scrolls).toHaveLength(2);
     for (const s of extras.sacred ?? []) {
       const t = g.nodes!.find((q) => q.name === s.node)!.translation!;
       const x = t[0]! - unit.interior.origin.x;
       const z = t[2]! - unit.interior.origin.z;
+      if (scrolls.includes(s)) {
+        // beside the 수미단 (not over it), against the back wall (its inner face within 6 cm), hung above the floor
+        expect(x < sumidan.rect.x0 || x > sumidan.rect.x1, s.node).toBe(true);
+        expect(z, s.node).toBeGreaterThan(unit.interior.size.z - 0.06);
+        expect(z, s.node).toBeLessThanOrEqual(unit.interior.size.z);
+        expect(t[1]!, s.node).toBeGreaterThan(1.0);
+        continue;
+      }
       expect(x > sumidan.rect.x0 && x < sumidan.rect.x1 && z > sumidan.rect.z0 && z < sumidan.rect.z1, s.node).toBe(true);
       if (s.node.startsWith("lotstatue__")) expect(t[1]!).toBeCloseTo(sumidan.height, 2);
       else expect(t[1]!).toBeGreaterThan(2.0);
     }
+    // the pair mirror each other about the 수미단's middle
+    const [a, b] = scrolls.map((s) => g.nodes!.find((q) => q.name === s.node)!.translation![0]! - unit.interior.origin.x);
+    expect(a! + b!).toBeCloseTo(sumidan.rect.x0 + sumidan.rect.x1, 1);
   });
 
   it("names nothing after a real order, scripture or money", () => {

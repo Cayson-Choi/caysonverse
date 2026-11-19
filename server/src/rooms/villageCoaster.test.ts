@@ -3,10 +3,10 @@ import type { Client } from "colyseus";
 import { COASTER_CYCLE_MS, COASTER_DWELL_MS, COASTER_SEATS, COASTER_UNLOAD_MS } from "@caysonverse/shared/land/coaster";
 import { VillageMsg, VillageServerMsg } from "@caysonverse/shared/village/messages";
 import { CAROUSEL_CYCLE_MS, CAROUSEL_SEATS } from "@caysonverse/shared/land/carousel";
-import { WHEEL_N, WHEEL_STEP_MS, WHEEL_SEATS_PER, boardingSeatsOfWheel } from "@caysonverse/shared/land/wheel";
+import { WHEEL_BOARD_HALF_MS, WHEEL_REV_MS, WHEEL_STEP_MS, WHEEL_SEATS_PER, boardingSeatsOfWheel } from "@caysonverse/shared/land/wheel";
 import { VillageCoaster, type CoasterHost } from "./villageCoaster";
 
-const WHEEL_T0 = 1_900_000_000_000 - (1_900_000_000_000 % (WHEEL_STEP_MS * WHEEL_N));
+const WHEEL_T0 = 1_900_000_000_000 - (1_900_000_000_000 % WHEEL_REV_MS);
 
 const CAROUSEL_T0 = 1_900_000_000_000 - (1_900_000_000_000 % CAROUSEL_CYCLE_MS);
 
@@ -20,7 +20,7 @@ interface P {
   x: number;
   z: number;
 }
-const newPlayer = (): P => ({ rideSeat: -1, rideId: 0, seatIndex: -1, busSeat: -1, fishSpot: -1, area: "park", x: -17, z: -46 });
+const newPlayer = (): P => ({ rideSeat: -1, rideId: 0, seatIndex: -1, busSeat: -1, fishSpot: -1, area: "park", x: 2, z: -12 });
 const T0 = 1_900_000_000_000 - (1_900_000_000_000 % COASTER_CYCLE_MS);
 
 function rig() {
@@ -209,17 +209,18 @@ describe("VillageCoaster (server rules)", () => {
     expect(r.players.get("a")!.rideSeat).toBe(-1);
   });
 
-  it("the wheel: a rider gets a seat of the bottom gondola, cannot get off aloft, and is put off after one revolution", () => {
+  it("the wheel: it never stops; a rider boards the gondola at the platform in its window, cannot get off aloft, and is put off when the gondola is back after one turn", () => {
     const r = rig();
     const a = r.add("a");
     const pa = r.players.get("a")!;
     pa.x = 205;
     pa.z = -128.2;
-    r.setNow(WHEEL_T0 + 5000);
+    const centre = WHEEL_T0 + 3 * WHEEL_STEP_MS; // the gondola at the bottom, at the platform's middle
+    r.setNow(centre);
     r.send("a", VillageMsg.RideBoard, { ride: "wheel" });
     expect(pa.rideId).toBe(3);
-    expect(boardingSeatsOfWheel(WHEEL_T0 + 5000)).toContain(pa.rideSeat);
-    // four riders fill the gondola, the fifth gets "full" (the next gondola is not at the platform)
+    expect(boardingSeatsOfWheel(centre)).toContain(pa.rideSeat);
+    // four riders fill the gondola; the fifth gets no seat (the next gondola is not at the platform: a reservation for its window)
     for (const sid of ["b", "c", "d", "e"]) {
       r.add(sid);
       const p = r.players.get(sid)!;
@@ -230,16 +231,32 @@ describe("VillageCoaster (server rules)", () => {
     const seated = [...r.players.values()].filter((p) => p.rideSeat >= 0);
     expect(seated.length).toBe(WHEEL_SEATS_PER);
     expect(new Set(seated.map((p) => Math.floor(p.rideSeat / WHEEL_SEATS_PER))).size).toBe(1);
+    // closed between two windows: a board is a reservation, not a seat
+    r.add("f");
+    const pf = r.players.get("f")!;
+    pf.x = 205;
+    pf.z = -128.2;
+    r.setNow(centre + 10_000);
+    r.send("f", VillageMsg.RideBoard, { ride: "wheel" });
+    expect(pf.rideSeat).toBe(-1);
+    // ... and the next gondola's window seats it by itself
+    r.setNow(centre + WHEEL_STEP_MS);
+    r.coaster.tick();
+    expect(pf.rideSeat).toBeGreaterThanOrEqual(0);
+    expect(Math.floor(pf.rideSeat / WHEEL_SEATS_PER)).not.toBe(Math.floor(pa.rideSeat / WHEEL_SEATS_PER));
     // aloft: the leave is refused with a notice
-    r.setNow(WHEEL_T0 + 14_000);
+    r.setNow(centre + 14_000);
     r.send("a", VillageMsg.RideLeave);
     expect(pa.rideSeat).toBeGreaterThanOrEqual(0);
     expect(r.sent.some((m) => m.sid === "a" && (m.msg as { reason?: string }).reason === "aloft")).toBe(true);
-    // not put off by the next step, but by the same gondola's return
-    r.setNow(WHEEL_T0 + WHEEL_STEP_MS * 3 + 4000);
+    // not put off by the next passes, but by the same gondola's return, when its window opens
+    r.setNow(centre + WHEEL_STEP_MS * 5);
     r.coaster.tick();
     expect(pa.rideSeat).toBeGreaterThanOrEqual(0);
-    r.setNow(WHEEL_T0 + WHEEL_STEP_MS * WHEEL_N + 500);
+    r.setNow(centre + WHEEL_REV_MS - 4000);
+    r.coaster.tick();
+    expect(pa.rideSeat).toBeGreaterThanOrEqual(0); // its window has not opened yet
+    r.setNow(centre + WHEEL_REV_MS - WHEEL_BOARD_HALF_MS + 50);
     r.coaster.tick();
     expect(pa.rideSeat).toBe(-1);
     void a;

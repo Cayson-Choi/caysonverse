@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { fightCycles, fightCommand, fightSchedule, FIGHT } from "./fishFight";
 import {
   FISHING,
   FISHING_PHASES,
@@ -17,7 +18,8 @@ import {
   fishingSync,
   floatPosition,
   holdLine,
-  holdNeededMs,
+  fightSeedOf,
+  packReel,
   nearRentalPad,
   nearReturnPad,
   needsNet,
@@ -100,13 +102,8 @@ describe("fish table (design 8)", () => {
     for (const k of ["bluegill", "minnow", "korean_bullhead"] as const) expect(needsNet(k, 255), k).toBe(false);
   });
 
-  it("the hold a big fish needs is 1.5 s + (cm - 40) x 80 ms, 1.5..5 s", () => {
-    expect(holdNeededMs(20)).toBe(1500);
-    expect(holdNeededMs(40)).toBe(1500);
-    expect(holdNeededMs(50)).toBe(2300);
-    expect(holdNeededMs(70)).toBe(3900);
-    expect(holdNeededMs(85)).toBe(5000);
-    expect(holdNeededMs(200)).toBe(5000);
+  it("a big fish takes floor(cm / 15) run + pull cycles, 1..6 (fishFight.ts)", () => {
+    expect([20, 35, 45, 60, 75, 90, 200].map(fightCycles)).toEqual([1, 2, 3, 4, 5, 6, 6]);
   });
 
   it("trophy tiers: lake alerts at the 대물 sizes, the village only for 가물치, 장어 and a 4짜 붕어", () => {
@@ -407,8 +404,8 @@ describe("small fish: hooked, lifted, landed, released, ready again", () => {
   });
 });
 
-describe("big fish: hold, decay, loss, net (design 7.1, 8)", () => {
-  /** A hooked carp (always needs the net); r = 0 makes it 35 cm (hold 1.5 s), r near 1 makes it 85 cm (hold 5 s). */
+describe("big fish: the pull / release fight (fishFight.ts)", () => {
+  /** A hooked carp (always a fight); r = 0 makes it 35 cm (2 cycles), r near 1 makes it 85 cm (5 cycles). */
   function fight(r = 0) {
     const c = cast("carp", 10_000, r);
     const t = c.plan!.biteAt + 50;
@@ -418,74 +415,102 @@ describe("big fish: hold, decay, loss, net (design 7.1, 8)", () => {
     return { state: f.state, start: t + FISHING.hookedMs };
   }
 
-  it("the fish needs the net, the hold is sized by its length", () => {
-    const small = fight(0);
-    expect(small.state.catch).toMatchObject({ cm: 35, needsNet: true });
-    expect(small.state.holdNeedMs).toBe(1500);
-    const big = fight(0.999999);
-    expect(big.state.catch).toMatchObject({ cm: 85 });
-    expect(big.state.holdNeedMs).toBe(5000);
+  /** The angler: sends Hold(true / false) when the wanted button state changes (after `lagMs` of reaction) and repeats a press every 500 ms. */
+  function play(state: FishingState, start: number, want: (sinceStartMs: number, kind: "pull" | "run") => boolean, lagMs = 150, maxMs = 60_000) {
+    const sched = fightSchedule(state.catch!.cm, fightSeedOf(state));
+    let s = state;
+    let down = false;
+    let lastSent = -1e9;
+    for (let t = 0; t <= maxMs; t += 50) {
+      if (s.phase !== "fighting") break;
+      const kind = fightCommand(sched, Math.max(0, t - lagMs)).kind;
+      const w = want(t, kind);
+      const r =
+        w !== down || (w && t - lastSent >= 500)
+          ? holdLine(s, start + t, w)
+          : tickFishing(s, start + t);
+      s = r.state;
+      if (w !== down || (w && t - lastSent >= 500)) {
+        down = w;
+        lastSent = t;
+      }
+    }
+    return s;
+  }
+
+  it("the fish is a fight: the schedule is the public one and the fight starts a little way in, nothing pulled yet", () => {
+    const { state } = fight(0);
+    expect(state.catch).toMatchObject({ cm: 35, needsNet: true });
+    expect(state.fightProgress).toBeCloseTo(FIGHT.startProgress, 6);
+    expect(state.fightTension).toBe(0);
+    expect(fightSchedule(state.catch!.cm, fightSeedOf(state)).length).toBe(5); // 2 cycles: pull run pull run pull
+    expect(fight(0.999999).state.catch).toMatchObject({ cm: 85 });
   });
 
-  it("holding long enough nets and lands it, then it is released and the rod is ready again", () => {
-    const { state, start } = fight(0);
-    let s = holdLine(state, start + 100, true);
-    expect(s).toMatchObject({ ok: true, action: "hold", entered: [] });
-    s = holdLine(s.state, start + 1100, true); // one message a second is within the 1.5 s a message counts for
-    expect(s.state.holdMs).toBeGreaterThan(900);
-    s = holdLine(s.state, start + 1700, true);
-    expect(s.entered).toEqual(["lifting"]); // lake v2: no net, lifted out on the line
-    expect(s.state.phase).toBe("lifting");
-    const landed = tickFishing(s.state, start + 1700 + FISHING.liftMs);
-    expect(landed.state.phase).toBe("landed");
-    expect(landed.state.lastResult).toBe("caught");
-    expect(tickFishing(s.state, start + 1700 + FISHING.liftMs + FISHING.landedMs + FISHING.releaseMs).state.phase).toBe("ready");
+  it("doing what the prompt says (pull on 当기세요, let go on 놓아주세요) lifts the fish out on the line, lands it and frees the rod", () => {
+    for (const r of [0, 0.5, 0.999999]) {
+      const { state, start } = fight(r);
+      const s = play(state, start, (_t, kind) => kind === "pull");
+      expect(s.phase, `r ${r}`).toBe("lifting");
+      const landed = tickFishing(s, s.phaseAt + FISHING.liftMs);
+      expect(landed.state.phase).toBe("landed");
+      expect(landed.state.lastResult).toBe("caught");
+      expect(tickFishing(s, s.phaseAt + FISHING.liftMs + FISHING.landedMs + FISHING.releaseMs).state.phase).toBe("ready");
+    }
   });
 
-  it("a Hold message counts for 1.5 s at most: forgetting the 'up' does not hold the fish for ever", () => {
-    const { state, start } = fight(0.999999); // needs 5 s
-    const s = holdLine(state, start, true).state;
-    const t = tickFishing(s, start + 2000).state; // no more messages: 1.5 s credited, then half-speed decay for the last 0.5 s
-    expect(t.phase).toBe("fighting");
-    expect(t.holdMs).toBe(1250);
+  it("holding the button all the time snaps the line: missed, lost ('snap'), no catch", () => {
+    for (const r of [0, 0.999999]) {
+      const { state, start } = fight(r);
+      const s = play(state, start, () => true);
+      expect(s).toMatchObject({ phase: "missed", lastResult: "lost", lostWhy: "snap", catch: null, plan: null });
+    }
   });
 
-  it("letting go pulls the progress back at half speed (the fish drags a little)", () => {
+  it("never pulling loses it: the fish escapes ('escape') within a few seconds", () => {
+    const { state, start } = fight(0.5);
+    expect(tickFishing(state, start + 1000).state.phase).toBe("fighting");
+    const s = tickFishing(state, start + 4000).state; // the fish gained its distance back in the first two pull stages
+    expect(s).toMatchObject({ lastResult: "lost", lostWhy: "escape", catch: null }); // (missed for a second, then ready again)
+    expect(["missed", "ready"]).toContain(s.phase);
+    expect(tickFishing(state, start + 4000 + FISHING.missedMs).state.phase).toBe("ready");
+  });
+
+  it("a Hold message counts for 1.5 s at most: forgetting the 'up' does not hold the button for ever (the tension falls again)", () => {
     const { state, start } = fight(0.999999);
-    let s = holdLine(state, start, true).state;
-    s = holdLine(s, start + 1000, false).state;
-    expect(s.holdMs).toBe(1000);
-    s = holdLine(s, start + 2000, false).state;
-    expect(s.holdMs).toBe(500);
+    const pressed = holdLine(state, start + 600, true).state; // pulling in the first pull stage
+    const a = tickFishing(pressed, start + 600 + 1200).state; // still counted: tension climbed
+    const b = tickFishing(pressed, start + 600 + FISHING.holdGapMs + 600).state; // lapsed 0.6 s ago
+    expect(a.fightTension).toBeGreaterThan(0);
+    expect(b.fightTension).toBeLessThan(a.fightTension);
   });
 
-  it("never pressing for 6 s loses the fish: missed, lost, no catch", () => {
-    const { state, start } = fight(0);
-    expect(tickFishing(state, start + FISHING.fightIdleMs - 1).state.phase).toBe("fighting");
-    const lost = tickFishing(state, start + FISHING.fightIdleMs);
-    expect(lost.state).toMatchObject({ phase: "missed", lastResult: "lost", catch: null, plan: null });
-    expect(lost.entered).toEqual(["missed"]);
-    expect(tickFishing(state, start + FISHING.fightIdleMs + FISHING.missedMs).state.phase).toBe("ready");
-  });
-
-  it("pressing once and then going idle loses it 6 s after the last pressing; the whole fight is capped at 30 s", () => {
-    const { state, start } = fight(0.999999);
-    const s = holdLine(state, start + 1000, true).state; // counts until start + 2500
-    expect(tickFishing(s, start + 2500 + FISHING.fightIdleMs - 1).state.phase).toBe("fighting");
-    expect(tickFishing(s, start + 2500 + FISHING.fightIdleMs).state.phase).toBe("missed");
-    expect(phaseEndsAt(state)).toBe(start + FISHING.fightMaxMs);
-  });
-
-  it("a hold outside a fight is refused and changes nothing", () => {
+  it("a hold outside a fight (also during `hooked`) is refused and changes nothing", () => {
     expect(holdLine(seated(), 5000, true)).toMatchObject({ ok: false, reject: "not_fighting" });
+    const c = cast("carp", 10_000, 0);
+    const t = c.plan!.biteAt + 50;
+    const h = strikeLine(c, t).state;
+    expect(holdLine(h, t + 100, true)).toMatchObject({ ok: false, reject: "not_fighting" });
   });
 
   it("spamming Hold messages gains nothing: the credit is the real time pressed", () => {
     const { state, start } = fight(0.999999);
+    const once = tickFishing(holdLine(state, start + 700, true).state, start + 700 + 100).state;
     let s = state;
-    for (let i = 0; i < 400; i++) s = holdLine(s, start + i * 5, true).state; // 400 messages in 2 s
-    expect(s.holdMs).toBeLessThanOrEqual(2000);
-    expect(s.phase).toBe("fighting");
+    for (let i = 0; i < 400; i++) s = holdLine(s, start + 700 + i * 0.25, true).state; // 400 messages in 0.1 s
+    s = tickFishing(s, start + 800).state;
+    expect(s.fightProgress).toBeLessThanOrEqual(once.fightProgress + 1e-6);
+  });
+
+  it("the wire: packReel carries progress, the held bit and the tension; the sync shows them only while fighting", () => {
+    expect(packReel(0.5, 0.25, true)).toBe(50 | 128 | (25 << 8));
+    expect(packReel(2, -1, false)).toBe(100);
+    const { state, start } = fight(0.5);
+    const held = holdLine(state, start + 700, true).state;
+    const sync = fishingSync(tickFishing(held, start + 1700).state);
+    expect(sync.fishReel & 128).toBe(128);
+    expect(sync.fishReel & 127).toBeGreaterThan(10);
+    expect(fishingSync(seated()).fishReel).toBe(0);
   });
 });
 
@@ -499,8 +524,16 @@ describe("a full fish through every stage (smoke)", () => {
     s = strikeLine(s, s.plan!.windowOpensAt + 10).state;
     s = tickFishing(s, s.phaseAt + FISHING.hookedMs).state;
     expect(s.phase).toBe("fighting");
-    const at = s.fightStartAt;
-    for (let i = 0; i <= 5; i++) s = holdLine(s, at + i * 1000, true).state;
+    {
+      const sched = fightSchedule(s.catch!.cm, fightSeedOf(s));
+      const at = s.fightStartAt;
+      let down = false;
+      for (let t = 0; t <= 40_000 && s.phase === "fighting"; t += 100) {
+        const w = fightCommand(sched, Math.max(0, t - 150)).kind === "pull";
+        s = w !== down || (w && t % 500 === 0) ? holdLine(s, at + t, w).state : tickFishing(s, at + t).state;
+        down = w;
+      }
+    }
     expect(["lifting", "landed"]).toContain(s.phase);
     s = tickFishing(s, s.phaseAt + 60_000).state;
     expect(s.phase).toBe("ready");

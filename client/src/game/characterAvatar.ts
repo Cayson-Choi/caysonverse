@@ -30,6 +30,7 @@ import {
   Color,
   DoubleSide,
   Float32BufferAttribute,
+  Matrix4,
   MeshStandardMaterial,
   SkinnedMesh,
   Skeleton,
@@ -124,6 +125,46 @@ interface Ownership {
 }
 
 const ownership = new WeakMap<BuiltAvatar, Ownership>();
+
+/** Avoid uploading an unchanged standing remote's bone texture on every draw (including shadow passes). */
+export function reuseRestingBoneTexture(avatar: BuiltAvatar, isResting: () => boolean): () => void {
+  const skeleton = ownership.get(avatar)?.skeleton;
+  if (!skeleton) return () => {};
+  const update = skeleton.update;
+  const previous: { world: Matrix4; inverse: Matrix4 }[] = [];
+  let lastTexture: Skeleton["boneTexture"] = null;
+  let lastMatrices: Skeleton["boneMatrices"] = null;
+
+  skeleton.update = () => {
+    const { bones, boneInverses, boneTexture, boneMatrices } = skeleton;
+    if (boneTexture === null || !isResting()) {
+      lastTexture = null;
+      update.call(skeleton);
+      return;
+    }
+    // r185's palette is precisely world × inverse per bone. Check the inputs even at rest so a
+    // rebind, teleport or re-created texture always goes through three's normal update.
+    if (
+      boneTexture === lastTexture &&
+      boneMatrices === lastMatrices &&
+      bones.length === previous.length &&
+      previous.every((p, i) => p.world.equals(bones[i]!.matrixWorld) && p.inverse.equals(boneInverses[i]!))
+    ) return;
+
+    update.call(skeleton);
+    lastTexture = boneTexture;
+    lastMatrices = boneMatrices;
+    previous.length = bones.length;
+    for (let i = 0; i < bones.length; i++) {
+      const p = previous[i] ??= { world: new Matrix4(), inverse: new Matrix4() };
+      p.world.copy(bones[i]!.matrixWorld);
+      p.inverse.copy(boneInverses[i]!);
+    }
+  };
+  return () => {
+    skeleton.update = update;
+  };
+}
 /** releaseAvatarSoon이 예약한 해제. 값은 예약마다 새 토큰이라 retain 뒤에 다시 예약해도 옛 예약은 무효다. */
 const pendingRelease = new Map<BuiltAvatar, object>();
 

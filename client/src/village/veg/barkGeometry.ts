@@ -738,8 +738,19 @@ export function flatNormal(): DataTexture {
 }
 
 /** A pattern's texture (linear values: a multiplier on the bark colour), repeating, mipmapped. */
+/**
+ * A pattern's pixels, made once per page (the lake's flora and the village's trees each build their bark textures: ~100 ms a pattern on a
+ * phone, repeated whenever a Suspense retry or a re-mount rebuilt them — an INP / hitch cost of the lake's first buttons).
+ */
+const barkPixelCache = new Map<BarkPattern, Uint8Array>();
+function cachedBarkPixels(pattern: BarkPattern): Uint8Array {
+  let p = barkPixelCache.get(pattern);
+  if (!p) barkPixelCache.set(pattern, (p = barkPixels(pattern)));
+  return p;
+}
+
 /** A bark texture, from its pixels made here or (`pixels`) by the vegetation worker (crownGrow.ts). */
-export function barkTexture(pattern: BarkPattern, pixels: Uint8Array = barkPixels(pattern)): DataTexture {
+export function barkTexture(pattern: BarkPattern, pixels: Uint8Array = cachedBarkPixels(pattern)): DataTexture {
   const t = new DataTexture(pixels, TEX_W, TEX_H, RGBAFormat, UnsignedByteType);
   t.wrapS = RepeatWrapping;
   t.wrapT = RepeatWrapping;

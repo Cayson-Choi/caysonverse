@@ -85,7 +85,7 @@ interface Entry {
   /** Arrived, waiting for its GPU upload (`pump`): shown only once uploaded, so no frame waits for a texture upload. */
   farStaged: Texture | null;
   nearStaged: { map: Texture; normalMap: Texture; orm: Texture } | null;
-  near: Promise<{ map: Texture; normalMap: Texture; orm: Texture }> | null;
+  near: Promise<void> | null;
   nearTex: { map: Texture; normalMap: Texture; orm: Texture } | null;
   wanted: boolean;
   lastWanted: number;
@@ -94,9 +94,10 @@ interface Entry {
 /** Who holds a library set (the exteriors' bank, a room's): it is let go of only when nobody does. */
 const holders = new Map<string, number>();
 function acquireSet(id: string, tier: PbrTier, gl: WebGLRenderer) {
+  const set = getPbrSet(id, tier, gl);
   const key = `${id}@${tier}`;
   holders.set(key, (holders.get(key) ?? 0) + 1);
-  return getPbrSet(id, tier, gl);
+  return set;
 }
 function releaseSet(id: string, tier: PbrTier): void {
   const key = `${id}@${tier}`;
@@ -212,7 +213,8 @@ export class LotTextureBank {
           t.anisotropy = Math.min(16, this.gl.capabilities.getMaxAnisotropy());
           t.name = `lotfar_${id}`;
           const c = this.repeat(id, t);
-          this.stageFar(e, c);
+          if (this.sets.get(id) === e) this.stageFar(e, c);
+          else c.dispose();
           return c;
         });
       e.far.catch(() => (e.far = null));
@@ -221,19 +223,41 @@ export class LotTextureBank {
   }
 
   /** The full set now and for good (a room: everything in it is near). */
-  loadNear(id: string): Promise<unknown> {
+  loadNear(id: string): Promise<void> {
     const e = this.entry(id);
     e.wanted = true;
     e.lastWanted = Infinity;
+    return this.requestNear(id, e);
+  }
+
+  private requestNear(id: string, e: Entry): Promise<void> {
     if (!e.near) {
       e.near = acquireSet(id, this.tier, this.gl).then((s) => {
-        const t = { map: this.repeat(id, s.map), normalMap: this.repeat(id, s.normalMap), orm: this.repeat(id, s.orm) };
-        this.stageNear(e, t);
-        return t;
+        if (this.sets.get(id) !== e) {
+          releaseSet(id, this.tier);
+          return;
+        }
+        this.stageNear(e, { map: this.repeat(id, s.map), normalMap: this.repeat(id, s.normalMap), orm: this.repeat(id, s.orm) });
       });
-      e.near.catch(() => (e.near = null));
+      e.near.catch(() => {
+        e.near = null;
+        releaseSet(id, this.tier);
+      });
     }
     return e.near;
+  }
+
+  /** Each repeat clone holds its own WebGL texture reference, even when its source is shared. */
+  private releaseNear(id: string, e: Entry): void {
+    const maps = e.nearTex ?? e.nearStaged;
+    if (!maps) return; // requestNear releases a still-loading entry when it settles
+    maps.map.dispose();
+    maps.normalMap.dispose();
+    maps.orm.dispose();
+    e.near = null;
+    e.nearTex = null;
+    e.nearStaged = null;
+    releaseSet(id, this.tier);
   }
 
   /** Mark which sets the detailed lots want now; starts their loads, lets go of the others after NEAR_KEEP_MS. */
@@ -243,22 +267,12 @@ export class LotTextureBank {
       const w = ids.has(id);
       if (w) e.lastWanted = now;
       e.wanted = w;
-      if (w && !e.near) {
-        e.near = acquireSet(id, this.tier, this.gl).then((s) => {
-          const t = { map: this.repeat(id, s.map), normalMap: this.repeat(id, s.normalMap), orm: this.repeat(id, s.orm) };
-          if (e.near) this.stageNear(e, t);
-          return t;
-        });
-        e.near.catch(() => (e.near = null));
-      }
+      if (w && !e.near) void this.requestNear(id, e);
       if (!w && (e.nearTex || e.nearStaged) && now - e.lastWanted > NEAR_KEEP_MS) {
         const st = e.nearStaged;
         if (st) this.queue = this.queue.filter((q) => q !== st.map && q !== st.normalMap && q !== st.orm);
-        e.near = null;
-        e.nearTex = null;
-        e.nearStaged = null;
+        this.releaseNear(id, e);
         this.changed = true;
-        releaseSet(id, this.tier);
       }
     }
   }
@@ -301,7 +315,8 @@ export class LotTextureBank {
   dispose(): void {
     for (const [id, e] of this.sets) {
       e.farTex?.dispose();
-      if (e.nearTex || e.nearStaged) releaseSet(id, this.tier);
+      e.farStaged?.dispose();
+      this.releaseNear(id, e);
     }
     this.sets.clear();
     this.queue = [];

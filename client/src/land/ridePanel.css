@@ -1,0 +1,281 @@
+/* The park's ride panel (케이슨랜드): one card in the HUD column, the village HUD's look (dark violet glass, 12 px corners), one type scale:
+   title 15 / status 13 / rows 13 / hint and toast 12. Nothing in it can be selected (taps and drags on a phone used to paint the text blue), nothing
+   wraps (a ride's name and its distance sit on one row, the name takes the ellipsis), and the card shrinks by scrolling its list, never by clipping. */
+
+.cv-ride,
+.cv-ride * {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cv-ride {
+  --cv-ride-row: 36px;
+  --cv-ride-btn: 40px;
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  min-height: 0;
+  width: min(244px, calc(100vw - 32px));
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  color: #ece7ff;
+  background: rgba(14, 11, 30, 0.86);
+  border: 1px solid rgba(150, 130, 220, 0.32);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.35;
+  pointer-events: auto;
+}
+
+.cv-touch .cv-ride {
+  --cv-ride-row: 44px;
+  --cv-ride-btn: 48px;
+  width: min(232px, calc(100vw - 32px));
+}
+
+.cv-ride-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.cv-ride-ic {
+  flex: none;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.cv-ride-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #f6f2ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cv-ride-badge {
+  flex: none;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1b1440;
+  background: #c9b8ff;
+  border-radius: 999px;
+}
+
+.cv-ride-fold {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: -8px -8px -8px 0;
+  padding: 0;
+  font: inherit;
+  font-size: 16px;
+  color: #cfc4f5;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.cv-ride-status {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cv-ride-line {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.cv-ride-line.is-soft {
+  font-weight: 500;
+  color: #d9d1f6;
+}
+
+.cv-ride-bar {
+  height: 6px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+
+.cv-ride-bar > i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #8b6cf6, #c9b8ff);
+  border-radius: 999px;
+  transition: width 0.25s linear;
+}
+
+.cv-ride-bar.is-reserved > i {
+  background: linear-gradient(90deg, #f2c14e, #ffe39a);
+}
+
+.cv-ride-primary {
+  flex: none;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--cv-ride-btn);
+  padding: 0 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  background: #6f55e6;
+  border: 1px solid rgba(201, 184, 255, 0.55);
+  border-radius: 10px;
+  cursor: pointer;
+  touch-action: manipulation;
+  white-space: nowrap;
+}
+
+.cv-ride-primary:hover:not(:disabled) {
+  background: #8068f2;
+}
+
+.cv-ride-primary.is-quiet {
+  color: #f6f2ff;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(201, 184, 255, 0.4);
+}
+
+.cv-ride-primary.is-danger {
+  color: #4a1620;
+  background: #ffd9d2;
+  border-color: transparent;
+}
+
+.cv-ride-primary:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.cv-ride-hint {
+  flex: none;
+  margin: 0;
+  font-size: 12px;
+  color: #bdb2e6;
+}
+
+.cv-ride-list {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.cv-ride-row {
+  flex: none;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--cv-ride-row);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  color: #ece7ff;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(150, 130, 220, 0.22);
+  border-radius: 9px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.cv-ride-row:hover {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.cv-ride-row .cv-ride-ic {
+  font-size: 17px;
+}
+
+.cv-ride-row .cv-ride-rname {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cv-ride-row .cv-ride-dist {
+  flex: none;
+  color: #bdb2e6;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cv-ride-more {
+  flex: none;
+  width: 100%;
+  min-height: var(--cv-ride-row);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  color: #cfc4f5;
+  text-align: left;
+  background: transparent;
+  border: 1px dashed rgba(150, 130, 220, 0.4);
+  border-radius: 9px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.cv-ride-toast {
+  flex: none;
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #fff3d0;
+  background: rgba(242, 193, 78, 0.18);
+  border: 1px solid rgba(242, 193, 78, 0.4);
+  border-radius: 9px;
+}
+
+.cv-ride-tools {
+  flex: none;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 6px;
+}
+
+.cv-ride-tool {
+  min-height: var(--cv-ride-row);
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12px;
+  color: #f6f2ff;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(150, 130, 220, 0.3);
+  border-radius: 9px;
+  cursor: pointer;
+  touch-action: manipulation;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

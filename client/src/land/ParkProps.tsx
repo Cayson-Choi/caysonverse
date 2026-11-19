@@ -1,5 +1,6 @@
-import { useMemo } from "react";
-import { CanvasTexture, Color, DoubleSide, MeshStandardMaterial, SRGBColorSpace, type Texture } from "three";
+import { useEffect, useMemo } from "react";
+import { CanvasTexture, MeshStandardMaterial, PlaneGeometry, SRGBColorSpace, type Texture } from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { PARK_BINS, PARK_KIOSK, PARK_LAMPS, PARK_PLANTERS } from "@caysonverse/shared/village/parkArea";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 import { parkMaterial, pickSet } from "./pbr";
@@ -61,8 +62,21 @@ export function ParkProps({ all }: { all: Texture[] }) {
   const stone = useMemo(() => parkMaterial(pickSet(all, "PaintedPlaster017"), 1.4, { vertexColors: true, normalScale: 0.8 }), [all]);
   // pennant banners hung from arms on the promenade's lamp posts
   const tex = useMemo(() => bannerTexture(), []);
-  const bannerMat = useMemo(() => new MeshStandardMaterial({ map: tex, roughness: 0.85, side: DoubleSide, color: new Color("#ffffff") }), [tex]);
+  const bannerMat = useMemo(() => new MeshStandardMaterial({ map: tex, roughness: 0.85 }), [tex]);
   const posts = useMemo(() => PARK_LAMPS.filter((l) => l.x > 30 && l.x < 50 && l.z < -138), []);
+  const bannerGeo = useMemo(() => {
+    // Print each face in its own reading direction and draw the whole promenade together.
+    const faces = posts.flatMap((post) => {
+      const x = post.x + (post.x < 40 ? 0.9 : -0.9);
+      return [0, Math.PI].map((yaw) => new PlaneGeometry(0.8, 2.4).rotateY(yaw).translate(x, 2.35, post.z));
+    });
+    return mergeGeometries(faces);
+  }, [posts]);
+  useEffect(() => () => {
+    bannerGeo.dispose();
+    bannerMat.dispose();
+    tex.dispose();
+  }, [bannerGeo, bannerMat, tex]);
   const armGeo = useMemo(() => {
     const b = new GeoBuilder();
     for (const l of posts) b.box([l.x + (l.x < 40 ? 0.5 : -0.5), 3.5, l.z], X, Y, 0.5, 0.03, 0.03, [0.15, 0.16, 0.22]);
@@ -78,11 +92,7 @@ export function ParkProps({ all }: { all: Texture[] }) {
       <Booth all={all} spec={kiosk} />
       <mesh geometry={geo} material={stone} castShadow receiveShadow />
       <mesh geometry={armGeo} material={armMat} castShadow />
-      {posts.map((l) => (
-        <mesh key={`${l.x}_${l.z}`} position={[l.x + (l.x < 40 ? 0.9 : -0.9), 2.35, l.z]} material={bannerMat} castShadow>
-          <planeGeometry args={[0.8, 2.4]} />
-        </mesh>
-      ))}
+      <mesh geometry={bannerGeo} material={bannerMat} castShadow />
     </group>
   );
 }

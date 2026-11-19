@@ -1,3 +1,5 @@
+import { Group, Matrix4, type Object3D } from "three";
+
 /**
  * Far-avatar level of detail (perf/no-hitch, 2026-11-17; owner: "100명이 플레이하는데 끊김이나 렉이나 이런게 걸리면 안돼").
  *
@@ -21,6 +23,34 @@ export const AVATAR_LOD = {
   /** Frames between refreshes of a standing avatar that has not moved nor had its pose touched, beyond the near band. */
   stillCadence: 12,
 };
+
+/** The controller places the group at its existing LOD cadence. Three propagates that pose before drawing. */
+export class RemoteAvatarGroup extends Group {
+  /** Set only while the body has a settled, unanimated standing pose. Labels and shadows stay live. */
+  restingBody: Object3D | null = null;
+  private lastRestingBody: Object3D | null = null;
+  private readonly lastBodyWorld = new Matrix4();
+
+  refreshTransform(): void {
+    this.updateMatrix();
+    if (this.parent) this.matrixWorld.multiplyMatrices(this.parent.matrixWorld, this.matrix);
+    else this.matrixWorld.copy(this.matrix);
+  }
+
+  override updateMatrixWorld(force?: boolean): void {
+    // Three r185 traverses children even when matrixWorldAutoUpdate is off on their parent.
+    if (this.restingBody && this.restingBody === this.lastRestingBody && !this.matrixWorldAutoUpdate && this.lastBodyWorld.equals(this.matrixWorld)) {
+      this.matrixWorldNeedsUpdate = false;
+      for (const child of this.children) {
+        if (child !== this.restingBody) child.updateMatrixWorld(true);
+      }
+      return;
+    }
+    super.updateMatrixWorld(force);
+    this.lastRestingBody = this.restingBody;
+    if (this.restingBody) this.lastBodyWorld.copy(this.matrixWorld);
+  }
+}
 
 /** Frames between two refreshes of an avatar's node tree at `distance` (m); `behind`: it is behind the camera. */
 export function avatarTreeCadence(distance: number, behind: boolean): number {

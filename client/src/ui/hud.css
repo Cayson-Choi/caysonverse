@@ -110,6 +110,16 @@
   pointer-events: auto;
 }
 
+/* Nothing in the HUD columns is text to select: a tap or a drag on a phone used to paint the ride panel and the roster blue (owner 2026-11-19). */
+.cv-hud-left,
+.cv-hud-left *,
+.cv-hud-right,
+.cv-hud-right * {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
 /* A PC: the column may not reach the chat log below it (chat.css --cv-log-reserve is the
    log's worst-case height from the bottom): it ends at least 8 px above it. The room chip
    and 👥 never shrink; the roster list and the admin panel's body scroll inside what is left. */

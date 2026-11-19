@@ -348,6 +348,7 @@ function frame(art: MeshBuilder, solid: MeshBuilder, wall: number, facing: 1 | -
 // The atlas regions (u0, v0, u1, v1; v up) painted in cafeTextures.ts.
 export const ATLAS_REGIONS = {
   board: [0, 0.5, 0.5, 1],
+  counterMenu: [0.5, 208 / 1024, 1, 0.5],
   printCup: [0.5, 0.5, 0.75, 0.84],
   printTown: [0.75, 0.5, 1, 0.84],
   printWide: [0.5, 0.84, 1, 1],
@@ -531,6 +532,12 @@ export function buildCafe(): CafeParts {
     const [u0, v0, u1, v1] = ATLAS_REGIONS.board;
     // looking at the right wall from inside (facing +x) the viewer's right is +z
     art.quad([xf, y0, z0], [xf, y0, z1], [xf, y1, z1], [xf, y1, z0], white, MATTE, [-1, 0, 0], [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]);
+    // The back counter's existing wooden frame encloses a 2.2 × 1.3 m placeholder in village.glb.
+    // Keep the lettering just in front of its baked face at z = -4.04, clear of the depth buffer at plaza distance.
+    const [left, bottom, right, top] = ATLAS_REGIONS.counterMenu;
+    const z = -4.02;
+    art.quad([1.3, 1.75, z], [3.5, 1.75, z], [3.5, 3.05, z], [1.3, 3.05, z], white, MATTE, [0, 0, 1],
+      [[left, bottom], [right, bottom], [right, top], [left, top]]);
     // the prints on the left wall (viewer's right is -z)
     const L = ROOM.x0;
     const reg = (k: keyof typeof ATLAS_REGIONS) => ATLAS_REGIONS[k];

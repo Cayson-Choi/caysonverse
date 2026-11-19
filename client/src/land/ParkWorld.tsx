@@ -29,12 +29,8 @@ import {
   BufferGeometry,
 } from "three";
 import {
-  COASTER_QUEUE_PAD,
-  PARK_EXIT_PAD,
   PARK_LAMPS,
-  PARK_PLATFORM,
   PARK_PLAZA,
-  PARK_QUEUE_HALL,
   PARK_TROUGHS,
 } from "@caysonverse/shared/village/parkArea";
 import { isTouchDevice } from "../device";
@@ -49,7 +45,7 @@ import { ParkProps } from "./ParkProps";
 import { ParkVegetation } from "./ParkVegetation";
 import type { VillageTier } from "../village/villageModelPrep";
 import { GeoBuilder, type V3 } from "./geoBuilder";
-import { gateSignTexture, queueBoardTexture } from "./canvasTextures";
+import { gateSignTexture } from "./canvasTextures";
 import { GRASS_VARIATION_PARS } from "../village/grassVariation";
 import { buildParkTerrain } from "./parkTerrain";
 import { parkSkyTexture } from "./parkSkyTexture";
@@ -170,14 +166,13 @@ function Ground({ all }: { all: Texture[] }) {
   const ring = useMemo(() => brassInlay(PARK_PLAZA.radius - 0.4, PARK_PLAZA.radius), []);
   const inlay = useMemo(() => brassInlay(9.2, 10.2), []);
   const gold = useMemo(() => new MeshStandardMaterial({ color: "#c79a38", roughness: 0.42, metalness: 0.35, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 }), []);
-  const padRing = useMemo(() => brassInlay(COASTER_QUEUE_PAD.radius - 0.35, COASTER_QUEUE_PAD.radius), []);
   const pads = useMemo(() => {
     // paths as rectangles on the ground: [cx, cz, w, d, material key]
     return [
       [40, -161, 18, 54, "p"], // the promenade
       [161, -112, 368, 12, "p"], // the east-west avenue
-      [-17, -78.5, 12, 55, "g"], // the queue approach (gravel): from the avenue's south edge (z -106; the avenue spans -118..-106) to the apron's (z -51), never on or under either
-      [-17, -44, 18, 14, "p"], // the queue apron
+      [2, -59, 12, 94, "g"], // the station approach (gravel): from the avenue's south edge (z -106; the avenue spans -118..-106) to the apron's (z -19), never on or under either
+      [2, -13, 18, 12, "p"], // the station apron: paving at the foot of the platform's north steps (the boarding pad)
     ] as const;
   }, []);
   const setsPave = useMemo(() => pickSet(all, "PavingStones070"), [all]);
@@ -213,12 +208,11 @@ function Ground({ all }: { all: Texture[] }) {
       <mesh rotation-x={-Math.PI / 2} position={[PARK_PLAZA.x, 0.04, PARK_PLAZA.z]} geometry={plazaGeo} material={plazaMat} receiveShadow />
       <mesh rotation-x={-Math.PI / 2} position={[PARK_PLAZA.x, 0.06, PARK_PLAZA.z]} geometry={ring} material={gold} />
       <mesh rotation-x={-Math.PI / 2} position={[PARK_PLAZA.x, 0.06, PARK_PLAZA.z]} geometry={inlay} material={gold} />
-      <mesh rotation-x={-Math.PI / 2} position={[COASTER_QUEUE_PAD.x, 0.07, COASTER_QUEUE_PAD.z]} geometry={padRing} material={gold} />
     </group>
   );
 }
 
-// ───────────────────────────────────────── the gate arch, the queue hall, the fountain ─────────────────────────────────────────
+// ───────────────────────────────────────── the gate arch, the fountain ─────────────────────────────────────────
 
 /** The gate's tiles and stone come from the houses' scanned sets (Poly Haven clay_roof_tiles_03, mossy_sandstone; see models/village/LICENSE.md). */
 const GATE_TEX_DIR = "/models/village/houses/";
@@ -386,110 +380,6 @@ function GateArch({ all }: { all: Texture[] }) {
         <planeGeometry args={[5.6, 1.4]} />
       </mesh>
       <mesh geometry={starGeo} material={gold} position={[40, 12.2, CZ - 0.2]} scale={1.2} />
-      <mesh position={[PARK_EXIT_PAD.x, 0.05, PARK_EXIT_PAD.z]} rotation-x={-Math.PI / 2}>
-        <ringGeometry args={[PARK_EXIT_PAD.radius - 0.3, PARK_EXIT_PAD.radius, 40]} />
-        <meshStandardMaterial color="#d9a93a" roughness={0.4} metalness={0.5} />
-      </mesh>
-    </group>
-  );
-}
-
-function QueueHall({ all, pine }: { all: Texture[]; pine: Texture }) {
-  const q = PARK_QUEUE_HALL;
-  const cx = (q.minX + q.maxX) / 2;
-  const cz = (q.minZ + q.maxZ) / 2;
-  // the hall in three skins: a stone floor slab, plastered walls with timber battens (the shops' plaster, so the park reads as one
-  // village), and the timber posts, beam and queue rails
-  const { floorGeo, wallGeo, woodGeo } = useMemo(() => {
-    const f = new GeoBuilder();
-    const wl = new GeoBuilder();
-    const b = new GeoBuilder();
-    const w = q.maxX - q.minX;
-    const d = q.maxZ - q.minZ;
-    const timber: V3 = [0.42, 0.28, 0.17];
-    // the floor slab and the back (south) and side walls, the front open
-    f.box([cx, 0.1, cz], X, Y, w / 2, 0.1, d / 2, [0.85, 0.83, 0.79], 2.5);
-    wl.box([cx, 2.2, q.maxZ - 0.2], X, Y, w / 2, 2.2, 0.2, [0.96, 0.91, 0.8], 3);
-    wl.box([cx, 0.45, q.maxZ - 0.2], X, Y, w / 2 + 0.05, 0.45, 0.24, [0.7, 0.68, 0.63], 2);
-    for (const sx of [-1, 1]) {
-      wl.box([cx + sx * (w / 2 - 0.2), 2.2, cz + 3], X, Y, 0.2, 2.2, d / 2 - 3, [0.96, 0.91, 0.8], 3);
-      wl.box([cx + sx * (w / 2 - 0.2), 0.45, cz + 3], X, Y, 0.24, 0.45, d / 2 - 3, [0.7, 0.68, 0.63], 2);
-      // timber battens and rails on the inside faces of the side walls
-      const inX = cx + sx * (w / 2 - 0.42);
-      for (let z = q.minZ + 4.5; z <= q.maxZ - 1; z += 3.2) b.box([inX, 2.3, z], X, Y, 0.05, 2.0, 0.09, timber);
-      for (const y of [0.95, 3.0]) b.box([inX, y, cz + 3], X, Y, 0.05, 0.09, d / 2 - 3, timber);
-    }
-    for (let x = q.minX + 2; x <= q.maxX - 1.5; x += 3.2) b.box([x, 2.3, q.maxZ - 0.42], X, Y, 0.09, 2.0, 0.05, timber);
-    for (const y of [0.95, 3.0]) b.box([cx, y, q.maxZ - 0.42], X, Y, w / 2, 0.09, 0.05, timber);
-    // timber posts along the open front and a beam
-    for (let x = q.minX + 1; x <= q.maxX - 0.5; x += 4.6) b.cylinder([x, 0.2, q.minZ + 3.2], [x, 4.4, q.minZ + 3.2], 0.2, 0.2, 10, timber);
-    b.box([cx, 4.4, q.minZ + 3.2], X, Y, w / 2, 0.22, 0.26, timber);
-    // the queue's switchback rails: five lanes, 1.1 m high, with posts
-    for (let k = 0; k < 5; k++) {
-      const z = q.minZ + 7 + k * 4.4;
-      const x0 = q.minX + (k % 2 === 0 ? 2 : 6);
-      const x1 = q.maxX - (k % 2 === 0 ? 6 : 2);
-      b.box([(x0 + x1) / 2, 1.05, z], X, Y, (x1 - x0) / 2, 0.04, 0.04, [0.9, 0.9, 0.94]);
-      b.box([(x0 + x1) / 2, 0.55, z], X, Y, (x1 - x0) / 2, 0.03, 0.03, [0.9, 0.9, 0.94]);
-      for (let x = x0; x <= x1; x += 3) b.cylinder([x, 0.1, z], [x, 1.1, z], 0.04, 0.04, 6, [0.9, 0.9, 0.94]);
-    }
-    // the name board's frame over the entrance (its face is the lettered plane below)
-    b.box([cx, 4.0, q.minZ + 3.0], X, Y, 5.15, 0.7, 0.07, [0.36, 0.23, 0.14]);
-    return { floorGeo: f.build(), wallGeo: wl.build(), woodGeo: b.build() };
-  }, [q, cx, cz]);
-  const boardTex = useMemo(() => queueBoardTexture(), []);
-  const boardMat = useMemo(() => new MeshStandardMaterial({ map: boardTex, roughness: 0.6, emissive: new Color("#ffffff"), emissiveMap: boardTex, emissiveIntensity: 0.14 }), [boardTex]);
-  const floorMat = useMemo(() => parkMaterial(pickSet(all, "Concrete034"), 0.8, { vertexColors: true, color: new Color("#efe6d6"), normalScale: 0.6 }), [all]);
-  const plasterMat = useMemo(() => parkMaterial(pickSet(all, "Plaster003"), 0.7, { vertexColors: true, normalScale: 1.0, color: new Color("#ffffff") }), [all]);
-  const { roofGeo, trimGeo } = useMemo(() => {
-    const roof = new GeoBuilder();
-    const trim = new GeoBuilder();
-    const w = q.maxX - q.minX;
-    const d = q.maxZ - q.minZ;
-    // a hip-less gable: the ridge runs along x; each side slopes down to eaves that overhang the posts by 1.4 m (shingle slabs, a ridge cap,
-    // timber fascia boards, visible rafters under the eaves)
-    const alpha = 0.34;
-    const ca = Math.cos(alpha);
-    const sa = Math.sin(alpha);
-    const eaveY = 4.75;
-    const half = d / 2 + 1.5;
-    const rise = half * Math.tan(alpha);
-    const L = half / ca / 2 + 0.1;
-    for (const sgn of [-1, 1]) {
-      // the slab's middle is half way from the ridge to the eave; its normal tilts away from the ridge
-      roof.box([cx, eaveY + rise / 2 + 0.05, cz + (sgn * half) / 2], X, [0, ca, sgn * sa], w / 2 + 1.5, 0.12, L, [1, 1, 1], 2.4);
-      // the fascia board along the eave and a drip edge
-      trim.box([cx, eaveY - 0.02, cz + sgn * half], X, Y, w / 2 + 1.5, 0.17, 0.05, [0.4, 0.26, 0.16]);
-      // rafters: a rafter every 2.3 m, running up the slope under the slab
-      for (let x = q.minX - 1; x <= q.maxX + 1.01; x += 2.3) trim.box([x, eaveY + rise / 2 - 0.14, cz + (sgn * half) / 2], [1, 0, 0], [0, ca, sgn * sa], 0.07, 0.1, L - 0.1, [0.42, 0.28, 0.17]);
-    }
-    trim.box([cx, eaveY + rise + 0.2, cz], X, Y, w / 2 + 1.5, 0.14, 0.45, [0.55, 0.27, 0.22]);
-    // gable end boards
-    for (const e of [-1, 1]) {
-      for (let k = 0; k < 6; k++) trim.box([cx + e * (w / 2 + 1.4), eaveY + (k * rise) / 6 + rise / 12, cz], X, Y, 0.06, rise / 12, half * (1 - (k + 0.5) / 6), [0.4, 0.26, 0.16]);
-    }
-    return { roofGeo: roof.build(), trimGeo: trim.build() };
-  }, [q, cx, cz]);
-  const wall = useMemo(() => {
-    const t = pine.clone();
-    t.wrapS = t.wrapT = RepeatWrapping;
-    t.colorSpace = SRGBColorSpace;
-    t.needsUpdate = true;
-    return new MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.8 });
-  }, [pine]);
-  const roof = useMemo(() => parkMaterial(pickSet(all, "RoofingTiles013A"), 1, { color: new Color(1.9, 1.35, 1.1), normalScale: 1.2 }), [all]);
-  const trimMat = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }), []);
-  return (
-    <group>
-      <mesh geometry={floorGeo} material={floorMat} castShadow receiveShadow />
-      <mesh geometry={wallGeo} material={plasterMat} castShadow receiveShadow />
-      <mesh geometry={woodGeo} material={wall} castShadow receiveShadow />
-      <mesh position={[cx, 4.0, q.minZ + 2.93]} rotation={[0, Math.PI, 0]} material={boardMat}>
-        <planeGeometry args={[10, 1.3]} />
-      </mesh>
-      <mesh geometry={roofGeo} material={roof} castShadow receiveShadow />
-      <mesh geometry={trimGeo} material={trimMat} castShadow />
-      <mesh position={[PARK_PLATFORM.minX, 0, 0]} visible={false} />
     </group>
   );
 }
@@ -738,7 +628,6 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       <Ground all={all} />
       <Shops all={all} />
       <GateArch all={all} />
-      <QueueHall all={all} pine={pine} />
       <Fountain all={all} env={env} />
       <ParkVegetation />
       <Lamps />
