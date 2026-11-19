@@ -214,14 +214,15 @@ float mtnNoise( vec3 x ) {
     mix( mix( mtnHash( i + vec3( 0, 0, 1 ) ), mtnHash( i + vec3( 1, 0, 1 ) ), f.x ), mix( mtnHash( i + vec3( 0, 1, 1 ) ), mtnHash( i + vec3( 1, 1, 1 ) ), f.x ), f.y ), f.z );
 }
 `;
-// The atlas's leaf-scale grain reads as a repeating scale pattern on the near ridges: it is sampled from a blurrier mip, and the
-// forest's own broad light and dark stands (world-space noise at two scales) break the repetition.
+// Keep the atlas's broad rock and forest markings. Soften its repeating individual crowns,
+// then tint groups of trees across each slope and carry the finer grain along the contours.
 const FRAGMENT_MAP = /* glsl */ `
 #ifdef USE_MAP
 {
-  vec4 mtnTex = texture2D( map, vMapUv, 3.4 );
-  float mn = mtnNoise( vMtnWorld * 0.035 ) * 0.6 + mtnNoise( vMtnWorld * 0.11 + 7.0 ) * 0.4;
-  mtnTex.rgb *= 0.78 + 0.5 * mn;
+  vec4 mtnTex = texture2D( map, vMapUv, 1.65 );
+  float grove = smoothstep( 0.22, 0.78, mtnNoise( vMtnWorld * vec3( 0.027, 0.072, 0.027 ) ) );
+  float grain = mtnNoise( vMtnWorld * vec3( 0.10, 0.16, 0.10 ) + 7.0 );
+  mtnTex.rgb *= mix( vec3( 0.76, 0.87, 0.81 ), vec3( 1.26, 1.27, 1.02 ), grove ) * ( 0.91 + 0.18 * grain );
   diffuseColor *= mtnTex;
 }
 #endif

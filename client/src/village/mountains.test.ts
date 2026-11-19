@@ -45,6 +45,23 @@ describe("distant mountains (B6)", () => {
     }
   });
 
+  it("rounds each crest through the north seam and between neighbouring azimuth samples", () => {
+    for (const layer of layers) {
+      const first = (layer.rows - 1) * layer.segs;
+      const elevations = layer.height.subarray(first).map((y, c) =>
+        Math.atan2(y - 1.6, layer.radius[first + c]!) * 180 / Math.PI,
+      );
+      let worst = 0;
+      for (let c = 0; c < layer.segs; c++) {
+        const previous = elevations[(c - 1 + layer.segs) % layer.segs]!;
+        const next = elevations[(c + 1) % layer.segs]!;
+        // How far this sample protrudes from the line between its neighbours (degrees of elevation).
+        worst = Math.max(worst, Math.abs(elevations[c]! - (previous + next) / 2));
+      }
+      expect(worst).toBeLessThan(0.07);
+    }
+  });
+
   it("builds one indexed mesh whose faces look toward the village", () => {
     const g = buildMountainGeometry(layers);
     const pos = g.getAttribute("position");
