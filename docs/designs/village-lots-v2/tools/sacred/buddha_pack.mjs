@@ -1,8 +1,9 @@
 /** Finish the original hall Buddha after the Blender build.
- * node buddha_pack.mjs <build-directory> <sacred-GLB-directory> [--preserve-from|--face-oval-only-from|--face-and-scalp-from|--scalp-only-from|--preserve-ears-from|--preserve-head-from|--textures-only-from <prior-GLB-directory>]
+ * node buddha_pack.mjs <build-directory> <sacred-GLB-directory> [--preserve-from|--face-oval-only-from|--face-and-scalp-from|--portrait-from|--scalp-only-from|--preserve-ears-from|--preserve-head-from|--textures-only-from <prior-GLB-directory>]
  * For a face revision, pass the shipped pair's directory to --preserve-from.
  * For a registered face with an approved urna, --face-oval-only-from keeps the original jewel and its baked shading.
  * For a hairline revision, --face-and-scalp-from also replaces the cast curls over the facial oval.
+ * For a portrait revision, --portrait-from replaces the facial oval, urna, ears and curls together.
  * For a curl-only revision, --scalp-only-from retains the shipped facial oval and all KTX2 atlases.
  * For an ear revision, --preserve-ears-from keeps the shipped face, body and KTX2 textures.
  * For a full head revision, --preserve-head-from retains the body and ears around the new throat, face and hair.
@@ -22,7 +23,8 @@ import { preserveSurroundingStatue } from "./buddha_preserve.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const [work, destination, flag, seedDirectory, ...extra] = process.argv.slice(2);
 const regions = new Map([["--preserve-from", "face"], ["--face-oval-only-from", "oval"], ["--face-and-scalp-from", "oval-and-scalp"],
-  ["--scalp-only-from", "scalp"], ["--preserve-ears-from", "ears"], ["--preserve-head-from", "head"]]);
+  ["--scalp-only-from", "scalp"], ["--preserve-ears-from", "ears"], ["--preserve-head-from", "head"],
+  ["--portrait-from", "portrait"]]);
 const texturesOnly = flag === "--textures-only-from";
 if (!work || !destination || (flag && ((!texturesOnly && !regions.has(flag)) || !seedDirectory)) || extra.length) {
   throw new Error("Expected build directory, sacred GLB directory and an optional preservation flag and source directory");

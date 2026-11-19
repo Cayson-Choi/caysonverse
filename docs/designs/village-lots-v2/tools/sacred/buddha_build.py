@@ -72,7 +72,7 @@ def local_access(mesh):
 
 
 def dress(mesh, output, lod):
-    from buddha_head import FACE, HEAD_X, profile
+    from buddha_head import FACE, FACE_AXIS, HEAD_X, URNA_RADII, URNA_Z, profile
 
     access = local_access(mesh)
     tiles = {key:i for i,key in enumerate(KEYS)}
@@ -91,6 +91,12 @@ def dress(mesh, output, lod):
                 uv.data[k].uv = (.5 + .5*u, v)
                 continue
             tile = tiles[finish]
+            if finish == "urna":
+                # Project the little burnished dome onto its own gilt swatch.
+                u = .5+.43*(x-HEAD_X-FACE_AXIS)/URNA_RADII[0]
+                v = .5+.43*(z-URNA_Z)/URNA_RADII[2]
+                uv.data[k].uv = ((tile%4+u)/8,(tile//4+v)/2)
+                continue
             if finish == "hair":
                 u,v = curl_lattice.data[k].uv
                 uv.data[k].uv = ((tile%4+u)/8,(tile//4+v)/2)
@@ -145,10 +151,20 @@ def dress(mesh, output, lod):
                 patch[:,:,0] = .5 + strength*wave
                 patch[:,:,1] = .5 + strength*np.sin(31*v+11*u)
                 patch[:,:,2] = 1
+            if key == "urna" and kind == "color":
+                # A broad pale crest rolls into the warmer foot of the bead.
+                crest = np.exp(-((u-.46)/.27)**2-((v-.69)/.25)**2)
+                for c, value in enumerate(color):
+                    linear = value*(.81+.19*v)+(1.-value*.81)*crest
+                    patch[:,:,c] = np.where(linear<=.0031308,12.92*linear,1.055*linear**(1/2.4)-.055)
+            if key == "urna" and kind == "orm":
+                patch[:,:,0] = 1.
+                patch[:,:,1] = .39
+                patch[:,:,2] = .71
             if key == "hair":
-                # Six identical whorls in one padded strip. Curl spacing comes
-                # from the scalp bands so the phone and PC casts agree.
-                x = 2*np.mod(6*(u-.04)/.92, 1)-1
+                # Seven whorls accommodate six beads and the inter-row offset
+                # at the forehead without sampling outside the hair swatch.
+                x = 2*np.mod(7*(u-.04)/.92, 1)-1
                 y = 2*(v-.04)/.92-1
                 r = np.sqrt(x*x+y*y)
                 angle = np.arctan2(y,x)
@@ -156,8 +172,8 @@ def dress(mesh, output, lod):
                 whorl = np.cos(angle-7.4*r-.72)
                 groove = .021*dome*(1-np.exp(-r*r/.045))*(.5+.5*whorl)**3
                 if kind == "normal":
-                    height = .77*dome-groove
-                    dy,dx = np.gradient(height, 2/(.92*(tile_height-1)),12/(.92*(tile_size-1)))
+                    height = .69*dome-groove
+                    dy,dx = np.gradient(height, 2/(.92*(tile_height-1)),14/(.92*(tile_size-1)))
                     length = np.sqrt(1+dx*dx+dy*dy)
                     patch[:,:,0] = .5-.5*dx/length
                     patch[:,:,1] = .5-.5*dy/length
@@ -165,9 +181,13 @@ def dress(mesh, output, lod):
                 elif kind == "color":
                     # The exposed upper crest of each bead is burnished;
                     # the black lacquer still collects in the low turns.
-                    crest = np.exp(-((x+.10)/.48)**2-((y-.22)/.46)**2)
+                    crest = np.exp(-((x+.11)/.44)**2-((y-.34)/.32)**2)
                     for c,value in enumerate(color):
-                        linear = value*(.09+3.50*dome-groove)+(.053,.057,.060)[c]*crest
+                        linear = value*(.12+2.95*dome-groove)+(.080,.084,.090)[c]*crest
+                        # The phone room omits the desktop spots. Keep the
+                        # lacquer returns legible on its lower-resolution beads.
+                        if lod == "phone":
+                            linear = .0025+3.70*linear
                         patch[:,:,c] = np.where(linear<=.0031308,12.92*linear,1.055*linear**(1/2.4)-.055)
                 else:
                     patch[:,:,0] = .54+.44*dome

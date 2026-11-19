@@ -94,9 +94,10 @@ SKULL = [(face_section_z(v), w/PIXELS_PER_METRE, depth(f), depth(b)) for v,w,f,b
 # Only the facial oval follows these measured jaw widths and orbital depths.
 # The curl casting remains seated on the established skull sections.
 FACE_PLANES = {
-    171:(3,594.5), 169.8:(8.6,590), 168:(14.8,584.6), 165:(21.2,576.7),
-    162:(25,571.8), 158:(28.2,569.4), 154:(30.8,568.5), 150:(33.1,568),
-    147:(34.7,567.3), 122:(43.3,565), 115:(43.6,565.2), 108:(43.2,564.5),
+    171:(3,594.5), 169.8:(8.2,590), 168:(14.1,584.6), 165:(20.1,576.7),
+    162:(23.7,571.8), 158:(26.9,569.4), 154:(29.5,568.5), 150:(31.9,568),
+    147:(33.6,567.3), 142:(36.5,566.2), 136:(39.5,565.7), 130:(41.7,565.2),
+    122:(43.3,565), 115:(43.6,565.2), 108:(43.2,564.5),
     103:(42.5,563.2), 96:(42.6,561)}
 FACE = []
 for row,width,front,back in SECTIONS:
@@ -172,11 +173,11 @@ def relief(x,z):
             + .0080*paired(.099,1.601,.078,.060))
     # The lobes round over the alar crease on the cheek and return underneath
     # into the nostril. Their low edge sits above the rounded columella.
-    wings=(.0110*paired(.030,1.604,.017,.017)
-           - .0120*paired(.037,1.609,.027,.030)
-           - .0025*paired(.020,1.613,.008,.016)
-           - .0024*paired(.031,1.628,.015,.009)
-           - .0048*paired(.021,1.590,.0092,.0065))
+    wings=(.0087*paired(.028,1.604,.017,.016)
+           - .0095*paired(.036,1.609,.027,.030)
+           - .0018*paired(.019,1.613,.010,.016)
+           - .0016*paired(.029,1.626,.016,.011)
+           - .0038*paired(.020,1.590,.010,.0075))
     seam=lip_line(x)
     mouth=(.0040*paired(.018,seam+.006,.018,.0060)
            + .0055*paired(.014,seam-.008,.023,.0075)
@@ -238,18 +239,18 @@ def soften_face_normals(mesh):
         # Turn the leaf around the broad tip and each smaller wing. Across the
         # base the sagittal profile alone would reflect one horizontal strip.
         lateral=abs(local_x)
-        wing=.89*exp(-((lateral-.031)/.015)**4-((z-1.605)/.019)**4)
-        wing_slope=.35*(lateral-.031)/.016 * (1 if local_x>=0 else -1)
+        wing=.84*exp(-((lateral-.028)/.015)**2-((z-1.605)/.018)**2)
+        wing_slope=.26*(lateral-.028)/.016 * (1 if local_x>=0 else -1)
         dx+=wing*(wing_slope-dx)
         dz+=wing*(.32*tanh((z-1.605)/.015)-dz)
-        dorsum=.90*exp(-(local_x/.023)**4-((z-1.626)/.042)**6)
-        dx+=dorsum*(.40*local_x/.026-dx)
+        dorsum=.88*exp(-(local_x/.024)**2-((z-1.629)/.045)**4)
+        dx+=dorsum*(.29*local_x/.026-dx)
         dz+=dorsum*(.51*tanh((z-1.603)/.013)-dz)
         # At grazing incidence the ala turns sideways before it rolls under.
         # A continuous lateral normal keeps the bridge reflection off its rim.
-        outer=max(0.,min(1.,(lateral-.030)/.011))
-        flank=.94*outer*outer*(3-2*outer)*exp(-((lateral-.038)/.014)**4-((z-1.612)/.018)**4)
-        turn=(.84+.38*tanh((lateral-.035)/.011))*(1 if local_x>=0 else -1)
+        outer=max(0.,min(1.,(lateral-.025)/.016))
+        flank=.70*outer*outer*(3-2*outer)*exp(-((lateral-.034)/.016)**2-((z-1.612)/.019)**2)
+        turn=(.61+.26*tanh((lateral-.033)/.015))*(1 if local_x>=0 else -1)
         dx+=flank*(turn-dx)
         dz+=flank*(.23*tanh((z-1.610)/.012)-dz)
         columella=exp(-(local_x/.012)**2-((z-1.590)/.013)**2)
@@ -343,19 +344,22 @@ def bead(name,center,radii,material,n=12,rings=5):
     return surface(name,vs,fs,material)
 
 
+URNA_Z = 1.730
+URNA_RADII = (.0077,.0060,.0081)
+
+
 def make_urna(phone):
-    z=1.728
-    # Preserve the mount on the forehead when refining the orbital plane below.
-    bead('Urna',(FACE_AXIS,-.061910428,z),(.0067,.0044,.0070),'urna',8 if phone else 12,4)
+    # Set the back of the bead into the skin so it still reads as a dome in profile.
+    bead('Urna',(FACE_AXIS,fy(FACE_AXIS,URNA_Z)-.0008,URNA_Z),URNA_RADII,'urna',8 if phone else 12,4)
 
 
 # The cranial vault and ushnisha share a continuous shell. Widths and the
 # anterior/posterior limits are measured inside the outer row of curls.
 HAIR_SECTIONS = [
-    (157,23,589,643),(153,29,581,649),(149,33,577,652),(143,36,572,655),
-    (135,40,568,658),(125,42,565,661),(114,44,564,663),(105,45,562,666),
-    (95,46.5,562,668),(85,47.5,561,667),(76,47,559,665.5),(68,45,560.5,662.5),
-    (60,39.5,564.5,657.5),(54,34.1,569.5,652),(50,30.9,574,648),
+    (157,24,589,644),(153,30.2,581,650.5),(149,34.5,577,654.5),(143,37.4,572,657.5),
+    (135,41.1,568,660),(125,43.0,565,662.5),(114,44.8,564,664),(105,45.8,562,666),
+    (95,47.3,562,668),(85,48.3,561,667),(76,47.8,558.5,665.5),(68,45.8,559.9,662.5),
+    (60,40.3,564.5,657.5),(54,34.8,569.5,652),(50,31.3,574,648),
     (45,28.2,578.5,645),(38,24.2,582.5,641.2),(32,19.3,587,636.9),
     (28,13.4,594.7,629),(25.5,7,601,623),(24.3,1.5,610,614.5)]
 HAIR = [(section_z(v),w/PIXELS_PER_METRE,(b-f)/(2*PIXELS_PER_METRE),depth(.5*(f+b)))
@@ -364,12 +368,12 @@ HAIR = [(section_z(v),w/PIXELS_PER_METRE,(b-f)/(2*PIXELS_PER_METRE),depth(.5*(f+
 
 # Azimuth from the brow and profile image row. The tab rolls under in
 # front of the helix, arches above it and descends behind it to the nape.
-HAIRLINE = [(0,76.3),(.42,76.7),(.65,77.4),(.82,78.3),(.96,79.5),
-            (1.08,81.1),(1.19,83.7),(1.30,88.6),(1.37,99.7),(1.41,105.0),
-            (1.46,107.6),(1.51,108.2),(1.56,107.8),(1.60,105.6),(1.64,101.3),
-            (1.71,96.5),(1.80,94.0),(1.86,93.7),(1.93,96.4),(1.98,107.0),
-            (2.02,129.0),(2.08,141.6),(2.18,146.0),(2.36,147.8),
-            (2.55,148.7),(2.78,149.0),(pi,148.8)]
+HAIRLINE = [(0,75.6),(.42,76.0),(.65,76.7),(.82,77.6),(.96,78.8),
+            (1.08,81.1),(1.19,83.7),(1.30,88.6),(1.37,96.8),(1.41,101.7),
+            (1.46,107.0),(1.51,108.2),(1.56,105.4),(1.60,100.0),(1.64,95.2),
+            (1.71,91.2),(1.80,90.2),(1.86,90.5),(1.93,93.4),(1.98,106.8),
+            (2.02,129.0),(2.08,141.1),(2.18,144.0),(2.36,145.6),
+            (2.55,146.5),(2.78,146.8),(pi,146.4)]
 
 
 def hair_floor(a):
@@ -382,6 +386,10 @@ def hair_floor(a):
 
 def hair_pos(a,z):
     w,d,cy=profile(HAIR,z)
+    # The low occiput is broad behind the ear and tapers into the existing
+    # cranium at the temple. Both profiles constrain its posterior depth.
+    rear=max(0.,min(1.,-cos(a)/.44))
+    w+=.014*rear*rear*(3-2*rear)*exp(-((z-1.550)/.065)**2)
     return Vector((w*sin(a),cy-d*cos(a),z))
 
 
@@ -405,9 +413,9 @@ def hair_root(a,z):
     rear=max(0.,min(1.,(-cos(a)-.32)/.22))
     rear=rear*rear*(3-2*rear)
     root=hair_skin(a,z).lerp(hair_pos(a,z),.9*rear)
-    # Four whorls per sector on the last occipital row. Lift the rim between
-    # the whorls, leaving their rounded undersides visible against the neck.
-    root.z+=.0038*rear*(cos(16*a)**2-.45)
+    # The lowest row barely scallops the casting. Most of the bead's turn
+    # under the nape is in its shading, with only a shallow silhouette ripple.
+    root.z+=.0011*rear*(cos(16*a)**2-.5)
     return root
 
 
@@ -434,10 +442,12 @@ def scalloped_scalp(phone):
     vertical=1 if phone else 2
     for j,(low,high) in enumerate(zip(levels,levels[1:])):
         w,d,_=profile(HAIR,(low+high)/2)
-        repeats=max(1,min(5,round(2*pi*sqrt(w*d)/(.0275*sectors))))
-        # Centre a full whorl on the end of each temple tab.
-        phase=.5*((j+int(high<front-.085))%2)
         for sector in range(sectors):
+            # The forehead and temple have fine, close-set beads. The broader
+            # occipital whorls register in almost straight vertical columns.
+            bearing=2*pi*(sector+.5)/sectors
+            pitch=.0275-.0035*max(0.,cos(bearing))+.0055*max(0.,-cos(bearing))
+            repeats=max(1,min(6,round(2*pi*sqrt(w*d)/(pitch*sectors))))
             samples=columns[sector]
             rings=[]
             for m in range(vertical+1):
@@ -460,6 +470,8 @@ def scalloped_scalp(phone):
                     bottom,top=bent(low),bent(high)
                     z=max(floor,bottom+(top-bottom)*t)
                     row_v=min(1.,(z-bottom)/(top-bottom))
+                    stagger=.12+.38*(1+cos(a))*.5
+                    phase=stagger*((j+int(high<front-.085))%2)
                     column=repeats*u+phase
                     relief=sin(pi*row_v)**2*sin(pi*column)**2
                     at_edge=max(0.,min(1.,(z-floor)/.008))
@@ -472,8 +484,12 @@ def scalloped_scalp(phone):
                     blend=blend*blend*(3-2*blend)
                     ring.append(len(vs))
                     vs.append(pos.lerp(hair_root(a,z)+n*.0008,1-blend))
-                    normals.append(n)
-                    coords.append(((column/6)*.92+.04,row_v*.92+.04))
+                    # Turn the normal under the bead before it meets the neck;
+                    # the lower hem of the lacquer then shades as a rounded rim.
+                    rear=max(0.,min(1.,(-cos(a)-.32)/.22))
+                    curl_edge=1-max(0.,min(1.,(z-floor)/.010))
+                    normals.append((n-Vector((0,0,.50*rear*curl_edge))).normalized())
+                    coords.append(((column/7)*.92+.04,row_v*.92+.04))
                 rings.append(ring)
             for lower,upper in zip(rings,rings[1:]):
                 for k in range(len(samples)-1):
@@ -494,7 +510,8 @@ def scalloped_scalp(phone):
             normal=hair_normal(a,z)
             pos=hair_skin(a,z)-normal*.0032 if inner else hair_root(a,z)+normal*.0008
             vs.append(pos)
-            normals.append(normal)
+            rear=max(0.,min(1.,(-cos(a)-.32)/.22))
+            normals.append((normal-Vector((0,0,(1.0 if inner else .50)*rear))).normalized())
             coords.append((.04,.04))
     connect(fs,len(angles),2,start)
     scalp=surface('Cast scalp with rows of snail curls',vs,fs,'hair')
