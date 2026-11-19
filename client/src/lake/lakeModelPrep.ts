@@ -101,6 +101,24 @@ function materialsOf(m: Mesh): Material[] {
   return Array.isArray(m.material) ? m.material : [m.material];
 }
 
+/** The trail's and the office yard's meshes: they get a worn, ragged edge (lakeTrailEdge.ts). */
+export function isTrailMesh(mesh: Mesh): boolean {
+  return !groundOld() && !Array.isArray(mesh.material) && ((mesh.name === "lake_ground_1" && mesh.material.name === "LM_dirt") || (mesh.name === "lake_ground_4" && mesh.material.name === "LM_gravel"));
+}
+
+/**
+ * The worn edge (and, for the dirt, the clip at the sidewalk) of one trail mesh. The two heaviest steps of the dressing (~0.8 s on a
+ * 4x slower CPU), so LakeScene runs them one mesh per task before prepareLakeTerrain, which then skips a mesh already done.
+ */
+export function dressTrailMesh(mesh: Mesh): void {
+  if (mesh.userData.trailDone || !isTrailMesh(mesh)) return;
+  mesh.userData.trailDone = true;
+  const worn = wornEdges(mesh.geometry);
+  if (worn) mesh.geometry = worn;
+  // the trail's mouth: lake.glb's dirt starts 0.5 m on the ring's cobble; it ends flush against the sidewalk's stone band instead
+  if (!Array.isArray(mesh.material) && mesh.material.name === "LM_dirt") mesh.geometry = clipAtSidewalk(mesh.geometry) ?? mesh.geometry;
+}
+
 /** Dress a clone of lake.glb (A). */
 export function prepareLakeTerrain(root: Object3D, day: Texture, night: Texture | null, tier: VillageTier, extras: unknown): Omit<LakeDressed, "glows" | "lampHeads" | "own"> {
   configureLightmap(day);
@@ -119,13 +137,8 @@ export function prepareLakeTerrain(root: Object3D, day: Texture, night: Texture 
       return;
     }
     if (mesh.name === "lake_ridge") ridge = mesh;
-    if (!groundOld() && !Array.isArray(mesh.material) && ((mesh.name === "lake_ground_1" && mesh.material.name === "LM_dirt") || (mesh.name === "lake_ground_4" && mesh.material.name === "LM_gravel"))) {
-      // the trail and the office's yard: a worn, ragged edge instead of a hard-cut sticker (lakeTrailEdge.ts)
-      const worn = wornEdges(mesh.geometry);
-      if (worn) mesh.geometry = worn;
-      // the trail's mouth: lake.glb's dirt starts 0.5 m on the ring's cobble; it ends flush against the sidewalk's stone band instead
-      if (mesh.material.name === "LM_dirt") mesh.geometry = clipAtSidewalk(mesh.geometry) ?? mesh.geometry;
-    }
+    // the trail and the office's yard: a worn, ragged edge instead of a hard-cut sticker (lakeTrailEdge.ts)
+    dressTrailMesh(mesh);
     for (const m of materialsOf(mesh)) {
       if (m.name.startsWith("LM_")) {
         lightmapMaterial(m, day);

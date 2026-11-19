@@ -420,6 +420,38 @@ async function lotTrip(unit) {
 if (ONLY.some((o) => o.startsWith("hud")))
   // the join warm-up (shader compiles, atlases, the lake file) is over before the presses are measured: no long frame for 5 s (max 4 min)
   await p.page.waitForFunction(() => { const l = window.__inp.loaf; const last = l[l.length - 1]; return performance.now() > 15000 && (!last || performance.now() - (last.at + last.dur) > 5000); }, null, { timeout: 240000, polling: 500 }).catch(() => console.log("warm-up did not go quiet in 4 min"));
+/** --only loadkeys: walk toward the lake (it loads when the camera passes x > NEAR_X) pressing a key (a tap on a phone) every 350 ms: the worst press and the longest frame while it loads. */
+async function loadKeys() {
+  await p.page.evaluate(async ([x, z]) => {
+    const move = await window.__imp("/src/game/clickMove.ts");
+    const plan = await window.__imp("/src/game/clickPlan.ts");
+    const am = await window.__imp("/src/game/activeMap.ts");
+    const P = window.__cv.getPos();
+    const via = plan.findDetour(P.x, P.z, x, z, am.getActiveMap().geometry.obstacles, am.activeBounds(), undefined, { ratio: 6, slack: 40, margin: 40 });
+    move.setClickTarget(x, z, 0, via ?? undefined);
+  }, [100, -12]);
+  const t0 = Date.now();
+  if (a.cpu) {
+    await session.send("Profiler.enable");
+    await session.send("Profiler.setSamplingInterval", { interval: 1000 });
+    await session.send("Profiler.start");
+  }
+  await mark("load: key presses while the lake loads");
+  while (Date.now() - t0 < 90000 * Math.max(1, Number(a.throttle) / 2)) {
+    if (p.touch) await tapAt(vp.width / 2, vp.height * 0.1);
+    else await p.page.keyboard.press("Space");
+    await sleep(350);
+  }
+  if (a.cpu) {
+    const { profile } = await session.send("Profiler.stop");
+    writeFileSync(join(run.evidence, "loadkeys.cpuprofile"), JSON.stringify(profile));
+  }
+  const loaf = await p.page.evaluate(() => window.__inp.loaf.filter((f) => f.at >= window.__inp.labels[window.__inp.labels.length - 1].at).map((f) => ({ at: Math.round(f.at), dur: f.dur, block: f.block, s: f.scripts[0] ? `${f.scripts[0].fn}@${f.scripts[0].url}` : "" })));
+  const worst = loaf.sort((x, y) => y.dur - x.dur).slice(0, 6);
+  console.log("LONGEST FRAMES (ms):", JSON.stringify(worst));
+  console.log("LONGEST FRAME:", worst[0]?.dur ?? 0);
+}
+if (ONLY.includes("loadkeys")) await run.step("lake load keys", loadKeys);
 if (ONLY.includes("hudplaza")) await run.step("hud: plaza", () => allHud(a.time ? "night" : "plaza"));
 if (ONLY.includes("hudpark")) await run.step("hud: park", async () => { await parkTrip(); await allHud("park"); });
 if (ONLY.includes("hudlot")) await run.step("hud: lot interior", async () => { await lotTrip("lot_chapel_nave"); await allHud("lot"); });

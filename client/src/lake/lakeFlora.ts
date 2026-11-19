@@ -57,6 +57,14 @@ export interface LakeFloraStats {
 
 export interface LakeFlora {
   group: Group;
+  /**
+   * The geometry builds still to do, one small step each (a tree shape's near / far level, a plant bunch): the caller runs them over many
+   * frames (runLakeFloraSteps) so no single frame is long (INP: a key pressed while the lake loads must not wait ~2 s). Until every step is
+   * done and `finish()` has run, the file's own trees stay drawn and the new ones stay hidden, so the swap is one frame with no gap.
+   */
+  steps: Array<() => void>;
+  /** Hide the file's own meshes and show the new ones (after the last step). */
+  finish(): void;
   /** Choose each tree's level for the camera's place (cheap; moves only when the camera has moved). */
   update(camera: Vector3): void;
   stats: LakeFloraStats;
@@ -122,19 +130,20 @@ export function installLakeFlora(root: Object3D, tier: VillageTier): LakeFlora |
     }
   });
   let hidden = 0;
+  const toHide: InstancedMesh[] = []; // the file's own meshes: hidden at finish(), when the new ones are all built
   root.traverse((o) => {
     if (!(o as InstancedMesh).isInstancedMesh) return;
     const im = o as InstancedMesh;
     const t = TREE.exec(im.name);
     if (t) {
       if (t[3] === "0") trees.push({ mesh: im, leaves: leafOf.get(`${t[1] ?? ""}_${t[2]}`) ?? null });
-      im.visible = false;
+      toHide.push(im);
       hidden++;
       return;
     }
     if (WILLOW.test(im.name)) {
       if (im.name.endsWith("_0")) willows.push(im);
-      im.visible = false;
+      toHide.push(im);
       hidden++;
       return;
     }
@@ -142,7 +151,7 @@ export function installLakeFlora(root: Object3D, tier: VillageTier): LakeFlora |
     if (p) {
       const kind = p[2] === "reed" ? "reed" : p[2] === "cattail" ? "cattail" : p[2] === "grass" ? "grass" : "grassTall";
       plants.push({ mesh: im, kind });
-      im.visible = false;
+      toHide.push(im);
       hidden++;
     }
   });
@@ -231,21 +240,28 @@ export function installLakeFlora(root: Object3D, tier: VillageTier): LakeFlora |
   for (const pl of plans) (byKey.get(pl.key) ?? byKey.set(pl.key, []).get(pl.key)!).push(pl);
 
   const groups: Group3[] = [];
-  let nearTris = 0;
-  let farTris = 0;
+  const steps: Array<() => void> = [];
+  const stats: LakeFloraStats = { trees: plans.filter((x) => x.species !== "willow").length, willows: plans.filter((x) => x.species === "willow").length, plants: 0, hidden, nearTris: 0, farTris: 0 };
   for (const [key, list] of byKey) {
     const first = list[0]!;
     const sp = first.species;
     const seed = first.shape * 17 + (sp === "birch" ? 1 : sp === "beech" ? 2 : sp === "oak" ? 3 : 4);
     const build = (lod: 0 | 1) => (sp === "willow" ? willowGeo(seed, { lod, low }) : treeGeo(sp, seed, { lod, low }));
-    const near = build(0);
-    const far = build(1);
-    keep(near.bark);
-    keep(near.leaves);
-    keep(far.bark);
-    keep(far.leaves);
-    nearTris += near.tris;
-    farTris += far.tris;
+    let near!: ReturnType<typeof build>;
+    let far!: ReturnType<typeof build>;
+    steps.push(() => {
+      near = build(0);
+      keep(near.bark);
+      keep(near.leaves);
+      stats.nearTris += near.tris;
+    });
+    steps.push(() => {
+      far = build(1);
+      keep(far.bark);
+      keep(far.leaves);
+      stats.farTris += far.tris;
+    });
+    steps.push(() => {
     const pattern: BarkPattern = sp === "oak" ? "plates" : sp === "willow" ? "willow" : "smooth";
     const bm = barkMat(pattern);
     const sphere = bound(list.map((l) => l.m), 14);
@@ -272,10 +288,11 @@ export function installLakeFlora(root: Object3D, tier: VillageTier): LakeFlora |
       part.bark.visible = part.leaves.visible = false;
     }
     groups.push(g3);
+    });
   }
 
   // ── reeds, cattails, grass: bunches of cards on the file's own places ──
-  let plantCount = 0;
+  const plantMeshes: InstancedMesh[] = [];
   const plantList = new Map<string, Matrix4[]>();
   for (const pl of plants) {
     const list = instanceMatrices(pl.mesh);
@@ -284,21 +301,27 @@ export function installLakeFlora(root: Object3D, tier: VillageTier): LakeFlora |
     (plantList.get(key) ?? plantList.set(key, []).get(key)!).push(...list);
   }
   for (const [key, list] of plantList) {
-    const kind = key.slice(0, -1) as keyof typeof BUNCHES;
-    const variant = Number(key.slice(-1));
-    const g = keep(bunchGeo(kind, variant * 5 + 1));
-    const mesh = new InstancedMesh(g, tallMat, list.length);
-    mesh.name = `lake_${key}`;
-    mesh.matrixAutoUpdate = false;
-    list.forEach((m, i) => mesh.setMatrixAt(i, m));
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-    group.add(mesh);
-    plantCount += list.length;
+    steps.push(() => {
+      const kind = key.slice(0, -1) as keyof typeof BUNCHES;
+      const variant = Number(key.slice(-1));
+      const g = keep(bunchGeo(kind, variant * 5 + 1));
+      const mesh = new InstancedMesh(g, tallMat, list.length);
+      mesh.name = `lake_${key}`;
+      mesh.matrixAutoUpdate = false;
+      list.forEach((m, i) => mesh.setMatrixAt(i, m));
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
+      mesh.visible = false; // shown by finish(), with the trees
+      group.add(mesh);
+      plantMeshes.push(mesh);
+      stats.plants += list.length;
+    });
   }
 
   const last = new Vector3(1e9, 0, 0);
+  let ready = false;
   const update = (cam: Vector3): void => {
+    if (!ready) return;
     if (Math.abs(cam.x - last.x) + Math.abs(cam.z - last.z) + Math.abs(cam.y - last.y) < 1.5) return;
     last.copy(cam);
     const near = NEAR[tier];
@@ -349,12 +372,50 @@ export function installLakeFlora(root: Object3D, tier: VillageTier): LakeFlora |
   return {
     group,
     update,
-    stats: { trees: plans.filter((x) => x.species !== "willow").length, willows: plans.filter((x) => x.species === "willow").length, plants: plantCount, hidden, nearTris, farTris },
+    steps,
+    finish() {
+      for (const im of toHide) im.visible = false;
+      for (const m of plantMeshes) m.visible = true;
+      ready = true;
+      last.set(1e9, 0, 0); // the next update() chooses every tree's level
+    },
+    stats,
     dispose() {
       for (const g of geos) g.dispose();
       for (const t of owned) t.dispose();
       for (const m of mats) m.dispose();
       group.removeFromParent();
     },
+  };
+}
+
+/** Run every step and finish at once (tests, one-shot callers). */
+export function completeLakeFlora(f: LakeFlora): LakeFlora {
+  for (const st of f.steps) st();
+  f.steps.length = 0;
+  f.finish();
+  return f;
+}
+
+/**
+ * Run the steps over many tasks: as many as fit in about `budgetMs`, then yield to the event loop (a pending key press or tap is handled
+ * between tasks). Calls `done` after finish(). Returns the cancel function.
+ */
+export function runLakeFloraSteps(f: LakeFlora, done: () => void, budgetMs = 6): () => void {
+  let cancelled = false;
+  let i = 0;
+  const tick = (): void => {
+    if (cancelled) return;
+    const t0 = performance.now();
+    while (i < f.steps.length && performance.now() - t0 < budgetMs) f.steps[i++]!();
+    if (i < f.steps.length) setTimeout(tick, 0);
+    else {
+      f.finish();
+      done();
+    }
+  };
+  setTimeout(tick, 0);
+  return () => {
+    cancelled = true;
   };
 }
