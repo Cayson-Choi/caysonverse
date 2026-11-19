@@ -86,13 +86,9 @@ import { busRiderCamera, busSelfHidden, busShoulderScale, busShoulderSide, clamp
 import { resetRideCamera, selfRide, stepRideCamera } from "../land/coasterRide";
 import { stepRideAudio, stopRideAudio } from "../land/coasterAudio";
 import { resetCarouselCamera, stepCarouselCamera } from "../land/carouselRide";
-import { startCarouselMusic, stopCarouselMusic } from "../land/carouselAudio";
 import { resetWheelCamera, stepWheelCamera } from "../land/wheelRide";
-import { startWheelAudio, stopWheelAudio } from "../land/wheelAudio";
 import { resetMoonBoatCamera, stepMoonBoatCamera } from "../land/moonBoatRide";
-import { startMoonBoatAudio, stopMoonBoatAudio } from "../land/moonBoatAudio";
 import { resetDropCamera, stepDropCamera } from "../land/dropTowerRide";
-import { startDropAudio, stopDropAudio } from "../land/dropTowerAudio";
 import { busCamGoal, busCamState, busSeatGoal, busSeatPreferred, busWalkGoal, riderBusPoint, selfBusRide } from "./busRide";
 import { BUS_SEATS, busPlaceOf, cabinFloorAt, seatBodyPoint } from "@caysonverse/shared/village/busCabin";
 import { busFloorUnderRay, busSeatUnderRay } from "../village/busSeatPick";
@@ -1353,10 +1349,6 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
         resetWheelCamera();
         resetMoonBoatCamera();
         resetDropCamera();
-        if (selfRide.ride === 4) startMoonBoatAudio();
-        if (selfRide.ride === 5) startDropAudio();
-        if (selfRide.ride === 2) startCarouselMusic();
-        if (selfRide.ride === 3) startWheelAudio();
         persp.near = 0.05;
         persp.updateProjectionMatrix();
       }
@@ -1380,13 +1372,9 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
       resetRideCamera();
       resetCarouselCamera();
       stopRideAudio();
-      stopCarouselMusic();
       resetWheelCamera();
-      stopWheelAudio();
       resetMoonBoatCamera();
-      stopMoonBoatAudio();
       resetDropCamera();
-      stopDropAudio();
     }
 
     // Overview looks down from far above; push the fog band out (eased by ovT) so

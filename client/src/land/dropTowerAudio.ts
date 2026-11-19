@@ -1,150 +1,254 @@
 /**
- * The cloud drop tower's sound (WebAudio, synthesised, shares the ride mute switch): the slow lift's soft motor hum rising with the height, a held breath of
- * wind at the top, the free fall's rushing wind (speed), a low magnetic thrum in the brakes, and a soft celesta chime when the car sets down. Everything is
- * built once at the start (a noise loop, two oscillators, a pool of three bell voices); the 120 ms timer only retunes gains and reschedules a bell: no node
- * is created while riding.
+ * 구름 낙하탑's sound (Web Audio, synthesised: no files). One mix; the rider hears all of it, someone near the tower hears it
+ * quieter, duller and without the rider-only layers (the wind, the scream). The ride's stages drive it:
+ *
+ *   lift   a strong motor whose pitch and brightness climb with the car, a chain's clack that quickens with the speed, a thin
+ *          whine rising above it, the gusting wind thickening with height;
+ *   hold   the motor stops and the car locks with a thud, a creak or two of the frame, the wind alone: the tense quiet;
+ *   fall   a clank of the release, then a big whoosh that opens with the speed (a swept band plus a bright rush), and for the rider
+ *          a soft, breathy group "ahh" (SCREAM_GAIN: gentle on purpose, band-limited, never shrill);
+ *   brake  the magnetic brakes' flutter-hiss over a low thrum, falling with the speed; at the station a thud, a puff of released air
+ *          and a two-note chime.
+ * Built once; a tick moves parameters and schedules the events on the stage's edges.
  */
-import { rideMuted } from "./coasterAudio";
-import { DROP_FALL_V, DROP_TOP_Y, dropAt, type DropState } from "@caysonverse/shared/land/dropTower";
-import { villageClock } from "../village/villageClock";
+import { DROP_FALL_V, DROP_TOP_Y, dropAt, type DropStage, type DropState } from "@caysonverse/shared/land/dropTower";
+import {
+  BellPool,
+  CreakVoice,
+  bakedBuffer,
+  breath,
+  clamp01,
+  clank,
+  createEcho,
+  disconnectAll,
+  ease,
+  filter,
+  gain,
+  hz,
+  lfo,
+  loopSource,
+  noiseBuffer,
+  seededRandom,
+  stopQuiet,
+  swish,
+  thud,
+} from "./sfx/sfxKit";
+import type { RideMix } from "./sfx/rideMix";
 
-let ctx: AudioContext | null = null;
-let master: GainNode | null = null;
-let wind: GainNode | null = null;
-let windFilter: BiquadFilterNode | null = null;
-let motor: GainNode | null = null;
-let motorOsc: OscillatorNode | null = null;
-let thrum: GainNode | null = null;
-let thrumOsc: OscillatorNode | null = null;
-let noise: AudioBufferSourceNode | null = null;
-let timer = 0;
-let lastStage = "idle";
-const ST: DropState = { cycle: 0, phase: 0, status: "boarding", stage: "idle", y: 0, v: 0, a: 0, rideT: 0, departsInMs: 0 };
-const PARTIALS: readonly (readonly [number, number])[] = [[1, 1], [2.76, 0.3], [5.4, 0.1]];
+/** The group "ahh" in the fall, at its peak (a gentle level: the rest of the mix peaks around 0.5). */
+export const SCREAM_GAIN = 0.05;
+/** The lift's top speed (m/s) for the chain's rate: (42 - 1.4) * 1.5 / 14 s. */
+const LIFT_V_MAX = 4.35;
 
-interface Voice {
-  osc: OscillatorNode[];
-  gain: GainNode[];
-}
-let voices: Voice[] = [];
-let nextVoice = 0;
-
-function ring(freq: number, t: number, gain: number): void {
-  if (!ctx || voices.length === 0) return;
-  const v = voices[nextVoice++ % voices.length]!;
-  for (let k = 0; k < PARTIALS.length; k++) {
-    const [mul, g] = PARTIALS[k]!;
-    v.osc[k]!.frequency.setValueAtTime(freq * mul, t);
-    const gp = v.gain[k]!.gain;
-    gp.cancelScheduledValues(t);
-    gp.setValueAtTime(0, t);
-    gp.linearRampToValueAtTime(gain * g, t + 0.005);
-    gp.exponentialRampToValueAtTime(0.0001, t + 2.2 / mul ** 0.3);
-  }
+export interface DropInput {
+  rider: boolean;
+  stage: DropStage;
+  /** the car's height (m) and vertical speed (m/s, + up) */
+  y: number;
+  v: number;
 }
 
-export function startDropAudio(): void {
-  if (ctx || typeof AudioContext === "undefined") return;
-  try {
-    const c = new AudioContext();
-    ctx = c;
-    master = c.createGain();
-    master.gain.value = 0;
-    master.connect(c.destination);
-    const buf = c.createBuffer(1, c.sampleRate, c.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    noise = c.createBufferSource();
-    noise.buffer = buf;
-    noise.loop = true;
-    windFilter = c.createBiquadFilter();
-    windFilter.type = "bandpass";
-    windFilter.frequency.value = 400;
-    wind = c.createGain();
-    wind.gain.value = 0;
-    noise.connect(windFilter).connect(wind).connect(master);
-    noise.start();
-    const lp = (f: number): BiquadFilterNode => {
-      const b = c.createBiquadFilter();
-      b.type = "lowpass";
-      b.frequency.value = f;
-      return b;
-    };
-    motorOsc = c.createOscillator();
-    motorOsc.type = "sawtooth";
-    motorOsc.frequency.value = 55;
-    motor = c.createGain();
-    motor.gain.value = 0;
-    motorOsc.connect(lp(180)).connect(motor).connect(master);
-    motorOsc.start();
-    thrumOsc = c.createOscillator();
-    thrumOsc.type = "triangle";
-    thrumOsc.frequency.value = 38;
-    thrum = c.createGain();
-    thrum.gain.value = 0;
-    thrumOsc.connect(lp(120)).connect(thrum).connect(master);
-    thrumOsc.start();
-    voices = [];
-    for (let v = 0; v < 3; v++) {
-      const voice: Voice = { osc: [], gain: [] };
-      for (let k = 0; k < PARTIALS.length; k++) {
-        const o = c.createOscillator();
-        const g = c.createGain();
-        o.type = "sine";
-        g.gain.value = 0;
-        o.connect(g).connect(master);
-        o.start();
-        voice.osc.push(o);
-        voice.gain.push(g);
+export function buildDropMix(ctx: BaseAudioContext, out: AudioNode): RideMix<DropInput> {
+  const rnd = seededRandom(0xd209);
+  const nodes: AudioNode[] = [];
+  const stops: { stop(): void }[] = [];
+  const keep = <T extends AudioNode>(n: T): T => {
+    nodes.push(n);
+    return n;
+  };
+  const osc = (type: OscillatorType, f: number): OscillatorNode => {
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.value = f;
+    o.start();
+    stops.push(o);
+    return o;
+  };
+  const master = keep(gain(ctx, 1));
+  master.connect(out);
+  const echo = createEcho(ctx, master, 0.31, 0.22, 2400, 0.25);
+  nodes.push(...echo.nodes);
+
+  // the lift: motor, its octave, the whine, the chain
+  const motor = osc("sawtooth", 52);
+  const motorLp = keep(filter(ctx, "lowpass", 220, 0.8));
+  const motorG = keep(gain(ctx, 0));
+  motor.connect(motorLp).connect(motorG).connect(master);
+  const motor2 = osc("sine", 104);
+  const motor2G = keep(gain(ctx, 0));
+  motor2.connect(motor2G).connect(master);
+  const whine = osc("triangle", 420);
+  const whineBand = keep(filter(ctx, "bandpass", 700, 3));
+  const whineG = keep(gain(ctx, 0));
+  whine.connect(whineBand).connect(whineG).connect(master);
+  stops.push(lfo(ctx, 5, 8, whine.detune));
+  const clackBuf = bakedBuffer(ctx, "drop-clack", 1, (d, sr) => {
+    // four chain clacks a second: a short band-limited click with a ring
+    const r = seededRandom(9);
+    for (let k = 0; k < 4; k++) {
+      const at = Math.floor(sr * (k * 0.25));
+      const len = Math.floor(sr * 0.05);
+      for (let i = 0; i < len; i++) {
+        const env = Math.exp((-6 * i) / len);
+        d[at + i]! += ((r() * 2 - 1) * 0.5 + Math.sin((2 * Math.PI * (880 + k * 40) * i) / sr) * 0.6) * env * (k === 0 ? 1 : 0.8);
       }
-      voices.push(voice);
     }
-    lastStage = "idle";
-    timer = window.setInterval(() => {
-      if (!ctx || !master || !wind || !windFilter || !motor || !motorOsc || !thrum || !thrumOsc) return;
-      const st = dropAt(villageClock.liveMs(), ST);
-      const t = ctx.currentTime;
-      const speed = Math.min(1, Math.abs(st.v) / DROP_FALL_V);
-      const height = Math.max(0, Math.min(1, st.y / DROP_TOP_Y));
-      master.gain.setTargetAtTime(rideMuted() ? 0 : 0.5, t, 0.3);
-      motor.gain.setTargetAtTime(st.stage === "lift" ? 0.05 : 0, t, 0.3);
-      motorOsc.frequency.setTargetAtTime(52 + height * 26, t, 0.4);
-      wind.gain.setTargetAtTime(0.012 * height + speed * 0.14, t, 0.15);
-      windFilter.frequency.setTargetAtTime(260 + speed * 1500, t, 0.15);
-      thrum.gain.setTargetAtTime(st.stage === "brake" ? 0.1 : 0, t, 0.08);
-      thrumOsc.frequency.setTargetAtTime(34 + speed * 22, t, 0.1);
-      if (st.stage !== lastStage) {
-        if (st.stage === "hold") ring(660, t + 0.02, 0.05);
-        if (st.stage === "rest") ring(880, t + 0.05, 0.06);
-        lastStage = st.stage;
+  });
+  const clack = loopSource(ctx, clackBuf);
+  stops.push(clack);
+  const clackLp = keep(filter(ctx, "lowpass", 3400, 0.6));
+  const clackG = keep(gain(ctx, 0));
+  clack.connect(clackLp).connect(clackG).connect(master);
+
+  // the wind (rider only) and the whoosh / rush
+  const windSrc = loopSource(ctx, noiseBuffer(ctx, 4, "pink", 41));
+  stops.push(windSrc);
+  const windBand = keep(filter(ctx, "bandpass", 420, 0.5));
+  const windG = keep(gain(ctx, 0));
+  const gust = breath(ctx, 0.13, 0.3);
+  windSrc.connect(windBand).connect(gust.node).connect(windG).connect(master);
+  stops.push(gust.osc, lfo(ctx, 0.29, 120, windBand.frequency));
+  const whooshSrc = loopSource(ctx, noiseBuffer(ctx, 4, "pink", 43), 1, 1.1);
+  stops.push(whooshSrc);
+  const whooshBand = keep(filter(ctx, "bandpass", 300, 0.7));
+  const whooshG = keep(gain(ctx, 0));
+  whooshSrc.connect(whooshBand).connect(whooshG).connect(master);
+  const rushSrc = loopSource(ctx, noiseBuffer(ctx, 3, "white", 47), 1, 0.4);
+  stops.push(rushSrc);
+  const rushHp = keep(filter(ctx, "highpass", 2300, 0.6));
+  const rushLp = keep(filter(ctx, "lowpass", 5200, 0.5));
+  const rushG = keep(gain(ctx, 0));
+  rushSrc.connect(rushHp).connect(rushLp).connect(rushG).connect(master);
+
+  // the brakes: a fluttering hiss over a thrum
+  const brakeSrc = loopSource(ctx, noiseBuffer(ctx, 3, "white", 53), 1, 0.9);
+  stops.push(brakeSrc);
+  const brakeHp = keep(filter(ctx, "highpass", 2400, 0.7));
+  const brakeLp = keep(filter(ctx, "lowpass", 6500, 0.5));
+  const flutter = keep(gain(ctx, 0.5));
+  stops.push(lfo(ctx, 38, 0.5, flutter.gain, "triangle"));
+  const brakeG = keep(gain(ctx, 0));
+  brakeSrc.connect(brakeHp).connect(brakeLp).connect(flutter).connect(brakeG).connect(master);
+  const thrum = osc("triangle", 36);
+  const thrumLp = keep(filter(ctx, "lowpass", 130, 0.7));
+  const thrumG = keep(gain(ctx, 0));
+  thrum.connect(thrumLp).connect(thrumG).connect(master);
+
+  // the group "ahh": two detuned saw voices through two formant bands, softly low-passed
+  const scL = osc("sawtooth", 560);
+  const scH = osc("sawtooth", 700);
+  stops.push(lfo(ctx, 5.6, 22, scL.detune), lfo(ctx, 6.1, 26, scH.detune));
+  const scF1 = keep(filter(ctx, "bandpass", 850, 3));
+  const scF2 = keep(filter(ctx, "bandpass", 1650, 4));
+  const scLp = keep(filter(ctx, "lowpass", 3000, 0.5));
+  const scG = keep(gain(ctx, 0));
+  const scIn = keep(gain(ctx, 1));
+  scL.connect(scIn);
+  scH.connect(scIn);
+  scIn.connect(scF1).connect(scLp);
+  scIn.connect(scF2).connect(scLp);
+  scLp.connect(scG).connect(echo.input);
+
+  const creaks = [new CreakVoice(ctx, master), new CreakVoice(ctx, master)];
+  const bells = new BellPool(ctx, master, [[1, 1], [2.76, 0.3], [5.4, 0.1]], 3);
+
+  let prev: DropStage = "idle";
+  return {
+    update(t, inp) {
+      const rv = inp.rider ? 1 : 0;
+      const h = clamp01(inp.y / DROP_TOP_Y);
+      const sp = clamp01(Math.abs(inp.v) / DROP_FALL_V);
+      const lift = inp.stage === "lift" ? 1 : 0;
+      const hold = inp.stage === "hold" ? 1 : 0;
+      const fall = inp.stage === "fall" ? 1 : 0;
+      const brake = inp.stage === "brake" ? 1 : 0;
+      const aloft = lift || hold || fall ? 1 : 0;
+      const liftSpeed = clamp01(inp.v / LIFT_V_MAX);
+
+      // the lift
+      ease(motorG.gain, lift * (0.16 + 0.1 * h), t, 0.35);
+      ease(motor.frequency, 50 + h * 46, t, 0.3);
+      ease(motorLp.frequency, 200 + h * 700, t, 0.3);
+      ease(motor2G.gain, lift * 0.05, t, 0.35);
+      ease(motor2.frequency, 100 + h * 92, t, 0.3);
+      ease(whineG.gain, lift * (0.012 + 0.03 * h), t, 0.4);
+      ease(whine.frequency, 360 + h * 1500, t, 0.3);
+      ease(whineBand.frequency, 500 + h * 1700, t, 0.3);
+      ease(clackG.gain, lift * 0.2 * (0.4 + 0.6 * liftSpeed), t, 0.12);
+      clack.playbackRate.setTargetAtTime(0.85 + 1.15 * liftSpeed, t, 0.15);
+      // the wind: gusting, thicker aloft and in the fall (the rider's)
+      ease(windG.gain, rv * aloft * (0.02 + 0.12 * h * (hold ? 1.15 : 1)), t, 0.5);
+      ease(windBand.frequency, 300 + h * 500, t, 0.5);
+      // the fall: whoosh and rush open with the speed
+      const sw = (inp.rider ? 1 : 0.55) * sp;
+      ease(whooshG.gain, fall || brake ? sw * sw * 0.55 + sw * 0.05 : 0, t, 0.1);
+      ease(whooshBand.frequency, 240 + 2000 * Math.pow(sp, 1.3), t, 0.12);
+      ease(rushG.gain, (fall || brake) && inp.rider ? 0.07 * sp * sp * sp : 0, t, 0.1);
+      // the brakes
+      ease(brakeG.gain, brake * (inp.rider ? 0.11 : 0.08) * (0.25 + sp), t, 0.1);
+      ease(thrumG.gain, brake * 0.22, t, 0.1);
+      ease(thrum.frequency, 34 + sp * 24, t, 0.1);
+      ease(brakeHp.frequency, 1800 + 1500 * sp, t, 0.1);
+
+      // the stages' edges
+      if (inp.stage !== prev) {
+        if (inp.stage === "lift") {
+          clank(ctx, master, t + 0.05, 0.06 * (0.5 + rv), 260);
+          thud(ctx, master, t + 0.02, 0.1, 90, 48, 0.22);
+        } else if (inp.stage === "hold") {
+          thud(ctx, master, t + 0.05, 0.16, 105, 42, 0.3); // the car locks
+          for (let k = 0; k < 3; k++) {
+            const f = 90 + rnd() * 70;
+            creaks[k % 2]!.fire(t + 0.5 + k * 1.3 + rnd() * 0.4, f, f * (rnd() < 0.5 ? 0.8 : 1.35), 0.4 + rnd() * 0.4, (inp.rider ? 0.07 : 0.045) * (0.7 + rnd() * 0.5), 650 + rnd() * 500);
+          }
+        } else if (inp.stage === "fall") {
+          // the release: a clank and a hiss of air, then the group "ahh"
+          clank(ctx, master, t + 0.02, 0.14 * (0.5 + rv * 0.5), 280);
+          swish(ctx, master, t + 0.02, 0.5, 0.08, 4200, 1800, 0.7, 0.2);
+          if (inp.rider) {
+            const g = scG.gain;
+            g.cancelScheduledValues(t);
+            g.setValueAtTime(0, t + 0.2);
+            g.linearRampToValueAtTime(SCREAM_GAIN, t + 0.7);
+            g.setValueAtTime(SCREAM_GAIN, t + 1.5);
+            g.linearRampToValueAtTime(0, t + 2.9);
+            for (const [o, f0, f1] of [[scL, 540, 880], [scH, 690, 1090]] as const) {
+              o.frequency.cancelScheduledValues(t);
+              o.frequency.setValueAtTime(f0, t + 0.2);
+              o.frequency.linearRampToValueAtTime(f1, t + 1.4);
+              o.frequency.linearRampToValueAtTime(f1 * 0.82, t + 2.9);
+            }
+          }
+        } else if (inp.stage === "brake") {
+          thud(ctx, master, t + 0.02, 0.1, 85, 45, 0.25);
+        } else if (inp.stage === "rest" && prev === "brake") {
+          // the station: a thud, the air released, a two-note chime
+          thud(ctx, master, t + 0.03, 0.3 * (0.6 + rv * 0.4), 80, 34, 0.35);
+          clank(ctx, master, t + 0.03, 0.08, 230);
+          swish(ctx, master, t + 0.15, 0.9, 0.09, 2600, 900, 0.8, 0.15);
+          bells.ring(hz(81), t + 0.6, 0.13, 2.2);
+          bells.ring(hz(88), t + 1.05, 0.12, 2.6);
+        }
+        prev = inp.stage;
       }
-    }, 120);
-  } catch {
-    ctx = null;
-  }
+    },
+    dispose() {
+      for (const s of stops) stopQuiet(s);
+      for (const c of creaks) c.dispose();
+      bells.dispose();
+      disconnectAll(nodes);
+    },
+  };
 }
 
-export function stopDropAudio(): void {
-  window.clearInterval(timer);
-  const c = ctx;
-  const m = master;
-  ctx = null;
-  master = null;
-  voices = [];
-  if (!c || !m) return;
-  try {
-    m.gain.setTargetAtTime(0, c.currentTime, 0.2);
-    window.setTimeout(() => {
-      try {
-        noise?.stop();
-        motorOsc?.stop();
-        thrumOsc?.stop();
-      } catch {
-        /* stopped */
-      }
-      void c.close().catch(() => undefined);
-    }, 800);
-  } catch {
-    /* ignore */
-  }
+const ST: DropState = { cycle: 0, phase: 0, status: "boarding", stage: "idle", y: 0, v: 0, a: 0, rideT: 0, departsInMs: 0 };
+
+/** The tower's state as the mix needs it. */
+export function dropInput(nowMs: number, rider: boolean, out: DropInput = { rider: false, stage: "idle", y: 0, v: 0 }): DropInput {
+  dropAt(nowMs, ST);
+  out.rider = rider;
+  out.stage = ST.stage;
+  out.y = ST.y;
+  out.v = ST.v;
+  return out;
 }

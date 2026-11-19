@@ -38,6 +38,7 @@ import { VillageModel } from "./VillageModel";
 import { VillageBus } from "./VillageBus";
 import { BUSSTOP_MODEL_URL, BusStopShelter } from "./BusStopShelter";
 import { VillageMusic } from "./VillageMusic";
+import { AreaSfx } from "./AreaSfx";
 import { LakeLampLights, LakeWorld } from "../lake/LakeScene";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
 import { clearBusCache, clearVillageCaches, holdVillageFiles, holdsVillageFiles } from "./villageRelease";
@@ -553,6 +554,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <GuideNpcs area={area} />
           <VillageDoors pose={pose} />
           <LandPoseProbe pose={pose} />
+          <AreaSfx area={area} />
           {(area === "village" || area === "park") && <StarSky tier={tier} />}
           <VeilFrameThrottle active={area === "village"} />
         </>
