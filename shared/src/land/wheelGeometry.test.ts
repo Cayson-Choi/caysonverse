@@ -82,7 +82,7 @@ describe("the wheel's solids never pass through a gondola (owner 2026-11-18)", (
   });
   it("at the loading position the cabin floor is flush with the deck and a small gap away from it", () => {
     for (let c = 0; c < WHEEL_N; c++) {
-      const st = wheelAt(c * 18_000 + 4000);
+      const st = wheelAt(c * 18_750);
       const g = wheelBottomGondola(c);
       const boxes = gondolaBoxesAt(g, st.angle, 0);
       const plinth = boxes.find((b) => b.name === "plinth")!;

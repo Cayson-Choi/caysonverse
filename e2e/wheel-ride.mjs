@@ -15,7 +15,8 @@ const run = createRun(phone ? "wheel-ride-phone" : "wheel-ride-desktop");
 if (outArg) run.evidence = outArg.slice("--out=".length);
 mkdirSync(run.evidence, { recursive: true });
 
-const NOON = "2026-11-03T12:30";
+const night = process.argv.includes("--night");
+const NOON = night ? "2026-11-03T21:30" : "2026-11-03T12:30";
 let nickSeq = 0;
 async function joinLand(p, prefix) {
   await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(NOON)}`, { waitUntil: "domcontentloaded", timeout: 120000 });
@@ -138,7 +139,8 @@ await run.step("board", async () => {
     requestAnimationFrame(tick);
   });
   await act(A);
-  const seated = await until(async () => (await probe(A)).slot >= 0, 8000);
+  // the window is 6.5 s every 18.75 s: a press just after it closes is a reservation the next gondola's window seats by itself
+  const seated = await until(async () => (await probe(A)).slot >= 0, 30000);
   const me = await probe(A);
   run.check("A boards: a wheel seat", seated && me.ride === 3, { slot: me.slot, ride: me.ride });
   await sleep(1500);
@@ -191,6 +193,17 @@ await run.step("ride", async () => {
             });
             await sleep(600);
             await run.shot(B, "w11-B-watches-A-in-the-air.png");
+            // next to the gondola, from the open south side: the rider shows through the clear glass
+            await B.page.evaluate(async () => {
+              const w = await window.__imp("/land/wheel.ts");
+              const clock = await window.__imp("/src/village/villageClock.ts");
+              const rs = await window.__imp("/src/game/remoteStore.ts");
+              const me = rs.getRemotes().find((r) => r.rideSeat >= 0);
+              const p = w.wheelSeatPose(me ? me.rideSeat : 0, clock.villageClock.liveMs());
+              window.__cvShot = { x: p.x + 0.4, y: p.y + 0.5, z: p.z + 6.5, tx: p.x, ty: p.y - 0.3, tz: p.z - 0.3, fov: 36 };
+            });
+            await sleep(600);
+            await run.shot(B, "w11b-B-next-to-the-gondola.png");
           }
         }
     }
@@ -200,7 +213,9 @@ await run.step("ride", async () => {
   run.check("every checkpoint photographed", shot.size === moments.length, { got: [...shot] });
   const alts = log.map((l) => l.alt);
   run.check("the gondola rose above 40 m", Math.max(...alts) > 40, { max: Math.max(...alts) });
-  run.check("the swing was felt on a start (> 0.5 deg)", Math.max(...log.map((l) => Math.abs(l.sway))) > 0.009, {});
+  run.check("the cabin hangs level the whole way round (no swing, no tilt)", Math.max(...log.map((l) => Math.abs(l.sway))) === 0, { maxSway: Math.max(...log.map((l) => Math.abs(l.sway))) });
+  const speeds = log.map((l) => l.omega);
+  run.check("the wheel never stops or changes speed (constant 2.5 min revolution)", Math.max(...speeds) - Math.min(...speeds) < 0.001 && Math.min(...speeds) > 0.04, { min: Math.min(...speeds), max: Math.max(...speeds) });
 });
 
 await run.step("unload", async () => {
