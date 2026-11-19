@@ -435,10 +435,12 @@ def hut(rng, key):
     over = 0.62
     ey = H + 0.05
     ridge_y = ey + math.tan(pitch_ang) * ((z1 - z0) / 2 + over)
+    # At the wall (inside the overhang) the soffit sits higher than the outer eave.
+    plate_y = ey + math.tan(pitch_ang) * over - 0.04
     # the log walls are flat panels carrying the log-wall texture; only the corner log ends stick out as geometry
     logc = P["log"]
     def wall(frame, a0, a1, holes):
-        for (r0, r1, b0, b1) in L.rects_minus((a0, a1, 0.0, H), holes):
+        for (r0, r1, b0, b1) in L.rects_minus((a0, a1, 0.0, plate_y), holes):
             box(mb, frame, r0, r1, b0, b1, -d, 0.0, jit(rng2, logc, 0.05), "log", skip="")
     fdoor = F(0, 0, door_wall_z, 0 if not A else math.pi)
     fbench = F(0, 0, bench_wall_z, math.pi if not A else 0)
@@ -465,12 +467,11 @@ def hut(rng, key):
                     tubew(mb, (xx - sx * d / 2, y, zz - sz * d / 2), (xx - sx * d / 2, y, zz + sz * 0.12), d / 2, jit(rng2, P["log_dark"], 0.1), "wood", 6, caps=(False, True))
     # gable ends: textured triangles above the walls
     for xx, sg in ((x0, -1), (x1, 1)):
-        zl, zr_ = cz - ((z1 - z0) / 2 - 0.01), cz + ((z1 - z0) / 2 - 0.01)
-        a, b, c = V(xx, zl, H), V(xx, zr_, H), V(xx, cz, ridge_y - 0.07)
+        a, b, c = V(xx, z0, plate_y), V(xx, z1, plate_y), V(xx, cz, ridge_y - 0.04)
         if sg > 0:
-            mb.tri(a, b, c, logc, "log")
-        else:
             mb.tri(b, a, c, logc, "log")
+        else:
+            mb.tri(a, b, c, logc, "log")
     # door + window on the door wall: a frame facing outward (local +z = outward, local x = east on B, west on A)
     fr = F(0, 0, door_wall_z, 0 if not A else math.pi)
 
