@@ -776,6 +776,7 @@ export function LocalPlayer({
     // Getting up from a bench: the stand-up clip carries the body to the dismount spot (stepGlide below); a click
     // target set meanwhile is steered toward once it is there.
     const gliding = seatMotionRef.current.glide !== null;
+    let remaining = Infinity; // manual input has no destination
     if (manual) {
       clearClickTarget();
       setPreferredSeat(-1); // the keys / stick took over: the chair tapped before no longer outranks a nearer one
@@ -785,6 +786,7 @@ export function LocalPlayer({
       // avatar keeps walking while the user types (asymmetric input freeze).
       const autoDir = stepClickMove(pose.x, pose.z, delta);
       if (autoDir) {
+        remaining = autoDir.remaining;
         const auto = dirToIntent(autoDir, activeYaw);
         intent.forward = auto.forward;
         intent.right = auto.right;
@@ -1231,7 +1233,7 @@ export function LocalPlayer({
     let movedZ = 0;
     if (moving) {
       const dir = worldDirection(intent, activeYaw);
-      const speed = moveSpeed(run);
+      const distance = Math.min(moveSpeed(run) * delta, remaining);
       const fromX = pose.x;
       const fromZ = pose.z;
       // Slide the body (circle-vs-AABB) along walls/furniture from the SAME
@@ -1241,8 +1243,8 @@ export function LocalPlayer({
       const next = resolveCollision(
         pose.x,
         pose.z,
-        dir.x * speed * delta,
-        dir.z * speed * delta,
+        dir.x * distance,
+        dir.z * distance,
         PLAYER_RADIUS,
         collectObstacles(pose.x, pose.z),
       );

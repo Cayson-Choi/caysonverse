@@ -253,8 +253,8 @@ S.disc("column_cap", CANOPY - 0.9, CANOPY, 2.35, "cr_gold", 24, 0.05)
 for k in range(12):
     a = (k + 0.5) / 12 * math.tau
     x, z = math.sin(a) * 1.72, -math.cos(a) * 1.72
-    S.box(f"mirror_{k}", (0.95, 5.2, 0.05), (x, DECK + 3.6, z), "cr_mirror", 0.01, 2, rot_y=-math.degrees(a))
-    S.box(f"mirror_frame_{k}", (1.05, 5.3, 0.04), (x * 0.995, DECK + 3.6, z * 0.995), "cr_gold", 0.012, 2, rot_y=-math.degrees(a))
+    S.box(f"mirror_{k}", (0.95, 5.2, 0.05), (x, DECK + 3.6, z), "cr_mirror", 0.01, 2, rot_y=math.degrees(a))
+    S.box(f"mirror_frame_{k}", (1.05, 5.3, 0.04), (x * 0.995, DECK + 3.6, z * 0.995), "cr_gold", 0.012, 2, rot_y=math.degrees(a))
     a2 = k / 12 * math.tau
     S.cyl(f"pilaster_{k}", (math.sin(a2) * 1.75, DECK + 0.7, -math.cos(a2) * 1.75), (math.sin(a2) * 1.75, CANOPY - 0.9, -math.cos(a2) * 1.75), 0.1, 0.1, "cr_gold", 10)
 # the rounding board: a band under the canopy rim, painted panels in gilded frames
@@ -266,15 +266,15 @@ S.disc("band_trim_bottom_in", CANOPY - 1.3, CANOPY - 1.18, 13.2, "cr_gold", 64, 
 for k in range(24):
     a = (k + 0.5) / 24 * math.tau
     x, z = math.sin(a) * 13.2, -math.cos(a) * 13.2
-    S.box(f"panel_{k}", (1.7, 0.78, 0.06), (x, CANOPY - 0.62, z), "cr_cream" if k % 2 else "cr_red", 0.015, 2, rot_y=-math.degrees(a))
-    S.box(f"panel_frame_{k}", (1.84, 0.92, 0.04), (x * 0.998, CANOPY - 0.62, z * 0.998), "cr_gold", 0.02, 2, rot_y=-math.degrees(a))
+    S.box(f"panel_{k}", (1.7, 0.78, 0.06), (x, CANOPY - 0.62, z), "cr_cream" if k % 2 else "cr_red", 0.015, 2, rot_y=math.degrees(a))
+    S.box(f"panel_frame_{k}", (1.84, 0.92, 0.04), (x * 0.998, CANOPY - 0.62, z * 0.998), "cr_gold", 0.02, 2, rot_y=math.degrees(a))
     # a scalloped flap hanging below the band
-    S.ellipsoid(f"scallop_{k}", (math.sin(a) * 13.15, CANOPY - 1.4, -math.cos(a) * 13.15), (0.74, 0.34, 0.14), "cr_gold" if k % 2 else "cr_cream", seg=10, rings=6, rot_y=-math.degrees(a))
+    S.ellipsoid(f"scallop_{k}", (math.sin(a) * 13.15, CANOPY - 1.4, -math.cos(a) * 13.15), (0.74, 0.34, 0.14), "cr_gold" if k % 2 else "cr_cream", seg=10, rings=6, rot_y=math.degrees(a))
 for k in range(24):
     a = (k + 0.5) / 24 * math.tau
     x, z = math.sin(a) * 13.04, -math.cos(a) * 13.04
-    S.box(f"inner_mirror_{k}", (1.5, 0.62, 0.03), (x, CANOPY - 0.62, z), "cr_mirror", 0.01, 2, rot_y=-math.degrees(a))
-    S.box(f"inner_frame_{k}", (1.66, 0.78, 0.03), (x * 1.002, CANOPY - 0.62, z * 1.002), "cr_gold", 0.02, 2, rot_y=-math.degrees(a))
+    S.box(f"inner_mirror_{k}", (1.5, 0.62, 0.03), (x, CANOPY - 0.62, z), "cr_mirror", 0.01, 2, rot_y=math.degrees(a))
+    S.box(f"inner_frame_{k}", (1.66, 0.78, 0.03), (x * 1.002, CANOPY - 0.62, z * 1.002), "cr_gold", 0.02, 2, rot_y=math.degrees(a))
 # the painted ceiling under the canopy: 24 radial wedges in three rows (sky, cream, rose), gilded rafters, a rosette in each panel
 APEX_IN = APEX - 0.55
 

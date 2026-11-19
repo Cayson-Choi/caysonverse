@@ -26,6 +26,7 @@ import { GENERATED_HOUSES } from "@caysonverse/shared/village/generated/houses";
 import { houseFloorGeometry } from "@caysonverse/shared/village/housesGeometry";
 import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { MEMORIAL_SEAT_MARKERS } from "@caysonverse/shared/village/generated/memorialSeats";
+import { VILLAGE_SEAT_MARKERS } from "@caysonverse/shared/village/generated/villageSeatMarkers";
 import { fallsShoreSpot, inFallsRestArea, villagePickArea, villageWalkArea } from "@caysonverse/shared/village/fallsWalk";
 import { lotAt, lotLocalToWorld, lotRoomOf, lotRoomSolids, VILLAGE_LOTS } from "@caysonverse/shared/village/villageLots";
 import { PARK_BOUNDS, parkGeometry } from "@caysonverse/shared/village/parkArea";
@@ -115,6 +116,7 @@ export function activeBounds(): Bounds {
 export const VILLAGE_FURNITURE: readonly AABB[] = Object.freeze(
   [
     ...VILLAGE_BENCHES.map((b) => b.centre),
+    ...VILLAGE_SEAT_MARKERS,
     // the rebuilt hall: the furniture a marker's seat is on (a bench, an armchair, a chair; the long sofa is wider than 3 m)
     ...MEMORIAL_SEAT_MARKERS.map((m) => ({ x: m.x, z: m.z })),
     // the lot buildings' benches, 평상 and chairs (L5): a tap inside one's box walks out beside it, as for a plaza bench

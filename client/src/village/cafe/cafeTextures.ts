@@ -81,6 +81,23 @@ function board(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h
   ctx.stroke();
 }
 
+/** The landscape slate in the baked frame behind the counter. */
+function counterMenu(ctx: CanvasRenderingContext2D): void {
+  ctx.save();
+  ctx.translate(512, 512);
+  ctx.fillStyle = "#26302B";
+  ctx.fillRect(0, 0, 512, 304);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#F2C879";
+  ctx.font = `700 46px ${FONT}`;
+  ctx.fillText("커피 · 차", 256, 69);
+  chalkLine(ctx, 40, 472, 92);
+  ctx.fillStyle = "#F4F0E2";
+  ctx.font = `500 29px ${FONT}`;
+  MENU_LINES.drinks.forEach((drink, i) => ctx.fillText(drink, i % 2 === 0 ? 135 : 377, i < 2 ? 161 : 228));
+  ctx.restore();
+}
+
 /** A print: cream paper, a coffee cup and a plume of steam, the word CAFÉ. */
 function printCup(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
   ctx.fillStyle = "#F2E8D5";
@@ -251,6 +268,7 @@ export function artAtlas(): CanvasTexture {
   printWide(ctx, 512, 0, 512, 164);
   printKugel(ctx, 0, 1024 - 348, 256, 348);
   printVines(ctx, 256, 1024 - 348, 256, 348);
+  counterMenu(ctx);
   const t = new CanvasTexture(c);
   t.colorSpace = SRGBColorSpace;
   t.magFilter = LinearFilter;

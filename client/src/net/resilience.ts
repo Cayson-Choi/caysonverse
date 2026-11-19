@@ -36,7 +36,7 @@ import { bindClaimUpdates } from "../village/memorial/claimsStore";
 import type { Room } from "@colyseus/sdk";
 import type { WorldState } from "@caysonverse/shared/schema";
 import { RECONNECT_WINDOW_S } from "@caysonverse/shared/constants";
-import { client, getRoom, setRoom, joinVillageRoom, waitForSelf } from "./connection";
+import { client, getRoom, setRoom, joinVillageRoom, waitForSelf, type VillageJoinParams } from "./connection";
 import { reconnectBackoffMs } from "./backoff";
 import { retryWhile } from "./joinRetry";
 import {
@@ -108,12 +108,12 @@ function clearToken(): void {
  * the reconnect loop from the SDK, and route its next close through us. Called on
  * the initial join AND after every reconnect.
  */
-export function attachResilience(room: Room<WorldState>): void {
+export function attachResilience(room: Room<WorldState>, onLeave = handleLeave): void {
   saveToken(room.reconnectionToken);
   // Own the loop: disable the SDK's built-in auto-reconnect so every close is a
   // single, classifiable onLeave with the original code (a kick must never be retried).
   room.reconnection.enabled = false;
-  room.onLeave((code: number) => handleLeave(room, code));
+  room.onLeave((code: number) => { void onLeave(room, code); });
   // The village's clock: the server sends its time right after the join (and every 5 minutes), so the handler must
   // exist before anything awaits (the SDK drops a message nobody listens for). Bound again on every reconnect: it is
   // the new room's. Leaves with the room.
@@ -127,7 +127,25 @@ export function isInputSuspended(): boolean {
   return useAppStore.getState().reconnecting;
 }
 
-function handleLeave(leftRoom: Room<WorldState>, code: number): void {
+/** A first state and a disconnect may race before EntryScreen has installed this tab's identity. */
+export async function confirmVillageEntry(room: Room<WorldState>, joiningAs: VillageJoinParams): Promise<Room<WorldState>> {
+  const closed = new AbortController();
+  let recovery: Promise<void> | undefined;
+  setRoom(room);
+  attachResilience(room, (left, code) => {
+    recovery = handleLeave(left, code, joiningAs);
+    closed.abort();
+    return recovery;
+  });
+  await waitForSelf(room, closed.signal);
+  if (!closed.signal.aborted) return room;
+  await recovery;
+  const active = getRoom();
+  if (!active) throw new Error(useAppStore.getState().notice ?? FAILED_NOTICE);
+  return active;
+}
+
+function handleLeave(leftRoom: Room<WorldState>, code: number, joiningAs?: VillageJoinParams): Promise<void> | undefined {
   // Ignore a superseded room's late close (getRoom already moved on).
   if (getRoom() !== leftRoom) return;
 
@@ -136,6 +154,7 @@ function handleLeave(leftRoom: Room<WorldState>, code: number): void {
     // before we could confirm it. Do NOT drop it (that stranded the user in a
     // zombie village) and do NOT start a second overlapping reconnect: abort
     // the in-flight confirm wait so the current loop simply tries again.
+    setRoom(null);
     abortConfirm?.();
     return;
   }
@@ -151,10 +170,10 @@ function handleLeave(leftRoom: Room<WorldState>, code: number): void {
     return;
   }
 
-  void startReconnect();
+  return startReconnect(joiningAs);
 }
 
-async function startReconnect(): Promise<void> {
+async function startReconnect(joiningAs?: VillageJoinParams): Promise<void> {
   if (reconnecting) return;
   reconnecting = true;
   setRoom(null); // stop sends to the dead room while we recover
@@ -165,7 +184,7 @@ async function startReconnect(): Promise<void> {
     // Phase 1 — same avatar within the window.
     if (await phaseTokenReconnect()) return;
     // Phase 2 — fresh avatar (server restarted / window expired).
-    const outcome = await phaseFreshJoin();
+    const outcome = await phaseFreshJoin(joiningAs);
     if (outcome.status === "connected") return;
     // Terminal → entry with the chosen notice (capacity if genuinely full, the
     // real Korean reason for a deterministic rejection, else generic failure).
@@ -250,12 +269,12 @@ type FreshJoinOutcome = { status: "connected" } | { status: "terminal"; notice: 
  * The village is not a singleton: the join is `joinOrCreate` (`joinVillageRoom`), so a new shard
  * is made when none is left.
  */
-async function phaseFreshJoin(): Promise<FreshJoinOutcome> {
+async function phaseFreshJoin(joiningAs?: VillageJoinParams): Promise<FreshJoinOutcome> {
   // Rejoin as the identity THIS tab entered with (in memory), not the shared
   // localStorage cache: another tab's character builder may have saved a different
   // look (or nickname) since, and re-joining with that would desync the server from
   // what this tab shows. The cache is only a fallback if the identity is gone.
-  const identity = useAppStore.getState().identity ?? loadIdentity();
+  const identity = useAppStore.getState().identity ?? joiningAs ?? loadIdentity();
   const baseParams = {
     nickname: identity.nickname,
     appearance: identity.appearance,

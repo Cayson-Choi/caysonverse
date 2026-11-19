@@ -10,8 +10,8 @@ import { SEAT_REACH, approachesSeat, PLAYER_RADIUS } from "@caysonverse/shared/w
 import { VILLAGE_SEAT_MARKERS } from "@caysonverse/shared/village/benchSeats";
 import { isBlocked } from "@caysonverse/shared/collision";
 import { isFreeSpot, planClickMove, simulateWalk } from "./clickPlan";
-import { VILLAGE_FURNITURE } from "./activeMap";
-import { seatApproachGoal, seatUnderTap } from "./seatTap";
+import { HALL_ACTIVE_MAP, VILLAGE_FURNITURE } from "./activeMap";
+import { seatApproachGoal, seatUnderTap, warmSeatApproachGoals } from "./seatTap";
 
 const obstacles = villageGeometry.obstacles;
 const village = VILLAGE_LAYOUT.areas.village;
@@ -85,6 +85,18 @@ describe("a tap on a chair walks to that chair's own spot", () => {
 });
 
 describe("the goals are worked out ahead, one seat at a time (review 2026-11-15: 20 ms in a pointerup handler)", () => {
+  it("reconnecting inside the hall preserves each outdoor chair's approach on exit", () => {
+    const seats = VILLAGE_SEATS.slice();
+    const ticks: (() => void)[] = [];
+    warmSeatApproachGoals(seats, HALL_ACTIVE_MAP.geometry.obstacles, HALL_ACTIVE_MAP.bounds!, (run) => ticks.push(run));
+    expect(ticks).toHaveLength(0);
+    while (ticks.length) ticks.shift()!();
+    const { i } = cafe[0];
+    expect(seatApproachGoal(seats, i, obstacles, HALL_ACTIVE_MAP.bounds!)).toBeNull();
+    expect(seatApproachGoal(seats, i, obstacles, village)).toEqual(seatApproachGoal(VILLAGE_SEATS, i, obstacles, village));
+    expect(seatApproachGoal(seats, i, obstacles, village)).not.toBeNull();
+  });
+
   it("warmSeatApproachGoals fills every marked seat's goal, one per tick; each seat's search stays short", async () => {
     const { warmSeatApproachGoals, seatApproachGoalReady, markedSeatIndices } = await import("./seatTap");
     const seats = VILLAGE_SEATS.slice(); // a fresh list: a cold cache
@@ -102,7 +114,7 @@ describe("the goals are worked out ahead, one seat at a time (review 2026-11-15:
       n++;
     }
     expect(n).toBe(15 + 30 + 6 + 32);
-    expect(marked.every((i) => seatApproachGoalReady(seats, i))).toBe(true);
+    expect(marked.every((i) => seatApproachGoalReady(seats, i, obstacles, village))).toBe(true);
     console.log(`seatApproachGoal: worst seat ${worst.toFixed(2)} ms`);
     expect(worst).toBeLessThan(15); // was up to 20 ms; a loaded CI box gets slack
   });

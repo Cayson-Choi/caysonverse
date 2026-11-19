@@ -25,7 +25,7 @@ for (const n of GENERATED_HOUSE_NUMBERS) {
       const bounds = houseFloorBounds(n, floor);
       const p = HOUSE_PLACES[n];
       const start0 = floor === 1 ? p.spawnIn : p.spawnUp;
-      const seats = VILLAGE_SEATS.filter((s) => s.area === area);
+      const seats = VILLAGE_SEATS.filter((s) => s.area === area && !s.retired);
       const cells = reachable({ ...map.geometry, bounds }, { x: start0.x, z: start0.z }, 0.5, 0);
       const spots = cells.filter((c) => isFreeSpot(c.x, c.z, obstacles, bounds));
       const gapFrom = (x: number, z: number) =>

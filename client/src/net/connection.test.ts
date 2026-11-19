@@ -30,6 +30,7 @@ import { VILLAGE_ROOM } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import { VillageMsg } from "@caysonverse/shared/village/messages";
 import { DEFAULT_APPEARANCE, APPEARANCE_FIELDS } from "@caysonverse/shared/appearance";
+import { DISCONNECT_NOTICE } from "./reconnectPolicy";
 import {
   getActiveRoom,
   getRoom,
@@ -220,6 +221,31 @@ describe("joinVillage (케이슨 마을)", () => {
     expect(h.joinOrCreate).toHaveBeenCalledTimes(2);
     expect(h.joinOrCreate.mock.calls[1][0]).toBe(VILLAGE_ROOM);
     expect(h.join).not.toHaveBeenCalled();
+    expect(getRoom()).toBe(second);
+  });
+
+  it("a clean close before the first state keeps the visitor on the entry screen", async () => {
+    const first = fakeRoom();
+    first.state.players.clear();
+    h.joinOrCreate.mockResolvedValueOnce(first);
+    const entry = joinVillage({ nickname: "가람", appearance: LOOK });
+    await vi.waitFor(() => expect(getRoom()).toBe(first));
+    first.fireLeave(4000);
+    await expect(entry).rejects.toThrow(DISCONNECT_NOTICE);
+    expect(getRoom()).toBeNull();
+  });
+
+  it("a fresh join during the initial state wait returns the replacement session", async () => {
+    const first = fakeRoom();
+    first.state.players.clear();
+    const second = fakeRoom();
+    h.joinOrCreate.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    h.reconnect.mockRejectedValue({ code: 4212, message: "reconnection token expired" });
+    const entry = joinVillage({ nickname: "가람", appearance: LOOK });
+    await vi.waitFor(() => expect(getRoom()).toBe(first));
+    first.fireLeave(4001);
+    expect(await entry).toBe(second);
+    expect(h.joinOrCreate.mock.calls[1][1]).toMatchObject({ nickname: "가람", appearance: LOOK });
     expect(getRoom()).toBe(second);
   });
 

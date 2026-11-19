@@ -268,18 +268,26 @@ function syncPlanets(g: BufferGeometry): void {
   mag.needsUpdate = true;
 }
 
-let glowing = false;
+const glowingStars = new WeakMap<BufferGeometry, readonly number[]>();
 /** The reveal's pulse on the found figure's stars (1.5× for `GLOW_SECONDS`), then back to 1. */
-function syncGlow(g: BufferGeometry): void {
+export function syncGlow(g: BufferGeometry): void {
   const age = glow.start < 0 ? Infinity : glow.now - glow.start;
   const active = age < GLOW_SECONDS;
-  if (!active && !glowing) return;
+  const previous = glowingStars.get(g);
+  if (!active && !previous) return;
   const a = g.getAttribute("aGlow") as Float32BufferAttribute;
-  const v = active ? 1 + 0.5 * Math.sin((Math.PI * age) / GLOW_SECONDS) : 1;
-  for (const k of glow.stars) a.setX(PLANET_SLOTS + k, v);
+  if (previous && (!active || previous !== glow.stars)) {
+    for (const k of previous) a.setX(PLANET_SLOTS + k, 1);
+  }
+  if (active) {
+    const v = 1 + 0.5 * Math.sin((Math.PI * age) / GLOW_SECONDS);
+    for (const k of glow.stars) a.setX(PLANET_SLOTS + k, v);
+    if (previous !== glow.stars) glowingStars.set(g, glow.stars);
+  } else {
+    glowingStars.delete(g);
+    glow.start = -1;
+  }
   a.needsUpdate = true;
-  glowing = active;
-  if (!active) glow.start = -1;
 }
 
 /** Most segments drawn at once (every figure, the pointer's dashes and the Pleiades' ring fit well inside). */

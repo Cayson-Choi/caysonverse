@@ -336,7 +336,7 @@ export function PlayShell(p: PlayShellProps) {
               </Suspense>
             </GroundDecalContext.Provider>
           </LightRigContext.Provider>
-          <CameraRig pose={pose} orbit={orbit} seat={seat} fogRange={light.fog} far={planes.far} decal={p.groundDecal ?? null} />
+          <CameraRig map={p.activeMap} pose={pose} orbit={orbit} seat={seat} fogRange={light.fog} far={planes.far} decal={p.groundDecal ?? null} />
         </KeyboardControls>
         <NametagSystem />
         {p.effects && <QualityEffects tier={tier} brightness={brightness} exposure={light.exposure} toneCurve={light.toneCurve} />}
