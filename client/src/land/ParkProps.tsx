@@ -1,10 +1,9 @@
 import { useEffect, useMemo } from "react";
 import { CanvasTexture, MeshStandardMaterial, PlaneGeometry, SRGBColorSpace, type Texture } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { PARK_BINS, PARK_KIOSK, PARK_LAMPS, PARK_PLANTERS } from "@caysonverse/shared/village/parkArea";
+import { PARK_BINS, PARK_KIOSK, PARK_LAMPS } from "@caysonverse/shared/village/parkArea";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 import { addLathe } from "./parkShapes";
-import { parkMaterial, pickSet } from "./pbr";
 import { Booth, type BoothSpec } from "./ParkBooth";
 
 const X: V3 = [1, 0, 0];
@@ -58,19 +57,8 @@ function bannerTexture(): CanvasTexture {
   return t;
 }
 
-/** People-scale props: the ticket kiosk by the arch, litter bins, stone planters with shrubs, and pennant banners on the promenade's lamp posts. */
+/** The entrance kiosk, litter bins and pennant banners on the promenade's lamp posts. */
 export function ParkProps({ all }: { all: Texture[] }) {
-  const geo = useMemo(() => {
-    const b = new GeoBuilder();
-    // planters: a stone trough with a cap, a bed of soil, a clipped round shrub and flowers
-    for (const p of PARK_PLANTERS) {
-      b.box([p.x, 0.4, p.z], X, Y, p.w / 2, 0.4, p.d / 2, [0.74, 0.72, 0.68], 2);
-      b.box([p.x, 0.82, p.z], X, Y, p.w / 2 + 0.08, 0.05, p.d / 2 + 0.08, [0.82, 0.8, 0.76]);
-      // (the soil and the flowers are the village flower system's: ParkVegetation plants these troughs)
-    }
-    return b.build();
-  }, []);
-  const stone = useMemo(() => parkMaterial(pickSet(all, "PaintedPlaster017"), 1.4, { vertexColors: true, normalScale: 0.8 }), [all]);
   // pennant banners hung from arms on the promenade's lamp posts
   const tex = useMemo(() => bannerTexture(), []);
   const bannerMat = useMemo(() => new MeshStandardMaterial({ map: tex, roughness: 0.85 }), [tex]);
@@ -123,7 +111,6 @@ export function ParkProps({ all }: { all: Texture[] }) {
   return (
     <group>
       <Booth all={all} spec={kiosk} />
-      <mesh geometry={geo} material={stone} castShadow receiveShadow />
       <mesh geometry={armGeo} material={armMat} castShadow receiveShadow />
       <mesh geometry={bannerGeo} material={bannerMat} castShadow receiveShadow />
     </group>

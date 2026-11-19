@@ -31,7 +31,6 @@ import {
 import {
   PARK_LAMPS,
   PARK_PLAZA,
-  PARK_TROUGHS,
 } from "@caysonverse/shared/village/parkArea";
 import { isTouchDevice } from "../device";
 import { CoasterWorld } from "./CoasterWorld";
@@ -53,7 +52,7 @@ import { parkSkyTexture } from "./parkSkyTexture";
 import { ALL_PARK_URLS, featherTexture, parkMaterial, pickSet } from "./pbr";
 import { addBellRoof, addHedge, addLathe } from "./parkShapes";
 import { boxwoodTextures } from "./boxwoodTexture";
-import { parkBorders } from "./parkBorders";
+import { parkBorders, parkTroughStone } from "./parkBorders";
 import { grassTuft } from "../village/veg/vegGeometry";
 import { soilTextures } from "../village/veg/vegSoil";
 import { CLICK_PICK_KEY } from "../game/clickPick";
@@ -558,17 +557,7 @@ function PathBorders({ stone }: { stone: MeshStandardMaterial }) {
 }
 
 function Beds({ pine, all }: { pine: Texture; all: Texture[] }) {
-  const troughGeo = useMemo(() => {
-    const b = new GeoBuilder();
-    // the flower troughs round the fountain (stone, with a cap course; the flowers and soil are the village flower system's)
-    for (const t of PARK_TROUGHS) {
-      const cx = (t.x0 + t.x1) / 2;
-      const cz = (t.z0 + t.z1) / 2;
-      b.box([cx, 0.4, cz], X, Y, (t.x1 - t.x0) / 2, 0.4, (t.z1 - t.z0) / 2, [0.9, 0.88, 0.84], 2);
-      b.box([cx, 0.82, cz], X, Y, (t.x1 - t.x0) / 2 + 0.07, 0.04, (t.z1 - t.z0) / 2 + 0.07, [1, 0.98, 0.94], 2);
-    }
-    return b.build();
-  }, []);
+  const troughGeo = useMemo(parkTroughStone, []);
   const troughMat = useMemo(() => parkMaterial(pickSet(all, "Concrete034"), 1, { vertexColors: true, color: new Color("#efe6d6"), normalScale: 0.6 }), [all]);
   // hedges lining the promenade's two sides: clipped boxwood, a trimmed profile with a leafy skin (parkShapes.addHedge)
   const hedgeGeo = useMemo(() => {

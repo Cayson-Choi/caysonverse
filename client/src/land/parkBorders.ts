@@ -1,4 +1,5 @@
 import { Matrix4, Object3D } from "three";
+import { PARK_PLANTERS, PARK_TROUGHS } from "@caysonverse/shared/village/parkArea";
 import type { Bed } from "../village/veg/flowerPlacement";
 import type { Bush } from "../village/veg/shrubs";
 import { mulberry32 } from "../village/veg/vegRandom";
@@ -18,6 +19,50 @@ const islands: ReadonlyArray<readonly [number, number, number, number, number, n
 
 const soilY = 0.085;
 
+// The inside edges also bound the planting and the compost, including at the station entrance.
+export const raisedParkBeds = [
+  ...PARK_TROUGHS,
+  ...PARK_PLANTERS.map(p => ({ x0: p.x - p.w / 2, x1: p.x + p.w / 2, z0: p.z - p.d / 2, z1: p.z + p.d / 2, y: 0.84 })),
+].map(t => ({
+  kind: "box", plant: "pot", soilProvided: true, out: null,
+  x0: t.x0 + 0.10, x1: t.x1 - 0.10, z0: t.z0 + 0.10, z1: t.z1 - 0.10, y: t.y,
+} as const));
+
+/** A mitred stone profile, from the foot through the drip edge to the inside wall. */
+export function parkTroughStone() {
+  const stone = new GeoBuilder();
+  // Outset from the opening, height relative to compost, face brightness.
+  const profile = [
+    [0.11, -0.84, 0.74], [0.11, -0.71, 0.83], [0.07, -0.68, 0.92],
+    [0.092, -0.12, 0.86], [0.155, -0.10, 0.72], [0.17, -0.075, 0.86],
+    [0.17, 0.045, 0.94], [0.15, 0.07, 1], [0.018, 0.07, 1],
+    [0, 0.052, 0.86], [0, -0.10, 0.62],
+  ] as const;
+  const corners = [[1, 1], [-1, 1], [-1, -1], [1, -1]] as const;
+  for (const bed of raisedParkBeds) {
+    const cx = (bed.x0 + bed.x1) / 2, cz = (bed.z0 + bed.z1) / 2;
+    for (let side = 0; side < corners.length; side++) {
+      const [sx, sz] = corners[side]!, [ex, ez] = corners[(side + 1) % 4]!;
+      const nx = sx === ex ? sx : 0, nz = sz === ez ? sz : 0;
+      let v = 0;
+      for (let i = 1; i < profile.length; i++) {
+        const [r0, y0] = profile[i - 1]!, [r1, y1, tint] = profile[i]!;
+        const length = Math.hypot(y1 - y0, r1 - r0);
+        const n: V3 = [nx * (y1 - y0) / length, (r0 - r1) / length, nz * (y1 - y0) / length];
+        const base = stone.vertices;
+        for (const [dx, dz, r, h, uvY] of [[sx, sz, r0, y0, v], [ex, ez, r0, y0, v],
+          [ex, ez, r1, y1, v + length], [sx, sz, r1, y1, v + length]] as const) {
+          const x = cx + dx * (bed.x1 - cx + r), z = cz + dz * (bed.z1 - cz + r);
+          stone.rawVertex([x, bed.y + h, z], n, nx ? z : x, uvY, [tint, tint * 0.96, tint * 0.90]);
+        }
+        stone.idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+        v += length;
+      }
+    }
+  }
+  return stone.build();
+}
+
 export function buildParkBorders() {
   const soil = new GeoBuilder();
   const edging = new GeoBuilder();
@@ -26,6 +71,17 @@ export function buildParkBorders() {
   const flowers: Array<Extract<Bed, { kind: "box" }>> = [];
   const transform = new Object3D();
   const rnd = mulberry32(612);
+
+  for (const bed of raisedParkBeds) {
+    const base = soil.vertices;
+    for (const [x, z] of [[bed.x0, bed.z0], [bed.x0, bed.z1], [bed.x1, bed.z1], [bed.x1, bed.z0],
+      [(bed.x0 + bed.x1) / 2, (bed.z0 + bed.z1) / 2]] as const) {
+      const centre = soil.vertices === base + 4;
+      const shade = centre ? 0.94 : 0.56;
+      soil.rawVertex([x, bed.y - (centre ? 0 : 0.012), z], [0, 1, 0], x, -z, [shade, shade, shade]);
+    }
+    for (let i = 0; i < 4; i++) soil.idx.push(base + i, base + (i + 1) % 4, base + 4);
+  }
 
   for (const [cx, cz, degrees, length, width, bow] of islands) {
     const yaw = degrees * Math.PI / 180;
