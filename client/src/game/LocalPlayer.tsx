@@ -1182,6 +1182,7 @@ export function LocalPlayer({
       fpCamera: viewState.mode === "fp" ? state.camera : null,
       fpLook: { skin: look.colors.skin, top: look.colors.top },
     });
+    fishRig.afterMixer(delta); // the wrist, after the mixer (the animations are ticked before this frame hook)
 
     // Hide what hangs inside the bench while on it: from the moment the avatar stands on the seat's spot (the
     // walk onto it is over) until the stand-up clip has carried it off (benchClip.ts).

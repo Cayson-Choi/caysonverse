@@ -974,6 +974,10 @@ export function RemotePlayer({
       }
     }
 
+    // 7b) The fishing wrist (fishingRig.ts): after the frame's last mixer update, or the mixer rewrites the relaxed bones and the
+    //    rod, turned back to keep its direction, points sideways.
+    fishRig.afterMixer(delta);
+
     // 8) Far LOD (avatarLod.ts): the avatar's node tree (bones, meshes, tag) is refreshed here, every frame near, every few
     //    frames far or behind the camera (three's own pass skips it); only near avatars cast a shadow. A standing avatar that
     //    has not moved and whose pose has not been touched since the last refresh (idle: the mixer is paused) is refreshed

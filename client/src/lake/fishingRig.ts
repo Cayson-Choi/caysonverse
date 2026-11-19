@@ -42,6 +42,12 @@ export interface RigContext {
 
 export interface FishingRig {
   update(delta: number, ctx: RigContext): void;
+  /**
+   * The wrist (owner 2026-11-19): the clips turn the hand far off the forearm; eased back, the rod keeping its world direction. MUST run
+   * after the frame's last mixer update (the mixer rewrites the bones, so a relax written before it is lost while the rod's
+   * compensation stays: a rod pointing sideways — the remote players' bug).
+   */
+  afterMixer(delta: number): void;
   /** A fishing clip is playing or fading: the mixer must tick. */
   needsTick(): boolean;
   /** 1 normally; eases to 0 while a clip that stands the avatar up plays (the chair's lift would float it). */
@@ -199,6 +205,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
   let handR: Object3D | null = null;
   let handL: Object3D | null = null;
   let wristAmt = 0;
+  let wristWant = false;
   const rodQ0 = new Quaternion();
 
   const ensureActions = (): boolean => {
@@ -286,8 +293,21 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     liftFactor() {
       return lift;
     },
+    afterMixer(delta) {
+      if (!rod) return;
+      wristAmt += ((wristWant ? ((globalThis as { __cvWristRelax?: number }).__cvWristRelax ?? WRIST_RELAX) : 0) - wristAmt) * Math.min(1, delta * 10);
+      if (wristAmt < 1e-3) {
+        if (wristAmt > 0) restoreWrist(root);
+        wristAmt = 0;
+        rod.root.quaternion.copy(rodQ0);
+      } else {
+        const fix = relaxWrist(root, wristAmt, handR);
+        if (fix) rod.root.quaternion.copy(rodQ0).premultiply(fix);
+      }
+    },
     update(delta, ctx) {
       if (!readFishView(sid, view) || view.rod === 0) {
+        wristWant = false;
         if (rod || current) {
           play(null);
           dropFpRod();
@@ -352,18 +372,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
         rod.setUnfold(unfold);
         rod.setBend(atSpot ? rodBend(view, t) : 0);
       }
-      // the wrist (owner 2026-11-19): the clips turn the hand far off the forearm; eased back after the mixer, the rod keeps its world direction
-      if (rod) {
-        wristAmt += ((atSpot && seated ? ((globalThis as { __cvWristRelax?: number }).__cvWristRelax ?? WRIST_RELAX) : 0) - wristAmt) * Math.min(1, delta * 10);
-        if (wristAmt < 1e-3) {
-          if (wristAmt > 0) restoreWrist(root);
-          wristAmt = 0;
-          rod.root.quaternion.copy(rodQ0);
-        } else {
-          const fix = relaxWrist(root, wristAmt, handR);
-          if (fix) rod.root.quaternion.copy(rodQ0).premultiply(fix);
-        }
-      }
+      wristWant = atSpot && seated; // applied by afterMixer(), once the mixer has posed the bones this frame
       // the fish (lake v2, catchRig.ts): under the water, out on the line, into the hand, taken in the arms, let go
       handR = handR ?? bone(root, "handslot.r");
       handL = handL ?? bone(root, "handslot.l");
