@@ -1,10 +1,32 @@
 import { PARK_LAMPS, PARK_PLAZA } from "@caysonverse/shared/village/parkArea";
 import { describe, expect, it } from "vitest";
-import { parkBorders } from "./parkBorders";
+import { parkBorders, parkFlowerCrowns } from "./parkBorders";
 import { placeFlowers } from "../village/veg/flowerPlacement";
 import { buildSoil } from "../village/veg/vegSoil";
+import { flowerMassGeometry } from "../village/houses/houseFlowerMass";
 
 describe("the planted borders beside the station and plaza", () => {
+  it.each([[3, 1.4], [1.4, 3]])("keeps visible ivory and rose petal trusses within a %s by %s trough", (w, d) => {
+    const box = { kind: "box", plant: "pot", x0: 0, x1: w, z0: 0, z1: d, y: 0.84 } as const;
+    const crowns = parkFlowerCrowns([box]);
+    expect(crowns.length).toBe(3);
+    const { geometry, stats } = flowerMassGeometry(crowns, "park");
+    const pos = geometry.getAttribute("position"), uv = geometry.getAttribute("uv");
+    let petals = 0;
+    for (let i = 0; i < pos.count; i++) {
+      if (uv.getX(i) !== 0.5 || uv.getY(i) !== 0.5) continue;
+      expect(pos.getY(i)).toBeGreaterThan(box.y + 0.12);
+      expect(pos.getX(i)).toBeGreaterThan(0);
+      expect(pos.getX(i)).toBeLessThan(w);
+      expect(pos.getZ(i)).toBeGreaterThan(0);
+      expect(pos.getZ(i)).toBeLessThan(d);
+      petals++;
+    }
+    expect(petals).toBeGreaterThan(300);
+    expect(stats.triangles).toBeLessThan(1000);
+    geometry.dispose();
+  });
+
   it("grows flowers on the built island surface and still generates soil for ordinary pots", () => {
     const island = parkBorders().flowers[0]!;
     const pot = { ...island, x0: island.x0 + 20, x1: island.x1 + 20, soilProvided: false };

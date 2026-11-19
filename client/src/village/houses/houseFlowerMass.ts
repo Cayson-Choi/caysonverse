@@ -54,7 +54,7 @@ export interface FlowerMassStats {
 }
 
 /** The geometry: per bed a grid over its soil raised into a dome (+ lumps) and a skirt that drapes over the rim(s). */
-export function flowerMassGeometry(beds: readonly BoxBed[]): { geometry: BufferGeometry; stats: FlowerMassStats } {
+export function flowerMassGeometry(beds: readonly BoxBed[], style: "house" | "park" = "house"): { geometry: BufferGeometry; stats: FlowerMassStats } {
   const pos: number[] = [];
   const soil: number[] = [];
   const col: number[] = [];
@@ -62,6 +62,7 @@ export function flowerMassGeometry(beds: readonly BoxBed[]): { geometry: BufferG
   const idx: number[] = [];
   const blooms = BLOOMS.map((h) => new Color(h));
   const leaves = LEAVES.map((h) => new Color(h));
+  const parkPetals = ["#fff7e3", "#ffdbe3", "#ff9bb3", "#f5679a"].map(h => new Color(h));
   // the texture carries the blooms; the vertex colour is a soft light drift (darker low on the drape, in its shade)
   const colour = (x: number, y: number, z: number, seed: number) => {
     const k = 0.82 + 0.25 * vnoise(x * 4 + seed, y * 4, z * 4);
@@ -78,7 +79,7 @@ export function flowerMassGeometry(beds: readonly BoxBed[]): { geometry: BufferG
     const cx = (b.x0 + b.x1) / 2;
     const cz = (b.z0 + b.z1) / 2;
     // as the Petite Venise boxes: a mound twice the box's height, bulging well past its rims (a full box seen from the street)
-    const H = kind === "border" ? 0.22 : kind === "pot" ? 0.32 : 0.36;
+    const H = style === "park" ? 0.28 + hash(bi, 31, 3) * 0.11 : kind === "border" ? 0.22 : kind === "pot" ? 0.32 : 0.36;
     const over = kind === "border" ? 0.04 : 0.11; // how far the mass bulges past the soil's edges
     const nu = Math.max(3, Math.min(8, Math.round(Math.max(lx, lz) / 0.18)));
     const nv = kind === "window" || kind === "border" ? 3 : nu;
@@ -173,6 +174,38 @@ export function flowerMassGeometry(beds: readonly BoxBed[]): { geometry: BufferG
         else idx.push(a, c, a2, c, c2, a2);
       }
     }
+    if (style === "park") {
+      // Small petunia trumpets share a flowering stem. In the overview each light truss still
+      // covers several pixels, while the darker textured leaves show between adjacent trusses.
+      for (let k = 0; k < 7; k++) {
+        const a = k * 2.39996 + bi * 1.7;
+        const r = 0.83 * Math.sqrt((k + 0.5) / 7);
+        const ca = Math.cos(a), sa = Math.sin(a);
+        const petal = parkPetals[(bi + (k < 4 ? 0 : 1)) % parkPetals.length]!;
+        for (const offset of [-0.046, 0.046]) {
+          const x = cx + ca * r * (lx / 2 + over) - sa * offset;
+          const z = cz + sa * r * (lz / 2 + over) + ca * offset;
+          const lump = (vnoise(x * 9 + bi, b.y * 9, z * 9) - 0.5) * 0.14 + (vnoise(x * 23, b.y * 23 + bi, z * 23) - 0.5) * 0.05;
+          const y = b.y + 0.055 + (H + lump) * Math.sqrt(1 - r * r);
+          const vertex = (px: number, py: number, pz: number, red: number, green: number, blue: number) => {
+            pos.push(px, py, pz);
+            soil.push(cx + (px - cx) * 0.6, b.y, cz + (pz - cz) * 0.6);
+            uv.push(0.5, 0.5);
+            col.push(red, green, blue);
+          };
+          const centre = pos.length / 3;
+          vertex(x, y, z, petal.r * 0.64, petal.g * 0.48, petal.b * 0.44);
+          const tilt = 0.25 + 0.68 * r;
+          for (let j = 0; j < 10; j++) {
+            const theta = j * Math.PI / 5 + a;
+            const radius = j % 2 === 0 ? 0.069 : 0.047;
+            const u = Math.cos(theta) * radius, v = Math.sin(theta) * radius;
+            vertex(x - sa * u + ca * v * Math.cos(tilt), y + 0.016 - v * Math.sin(tilt), z + ca * u + sa * v * Math.cos(tilt), petal.r, petal.g, petal.b);
+            idx.push(centre, centre + 1 + j, centre + 1 + (j + 1) % 10);
+          }
+        }
+      }
+    }
   }
   const g = new BufferGeometry();
   g.setAttribute("position", new BufferAttribute(new Float32Array(pos), 3));
@@ -190,7 +223,7 @@ export function flowerMassGeometry(beds: readonly BoxBed[]): { geometry: BufferG
  * pinks, a little magenta and white, each with a lighter middle and a shadow under it — so from the street the mound reads
  * as blooms, not cloth. The vertex colours only drift its tone per box.
  */
-function bloomTexture(): CanvasTexture | null {
+function bloomTexture(style: "house" | "park"): CanvasTexture | null {
   if (typeof document === "undefined") return null;
   const N = 256;
   const c = document.createElement("canvas");
@@ -226,7 +259,7 @@ function bloomTexture(): CanvasTexture | null {
     }
     return heads[0][0];
   };
-  for (let k = 0; k < 230; k++) {
+  for (let k = 0; k < (style === "park" ? 65 : 230); k++) {
     const x = r() * N;
     const y = r() * N;
     const col = pick();
@@ -251,6 +284,11 @@ function bloomTexture(): CanvasTexture | null {
       g.fill();
     });
   }
+  if (style === "park") {
+    // The textured cushion and its geometric petal trusses share this atlas and one draw.
+    g.fillStyle = "#ffffff";
+    g.fillRect(N / 2 - 3, N / 2 - 3, 6, 6);
+  }
   const t = new CanvasTexture(c);
   t.wrapS = t.wrapT = RepeatWrapping;
   t.colorSpace = SRGBColorSpace;
@@ -259,9 +297,9 @@ function bloomTexture(): CanvasTexture | null {
 }
 
 /** The mesh: one draw call, grows in with distance (near .. full m). */
-export function flowerMassMesh(beds: readonly BoxBed[], near: number, full: number): { mesh: Mesh; stats: FlowerMassStats; dispose(): void } {
-  const { geometry, stats } = flowerMassGeometry(beds);
-  const map = bloomTexture();
+export function flowerMassMesh(beds: readonly BoxBed[], near: number, full: number, style: "house" | "park" = "house"): { mesh: Mesh; stats: FlowerMassStats; dispose(): void } {
+  const { geometry, stats } = flowerMassGeometry(beds, style);
+  const map = bloomTexture(style);
   const mat = new MeshStandardMaterial({ vertexColors: true, map, roughness: 0.82, metalness: 0 });
   mat.name = "M_flower_mass";
   mat.onBeforeCompile = (sh) => {

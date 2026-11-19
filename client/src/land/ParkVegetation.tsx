@@ -14,7 +14,7 @@ import { createVegetation, type VillageVegetation } from "../village/veg/village
 import type { Bush } from "../village/veg/shrubs";
 import type { TreeSpec } from "../village/veg/treeSkeleton";
 import { circuitGround, taken } from "./ParkScenery";
-import { parkBorders } from "./parkBorders";
+import { parkBorders, parkFlowerCrowns } from "./parkBorders";
 
 /** A phone draws the park's trees to 380 m and its bushes to 170 m (the tier's bands go to 600 and 300): the wheel's top sees the whole park. */
 export const PHONE_FAR_RANGE = { trees: 380, bush: 170 } as const;
@@ -149,7 +149,7 @@ export function ParkVegetation() {
   // A low flowering crown stays on the soil after the individual petunias thin out.
   const planterBlooms = useMemo(() => {
     const pots = flowerBeds.beds.filter((bed): bed is Extract<Bed, { kind: "box" }> => bed.kind === "box" && bed.plant === "pot");
-    const blooms = flowerMassMesh(pots, 8, 18);
+    const blooms = flowerMassMesh(parkFlowerCrowns(pots), 8, 18, "park");
     blooms.mesh.name = "park_planting_blooms";
     blooms.mesh.frustumCulled = true;
     blooms.mesh.userData[CLICK_PICK_KEY] = "ignore";

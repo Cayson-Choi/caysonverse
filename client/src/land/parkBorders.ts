@@ -78,3 +78,18 @@ export function buildParkBorders() {
 // All park consumers use the same island outlines and plant positions.
 let borders: ReturnType<typeof buildParkBorders> | undefined;
 export const parkBorders = () => borders ??= buildParkBorders();
+
+/** Three overlapping crowns follow the long axis of a raised trough. Small bedding pockets already form one crown. */
+export function parkFlowerCrowns(beds: Array<Extract<Bed, { kind: "box" }>>) {
+  return beds.flatMap(b => {
+    const w = b.x1 - b.x0, d = b.z1 - b.z0;
+    if (Math.max(w, d) < 1.6 * Math.min(w, d)) return [b];
+    const alongX = w > d;
+    return [0.23, 0.5, 0.77].map((t, i) => {
+      const cross = [0.46, 0.53, 0.48][i]!;
+      const x = b.x0 + w * (alongX ? t : cross), z = b.z0 + d * (alongX ? cross : t);
+      const hw = w * (alongX ? 0.2 : 0.38), hd = d * (alongX ? 0.38 : 0.2);
+      return { ...b, x0: x - hw, x1: x + hw, z0: z - hd, z1: z + hd };
+    });
+  });
+}
