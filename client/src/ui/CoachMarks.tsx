@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useProgress } from "@react-three/drei";
 import {
   COACH_CARD_H_GUESS_PX,
   COACH_POLL_MS,
@@ -15,6 +16,7 @@ import { isTouchDevice } from "../device";
 import { useCoachStore } from "../stores/coachStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useUiStore } from "../stores/uiStore";
+import { villageLoad } from "./villageLoad";
 import type { Orbit, Pose } from "../game/types";
 import { addChatLayoutTargets } from "./chatLayoutTargets";
 import { useTouchHudLayout, useTouchViewport } from "./useTouchHudLayout";
@@ -131,7 +133,12 @@ export function CoachMarks({ pose, orbit }: { pose: Pose; orbit: Orbit }) {
   const step = useCoachStore((s) => s.step);
   const round = useCoachStore((s) => s.round);
   const report = useCoachStore((s) => s.report);
-  const covered = useUiStore((s) => s.menuOpen || s.rosterOpen);
+  const menuCovered = useUiStore((s) => s.menuOpen || s.rosterOpen);
+  // Nothing shows while something is still loading: the entry's loading screen, or the "불러오는 중…" chip (PlayShell's
+  // LoadingOverlay) that sits where the card does (QA 2026-11-20: the first card overlapped the chip on PC and phone).
+  const entering = useSyncExternalStore(villageLoad.subscribe, () => villageLoad.get().open, () => false);
+  const loading = useProgress((s) => s.active);
+  const covered = menuCovered || entering || loading;
 
   // ③ is information only: it ends by itself a few seconds after it shows (UX 2026-11-16), not only on a sent line
   useEffect(() => {
