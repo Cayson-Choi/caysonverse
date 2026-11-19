@@ -42,6 +42,7 @@ import { DropTowerWorld } from "./DropTowerWorld";
 import { Shops } from "./ParkShops";
 import { ParkMountains, ParkScenery } from "./ParkScenery";
 import { ParkProps } from "./ParkProps";
+import { ParkBenches } from "./ParkBenches";
 import { ParkVegetation } from "./ParkVegetation";
 import type { VillageTier } from "../village/villageModelPrep";
 import { GeoBuilder, type V3 } from "./geoBuilder";
@@ -556,7 +557,7 @@ function PathBorders({ stone }: { stone: MeshStandardMaterial }) {
   );
 }
 
-function Beds({ pine, all }: { pine: Texture; all: Texture[] }) {
+function Beds({ all }: { all: Texture[] }) {
   const troughGeo = useMemo(parkTroughStone, []);
   const troughMat = useMemo(() => parkMaterial(pickSet(all, "Concrete034"), 1, { vertexColors: true, color: new Color("#efe6d6"), normalScale: 0.6 }), [all]);
   // hedges lining the promenade's two sides: clipped boxwood, a trimmed profile with a leafy skin (parkShapes.addHedge)
@@ -579,34 +580,11 @@ function Beds({ pine, all }: { pine: Texture; all: Texture[] }) {
     const tx = boxwoodTextures();
     return new MeshStandardMaterial({ map: tx.map, bumpMap: tx.bump, bumpScale: 2.2, vertexColors: true, roughness: 0.72, side: DoubleSide });
   }, []);
-  const bedGeo = useMemo(() => {
-    const b = new GeoBuilder();
-    // benches (a seat plank, a back, two legs) along the avenue and the promenade
-    const bench = (x: number, z: number, face: number) => {
-      b.box([x, 0.5, z], X, Y, 0.35, 0.05, 1.0, [0.72, 0.5, 0.3]);
-      b.box([x + face * 0.3, 0.85, z], X, Y, 0.05, 0.3, 1.0, [0.72, 0.5, 0.3]);
-      for (const dz of [-0.8, 0.8]) b.box([x, 0.25, z + dz], X, Y, 0.3, 0.25, 0.05, [0.15, 0.16, 0.22]);
-    };
-    for (let z = -170; z <= -140; z += 10) {
-      bench(34, z, -1);
-      bench(46, z, 1);
-    }
-    for (let x = 90; x <= 330; x += 30) bench(x, -108.2, 1);
-    return b.build();
-  }, []);
-  const benchMat = useMemo(() => {
-    const t = pine.clone();
-    t.wrapS = t.wrapT = RepeatWrapping;
-    t.colorSpace = SRGBColorSpace;
-    t.needsUpdate = true;
-    return new MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.75 });
-  }, [pine]);
   return (
     <group>
       <PathBorders stone={troughMat} />
       <mesh geometry={troughGeo} material={troughMat} castShadow receiveShadow />
       <mesh geometry={hedgeGeo} material={hedgeMat} castShadow receiveShadow />
-      <mesh geometry={bedGeo} material={benchMat} castShadow receiveShadow />
     </group>
   );
 }
@@ -679,7 +657,8 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       <Fountain all={all} env={env} />
       <ParkVegetation />
       <Lamps />
-      <Beds pine={pine} all={all} />
+      <Beds all={all} />
+      <ParkBenches pine={pine} />
       <ParkProps all={all} />
       <ParkScenery all={all} />
       <Suspense fallback={null}>
