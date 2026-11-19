@@ -343,8 +343,9 @@ export interface BackdropCut {
  * Cut the old far range out of a CLONE of the village model: the backdrop's triangles wholly beyond `radius` (from the
  * world origin, in x/z) and the far forest's instances standing beyond it. The geometry belongs to the loader's cache:
  * the trimmed mesh gets a copy sharing its attributes with a new index; `restore` gives the original back.
+ * `drop(x, z)`: far-forest instances it answers true for are removed too (the park skyline's footprint).
  */
-export function cutFarBackdrop(root: Object3D, radius = BACKDROP_CUT_RADIUS, repose?: (x: number, z: number) => number): BackdropCut {
+export function cutFarBackdrop(root: Object3D, radius = BACKDROP_CUT_RADIUS, repose?: (x: number, z: number) => number, drop?: (x: number, z: number) => boolean): BackdropCut {
   const r2 = radius * radius;
   const undo: Array<() => void> = [];
   let trianglesRemoved = 0;
@@ -397,6 +398,8 @@ export function cutFarBackdrop(root: Object3D, radius = BACKDROP_CUT_RADIUS, rep
         const x = tmpM.elements[12]!;
         const z = tmpM.elements[14]!;
         const d2 = x * x + z * z;
+        // a far tree standing where something else is built (the park skyline): gone
+        if (drop && drop(x, z)) continue;
         // beyond the cut (repose gives the outer ground's height) or on the rim of the village (95 m out: kept where it stands)
         if (d2 > r2 || (repose && d2 > RIM_VARY_R2)) {
           // a far tree beyond the cut: stood again on the outer ground (repose gives its height), or gone where there is none

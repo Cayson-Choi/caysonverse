@@ -202,6 +202,13 @@ export function outerHeight(g: HeightGrid, x: number, z: number): number {
 
 const LIGHT = new Vector3(0.45, 0.8, 0.35).normalize();
 
+/** The village's built outer ground, once it exists (OuterGroundMesh sets it): the skyline reads its height to stand on it. */
+let outerGroundHandle: OuterGround | null = null;
+export const setOuterGround = (g: OuterGround | null): void => {
+  outerGroundHandle = g;
+};
+export const getOuterGround = (): OuterGround | null => outerGroundHandle;
+
 export interface OuterGround {
   geometry: BufferGeometry;
   /** Surface height of the ground (baked or outer) for placing things; NaN beyond the grid. */
