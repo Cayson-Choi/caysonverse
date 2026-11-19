@@ -17,8 +17,7 @@ import { biteWindowMs } from "@caysonverse/shared/village/fishing";
 import { expireLakeUi, useLakeStore } from "./lakeStore";
 import { LakeCards } from "./LakeCards";
 import { LakePierCue } from "./LakePierCue";
-import { LakeFight } from "./LakeFight";
-import { fightPromptOf } from "./fishFightView";
+import { FIGHT_HINT, fightPromptOf, tensionLevel, type FightPrompt } from "./fishFightView";
 import { playFightCue } from "./fightSfx";
 import { carriesHandItem } from "./fishingRig";
 import { backToFishing, catchCamera, fishingCamera, liftCamera, restoreCamera } from "./lakeCamera";
@@ -325,6 +324,26 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
     }
   }, [spec, holdButton]);
 
+  // the fight's cues (sound; a short buzz on a phone) at every switch and when the line goes tight: the big button is the only guide
+  const fightKind = ctx?.fight?.kind ?? null;
+  const fightLevel = ctx?.fight ? tensionLevel(ctx.fight.tension) : "calm";
+  const lastFightKindRef = useRef<string | null>(null);
+  const lastFightLevelRef = useRef("calm");
+  useEffect(() => {
+    if (fightKind && lastFightKindRef.current && lastFightKindRef.current !== fightKind) {
+      playFightCue(fightKind);
+      if (isTouchDevice) navigator.vibrate?.(fightKind === "run" ? [70, 40, 70] : [35]);
+    }
+    lastFightKindRef.current = fightKind;
+  }, [fightKind]);
+  useEffect(() => {
+    if (fightLevel === "danger" && lastFightLevelRef.current !== "danger") {
+      playFightCue("danger");
+      if (isTouchDevice) navigator.vibrate?.([25, 25, 25]);
+    }
+    lastFightLevelRef.current = fightLevel;
+  }, [fightLevel]);
+
   if (!ctx) return null;
   const inZone = inLakeZone(pose.x, pose.z);
   if (!inZone && ctx.view.rod === 0 && !ctx.seatedNoRod) return null;
@@ -362,6 +381,7 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
           rect={rect}
           shake={shake}
           progress={store.getState().personal.progress}
+          fight={ctx.fight ?? null}
           onPress={() => perform(spec.action)}
           onPointer={(down) => {
             pointerDownRef.current = down;
@@ -373,7 +393,11 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
           }}
         />
       )}
-      {ctx.fight && <LakeFight fight={ctx.fight} touch={isTouchDevice} firstTime={!coachSeenFight()} />}
+      {ctx.fight && !coachSeenFight() && (
+        <div className="cv-lake-btnhint" style={rect ? { right: Math.max(8, window.innerWidth - (rect.x + rect.w)), bottom: window.innerHeight - rect.y + 8 } : undefined}>
+          {FIGHT_HINT}
+        </div>
+      )}
       <LakeCards card={card} />
     </>
   );
@@ -426,6 +450,7 @@ function LakeButton({
   rect,
   shake,
   progress,
+  fight,
   onPress,
   onHold,
   onPointer,
@@ -434,19 +459,27 @@ function LakeButton({
   rect: { x: number; y: number; w: number; h: number } | null;
   shake: number;
   progress: number | undefined;
+  /** The fight prompt: the button alone guides the fight (gold "당기세요", blue "놓아주세요", the line's tension inside, a pulse at every switch). */
+  fight: FightPrompt | null;
   onPress: () => void;
   onHold: (down: boolean) => void;
   onPointer: (down: boolean) => void;
 }) {
-  const ring = spec.hold ? Math.round((progress ?? 0) * 100) : 0;
+  const ring = spec.hold ? Math.round((fight ? fight.progress : progress ?? 0) * 100) : 0;
+  const tension = fight ? Math.round(fight.tension * 100) : 0;
+  const level = fight ? tensionLevel(fight.tension) : "calm";
+  const fightAttrs = fight
+    ? { "data-fight-cmd": fight.kind, "data-fight-tension": tension, "data-fight-progress": Math.round(fight.progress * 100), "data-fight-stage": `${fight.index + 1}/${fight.stages}` }
+    : {};
   return (
     <button
       key={spec.id}
       type="button"
       data-lake-btn={spec.id}
       data-lake-tone={spec.tone}
-      className={`cv-lake-btn tone-${spec.tone}${isTouchDevice ? " is-touch" : ""}${spec.enabled ? "" : " is-off"}${spec.hold ? " is-hold" : ""}${shake ? ` shake-${shake % 2}` : ""}`}
-      style={rect ? { ...rectStyle({ ...rect }), ["--cv-lake-ring" as string]: `${ring}%` } : { ["--cv-lake-ring" as string]: `${ring}%` }}
+      {...fightAttrs}
+      className={`cv-lake-btn tone-${spec.tone}${isTouchDevice ? " is-touch" : ""}${spec.enabled ? "" : " is-off"}${spec.hold ? " is-hold" : ""}${shake ? ` shake-${shake % 2}` : ""}${fight ? ` is-fight tension-${level} sw-${fight.index % 2}${fight.inGrace ? " is-grace" : ""}` : ""}`}
+      style={{ ...(rect ? rectStyle({ ...rect }) : {}), ["--cv-lake-ring" as string]: `${ring}%`, ["--cv-fight-tension" as string]: `${tension}%` }}
       aria-disabled={!spec.enabled}
       aria-label={spec.label}
       tabIndex={-1}

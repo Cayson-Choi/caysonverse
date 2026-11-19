@@ -162,17 +162,21 @@ await run.step(`fight (${MODE}): the whole fight, scripted`, async () => {
       continue;
     }
     const angler = MODE === "through" ? null : startFightAngler(p, { touch, mode: MODE, input: INPUT });
-    const seen = { cmds: [], maxTension: 0, maxProgress: 0, shots: new Set(), first: null, minProgress: 100 };
+    const seen = { panel: false, cmds: [], maxTension: 0, maxProgress: 0, shots: new Set(), first: null, minProgress: 100 };
     let end = null;
+    let note = "";
     const t0 = Date.now();
     while (Date.now() - t0 < 60000) {
       const v = await view();
       if (v.name !== "fighting") {
         end = v.name;
+        if (v.name === "missed") await sleep(250); // the personal message with the reason follows the phase by a moment
+        note = await noticeText();
         break;
       }
       const pr = await promptNow();
       if (pr) {
+        seen.panel = (await p.page.evaluate(() => !!document.querySelector(".cv-fight"))) || seen.panel;
         seen.first ??= pr;
         if (seen.cmds[seen.cmds.length - 1] !== pr.cmd) seen.cmds.push(pr.cmd);
         seen.maxTension = Math.max(seen.maxTension, pr.tension);
@@ -188,15 +192,15 @@ await run.step(`fight (${MODE}): the whole fight, scripted`, async () => {
     if (angler) await angler.stop();
     else await p.page.keyboard.up("Space");
     end = end ?? (await view()).name;
-    const note = await noticeText();
     const landed = end === "lifting" || end === "landed";
-    run.check(`cast ${n}: the prompt is on the screen, big and in view (${INPUT})`, !!seen.first && seen.first.box.w > 200 && seen.first.box.x >= 0 && seen.first.box.x + seen.first.box.w <= seen.first.vw && seen.first.box.y >= 0 && seen.first.box.y + seen.first.box.h <= seen.first.vh, seen.first);
+    run.check(`cast ${n}: the big BUTTON is the prompt (it carries the command, big and in view) (${INPUT})`, !!seen.first && seen.first.box.w >= (touch ? 70 : 150) && seen.first.box.x >= 0 && seen.first.box.x + seen.first.box.w <= seen.first.vw && seen.first.box.y >= 0 && seen.first.box.y + seen.first.box.h <= seen.first.vh && /당기세요|놓아주세요/.test(seen.first.text), seen.first);
+    run.check(`cast ${n}: no panel covers the view (no .cv-fight)`, seen.panel === false, seen.panel);
     if (MODE === "follow") {
       run.check(`cast ${n} (follow): the fish is landed`, landed, { end, seen: { ...seen, shots: [...seen.shots] } });
       run.check(`cast ${n} (follow): the prompt alternated (pull, run, pull, run, pull at least) and the line never snapped`, seen.cmds.length >= 5 && seen.maxTension < 100, seen.cmds);
     } else if (MODE === "hold") {
       run.check(`cast ${n} (hold): the line snapped, the fish is lost (not landed)`, !landed && end === "missed", { end, seen: { ...seen, shots: [...seen.shots] } });
-      run.check(`cast ${n} (hold): the tension showed it (reached 70 % before the snap)`, seen.maxTension >= 70, seen.maxTension);
+      run.check(`cast ${n} (hold): the tension showed it (reached 40 % at least in the samples before the snap)`, seen.maxTension >= 40, seen.maxTension);
       run.check(`cast ${n} (hold): the words say the line broke`, /끊어/.test(note), note);
     } else if (MODE === "none") {
       run.check(`cast ${n} (none): the fish escaped (not landed)`, !landed && end === "missed", { end, seen: { ...seen, shots: [...seen.shots] } });

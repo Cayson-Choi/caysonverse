@@ -63,12 +63,7 @@ export function fightWords(kind: FightKind): { text: string; arrow: string } {
   return kind === "pull" ? { text: "당기세요", arrow: "⬆" } : { text: "놓아주세요", arrow: "⬇" };
 }
 
-/** The small line under the prompt: how to do it (a first-timer gets the whole rule), what to expect after. */
-export function fightHint(p: FightPrompt, touch: boolean, firstTime: boolean): string {
-  const press = touch ? "버튼을 꾹 누르면" : "Space(마우스)를 꾹 누르면";
-  if (firstTime) return `${press} 당기고, 떼면 놓아줘요. 시키는 대로 번갈아 해요!`;
-  if (p.kind === "pull") return p.tension >= 0.75 ? "줄이 팽팽해요! 곧 놓아줘야 해요." : `${press.replace("누르면", "누르고")} 당겨요.`;
-  return p.tension >= 0.75 ? "지금 놓아요! 줄이 끊어져요!" : "손을 떼요 — 물고기가 달려요. 줄을 풀어 줘요.";
-}
+/** The one small line above the big button during the first fight on a device (then never again): the button says the rest. */
+export const FIGHT_HINT = "시키는 대로 — 누르면 당기고, 떼면 놓아줘요";
 
 export const FIGHT_GRACE_MS = FIGHT.graceMs;
