@@ -1146,21 +1146,26 @@ export function makeStars(count = STAR_COUNT): Points {
   return stars;
 }
 
+/** Both the village and the separate park scene use these uniforms for live plants. */
+export function applyVegetationDayNight(s: DayNightState): void {
+  liftUniform.value = s.lift;
+  foliageTintUniform.value.set(s.foliageTint[0], s.foliageTint[1], s.foliageTint[2]);
+  cherryTintUniform.value.set(s.cherryTint[0], s.cherryTint[1], s.cherryTint[2]);
+  vegNightUniform.value = s.night;
+  litUniform.value = s.lights;
+}
+
 /**
  * Per frame: the time of day's numbers into the model (plain number writes, no shader change): the shared light
  * uniforms (the light maps' blend, the dusk tint, the lift), the lamps' and windows' glow, the tints of the dome,
  * hills and falls, the water's tint, glint and the fountain's lights, the stars.
  */
 export function applyDayNight(nodes: VillageNodes, s: DayNightState): void {
-  liftUniform.value = s.lift;
+  applyVegetationDayNight(s);
   liftTintUniform.value.set(s.liftTint[0], s.liftTint[1], s.liftTint[2]);
   dayTintUniform.value.set(s.dayTint[0], s.dayTint[1], s.dayTint[2]);
-  foliageTintUniform.value.set(s.foliageTint[0], s.foliageTint[1], s.foliageTint[2]);
-  cherryTintUniform.value.set(s.cherryTint[0], s.cherryTint[1], s.cherryTint[2]);
-  vegNightUniform.value = s.night;
   // No night map yet (it loads when night is near, final fix I2b): the day map alone, never a black blend.
   nightBlendUniform.value = nightMapUniform.value ? s.night : 0;
-  litUniform.value = s.lights;
   nodes.sky?.color.setRGB(s.domeTint[0], s.domeTint[1], s.domeTint[2]);
   for (const m of nodes.hazed) m.color.setRGB(s.hazeTint[0], s.hazeTint[1], s.hazeTint[2]);
   for (const g of nodes.graded) {

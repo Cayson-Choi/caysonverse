@@ -15,6 +15,8 @@ import type { Bush } from "../village/veg/shrubs";
 import type { TreeSpec } from "../village/veg/treeSkeleton";
 import { circuitGround, taken } from "./ParkScenery";
 import { parkBorders, parkFlowerCrowns } from "./parkBorders";
+import { applyVegetationDayNight } from "../village/villageModelPrep";
+import { dayNight } from "../village/dayNightDriver";
 
 /** A phone draws the park's trees to 380 m and its bushes to 170 m (the tier's bands go to 600 and 300): the wheel's top sees the whole park. */
 export const PHONE_FAR_RANGE = { trees: 380, bush: 170 } as const;
@@ -192,6 +194,7 @@ export function ParkVegetation() {
     };
   }, [specs, flowerBeds, getThree]);
   useFrame(({ clock, gl, camera }) => {
+    applyVegetationDayNight(dayNight.applied);
     // a carousel or wheel ride: the vegetation is judged from the ride's foot, not from the turning / rising eye
     if (veg) veg.setViewOverride(selfRide.slot >= 0 && selfRide.ride === 2 ? [110, 1.7, -119] : selfRide.slot >= 0 && selfRide.ride === 3 ? [205, 1.7, -128.2] : null);
     veg?.update(camera, clock.elapsedTime, gl.domElement.height);
