@@ -23,6 +23,7 @@
 // (부품 변환 항등, 스킨 1개, 인덱스 있음, 속성 화이트리스트)에 기댄다.
 
 import { installFade } from "./avatarFade";
+import { installBackSquash } from "./backSquash";
 import {
   Box3,
   type Bone,
@@ -436,6 +437,7 @@ export function assembleAvatar(
   decorate?.(built); // NPC 헤일로 등. 재질은 built.materials에 넣는다
   for (const m of built.materials) {
     installFade(m);
+    installBackSquash(m);
     const base: OpacityBase = { transparent: m.transparent, depthWrite: m.depthWrite, opacity: m.opacity };
     m.userData.base = base;
   }

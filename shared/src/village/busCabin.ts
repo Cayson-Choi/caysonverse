@@ -325,6 +325,18 @@ export interface BusRiderPoseFull {
  */
 export const BUS_WALL_SEAT_SHIFT = 0.25;
 
+/** How far behind a seated rider's root the face of the seat's backrest is (m): its front face (BUS_SEAT_BACKS, bus-local ahead) to the body point. */
+export function busSeatBackFace(seat: BusSeat): number {
+  const back = BUS_SEAT_BACKS.find((b) => b.seat === seat.id);
+  if (!back || !seat.backed) return 0;
+  const f = facingVector(seat.yaw);
+  const body = seatBodyPoint(seat);
+  // the backrest box's face on the sitter's side: along the facing, from the body point back to the box's near side
+  const corners = [back.min, back.max];
+  const along = (p: readonly number[]) => (p[0]! - body.ahead) * f.ahead + (p[1]! - body.right) * f.right;
+  return Math.round(-Math.max(...corners.map(along)) * 1000) / 1000;
+}
+
 /** Where a seated rider's body (the avatar's root) is, bus-local: along the seat's facing, shifted off the wall. */
 export function seatBodyPoint(seat: BusSeat): BusLocalPoint {
   const f = facingVector(seat.yaw);

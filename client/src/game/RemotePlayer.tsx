@@ -73,6 +73,7 @@ import {
   busLocalToWorld,
   seatBodyPoint,
   busPlaceOf,
+  busSeatBackFace,
   busRiderWorldPose,
   normalizeYaw,
   type BusPlaceKind,
@@ -81,6 +82,8 @@ import {
 import { getTransitRenderPose } from "../net/transitSync";
 import { rideSeatPose } from "../land/rideSeats";
 import { stepLean } from "./leanBack";
+import { stepBackSquash } from "./backSquash";
+import { CHAIR_BACK_BAND, backBandOf, seatBackFace } from "@caysonverse/shared/village/seatBack";
 import { CARRY_STRIPPED_CLIPS, stripArm } from "../lake/fishingRig";
 import { useFishingRig, useHasRod } from "../lake/useFishingRig";
 import { easeLift, stepLiftAt, withSeatLift } from "../village/houses/houseLift";
@@ -637,6 +640,7 @@ export function RemotePlayer({
       const bus = getTransitRenderPose();
       const spot = placeNow.kind === "seat" ? BUS_SEATS[placeNow.index]! : null;
       const body = spot ? seatBodyPoint(spot) : null;
+      stepBackSquash(avatar.root, avatar.materials, spot ? busSeatBackFace(spot) : 0, CHAIR_BACK_BAND, delta);
       const tA = body ? body.ahead : rec.busAhead ?? 0;
       const tR = body ? body.right : rec.busRight ?? 0;
       const tYaw = spot ? spot.yaw : rec.busYaw ?? 0;
@@ -769,6 +773,10 @@ export function RemotePlayer({
     }
     // A backed seat: lean back while seated (leanBack.ts). `seat.seat` is the seat index on the one global list.
     const lean = stepLean(avatar.root, seat.mode === "seated" ? (activeSeats()[seat.seat]?.lean ?? 0) : 0, delta);
+    {
+      const seatNow = seat.mode === "seated" ? activeSeats()[seat.seat] : undefined;
+      stepBackSquash(avatar.root, avatar.materials, seatBackFace(seatNow), backBandOf(seatNow), delta);
+    }
 
     // Fishing lake: the rod, the fishing clips, the landed fish; a no-op without a rod.
     fishRig.update(delta, { seatMode: seat.mode, baseSit: sitIdleAction.current });

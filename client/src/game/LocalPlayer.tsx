@@ -26,6 +26,8 @@ import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
 import { useBenchClipWarmUp } from "./benchClipWarmUp";
 import { vegDressing } from "../village/vegDressing";
 import { stepLean } from "./leanBack";
+import { stepBackSquash } from "./backSquash";
+import { CHAIR_BACK_BAND, backBandOf, seatBackFace } from "@caysonverse/shared/village/seatBack";
 import { isFloorSeat, seatClipBase } from "./seatClips";
 import { readIntent, worldDirection } from "./input";
 import type { Intent, MoveInput } from "./input";
@@ -109,6 +111,7 @@ import {
   BUS_WALK_RADIUS,
   busLocalToWorld,
   busPlaceOf,
+  busSeatBackFace,
   busRiderWorldPose,
   cabinFloorAt,
   normalizeYaw,
@@ -838,6 +841,7 @@ export function LocalPlayer({
       }
     }
     if (kindNow !== "none" && placeNow) {
+      stepBackSquash(avatar.root, avatar.materials, placeNow.kind === "seat" ? busSeatBackFace(BUS_SEATS[placeNow.index]!) : 0, CHAIR_BACK_BAND, delta);
       const bus = getTransitRenderPose();
       let groundSpeedBus = 0;
       let movedBusX = 0;
@@ -1198,6 +1202,11 @@ export function LocalPlayer({
     }
     // A backed seat (sofa, armchair, chair): lean back into the backrest while sitting idle (leanBack.ts).
     stepLean(avatar.root, animStateRef.current === "sitIdle" ? (activeSeats()[seatIndex]?.lean ?? 0) : 0, delta);
+    // ...and its back is flattened against the backrest's face, so thick clothes never poke out behind it (seatBack.ts).
+    {
+      const seatNow = animStateRef.current === "sitIdle" ? activeSeats()[seatIndex] : undefined;
+      stepBackSquash(avatar.root, avatar.materials, seatBackFace(seatNow), backBandOf(seatNow), delta);
+    }
 
     // Seated → fully server-positioned: no integration, no moveSender. Standing up
     // is explicit — any movement intent (keys or joystick) sends ONE Stand. 착석
