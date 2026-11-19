@@ -8,7 +8,7 @@
  */
 import { readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { CLIENT_URL, DESKTOP, PHONE, createRun, entryReady, launchBrowser, openPlayer, press, sleep, pos } from "./lib/common.mjs";
+import { CLIENT_URL, DESKTOP, PHONE, SLOW, createRun, entryReady, launchBrowser, openPlayer, press, sleep, pos } from "./lib/common.mjs";
 import { act } from "./lib/village.mjs";
 
 const args = process.argv.slice(2);
@@ -52,13 +52,13 @@ async function goTo(p, x, z, tol = 1.2) {
 const browser = await launchBrowser();
 const P = await openPlayer(browser, run, { tag: DEVICE, device: DEVICE === "phone" ? PHONE : DESKTOP, settings: { graphics: DEVICE === "phone" ? "low" : "high" } });
 try {
-  await P.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(`2026-11-16T${TIME}`)}${opt("query", "") ? `&${opt("query", "")}` : ""}`, { waitUntil: "domcontentloaded" });
+  await P.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(`2026-11-16T${TIME}`)}${opt("query", "") ? `&${opt("query", "")}` : ""}`, { waitUntil: "domcontentloaded", timeout: 120000 * SLOW });
   console.log("progress: entry");
   await entryReady(P);
   await P.page.locator("input.cv-input").first().fill(`지형${Math.floor(Math.random() * 900 + 100)}`);
   await press(P, P.page.locator(".cv-submit"));
-  await P.page.waitForFunction(() => window.__cv?.getScreen?.() === "village", null, { timeout: 60000 });
-  await P.page.waitForFunction(() => !!window.__cvVillage && !!window.__cvThree, null, { timeout: 120000 });
+  await P.page.waitForFunction(() => window.__cv?.getScreen?.() === "village", null, { timeout: 60000 * SLOW });
+  await P.page.waitForFunction(() => !!window.__cvVillage && !!window.__cvThree, null, { timeout: 120000 * SLOW });
   await P.page.waitForFunction(() => !document.querySelector(".cv-loading"), null, { timeout: 60000 }).catch(() => {});
   console.log("progress: in village");
   await sleep(4000);
