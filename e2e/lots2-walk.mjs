@@ -315,7 +315,8 @@ async function roomTrip(p, unit, tag) {
       bodhi_feet: [3.58, 1.3, 5.4, 3.58, 1.16, 6.4, 24],
       bodhi_feet_side: [4.4, 1.25, 6.0, 3.58, 1.16, 6.4, 20],
       bodhi_r_feet: [8.0, 1.3, 5.4, 7.96, 1.16, 6.4, 24],
-    })) V[k] = [v[0], v[1] + dy, v[2], v[3], v[4] + dy, v[5], tag === "phone" ? v[6] * 2 : v[6]]; // (a phone's tall frame: the fov is spent on the wide side)
+      bodhi_buddha: [4.6, 1.9, 2.4, 4.6, 2.3, 6.4, 55, 88], // the 본존불 and a 협시보살 in one frame (their colour side by side)
+    })) V[k] = [v[0], v[1] + dy, v[2], v[3], v[4] + dy, v[5], tag === "phone" ? (v[7] ?? v[6] * 2) : v[6]]; // (a phone's tall frame: the fov is spent on the wide side)
     // what the sacred pieces' materials are in the drawn room (metal, env map, map sizes)
     const sacred = await p.page.evaluate(() => {
       const { scene } = window.__cvThree();

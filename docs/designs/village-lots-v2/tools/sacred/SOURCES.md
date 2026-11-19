@@ -91,6 +91,10 @@ Sketchfab에 **CC0로 표시된 박물관 실사 채색 스캔**이 있지만 �
 - 스크립트: `process_statue.py`에 `floor_cut`, `floor_lift`, `protect`, `local_smooth`, `fine_normal`, `uv_boost`, `phone_hold` 옵션을 더했고, 작업 파일은 `jobs/bodhi_v2.json`이에요(`blender -b --factory-startup -P process_statue.py -- jobs/bodhi_v2.json`, 이어서 `node/ktx2_glb.mjs <in> <out> 1024 pc 2048 1024` / `<in> <out> 768 phone 512 512`).
   `ktx2_glb.mjs`에는 ORM만 따로 줄이는 여섯 번째 인자(maxOrm)를 더했어요.
 - 삼각형: 보살 한 점 PC 1.3만 → 1.8만, 폰 4,500 → 6,000. 대웅전 PC(방 16.3천 + 본존불 39.6천 + 광배 26.9천 + 보살 2점): 약 10.9만 → 11.9만 삼각형(예산 14만 이내).
+- **색(2026-11-19, 소유자 "협시보살의 색상을 불상과 같은 색으로")**: 구운 올리브빛 청동 대신 본존불과 같은 금박으로 바꿨어요(`node/bodhi_gild.mjs`, 이어서 `ktx2_glb.mjs`).
+  본존불의 금(`buddha_mesh.py` FINISHES "gold")과 같은 값을 써요: 색 (1.0, .674, .182)에 파일 색 계수(PC .77/.79/.64, 폰 .92/.80/.64), 거칠기 .15, 금속 .98.
+  홀의 환경맵이 검게 읽히므로 본존불처럼 제단 등불의 반사를 방출(emissive) 맵에 구워 넣었어요(`buddha_leaf.mjs`의 `radiance`와 `reflectedDirection`을 그대로 옮김: 정점 법선 → TEXCOORD_1로 반사 도표를 찾음).
+  ORM은 구운 가림(R)만 남겼고, 색 텍스처는 없애 파일이 작아졌어요(PC 5.0 → 4.6 MB, 폰 0.82 → 0.68 MB).
 - 새로 쓴 사진·참고 이미지는 없어요(전부 이 스캔과 절차적 재질).
 
 ## 이전 제작 이력 · 2026-11-18 본존불 v2 — 직접 만든 원작 (소유자 "그냥 블렌더로 니가 입체적인 불상을 니가 만들어. 여러 부처님 불상을 찾아보고 비슷하게 만들면 되잖아")
