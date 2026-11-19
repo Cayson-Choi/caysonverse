@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, Vector3 } from "three";
 import { VILLAGE_LOTS, lotLocalToWorld } from "@caysonverse/shared/village/villageLots";
-import { clearEntranceBeds, makeEntranceGarden, plantExistingBoxes } from "./entranceGardens";
+import { clearEntranceBeds, makeEntranceGarden, plantExistingBoxes, plantRoseArch } from "./entranceGardens";
 import { visibleLoad } from "./lotsPrep";
 
 const materials = { plants: new MeshStandardMaterial(), soil: new MeshStandardMaterial(), kerb: new MeshStandardMaterial() };
@@ -55,6 +55,38 @@ describe("entrance gardens", () => {
     mesh.getMatrixAt(0, kept);
     expect(kept.elements[12]).toBeCloseTo(positions[1]!.x);
     expect(kept.elements[14]).toBeCloseTo(positions[1]!.z);
+  });
+
+  it.each([false, true])("roots the climbing rose on both iron posts and leaves its passage open (low %s)", (low) => {
+    const goods = new Group(), garden = new Group();
+    for (const kind of ["rose_clump", "rose_clump_s", "rose_bush"]) {
+      const old = new Mesh(new BoxGeometry(), materials.plants);
+      old.name = "lotinst__lot_chapel_" + kind;
+      goods.add(old);
+    }
+    plantRoseArch(goods, garden, low, materials.plants);
+    expect(goods.children.map((o) => o.visible)).toEqual([false, false, true]);
+    const vines = garden.getObjectByName("chapel_rose_canes") as Mesh;
+    vines.geometry.computeBoundingBox();
+    expect(vines.geometry.boundingBox!.min.y).toBeCloseTo(0, 1);
+    expect(vines.geometry.boundingBox!.max.y).toBeCloseTo(3.65, 1);
+    const sprays = garden.getObjectByName("chapel_climbing_roses") as InstancedMesh;
+    const m = new Matrix4(), p = new Vector3();
+    const sides = new Set<number>();
+    for (let i = 0; i < sprays.count; i++) {
+      sprays.getMatrixAt(i, m);
+      p.setFromMatrixPosition(m);
+      if (p.y < 2.2) {
+        expect(Math.abs(p.x + 8.2)).toBeCloseTo(1.4, 1);
+        sides.add(Math.sign(p.x + 8.2));
+      }
+      expect(Math.abs(p.z + 1.05)).toBeLessThan(0.08);
+    }
+    expect(sides.size).toBe(2);
+    const { draws, triangles } = visibleLoad(garden);
+    expect(draws).toBe(2);
+    // The art file drew 27 instances of an 88-triangle cluster.
+    if (low) expect(triangles).toBeLessThanOrEqual(27 * 88);
   });
 
   it("dresses the library's bay planters without moving the flowers off the narrow sills or changing the pergola", () => {

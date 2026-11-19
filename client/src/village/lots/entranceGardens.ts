@@ -4,10 +4,10 @@ import {
   type Texture,
 } from "three";
 import { LOT_DOOR_YAW, VILLAGE_LOTS, lotWorldToLocal, type VillageLot } from "@caysonverse/shared/village/villageLots";
-import { GeoBuilder } from "../../land/geoBuilder";
+import { GeoBuilder, type V3 } from "../../land/geoBuilder";
 import { versionedUrl } from "../modelUrl";
 import { PLANT_CELL } from "../veg/plantCells";
-import { planterSprig, tulipPlant2 } from "../veg/vegPlants";
+import { climbingRoseSpray, planterSprig, tulipPlant2 } from "../veg/vegPlants";
 import { mulberry32 } from "../veg/vegRandom";
 import { lotSurfaceMaterial, patchLotLight, visibleLoad, type LotNodes } from "./lotsPrep";
 
@@ -87,6 +87,54 @@ function tintFlower(geometry: BufferGeometry, tint: Color): BufferGeometry {
 }
 
 const soilY = 0.133;
+
+/** Train a cane from each post up and along its half of the existing iron arch. */
+export function plantRoseArch(goods: Object3D, garden: Group, low: boolean, plants: MeshStandardMaterial): void {
+  const clusters = goods.children.filter((o) => o.name === "lotinst__lot_chapel_rose_clump" || o.name === "lotinst__lot_chapel_rose_clump_s");
+  if (!clusters.length) return;
+  for (const cluster of clusters) cluster.visible = false;
+  // chapel_kit.py rose_arch: the rail springs at 2.25 m and has a 1.4 m radius.
+  const spring = 2.25, radius = 1.4, length = spring + radius * Math.PI / 2;
+  const cane = new GeoBuilder();
+  const perSide = low ? 15 : 26;
+  const sprays = new InstancedMesh(tintFlower(climbingRoseSpray(low), new Color("#e58b9e")), plants, perSide * 2);
+  const rand = mulberry32(217);
+  const pose = new Object3D();
+  let index = 0;
+  for (const side of [-1, 1]) {
+    const caneAt = (s: number): V3 => {
+      const arc = Math.max(0, s - spring) / radius;
+      const wrap = s * 4.3 + side * 1.7;
+      const r = radius + 0.037 * Math.cos(wrap);
+      return [-8.2 + side * r * Math.cos(arc), Math.min(s, spring) + r * Math.sin(arc), -1.05 + 0.078 * Math.sin(wrap)];
+    };
+    const canePoints = Array.from({ length: 27 }, (_, i) => caneAt(length * i / 26));
+    cane.tube(canePoints, 0.012, low ? 3 : 5, [0.116, 0.077, 0.035]);
+    for (let i = 0; i < perSide; i++) {
+      const t = (i + rand() * 0.36) / perSide;
+      const s = 0.24 + (length - 0.24) * t;
+      pose.position.set(...caneAt(s));
+      pose.rotation.set((rand() - 0.5) * 0.95, side + i * 2.4 + rand() * 0.34, (rand() - 0.5) * 0.84);
+      pose.scale.setScalar((0.84 + rand() * 0.38) * (s > spring ? 1.16 : 0.94));
+      pose.updateMatrix();
+      sprays.setMatrixAt(index++, pose.matrix);
+    }
+  }
+  // Land tubes carry tiling UVs. Sample the little atlas's white cell for the bark.
+  const wood = cane.build();
+  const uv = wood.getAttribute("uv");
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, 0.875, 0.25);
+  const trunks = new Mesh(wood, plants);
+  trunks.name = "chapel_rose_canes";
+  sprays.name = "chapel_climbing_roses";
+  sprays.computeBoundingSphere();
+  for (const mesh of [trunks, sprays]) {
+    mesh.castShadow = mesh.receiveShadow = true;
+    mesh.raycast = () => {};
+    garden.add(mesh);
+  }
+}
+
 // Pockets beside the fountain and the rose walk, in the frame of chapel_kit.py.
 const sideBeds = [
   [9.9, 11.6, -3.6, 1.6], [5.5, 6.6, -4.6, -2.8], [-11.7, -9.9, -4.5, 1.5],
@@ -262,6 +310,7 @@ export function installEntranceGardens(nodes: LotNodes, low: boolean): void {
       const lot = VILLAGE_LOTS.find((l) => l.id === id)!;
       clearEntranceBeds(goods, lot, id);
       const garden = makeEntranceGarden(id, low, { plants, soil, kerb });
+      if (id === "lot_chapel") plantRoseArch(goods, garden, low, plants);
       garden.position.set(lot.centre.x, 0, lot.centre.z);
       garden.rotation.y = LOT_DOOR_YAW[lot.doorSide];
       goods.add(garden);

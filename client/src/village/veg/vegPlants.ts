@@ -575,6 +575,55 @@ export function planterSprig(species: "pansy" | "petunia", simple: boolean, seed
   return b.build();
 }
 
+/** A flowering lateral of a climbing rose. Its base attaches to a trained cane. */
+export function climbingRoseSpray(simple: boolean): BufferGeometry {
+  const b = builder(0.23);
+  const wood = rgba("#647743");
+  const fork: Vec3 = [0.012, 0.084, 0.052], tip: Vec3 = [-0.018, 0.17, 0.13];
+  stalk(b, [[0, 0, 0], fork, tip], 0.006, 0.003, wood);
+  for (const side of [-1, 1]) {
+    const base = side < 0 ? mul(fork, 0.72) : fork;
+    const twig: Vec3 = [side * 0.10, 0.045, side < 0 ? 0.022 : -0.035];
+    stalk(b, [base, add(base, twig)], 0.0026, 0.0014, wood);
+    const pairs = simple ? 1 : 2;
+    for (let pair = 0; pair < pairs; pair++) {
+      const axil = add(base, mul(twig, (pair + 1) / (pairs + 1)));
+      for (const facing of [-1, 1]) {
+        texLeaf(b, axil, [side * 0.35, 0.18 + pair * 0.14, facing], [0, 1, 0],
+          0.066, 0.038, PLANT_CELL.leafPetunia, grey(0.8 + pair * 0.1, 0), { simple, fold: 0.32 });
+      }
+    }
+    texLeaf(b, add(base, twig), twig, [0, 1, 0], 0.075, 0.043, PLANT_CELL.leafPetunia, grey(0.92, 0), { simple });
+  }
+  // The outer corolla opens wide. Smaller, offset petals curl up around its heart.
+  const { f, right, up } = faceBasis([0.18, 0.64, 1]);
+  for (let whorl = 0; whorl < (simple ? 2 : 3); whorl++) {
+    const petals = [5, 4, 3][whorl]!;
+    const r = 0.048 * (1 - whorl * 0.29), h = 0.027 + whorl * 0.008;
+    for (let i = 0; i < petals; i++) {
+      const a = i * Math.PI * 2 / petals + whorl * 0.73;
+      const radial = add(mul(right, Math.cos(a)), mul(up, Math.sin(a)));
+      const tangent = cross(f, radial);
+      const normal = norm(sub(f, mul(radial, 0.42)));
+      const vertex = (rr: number, side: number, lift: number, u: number, v: number, shade: number) =>
+        b.v(add(add(tip, mul(f, h * lift)), add(mul(radial, rr * r), mul(tangent, side * r))), normal, grey(shade, 1), plantUv(PLANT_CELL.tulip, u, v));
+      const foot = vertex(0.055, 0, whorl * 0.21, 0.5, 0.94, 0.44);
+      const left = vertex(0.63, -0.59, 0.76, 0.08, 0.56, 0.82);
+      const rightEdge = vertex(0.66, 0.59, 0.82, 0.92, 0.56, 0.83);
+      const rim = vertex(1, 0.07, 1, 0.5, 0.05, 1);
+      b.tri(foot, left, rightEdge);
+      b.tri(left, rim, rightEdge);
+      if (!simple) {
+        const lipL = vertex(0.85, -0.47, 0.98, 0.2, 0.17, 0.98);
+        const lipR = vertex(0.84, 0.48, 1.03, 0.8, 0.17, 1);
+        b.tri(left, lipL, rim);
+        b.tri(rim, lipR, rightEdge);
+      }
+    }
+  }
+  return b.build();
+}
+
 /** A French marigold (18-24 cm): 13 arching pinnate fronds, 6 domed pompom heads 5.4-6.8 cm just above them. */
 export function marigoldPlant(simple: boolean, seed = 6): BufferGeometry {
   const b = builder(0.24);
