@@ -124,6 +124,15 @@
       "maps": {
         "albedo": "../garden/ninomaru_garden.ktx2"
       }
+    },
+    "M_globe": {
+      "kind": "own",
+      "maps": {
+        "albedo": "lot_library_globe.ktx2"
+      },
+      "uv": "equirectangular (TEXCOORD_0)",
+      "colorSpace": "srgb",
+      "note": "Natural Earth land and rivers; SOURCES_lot_library.md"
     }
   },
   "pbrSets": [

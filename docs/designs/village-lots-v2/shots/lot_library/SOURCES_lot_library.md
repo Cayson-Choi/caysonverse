@@ -38,3 +38,7 @@
 ## 교실과 열람실의 창밖 정원
 
 두 방의 창밖은 Greg Zaal의 CC0 전방위 사진 [Ninomaru Teien](https://polyhaven.com/a/ninomaru_teien)을 사용한다. Blender 5.3에 포함된 1K 원본 `forest.exr`의 HDR 명암을 SDR로 변환하고, 1024×512 ETC1S KTX2 한 장에 전체 밉 체인을 넣었다. 세로로 꺾인 돌출창을 포함한 모든 유리면에서 같은 시선 방향으로 이 사진을 읽는다.
+
+## 열람실 지구본 지도
+
+육지와 강의 윤곽은 Natural Earth의 1:110m 퍼블릭 도메인 자료를 사용했다. 경위도망과 해안 음영을 더한 1024×512 지도를 구에 감고, 원본의 북극과 남극을 지구본 축에 맞췄다. [육지](https://www.naturalearthdata.com/downloads/110m-physical-vectors/110m-land/) · [강](https://www.naturalearthdata.com/downloads/110m-physical-vectors/110m-rivers-lake-centerlines/) · [생성 스크립트](../../tools/b1_globe_map.mjs)

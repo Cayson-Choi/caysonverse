@@ -55,6 +55,7 @@ MATS = {
     "M_glass": {"glass": True},
     "M_screen": {"screen": True},
     "M_garden": R.GARDEN_MAP,
+    "M_globe": {"own": "lot_library_globe", "note": "Natural Earth land and rivers; SOURCES_lot_library.md"},
     "M_painting": {"own": "lot_library_reading_paintings", "note": "public-domain landscapes (Constable, Hobbema, Corot, Ruisdael): SOURCES_lot_library.md"},
     "M_fire": {"fire": True},
 }
