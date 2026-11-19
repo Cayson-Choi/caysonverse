@@ -14,6 +14,27 @@ GARDEN = S("M_garden")
 GARDEN_MAP = {"garden": "../garden/ninomaru_garden.ktx2"}
 
 
+def fiddle_leaf(m, stem, angle, length, width, rise, leaf):
+    """A rubber-plant leaf and petiole. Closed edges and a folded midrib catch light on either side."""
+    along = (math.cos(angle), 0, math.sin(angle))
+    across = (-along[2], 0, along[0])
+    base = G.add(G.add(stem, G.mul(along, length * 0.18)), (0, length * 0.14, 0))
+    m.member(stem, base, G.prof_round(0.005, 4), leaf)
+    tip = G.add(G.add(base, G.mul(along, length)), (0, rise, 0))
+    rings = []
+    for t, fullness in ((0.34, 0.82), (0.70, 1.0)):
+        middle = G.add(G.lerp(base, tip, t), (0, length * 0.15 * math.sin(math.pi * t), 0))
+        edge = G.add(middle, (0, -width * 0.23, 0))
+        rings.append((G.sub(edge, G.mul(across, width * fullness)), middle,
+                      G.add(edge, G.mul(across, width * fullness)), G.add(middle, (0, -0.008, 0))))
+    a, b = rings
+    for i in range(4):
+        j = (i + 1) % 4
+        m.poly([a[i], a[j], b[j], b[i]], leaf)
+        m.poly([base, a[j], a[i]], leaf)
+        m.poly([tip, b[i], b[j]], leaf)
+
+
 def walls(X, Z):
     """Facade frames of the four walls seen from INSIDE (W = into the room, U = the viewer's right)."""
     return {

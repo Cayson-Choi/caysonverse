@@ -529,13 +529,14 @@ def reading_corner(kit, sol):
     Gd.member((gx - 0.04, 0.8, gz), (gx + 0.04, 1.22, gz), G.prof_round(0.006, 4), BRASS)
     r = sol["plant_tall"]["rect"]
     px, pz = (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2
-    D.lathe([(0.15, 0.0), (0.19, 0.35), (0.2, 0.38), (0.0, 0.38)], 12, POT, px, pz, 0.0)
+    D.lathe([(0.15, 0.0), (0.19, 0.33), (0.20, 0.35), (0.20, 0.38), (0.181, 0.38), (0.179, 0.35)], 12, POT, px, pz)
+    D.lathe([(0.179, 0.35), (0, 0.35)], 12, OAK_DK.t(G.hexc("483629")), px, pz)
+    D.member((px, 0.35, pz), (px, 1.60, pz), G.prof_round(0.018, 5), OAK_DK)
     for k in range(18):
-        a = k * 2.4
-        y = 0.6 + k * 0.06
-        L = 0.24
-        Gd.sphere(px + L * 0.5 * math.cos(a), y, pz + L * 0.5 * math.sin(a), 0.11, LEAF if k % 2 else LEAF_DK, n=6, rings=4, sy=0.5)
-    D.member((px, 0.38, pz), (px, 1.6, pz), G.prof_round(0.02, 5), OAK_DK)
+        t = k / 17
+        length = 0.235 - 0.05 * t + 0.012 * math.sin(k * 1.8)
+        R.fiddle_leaf(Gd, (px, 0.57 + t * 1.02, pz), k * 2.40, length, length * 0.30,
+                      -0.07 + 0.15 * t, LEAF if k % 2 else LEAF_DK)
 
 
 def curtains(kit):

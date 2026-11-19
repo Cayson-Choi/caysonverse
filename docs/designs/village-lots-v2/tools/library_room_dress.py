@@ -551,22 +551,17 @@ def rug(m, cx, cz, w, d, field, border, accent, yaw=0.0):
 
 def tall_plant(m, cx, cz, h=1.7):
     """A fiddle-leaf fig in a glazed pot: a slim trunk, big leathery leaves (two-sided, slightly cupped)."""
-    m.lathe([(0.16, 0.0), (0.2, 0.32), (0.21, 0.36), (0.19, 0.38), (0.0, 0.38)], 14, S("LM_library_paint", G.hexc("2F5D5A")), cx, cz, 0.0)
-    m.member((cx, 0.36, cz), (cx + 0.03, h * 0.9, cz - 0.02), G.prof_round(0.022, 6), OAK_DK)
+    m.lathe([(0.16, 0.0), (0.2, 0.32), (0.21, 0.36), (0.20, 0.38), (0.182, 0.38), (0.178, 0.345)], 14, S("LM_library_paint", G.hexc("2F5D5A")), cx, cz, 0.0)
+    m.lathe([(0.178, 0.345), (0, 0.345)], 14, S("LM_library_plaster", G.hexc("493A2C")), cx, cz)
+    root, crown = (cx, 0.345, cz), (cx + 0.035, h - 0.04, cz - 0.022)
+    m.member(root, crown, G.prof_round(0.018, 6), OAK_DK)
     rg = G.rng(int(cx * 100 + cz))
     for k in range(16):
-        y = 0.7 + (h - 0.7) * k / 15
-        a = k * 2.4
-        L = rg.uniform(0.22, 0.3)
-        base = (cx + 0.02 * k / 15, y, cz)
-        tip = (base[0] + L * math.cos(a), y + 0.1, base[2] + L * math.sin(a))
-        side = G.mul(G.norm((-math.sin(a), 0.0, math.cos(a))), 0.09)
-        mid = G.lerp(base, tip, 0.5)
-        q = [base, G.add(mid, side), tip, G.sub(mid, side)]
-        q = [q[0], q[1], (q[2][0], q[2][1] - 0.02, q[2][2]), q[3]]
-        s = LEAF if k % 2 else LEAF_DK
-        m.poly(q, s)
-        m.poly([G.add(p, (0, -0.004, 0)) for p in reversed(q)], s)
+        t = k / 15
+        stem = G.lerp(root, crown, 0.26 + 0.74 * t)
+        length = rg.uniform(0.21, 0.28) * (1.0 - 0.25 * t)
+        R.fiddle_leaf(m, stem, k * 2.40 + rg.uniform(-0.12, 0.12), length, length * 0.33,
+                      -0.09 + 0.19 * t, LEAF if k % 2 else LEAF_DK)
 
 
 def chandelier(kit, m, cx, cz, y):
