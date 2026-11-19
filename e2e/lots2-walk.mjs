@@ -306,6 +306,16 @@ async function roomTrip(p, unit, tag) {
       ceiling: [5.7, 1.5, 1.5, 5.7, 5.0, 4.5, 75],
       scroll: [3.2, 1.7, 4.6, 1.85, 2.5, 7.3, 45],
     };
+    // 협시보살 close-ups (owner 2026-11-19: the fingers, the feet on the floor). The views are for the new figure, whose soles stand on the
+    // 연화대 cushion (the node y 1.1 + 0.09); CV_BODHI_DY=0.072 lifts them for the old file, whose pegs carried the soles 16 cm above its origin.
+    const dy = 0.09 + Number(process.env.CV_BODHI_DY ?? 0);
+    for (const [k, v] of Object.entries({
+      bodhi_hand_raised: [4.15, 2.45, 5.35, 3.86, 2.32, 6.26, 14],
+      bodhi_hand_low: [3.0, 1.95, 5.5, 3.13, 1.76, 6.43, 16],
+      bodhi_feet: [3.58, 1.3, 5.4, 3.58, 1.16, 6.4, 24],
+      bodhi_feet_side: [4.4, 1.25, 6.0, 3.58, 1.16, 6.4, 20],
+      bodhi_r_feet: [8.0, 1.3, 5.4, 7.96, 1.16, 6.4, 24],
+    })) V[k] = [v[0], v[1] + dy, v[2], v[3], v[4] + dy, v[5], tag === "phone" ? v[6] * 2 : v[6]]; // (a phone's tall frame: the fov is spent on the wide side)
     // what the sacred pieces' materials are in the drawn room (metal, env map, map sizes)
     const sacred = await p.page.evaluate(() => {
       const { scene } = window.__cvThree();
@@ -486,7 +496,7 @@ if (ONLY.includes("times")) {
 if (ONLY.includes("phone")) {
   await run.step("phone (375x812, touch): LOD, two rooms door to door", async () => {
     const p = await openPlayer(browser, run, { tag: "phone", device: PHONE });
-    await join_(p, TIMES.day, "", "phone_join");
+    await join_(p, TIMES[process.env.CV_PHONE_TIME ?? "day"], "", "phone_join");
     const l = await lots(p);
     run.check("phone: the six loaded at the light tier", l && l.tier === "low" && l.device === "phone" && l.failed.length === 0, { tier: l?.tier, textures: l?.textures });
     numbers.phoneLots = l;
