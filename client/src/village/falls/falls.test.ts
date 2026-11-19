@@ -12,6 +12,7 @@ import {
   type InstancedBufferGeometry,
 } from "three";
 import { createWaterMaterial } from "../villageWater";
+import { GROUND_GRADE, GROUND_GRADE_NIGHT } from "../villageModelPrep";
 import { createFallsAudio, fallsGain, brownNoise, FALLS_PEAK } from "./fallsAudio";
 import {
   FALLS,
@@ -433,11 +434,15 @@ describe("the stand-in model and its dressing", () => {
     expect(compiled(rock).fragmentShader).not.toContain("#define FALLS_SEAM");
     // the lawn colour follows the village lawn's grade: the day's sunny lime, the night's cool dark green
     const state = (night: number) => ({ night, dayTint: [1, 1, 1], lift: 0.2, liftTint: [1, 1, 1] }) as never;
-    rockDayNight(state(0));
-    expect(rockUniforms.uGrass.value.y).toBeCloseTo(SEAM_GRASS[1] * 1.34, 6);
-    rockDayNight(state(1));
-    expect(rockUniforms.uGrass.value.y).toBeCloseTo(SEAM_GRASS[1] * 1.0, 6);
-    expect(rockUniforms.uGrass.value.z).toBeCloseTo(SEAM_GRASS[2] * 1.3, 6);
+    const dayGrass = GROUND_GRADE.LM_grass!;
+    const nightGrass = GROUND_GRADE_NIGHT.LM_grass!;
+    for (const night of [0, 0.5, 1]) {
+      rockDayNight(state(night));
+      for (const channel of [0, 1, 2] as const) {
+        const lawn = (1 - night) * dayGrass[channel] + night * nightGrass[channel];
+        expect(rockUniforms.uGrass.value.getComponent(channel)).toBeCloseTo(SEAM_GRASS[channel] * lawn, 6);
+      }
+    }
     rockDayNight(state(0));
     const plants = get(hi, "veg__falls_plants_hi").material as MeshBasicMaterial;
     expect([plants.alphaTest, plants.side, plants.vertexColors, plants.lightMap]).toEqual([0.5, DoubleSide, true, null]);
