@@ -28,7 +28,8 @@ export function addGateArch(b: GeoBuilder, cz: number) {
     face(b, [polar(left, radius + 0.055, -1.49), polar(right, radius + 0.055, -1.49),
       polar(right, radius + 0.055, 1.49), polar(left, radius + 0.055, 1.49)], backing);
 
-    const key = i === 8, inner = radius - (key ? 0.12 : 0), outer = radius + (key ? 1.26 : 1);
+    // The keystone projects below and in front of the arch. Its head clears the plaque's lower brass lip.
+    const key = i === 8, inner = radius - (key ? 0.12 : 0), outer = radius + (key ? 1.12 : 1);
     const depth = key ? 1.78 : 1.62, tone = 0.92 + 0.055 * Math.sin(i * 2.1);
     const block: V3 = [tone, tone * 0.975, tone * 0.94];
     const ring = (z: number, chamfer: number) => {

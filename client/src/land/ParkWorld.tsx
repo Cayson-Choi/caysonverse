@@ -433,7 +433,13 @@ function Fountain({ env }: { env: Texture }) {
     const b = new GeoBuilder();
     const W: V3 = [1, 1, 1];
     // the paving apron and the moulded basin (outer foot, ogee lip, inner wall, floor just under the water)
-    addLathe(b, 0, 0, [[5.35, 0], [5.35, 0.06], [4.8, 0.1]], [0.96, 0.95, 0.92], 2, 64);
+    addLathe(b, 0, 0, [[5.35, 0], [5.35, 0.06], [5.31, 0.09], [4.54, 0.09]], [0.96, 0.95, 0.92], 2, 64);
+    // Project the paving from above so its stone courses retain their width across the apron.
+    for (let i = 0; i < b.vertices; i++) {
+      if (b.nor[i * 3 + 1]! < 0.6) continue;
+      b.uv[i * 2] = b.pos[i * 3]! / 2;
+      b.uv[i * 2 + 1] = -b.pos[i * 3 + 2]! / 2;
+    }
     addLathe(b, 0, 0, [[0.01, 0.0], [4.6, 0.0], [4.6, 0.2], [4.5, 0.28], [4.5, 0.55], [4.62, 0.62], [4.62, 0.8], [4.5, 0.95], [4.25, 1.0], [4.05, 0.95], [4.0, 0.86], [3.96, 0.40], [0.01, 0.40]], W, 2, 72);
     // the baluster: a plinth, a swelling urn, a collar, the upper bowl with a rolled lip, a column to the star
     addLathe(b, 0, 0, [[1.05, 0.40], [1.05, 1.0], [0.85, 1.08], [0.6, 1.14], [0.5, 1.4], [0.68, 1.72], [0.62, 1.95], [0.5, 2.1], [0.58, 2.3], [1.2, 2.4], [1.75, 2.62], [1.82, 2.78], [1.7, 2.82], [1.52, 2.74], [1.45, 2.68], [0.01, 2.68]], W, 2, 56);
