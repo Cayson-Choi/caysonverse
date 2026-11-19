@@ -2,17 +2,19 @@
 import math
 
 import bpy
+from buddha_pigment import GILT_SKIN
 
 TAU = math.tau
-# Linear RGB, roughness and metallic. Face and hands are gilded gesso, cloth is burnished.
+# Linear RGB, roughness and metallic. Flesh and robe carry the same warm leaf,
+# more gently polished across the flesh than on the ridges of the drapery.
 FINISHES = {
     "gold": ((1.0, .674, .182), .151, .98),
-    "skin": ((.96, .611, .031), .39, .84),
-    "hair": ((.0055, .0065, .0090), .68, 0.),
+    "skin": GILT_SKIN,
+    "hair": ((.0065, .0080, .0105), .27, .10),
     "green": ((.045, .109, .050), .57, .16),
     "lips": ((.52, .041, .023), .38, .2),
     "cloth": ((1.0, .674, .182), .235, .98),
-    "pearl": ((.99, .83, .52), .22, .28),
+    "urna": ((.92, .50, .074), .33, .91),
     "crease": ((.24, .095, .022), .39, .53),
 }
 

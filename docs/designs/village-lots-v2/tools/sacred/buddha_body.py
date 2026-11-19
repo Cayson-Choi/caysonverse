@@ -10,6 +10,8 @@ from math import atan2, cos, exp, pi, sin
 import bmesh
 import bpy
 from mathutils import Vector
+from mathutils.bvhtree import BVHTree
+from mathutils.geometry import barycentric_transform
 
 from buddha_mesh import mat
 
@@ -569,6 +571,48 @@ def fit_seated_posture(objects):
         obj.data.update()
 
 
+def neck_folds(torso, phone):
+    """Seat three soft transverse rolls directly into the posed throat."""
+    mesh = torso.data
+    mesh.calc_loop_triangles()
+    points = [v.co for v in mesh.vertices]
+    triangles = [tuple(t.vertices) for t in mesh.loop_triangles]
+    tree = BVHTree.FromPolygons(points, triangles, all_triangles=True)
+    segments = 10 if phone else 16
+    # Fine relief over a broad sweep of the anterior neck. Reuse the smooth
+    # normals of the underlying throat so the edges dissolve into the skin.
+    section = [(-.012,-.0006,0.), (-.004,.0017,-.11), (.003,.0014,.14), (.010,-.0006,0.)]
+    if not phone:
+        section.insert(2, (-.001,.0021,0.))
+    folds = []
+    for number, (height, width) in enumerate(((1.387,.121),(1.410,.111),(1.431,.097)), 1):
+        surf = Surface()
+        normals = []
+        previous = None
+        for dz, relief, tilt in section:
+            row = []
+            for j in range(segments+1):
+                u = 2*j/segments-1.
+                x = -.008 + width*u
+                z = height + .021*u*u + dz
+                point, _, tri, _ = tree.ray_cast((x,-.60,z),(0.,1.,0.))
+                if point is None:
+                    raise ValueError(f"Neck roll {number} outside throat at {x:.3f}, {z:.3f}")
+                a,b,c = (mesh.vertices[i] for i in triangles[tri])
+                normal = barycentric_transform(point, a.co,b.co,c.co, a.normal,b.normal,c.normal)
+                fade = smooth((1.-abs(u))/.43)
+                normal.z += tilt * fade
+                normals.append(normal.normalized())
+                row.append(surf.pt((x,point.y-mix(-.0006,relief,fade),z)))
+            if previous is not None:
+                surf.strip(previous, row, wrap=False)
+            previous = row
+        roll = surf.finish(f"Trivali {number}", "skin")
+        roll.data.normals_split_custom_set_from_vertices(normals)
+        folds.append(roll)
+    return folds
+
+
 def build_body(phone):
     from buddha_lap import build_lap
     torso, palm = torso_and_arm(phone)
@@ -586,4 +630,5 @@ def build_body(phone):
     join_wrist(objects[0], objects[1])
     carvings = [objects[0], *objects[2:], *build_lap(phone)]
     fit_seated_posture(carvings)
+    carvings.extend(neck_folds(carvings[0], phone))
     return carvings

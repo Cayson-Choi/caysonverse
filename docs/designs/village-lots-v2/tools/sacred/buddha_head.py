@@ -71,10 +71,10 @@ def depth(image_column):
 # Profile row, frontal skull half-width (px), anterior facial plane and occiput.
 # The short underside of the chin turns back toward the narrow neck.
 SECTIONS = [
-    (171.0, 5, 592, 602), (169.8, 12, 584, 607), (168, 18.5, 579.5, 614),
-    (165, 24, 574.5, 622), (162, 28, 571.4, 630), (158, 32, 569.2, 635),
-    (154, 34.7, 568.0, 640), (150, 36.8, 567.2, 643), (147, 38.0, 566.8, 645),
-    (142, 39.4, 566.2, 648), (136, 40.8, 565.7, 650), (130, 41.8, 565.2, 652),
+    (171.0, 4, 592, 602), (169.8, 9.4, 584, 607), (168, 15.7, 579.5, 614),
+    (165, 21.5, 574.5, 622), (162, 25.7, 571.4, 630), (158, 30.0, 569.2, 635),
+    (154, 33.0, 568.0, 640), (150, 35.4, 567.2, 643), (147, 36.8, 566.8, 645),
+    (142, 38.8, 566.2, 648), (136, 40.5, 565.7, 650), (130, 41.6, 565.2, 652),
     (122, 42.3, 564.3, 654), (115, 42.5, 563.1, 657), (108, 42.5, 561.7, 658),
     (103, 42.5, 560.8, 659), (96, 42.6, 559.9, 660), (90, 42.6, 559.8, 660),
     (82, 42.6, 560.3, 659), (75, 42, 561, 658), (65, 39, 565, 652),
@@ -87,9 +87,10 @@ PROFILE_EDGE = [
     (171,592),(169.8,584),(168,579.5),(165,573.5),(162,569),(158,566.3),
     (154,565.3),(150,565.55),(148.5,565.2),(147.1,563.6),(145.5,562.4),
     (143.0,561.4),(141.8,562.0),(140.6,560.8),(139.5,560.6),(138,560.9),
-    (136.2,559.8),(134.7,557.7),(133.4,554.9),(132.1,553.3),(130.1,551.4),
-    (128.1,550.7),(125.2,550.9),(122.5,551.5),(118,553.5),(114,555.6),
-    (110,557.7),(106,559.5),(102,560),(96,559.9),(90,559.8),(82,560.3),
+    (136.2,559.8),(134.7,558.6),(133.4,556.3),(132.1,554.4),(130.1,552.2),
+    (128.1,550.9),(126.5,550.6),(125.2,550.7),(122.5,551.6),(118,553.3),
+    (114,554.9),(110,556.5),(106,557.9),(102,558.9),(96,559.5),
+    (92,559.7),(90,559.8),(82,560.3),
     (75,561),(65,565),(55,572),(45,583),(38,600)]
 MIDLINE = [(section_z(v),depth(u)) for v,u in PROFILE_EDGE]
 
@@ -121,18 +122,18 @@ def relief(x,z):
     dome=lid+.008+.007*arc
     lids=arc*(.021*exp(-((z-dome)/.020)**2)
               + .004*exp(-((z-lid+.009)/.012)**2))
-    cheeks=(.019*paired(.083,1.625,.055,.058)
-            + .010*paired(.079,1.565,.060,.059))
+    cheeks=(.042*paired(.117,1.623,.067,.056)
+            + .005*paired(.081,1.584,.062,.048))
     # The wing descends into the underside of the tip. Its shallow return
     # sits below the widest part so the nostrils recede in a frontal view.
-    wings=(.013*paired(.021,1.596,.013,.019)
-           + .009*paired(.023,1.603,.0085,.011))
+    wings=(.014*paired(.021,1.599,.014,.017)
+           + .009*paired(.023,1.607,.010,.011))
     seam=lip_line(x)
     mouth=(.0030*paired(.018,seam+.005,.019,.0058)
            + .0039*paired(.014,seam-.006,.022,.0068)
            - .0013*paired(.044,seam,.009,.0075))
     return (brow_plane + lids + cheeks + wings + mouth
-            + .003*paired(.009,1.571,.009,.013)
+            + .0014*paired(.010,1.571,.012,.014)
             + .004*paired(.038,1.485,.035,.026))
 
 
@@ -140,13 +141,14 @@ def fy(x,z):
     w,front,back=profile(SKULL,z)
     q=min(.99999,abs(x)/w)
     outline=profile(MIDLINE,z)[0]
-    bulb=exp(-((z-1.607)/.018)**2)
-    muzzle=1/(1+exp(min(80.,(z-1.576)/.0035)))
+    bulb=exp(-((z-1.610)/.015)**2)
+    muzzle=1/(1+exp(min(80.,(z-1.576)/.0085)))
     chin=1/(1+exp(min(80.,(z-1.517)/.010)))
-    spread=.0165 + .0025*bulb + .007*exp(-((z-1.70)/.040)**2) + .022*muzzle + .047*chin
+    spread=.0162 + .0035*bulb + .007*exp(-((z-1.71)/.035)**2) + .022*muzzle + .047*chin
     # Ease the cross section continuously from the bridge to the rounded tip
     # and over the columella, preserving the measured midline at every height.
-    ridge=(front-outline)*exp(-(abs(x)/spread)**(2+.85*bulb))
+    bridge=exp(-((z-1.655)/.053)**4)
+    ridge=(front-outline)*exp(-(abs(x)/spread)**(2+.82*bridge+.55*bulb))
     center=.5*(front+back)
     # Constrain only the midline to the measured sagittal profile. Spreading
     # the lip's correction across a whole section cuts a shelf into both cheeks.
@@ -159,7 +161,7 @@ def soften_face_normals(mesh):
     # triangles on the cheeks, whose averaged triangle normals otherwise imprint
     # angular transitions into the lacquer. Ease into the mesh normals at the jaw.
     normals=[]
-    radius=.005
+    radius=.0038
     for vertex in mesh.vertices:
         x,y,z=vertex.co
         width,front,back=profile(SKULL,z)
@@ -171,9 +173,12 @@ def soften_face_normals(mesh):
         dz=(fy(x,z+radius)-fy(x,z-radius))/(2*radius)
         # Gently round the steep normals at the sides and underside of the nose,
         # much as the broad bevel of the gilded ground rounds the edge of the cast.
-        nose=exp(-(x/.039)**4-((z-1.614)/.054)**4)
-        bulb=exp(-(x/.031)**4-((z-1.599)/.020)**4)
-        lacquer=Vector((dx*(1-.24*nose-.12*bulb),-1.,dz*(1-.35*nose-.12*bulb))).normalized()
+        nose=exp(-(x/.041)**4-((z-1.626)/.071)**4)
+        bulb=exp(-(x/.036)**4-((z-1.602)/.023)**4)
+        cheek=exp(-((abs(x)-.088)/.047)**4-((z-1.631)/.044)**4)
+        dx *= 1-.40*nose-.12*bulb-.32*cheek
+        dz = dz*(1-.47*nose-.18*bulb-.28*cheek) + .12*cheek
+        lacquer=Vector((dx,-1.,dz)).normalized()
         weight=weight*weight*(3-2*weight)
         normals.append(vertex.normal.lerp(lacquer,weight).normalized())
     mesh.normals_split_custom_set_from_vertices(normals)
@@ -253,8 +258,8 @@ def bead(name,center,radii,material,n=12,rings=5):
 
 
 def make_urna(phone):
-    z=1.732
-    bead('Urna',(0,fy(0,z)-.001,z),(.0050,.0039,.0059),'pearl',8 if phone else 12,4)
+    z=1.725
+    bead('Urna',(0,fy(0,z),z),(.0062,.0046,.0073),'urna',8 if phone else 12,4)
 
 
 # The cranial vault and ushnisha share a continuous shell. Widths and the
@@ -263,73 +268,123 @@ HAIR_SECTIONS = [
     (157,23,589,643),(153,29,581,649),(149,33,577,652),(143,36,572,655),
     (135,40,568,658),(125,42,565,661),(114,44,564,663),(105,45,562,666),
     (95,46.5,562,668),(85,47.5,561,667),(76,47,559,665.5),(68,45,560.5,662.5),
-    (60,39.5,564.5,657.5),(54,33.75,569.5,652),(50,30.6,574,648),
-    (45,28.3,578.5,645),(38,24.7,582.5,641.2),(32,20.5,587,636.9),
-    (27,13.4,594.7,629),(24.8,7,601,623),(23,1.5,610,614.5)]
+    (60,39.5,564.5,657.5),(54,34.1,569.5,652),(50,30.9,574,648),
+    (45,28.2,578.5,645),(38,24.2,582.5,641.2),(32,19.3,587,636.9),
+    (28,13.4,594.7,629),(25.5,7,601,623),(24.3,1.5,610,614.5)]
 HAIR = [(section_z(v),w/PIXELS_PER_METRE,(b-f)/(2*PIXELS_PER_METRE),depth(.5*(f+b)))
         for v,w,f,b in HAIR_SECTIONS]
 
 
 def hair_floor(a):
     p=abs(atan2(sin(a),cos(a)))
-    row=[(0,75.0),(.70,76.4),(1.02,83),(1.18,95),(1.36,109),
-         (1.45,106),(1.54,96),(1.72,91),(1.90,97),(2.02,118),(2.14,135),
+    # Measured forehead and temples in the pitched frontal photograph.
+    row=[(0,77),(.42,77.8),(.65,78.5),(.82,79.6),(.96,80.7),
+         (1.08,82.2),(1.19,84.9),(1.30,89.6),(1.41,97.8),(1.49,111),
+         (1.56,108),(1.65,95),(1.73,91),(1.90,97),(2.02,118),(2.14,135),
          (2.32,145),(2.53,148.5),(2.76,150),(pi,146)]
-    return section_z(profile(row,p)[0])
+    z=section_z(profile(row,p)[0])
+    _,f,b=profile(SKULL,z)
+    y=(f+b)/2-(b-f)/2*cos(a)
+    front=max(0.,cos(a))
+    return z-CAMERA_PITCH*y*front-.0009*front*cos(40*a)
 
 def hair_pos(a,z):
     w,d,cy=profile(HAIR,z)
     return Vector((w*sin(a),cy-d*cos(a),z))
 
 
-def make_hair(phone):
-    n=20 if phone else 34
-    rows=6 if phone else 8
-    vs,fs=[],[]
-    for j in range(rows):
-        u=j/(rows-1)
-        for k in range(n):
-            a=2*pi*k/n
-            fringe=max(0.,cos(a))**3
-            low=hair_floor(a)-.003-.0012*fringe*cos(32*a)
-            pos=hair_pos(a,low+(1.995-low)*u)
-            vs.append(pos)
-    connect(fs,n,rows)
-    cap(fs,n,len(vs))
-    surface('Scalp below curls',vs,fs,'hair')
+def hair_normal(a,z):
+    tangent=hair_pos(a+.004,z)-hair_pos(a-.004,z)
+    rise=hair_pos(a,z+.0003)-hair_pos(a,z-.0003)
+    return tangent.cross(rise).normalized()
 
-    # Domed spirals overlap the cap. The tangent frame turns over the upper dome.
-    zs=([1.532,1.570,1.608,1.646,1.684,1.722,1.760,1.798,1.833,1.861,
-         1.885,1.912,1.941,1.962,1.977,1.987] if phone else
-        [1.525,1.553,1.581,1.609,1.637,1.665,1.693,1.721,1.749,1.777,
-         1.805,1.833,1.858,1.878,1.896,1.916,1.939,1.958,1.971,1.981,1.988])
-    vs,fs=[],[]
-    ns=5 if phone else 6
-    for j,z in enumerate(zs):
-        w,d,cy=profile(HAIR,z)
-        count=max(6,round(2*pi*sqrt(w*d)/(.055 if phone else .0357)))
-        circum=2*pi*sqrt(w*d)/count
-        for k in range(count):
-            a=2*pi*(k+.47*(j%2))/count
-            if z+.007<hair_floor(a):
-                continue
+
+def scalloped_scalp(phone):
+    # A continuous casting. Each band maps a row of small whorls around
+    # the vault; both LODs therefore show the same spacing at the hairline.
+    # Row heights tighten where the meridian turns towards the crown.
+    front=hair_floor(0)
+    levels=[front+k*.025 for k in range(-12,2)]
+    levels += [1.850,1.870,1.887,1.904,1.921,1.938,1.953,1.966,1.976,1.984,1.991,1.9945]
+    vs,fs,coords,normals=[],[],[],[]
+    sectors=8
+    # The rear quarters have no forehead arc and need fewer longitudinal cuts.
+    divisions=[(3 if phone else 10) if 2<=s<6 else (4 if phone else 12) for s in range(sectors)]
+    vertical=1 if phone else 2
+    for j,(low,high) in enumerate(zip(levels,levels[1:])):
+        w,d,_=profile(HAIR,(low+high)/2)
+        repeats=max(1,min(5,round(2*pi*sqrt(w*d)/(.0275*sectors))))
+        phase=.5*(j%2)
+        for sector in range(sectors):
+            across=divisions[sector]
+            rings=[]
+            for m in range(vertical+1):
+                ring=[]
+                t=m/vertical
+                for k in range(across+1):
+                    a=2*pi*(sector+k/across)/sectors
+                    floor=hair_floor(a)
+                    # Bend the frontal rows with the measured temple arch.
+                    wrap=abs(atan2(sin(a),cos(a)))
+                    dip=(hair_floor(min(wrap,1.15))-front)*max(0.,cos(a))**.6
+                    def bent(level):
+                        return level+dip*exp(-((level-front)/.083)**2)
+                    bottom,top=bent(low),bent(high)
+                    z=max(floor,bottom+(top-bottom)*t)
+                    row_v=min(1.,(z-bottom)/(top-bottom))
+                    column=repeats*k/across+phase
+                    relief=sin(pi*row_v)**2*sin(pi*column)**2
+                    at_edge=max(0.,min(1.,(z-floor)/.008))
+                    n=hair_normal(a,z)
+                    finish=max(0.,min(1.,(1.992-z)/.014))
+                    pos=hair_pos(a,z)+n*(.0045+.004*relief)*at_edge*finish
+                    # The dark edge is seated directly against the facial
+                    # ellipse, where the original casting turns into the temple.
+                    blend=max(0.,min(1.,(z-floor)/.035))
+                    blend=blend*blend*(3-2*blend)
+                    attach=max(0.,min(1.,(1.84-wrap)/.24))*(1-blend)
+                    sw,sf,sb=profile(SKULL,z)
+                    skin=Vector((sw*sin(a),(sf+sb)/2-(sb-sf)/2*cos(a),z))
+                    ring.append(len(vs))
+                    vs.append(pos.lerp(skin+n*.0008,attach))
+                    normals.append(n)
+                    coords.append(((column/6)*.92+.04,row_v*.92+.04))
+                rings.append(ring)
+            for lower,upper in zip(rings,rings[1:]):
+                for k in range(across):
+                    corners=[lower[k],lower[k+1]]
+                    if vs[upper[k+1]]!=vs[lower[k+1]]:
+                        corners.append(upper[k+1])
+                    if vs[upper[k]]!=vs[lower[k]]:
+                        corners.append(upper[k])
+                    if len(corners)>2:
+                        fs.append(corners)
+    # Turn the lower edge inward to meet the temple and forehead. It follows
+    # a single curve even from below; no loose polygon tips hang onto the skin.
+    start=len(vs)
+    angles=[2*pi*(s+k/steps)/sectors for s,steps in enumerate(divisions) for k in range(steps)]
+    for inset in (.004,0):
+        for a in angles:
+            z=hair_floor(a)
             pos=hair_pos(a,z)
-            across=(hair_pos(a+.008,z)-hair_pos(a-.008,z)).normalized()
-            along=(hair_pos(a,z+.0004)-hair_pos(a,z-.0004)).normalized()
-            normal=across.cross(along).normalized()
-            along=normal.cross(across).normalized()
-            start=len(vs)
-            for r,h,twist in ([(1.,-.001,0)] if phone else [(1.,-.002,0),(.65,.008,.14)]):
-                for m in range(ns):
-                    p=2*pi*m/ns+twist+.16*(j%2)
-                    vs.append(pos+across*(circum*.58*r*cos(p))+along*((.022 if phone else .018)*r*sin(p))+normal*h)
-            tip=len(vs)
-            vs.append(pos+normal*.011+across*.001+along*.001)
-            if not phone:
-                connect(fs,ns,2,start)
-            last=tip-ns
-            fs.extend((last+m,last+(m+1)%ns,tip) for m in range(ns))
-    surface('Rows of snail curls',vs,fs,'hair')
+            normal=hair_normal(a,z)
+            wrap=abs(atan2(sin(a),cos(a)))
+            attach=max(0.,min(1.,(1.84-wrap)/.24))
+            sw,sf,sb=profile(SKULL,z)
+            skin=Vector((sw*sin(a),(sf+sb)/2-(sb-sf)/2*cos(a),z))
+            vs.append(pos.lerp(skin+normal*.0008,attach)-normal*inset)
+            normals.append(normal)
+            coords.append((.04,.04))
+    connect(fs,len(angles),2,start)
+    scalp=surface('Cast scalp with rows of snail curls',vs,fs,'hair')
+    scalp.data.normals_split_custom_set_from_vertices(normals)
+    lattice=scalp.data.uv_layers.new(name='Curl lattice')
+    for loop in scalp.data.loops:
+        lattice.data[loop.index].uv=coords[loop.vertex_index]
+
+
+def make_hair(phone):
+    scalloped_scalp(phone)
 
     vs=[(0,0,1.876)]
     n=10 if phone else 18
@@ -362,7 +417,7 @@ def make_hair(phone):
         j=(k+1)%len(perimeter)
         fs.append((a,back[k],back[j],perimeter[j]))
     surface('Gilt crescent',vs,fs,'gold')
-    bead('Crown jewel',(0,depth(612.5),1.994),(.025,.023,.006),'gold',12 if phone else 18,4)
+    bead('Crown jewel',(0,depth(612.5),1.994),(.019,.017,.006),'gold',12 if phone else 18,4)
 
 
 def build_head(phone=False):

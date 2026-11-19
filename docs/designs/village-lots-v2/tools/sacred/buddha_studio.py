@@ -134,13 +134,32 @@ def portrait(scene, reg, output):
     center = (right*(left+width/2-reg["front"]["originX"])
               + up*(reg["groundRow"]-top-height/2))/p
     scene.camera = camera(scene,"Portrait",direction,center,height/p)
-    scene.world = bpy.data.worlds.new("Neutral photographic fill")
+    # A graduated photographic tent gives polished leaf a broad reflection
+    # with a soft edge. The identical neutral light is used for both LODs.
+    scene.world = bpy.data.worlds.new("Graduated photographic silk")
     scene.world.use_nodes = True
-    bg = next(n for n in scene.world.node_tree.nodes if n.type == "BACKGROUND")
-    bg.inputs["Color"].default_value = (1.,.84,.78,1)
-    bg.inputs["Strength"].default_value = 1.02
-    softbox(scene,"Upper frontal silk",(-.16,-1.48,2.71),(0,0,1.67),2.80,2.20,60)
-    softbox(scene,"Reflected fill",(.24,-1.52,1.40),(0,0,1.62),2.50,1.90,11)
+    nodes = scene.world.node_tree
+    bg = next(n for n in nodes.nodes if n.type == "BACKGROUND")
+    w, h = 512, 256
+    lon = (0.5 - (np.arange(w)+0.5)/w) * 2*np.pi
+    lat = ((np.arange(h)+0.5)/h - 0.5)[:,None] * np.pi
+    x, y, z = np.cos(lat)*np.cos(lon), np.cos(lat)*np.sin(lon), np.sin(lat)
+    radiance = np.zeros((h,w,4), dtype=np.float32)
+    radiance[..., :3] = (.60,.48,.27)
+    for direction, spread, power in [((-.24,-.88,.42), 4.2, 1.27),
+                                     ((-.98,-.10,-.18), 5.5, .81),
+                                     ((.96,-.10,-.23), 5.5, .76),
+                                     ((.05,.75,.66), 5.0, .48)]:
+        dx, dy, dz = Vector(direction).normalized()
+        reflection = np.exp(spread*(dx*x + dy*y + dz*z - 1))
+        radiance[..., :3] += (power*reflection)[...,None]
+    radiance[..., 3] = 1
+    image = bpy.data.images.new("Portrait reflectors", w, h, float_buffer=True)
+    image.colorspace_settings.name = "Non-Color"
+    image.pixels.foreach_set(radiance.ravel())
+    env = nodes.nodes.new("ShaderNodeTexEnvironment")
+    env.image = image
+    nodes.links.new(env.outputs[0], bg.inputs["Color"])
     scene.view_settings.view_transform = "Standard"
     scene.view_settings.look = "None"
     scene.view_settings.exposure = -.45

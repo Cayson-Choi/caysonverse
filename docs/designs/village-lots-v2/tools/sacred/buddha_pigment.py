@@ -1,6 +1,9 @@
 """Hand-painted features for the hall Buddha's frontal UV island, in sculpt metres."""
 import numpy as np
 
+# Linear reflectance, roughness and metalness of the leaf on bare skin.
+GILT_SKIN = ((.94, .529, .074), .335, .86)
+
 
 def smooth(lo, hi, value):
     t = np.clip((value - lo) / (hi - lo), 0., 1.)
@@ -44,24 +47,18 @@ def face_patch(kind, x, z, phone=False):
         for channel, value in enumerate(target):
             result[..., channel] += (value-result[..., channel]) * mask
 
-    # Match the leaf at the nape and under the jaw. Across the visible oval a
-    # satin lacquer spreads the hall's bright door and lamp reflections.
-    half_width = np.interp(z, (1.430,1.442,1.454,1.474,1.494,1.518,1.545,1.580,1.644,1.749),
-                           (.031,.062,.085,.105,.122,.135,.146,.151,.157,.161))
-    lateral = 1.-smooth(.78, .99, a/half_width)
-    face = lateral*smooth(1.435, 1.466, z) if color else lateral
-    # The desktop room reflects the lamps much more strongly in its shadows.
-    # Tinted metallic reflections retain the colour of the lacquer and ink.
-    skin = (1., .72 if phone else .69, .42 if phone else .715)
+    # Continuous leaf around the jaw and neck. The high planes are more
+    # burnished, so their softbox or door reflections move with the camera.
+    leaf, roughness, metallic = GILT_SKIN
+    skin = (1., roughness, metallic)
     ink = (1., .76, .18 if phone else .52)
     vermilion = (1., .72, .28 if phone else .55)
-    result[...] = (.96, .611, .031) if color else (1., .39, .84)
-    leaf = (.933,.550,.064) if phone else (.815,.496,.028)
-    gold_light = (.998,.746,.208) if phone else (.979,.594,.074)
-    lay(face, leaf, skin)
-    planes = (.62*spot(.0,1.757,.079,.048) + .69*spot(.080,1.628,.047,.046)
-              + .62*spot(.0,1.645,.014,.052) + .43*spot(.0,1.498,.047,.023))
-    lay(planes*face, gold_light, skin)
+    result[...] = leaf if color else skin
+    polish = np.maximum.reduce((spot(.0,1.757,.092,.052), spot(.085,1.643,.045,.043),
+                                spot(.0,1.656,.011,.055), spot(.0,1.610,.013,.011),
+                                spot(.021,1.604,.009,.011), spot(.012,1.571,.015,.008),
+                                spot(.0,1.495,.046,.028)))
+    lay(polish, (.98,.590,.091), (1.,.30,.89))
 
     eye_t = np.clip((a-.030)/.104, 0., 1.)
     arc = np.sin(np.pi*eye_t).clip(0., 1.)
@@ -71,9 +68,8 @@ def face_patch(kind, x, z, phone=False):
     # before the ends so it does not turn into a second lash at game scale.
     fold = upper + .009 + .033*arc
     lid_roll = upper + .007 + .017*arc
-    lay(.79*np.exp(-((z-fold)/.0125)**2)*arc**.69, (.547,.280,.019), skin)
-    lid_light = (.997,.780,.221) if phone else (.994,.716,.137)
-    lay(.94*np.exp(-((z-lid_roll)/.014)**2)*arc**2.5, lid_light, skin)
+    lay(.47*np.exp(-((z-fold)/.0125)**2)*arc**.69, (.62,.33,.052), skin)
+    lay(.60*np.exp(-((z-lid_roll)/.014)**2)*arc**2.5, (.98,.64,.12), (1.,.31,.88))
     lay(.23*np.exp(-((z-lower+.007)/.007)**2)*arc, (.708,.389,.014), skin)
 
     brow_t = np.clip((a-.030)/.103, 0., 1.)
@@ -101,11 +97,7 @@ def face_patch(kind, x, z, phone=False):
 
     # The tip rolls over one warm, diffuse shadow. The openings face the
     # ground and need no painted outlines in a frontal portrait.
-    nasal_light = (.998,.762,.223) if phone else (.993,.738,.152)
-    lay(.68*spot(.0,1.641,.012,.049), nasal_light, skin)
-    lay(.88*spot(.0,1.605,.015,.010), nasal_light, skin)
-    lay(.68*spot(.022,1.598,.009,.009), nasal_light, skin)
-    lay(.35*spot(.009,1.585,.020,.0056), (.593,.319,.024), skin)
+    lay(.26*spot(.018,1.592,.010,.0056), (.64,.32,.052), skin)
 
     lip_t = np.clip(a/.0435, 0., 1.)
     seam = lip_height(lip_t)
@@ -128,17 +120,22 @@ def face_patch(kind, x, z, phone=False):
     lay(.83*meeting, (.195,.019,.002), vermilion)
     lay(.33*spot(.0445,1.5545,.0054,.0035), (.535,.266,.017), skin)
 
-    whisker_t = np.clip((a-.009)/.052, 0., 1.)
-    whisker_z = (1.571 + .0019*np.exp(-((whisker_t-.19)/.18)**2)
-                 - .0145*smooth(.16,.84,whisker_t) + .0014*np.exp(-((whisker_t-.87)/.11)**2))
-    whisker = np.exp(-((z-whisker_z)/.00215)**2)*np.sin(np.pi*whisker_t).clip(0.,1.)**.54
-    lay(.80*whisker, (.121,.119,.034), ink)
-    lay(.64*spot(.0,1.487,.0027,.0026), (.177,.122,.029), ink)
+    # Two loaded brush strokes descend from the philtrum and turn up clear
+    # of the lip corners. A fine wedge of gold remains between their roots.
+    whisker_t = np.clip((a-.005)/.061, 0., 1.)
+    whisker_z = (1.5695 + .0035*np.exp(-((whisker_t-.23)/.18)**2)
+                 - .012*smooth(.25,.82,whisker_t) + .007*smooth(.77,1.,whisker_t))
+    load = np.sin(np.pi*whisker_t).clip(0.,1.)**.46
+    whisker = np.exp(-((z-whisker_z)/(.0014+.0014*load))**2)*load
+    lay(.98*whisker, (.052,.036,.009), ink)
+    # Three brush dabs form the short inverted triangle on the chin.
+    tuft = spot(.013,1.487,.0028,.0036) + spot(.0,1.481,.0031,.0027)
+    lay(.92*tuft, (.086,.054,.012), ink)
 
     if color:
+        # Keep the eye ink and vermilion at their accepted desktop density.
         if not phone:
-            # Reserve headroom for the warm desktop night lamps. Excess light
-            # in the red channel otherwise pushes gold and vermilion to peach.
-            result *= 1. - face[..., None]*np.array((.24,.21,.16), dtype=np.float32)
+            pigment = np.maximum.reduce((lips, opening, lash, brow_mask))
+            result *= 1. - pigment[..., None]*np.array((.24,.21,.16), dtype=np.float32)
         result = np.where(result <= .0031308, 12.92*result, 1.055*result**(1./2.4)-.055)
     return result.astype(np.float32, copy=False)

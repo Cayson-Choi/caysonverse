@@ -1,4 +1,4 @@
-/** Retain the shipped statue around a replacement face or ears, including baked shading UVs. */
+/** Keep original positions, shading normals and atlas UVs outside the revised sculpture. */
 import { createRequire } from "node:module";
 import { MeshoptDecoder } from "meshoptimizer";
 
@@ -81,14 +81,23 @@ function partition(document, region) {
       }
     }
     if (sides.size !== 2) throw new Error("Cannot locate both complete Buddha ears");
+  } else if (region === "head") {
+    if (!hasIsland) throw new Error("Head replacement requires the registered Buddha");
+    for (const { id, min, max, minU, maxU } of components.values()) {
+      // The neck reliefs straddle the midline. The only lateral skin-only
+      // pieces above the shoulders are the pinnae; keep their original carving.
+      const lateralEar = minU > .125 && maxU < .25 && (max[0] < 0 || min[0] > 0);
+      if (min[1] > 1.34 && min[0] > -.25 && max[0] < .25 && !lateralEar) selected.add(id);
+    }
+    if (!selected.has(oval.id)) throw new Error("Missing face in the head selection");
   } else {
     const paletteColumns = hasIsland ? 8 : 4;
     selected.add(oval.id);
     for (const { id, min, max, sample } of components.values()) {
       // Among the components on the front of the oval, only the urna and the
-      // old pigment strokes use malachite, vermilion, pearl or crease swatches.
+      // old pigment strokes use the pigment and forehead-jewel swatches.
       const tile = Math.floor(uv[2*sample]*paletteColumns) + 4*Math.floor((1-uv[2*sample+1])*2);
-      const frontDepth = tile === 6 ? 0 : .07; // The pearl sits on the forehead, behind the lips.
+      const frontDepth = tile === 6 ? 0 : .07; // The urna sits farther back than the lips.
       if (min[0] > -.145 && max[0] < .145 && min[1] > 1.45 && max[1] < 1.775 &&
           min[2] > frontDepth && [3,4,6,7].includes(tile)) selected.add(id);
     }

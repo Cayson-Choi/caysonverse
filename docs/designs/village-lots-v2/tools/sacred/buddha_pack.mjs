@@ -1,7 +1,8 @@
 /** Finish the original hall Buddha after the Blender build.
- * node buddha_pack.mjs <build-directory> <sacred-GLB-directory> [--preserve-from|--preserve-ears-from <prior-GLB-directory>]
+ * node buddha_pack.mjs <build-directory> <sacred-GLB-directory> [--preserve-from|--preserve-ears-from|--preserve-head-from <prior-GLB-directory>]
  * For a face revision, pass the shipped pair's directory to --preserve-from.
  * For an ear revision, --preserve-ears-from keeps the shipped face, body and KTX2 textures.
+ * For a full head revision, --preserve-head-from retains the body and ears around the new throat, face and hair.
  * It can also be the destination. Both LODs are built before either file is replaced.
  * Uses the locked KTX2 settings from sacred/node. The room loader needs the meshopt
  * extension's core fallback. Both paths carry the same faces and vertex attributes.
@@ -15,8 +16,9 @@ import { preserveSurroundingStatue } from "./buddha_preserve.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const [work, destination, flag, seedDirectory, ...extra] = process.argv.slice(2);
-if (!work || !destination || (flag && (!["--preserve-from", "--preserve-ears-from"].includes(flag) || !seedDirectory)) || extra.length) {
-  throw new Error("Expected build directory, sacred GLB directory and optional --preserve-from or --preserve-ears-from <directory>");
+const regions = new Map([["--preserve-from", "face"], ["--preserve-ears-from", "ears"], ["--preserve-head-from", "head"]]);
+if (!work || !destination || (flag && (!regions.has(flag) || !seedDirectory)) || extra.length) {
+  throw new Error("Expected build directory, sacred GLB directory and an optional preservation flag and source directory");
 }
 const align = (n) => Math.ceil(n / 4) * 4;
 await Promise.all([MeshoptEncoder.ready, MeshoptDecoder.ready]);
@@ -78,7 +80,7 @@ for (const lod of ["pc", "phone"]) {
   const name = "lotstatue__lot_temple_hall_buddha" + (lod === "phone" ? "_phone" : "");
   let model = path.resolve(work, lod + ".glb");
   if (seedDirectory) {
-    const region = flag === "--preserve-ears-from" ? "ears" : "face";
+    const region = regions.get(flag);
     const graft = path.join(work, lod + "-" + region + ".glb");
     await preserveSurroundingStatue(path.join(seedDirectory, name + ".glb"), model, graft, region);
     model = graft;

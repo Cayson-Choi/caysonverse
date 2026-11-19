@@ -78,6 +78,7 @@ def dress(mesh, output, lod):
     tiles = {key:i for i,key in enumerate(KEYS)}
     face_limit = .180
     chin, crown = 1.420, 1.820
+    curl_lattice = mesh.uv_layers["Curl lattice"]
     uv = mesh.uv_layers.new(name="Leaf and pigment")
     for p in mesh.polygons:
         finish = mesh.materials[p.material_index].name
@@ -90,6 +91,10 @@ def dress(mesh, output, lod):
                 uv.data[k].uv = (.5 + .5*u, v)
                 continue
             tile = tiles[finish]
+            if finish == "hair":
+                u,v = curl_lattice.data[k].uv
+                uv.data[k].uv = ((tile%4+u)/8,(tile//4+v)/2)
+                continue
             phase = .50 + .47*math.sin(7*x + 6*y + 9*z + .6*math.sin(5*y - 4*z))
             tone = access[index]
             if finish == "skin" and 1.42 < z < 1.48:
@@ -128,11 +133,11 @@ def dress(mesh, output, lod):
             if kind == "color":
                 for channel, value in enumerate(color):
                     # Subtle warm reflected light remains in leaf recesses.
-                    shade = .50 + .50*ao if key == "skin" else .73 + .27*ao
+                    shade = .86 + .14*ao if key == "skin" else .73 + .27*ao
                     linear = np.clip(value * shade * (1+.009*wave), 0, 1)
                     patch[:,:,channel] = np.where(linear <= .0031308, 12.92*linear, 1.055*linear**(1/2.4)-.055)
             elif kind == "orm":
-                patch[:,:,0] = .46 + .54*ao
+                patch[:,:,0] = .81 + .19*ao if key == "skin" else .46 + .54*ao
                 patch[:,:,1] = rough + .016*wave + .026*(1-ao)
                 patch[:,:,2] = metal
             else:
@@ -140,6 +145,34 @@ def dress(mesh, output, lod):
                 patch[:,:,0] = .5 + strength*wave
                 patch[:,:,1] = .5 + strength*np.sin(31*v+11*u)
                 patch[:,:,2] = 1
+            if key == "hair":
+                # Six identical whorls in one padded strip. Curl spacing comes
+                # from the scalp bands so the phone and PC casts agree.
+                x = 2*np.mod(6*(u-.04)/.92, 1)-1
+                y = 2*(v-.04)/.92-1
+                r = np.sqrt(x*x+y*y)
+                angle = np.arctan2(y,x)
+                dome = np.clip(1-r*r,0,1)**1.32
+                whorl = np.cos(angle-7.4*r-.72)
+                groove = .021*dome*(1-np.exp(-r*r/.045))*(.5+.5*whorl)**3
+                if kind == "normal":
+                    height = .77*dome-groove
+                    dy,dx = np.gradient(height, 2/(.92*(tile_height-1)),12/(.92*(tile_size-1)))
+                    length = np.sqrt(1+dx*dx+dy*dy)
+                    patch[:,:,0] = .5-.5*dx/length
+                    patch[:,:,1] = .5-.5*dy/length
+                    patch[:,:,2] = .5+.5/length
+                elif kind == "color":
+                    # The exposed upper crest of each bead is burnished;
+                    # the black lacquer still collects in the low turns.
+                    crest = np.exp(-((x+.10)/.48)**2-((y-.22)/.46)**2)
+                    for c,value in enumerate(color):
+                        linear = value*(.09+3.50*dome-groove)+(.053,.057,.060)[c]*crest
+                        patch[:,:,c] = np.where(linear<=.0031308,12.92*linear,1.055*linear**(1/2.4)-.055)
+                else:
+                    patch[:,:,0] = .54+.44*dome
+                    patch[:,:,1] = rough+.15*(1-dome)
+                    patch[:,:,2] = .83-.73*dome
         x = ((np.arange(w//2)+.5)/(w//2)*2 - 1)*face_limit
         z = chin + (np.arange(h)+.5)/h*(crown-chin)
         arr[:,w//2:,:3] = face_patch(kind, x[None,:], z[:,None], phone=lod == "phone")
