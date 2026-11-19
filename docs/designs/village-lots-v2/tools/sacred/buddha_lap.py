@@ -33,50 +33,59 @@ class Carving:
 
 
 def knee(side, phone):
+    # The fabric wraps all the way around the front of each rounded knee.
+    # Closed courses run from the rear to the front. The second rolled edge
+    # converges with the first at the gathered ankle and opens over the shin.
     surface = Carving()
-    rows = []
-    segments = 12 if phone else 29
-    for j in range(1, segments):
-        u = (1 - cos(pi*j/segments))/2
-        span = sin(pi*u)
-        bend = (2*u - (1.08 if side > 0 else .92))**2
-        upper = min(1.05, .16 + 1.05*bend)
-        lower = -.68 + 1.02*bend
-        # Sections follow the lip instead of cutting its arc with a rectangular grid.
-        # The two swags rise at the ankle and outside the knee, dipping in between.
-        section = [(1.57,0),(1.57*.82+(upper+.19)*.18,.002),((1.76+upper)*.5,.001),
-                   (upper+.19,-.003),(upper+.07,.013),(upper,.032),
-                   (upper-.08,.027),(upper-.17,-.010),
-                   (lower+.20,-.003),(lower+.065,.014),(lower,.029),
-                   (lower-.095,.014),(lower-.18,-.004),
-                   (-1.29,0),(-1.57,0),(-1.9,0),(-2.38,0),(-2.88,0),
-                   (-3.36,0),(-3.84,0),(-4.34,0)]
-        if phone:
-            section = [section[k] for k in (0,2,3,5,7,8,10,12,14,16,18,20)]
-        x = side*(-.052 + .643*u)
-        yc = -.13 - .091*span + .06*u
-        zc = .543 + .015*u
-        rz = .138*span**.40
-        points = []
-        for angle, roll in section:
-            c, s = cos(angle), sin(angle)
-            ry = (.288 if c>=0 else .461)*span**.60
-            # Gilded cloth has breadth across the top and a rounded outer knee.
-            y = yc - (ry + roll*span**.45)*c
-            z = max(.423, zc + (rz + .62*roll)*s)
-            points.append((x,y,z))
-        rows.append(surface.row(points))
-    for a,b in zip(rows,rows[1:]):
-        surface.bridge(a,b,True)
-    for row, point in ((rows[0],(-.052*side,-.13,.543)),(rows[-1],(.591*side,-.07,.558))):
-        tip = surface.row([point])[0]
-        for j in range(len(row)):
-            face = (tip,row[j],row[(j+1)%len(row)])
-            surface.faces.append(tuple(reversed(face)) if row is rows[0] else face)
-    # The cross sections progress from the upper surface down the front of the knee.
+    sections = [
+        # radius in the front elevation, distance along the front-to-back axis
+        (.030, .225), (.43, .215), (.78, .155), (.96, .046),
+        (1., -.080), (.985, -.161), (.952, -.229),
+        (.920, -.285), (.900, -.306), (.878, -.298), (.849, -.276),
+        (.824, -.315), (.775, -.361), (.737, -.390), (.713, -.399),
+        (.694, -.387), (.665, -.358), (.626, -.401), (.56, -.443),
+        (.43, -.470), (.24, -.488), (.035, -.497),
+    ]
+    if phone:
+        sections = [sections[i] for i in (0,2,4,6,8,10,12,14,16,18,20,21)]
+    count = 36 if phone else 64
+    previous = None
+    for r, depth in sections:
+        front = max(0., min(1., (-depth-.12)/.29))
+        row = []
+        for j in range(count):
+            angle = tau*j/count
+            c, sn = cos(angle), sin(angle)
+            # Both low points hang well below the corner that returns under
+            # the crossed ankle. The taper is strongest near that inner end.
+            cx = .316 + front*(1-r)*.067
+            x = cx + r*.290*c
+            if side > 0:
+                # This knee disappears under the hanging sleeve at the hip.
+                x -= .074*max(0., min(1., (depth+.27)/.29)) * (.35+.65*max(0,c))
+            belly = 1 + front*.33*c
+            z = .550 + front*.089*(1-r) + r*(.148*sn*belly + front*.054*c)
+            # A broad rounded pad catches light inside the two turned hems.
+            # The bands thin out over the hidden top at the returning ankle.
+            y = depth + front*(.054*c*c - .018*c)
+            if side < 0:
+                z += .013*r*(.45-c)*front
+            row.append((side*x,y,z))
+        current = surface.row(row)
+        if previous is not None:
+            surface.bridge(previous,current,True)
+        else:
+            surface.faces.append(tuple(reversed(current)))
+        previous=current
+    surface.faces.append(tuple(previous))
     if side < 0:
         surface.faces = [tuple(reversed(f)) for f in surface.faces]
-    return surface.mesh("Folded knee " + ("left" if side>0 else "right"))
+    obj = surface.mesh("Folded knee " + ("left" if side>0 else "right"))
+    bpy.context.view_layer.objects.active = obj
+    reduction = obj.modifiers.new("Keep knee fold crests", "DECIMATE")
+    reduction.ratio = (260 if phone else 1168) / sum(len(face.vertices)-2 for face in obj.data.polygons)
+    bpy.ops.object.modifier_apply(modifier=reduction.name)
+    return obj
 
 
 def transition(table, t):
@@ -103,16 +112,22 @@ def cascade(phone):
         points = []
         for k in range(n+1):
             u = 2*k/n-1
-            # Vary pleat width across the fabric: the centre is an open turnover
-            # between tightly gathered channels, not an evenly crimped fringe.
-            phase = 2.57*u + .36*sin(pi*t)*(1-u*u) - .32*sin(pi*u) + .24*t*u*sin(1.5*pi*u)
-            ridge = (.5+.5*cos(tau*phase))**1.65
-            turn = (.5+.5*cos(tau*(phase-.19)))**2
-            amount = (.009+.027*t)*ridge - (.004+.007*t)*turn
-            x = center+width*u + .010*t*sin(tau*phase) - .031*t*(1-u*u)*sin(pi*t)
-            yy = y + (.018+.070*t*t)*u*u - amount*sin(.17+1.40*t)
+            # The loose panel opens into a broad central turnover. Three
+            # closer gathers enter from the outer ankle. Their crests fan
+            # outward as the edge falls onto the lotus.
+            arc = sin(pi*t)
+            q = u + .18*arc*(1-u*u)
+            crests = ((-.82-.06*t, .064), (-.56-.10*t, .074),
+                      (-.29-.10*t, .072), (.04-.16*t, .066),
+                      (.48+.14*arc, .096), (.88+.02*t, .082))
+            ridge = sum(exp(-((q-pos)/width)**2) for pos,width in crests)
+            valley = sum(exp(-((q-pos-.078)/(width*.78))**2) for pos,width in crests)
+            broad = exp(-((q-.23-.10*arc)/(.15+.08*t))**2)
+            amount = (.007+.021*t)*ridge - (.003+.007*t)*valley + (.014+.020*t)*broad
+            x = center+width*u - .058*arc*(1-u*u)
+            yy = y + (.020+.070*t*t)*u*u - amount*sin(.17+1.40*t)
             zz = z + amount*cos(.17+1.40*t) - .015*u*u*(1-t)
-            zz += .012*t**5 * (.5+.5*cos(tau*phase))
+            zz += .012*t**5*broad
             points.append((x,yy,zz))
         rows.append(s.row(points))
     for a,b in zip(rows,rows[1:]):

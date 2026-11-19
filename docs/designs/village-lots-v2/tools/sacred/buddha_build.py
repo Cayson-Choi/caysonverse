@@ -97,12 +97,17 @@ def face_visibility(xs, zs):
     # island's cut edge invisible, even at the narrowest part of the jaw.
     width = np.array([profile(SKULL,j)[0] for j in z])[:,None]
     fade = np.clip((width-np.abs(x))/.030, 0, 1)
-    visibility = 1-.69*blocked*fade**2*(3-2*fade)
+    # Reflected light from the gilt upper lip reaches the central columella.
+    # Leave the two lateral nostril recesses shaded independently.
+    bounce = .72*np.exp(-(x[None,:]/.010)**2-((z[:,None]-1.587)/.012)**2)
+    visibility = 1-.69*blocked*(1-bounce)*fade**2*(3-2*fade)
     rows = np.array([np.interp(xs,x,row) for row in visibility])
     return np.array([np.interp(zs,z,col) for col in rows.T]).T
 
 
 def dress(mesh, output, lod):
+    from buddha_head import HEAD_X
+
     access = local_access(mesh)
     tiles = {key:i for i,key in enumerate(KEYS)}
     face_limit = .180
@@ -114,16 +119,18 @@ def dress(mesh, output, lod):
             index = mesh.loops[k].vertex_index
             x,y,z = mesh.vertices[index].co
             if finish == "Face pigment":
-                u = .5 + x/(2*face_limit)
+                u = .5 + (x-HEAD_X)/(2*face_limit)
                 v = min(.997, max(.003, (z-chin)/(crown-chin)))
                 uv.data[k].uv = (.5 + .5*u, v)
                 continue
             tile = tiles[finish]
             phase = .50 + .47*math.sin(7*x + 6*y + 9*z + .6*math.sin(5*y - 4*z))
             tone = access[index]
-            if finish == "skin" and 1.438 < z < 1.805 and y < -.068:
-                # Retain the wash beneath the jaw on the original neck.
-                tone = max(.05, tone-.29*math.exp(-((abs(x)-.020)/.095)**2-((z-1.454)/.016)**2))
+            if finish == "skin" and 1.42 < z < 1.48:
+                # Soft contact wash on the anterior neck directly under the chin.
+                under_chin = math.exp(-((x-HEAD_X)/.091)**2-((y-.075)/.043)**2
+                                      -((z-1.450)/.018)**2)
+                tone = max(.05, tone-.24*under_chin)
             uv.data[k].uv = ((tile%4 + .06 + .88*tone)/8,
                              (tile//4 + .06 + .88*phase)/2)
     for layer in list(mesh.uv_layers):

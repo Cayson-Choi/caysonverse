@@ -8,11 +8,11 @@ def smooth(lo, hi, value):
 
 
 def eyelid_height(t, arc):
-    return 1.670 + .0008*t - .0016*arc
+    return 1.676 + .0042*t - .0021*arc
 
 
 def brow_height(t, arc):
-    return 1.705 + .020*arc**.89 + .0018*t
+    return 1.715 + .0215*arc**.89 + .0023*t
 
 
 def face_patch(kind, x, z):
@@ -35,17 +35,17 @@ def face_patch(kind, x, z):
     eye_t = np.clip((a-.031)/.099, 0., 1.)
     arc = np.sin(np.pi * eye_t).clip(0., 1.)
     upper = eyelid_height(eye_t, arc)
-    lower = upper - .0090*arc**1.63
+    lower = upper - .0102*arc**1.73
     fold = upper + .005 + .013*arc
     brow_t = np.clip((a-.030)/.102, 0., 1.)
     brow_arc = np.sin(np.pi*brow_t).clip(0., 1.)
     brow = brow_height(brow_t, brow_arc)
     lip_t = np.clip(a/.0435, 0., 1.)
-    seam = 1.548 + .0029*lip_t**2 - .0014*np.exp(-(lip_t/.23)**2)
+    seam = 1.553 + .0025*lip_t**2 - .00115*np.exp(-(lip_t/.23)**2)
     lip_fall = (1.-lip_t**2)**.83
     peaks = np.exp(-((lip_t-.35)/.21)**2)
-    lip_top = seam + (.0063 + .0041*peaks)*lip_fall
-    lip_bottom = seam - .0106*lip_fall
+    lip_top = seam + (.0074 + .0051*peaks)*lip_fall
+    lip_bottom = seam - .0123*lip_fall
 
     result = np.empty((*x.shape, 3), dtype=np.float32)
     if kind == "normal":
@@ -71,23 +71,23 @@ def face_patch(kind, x, z):
     # The forehead and cheeks are satin gilding. Feather it into the original
     # bright leaf around the ears, under the jaw and behind the hairline.
     result[...] = (.96, .611, .031) if color else (1., .39, .84)
-    lay(face, (.925, .472, .018), (.994, .516, .625))
+    lay(face, (.952, .549, .031), (.994, .505, .64))
     satin = (.55*spot(.008,1.600,.025,.043) + .53*spot(0.,1.487,.055,.027))*face
-    lay(satin, (.94,.458,.021), (.992,.55,.625))
+    lay(satin, (.953,.542,.034), (.992,.52,.64))
     under_brow = np.exp(-((z-fold-.006)/.014)**2)*arc
     socket = np.exp(-((z-brow+.009)/.0105)**2)*brow_arc
     under_eye = np.exp(-((z-lower+.006)/.010)**2)*arc
-    recess = (.26*under_brow + .33*socket + .21*under_eye + .23*spot(.024,1.627,.010,.041)
-              + .22*spot(.030,1.596,.009,.023) + .30*spot(.019,1.579,.009,.005)
-              + .29*spot(.007,1.531,.036,.008) + .12*spot(.066,1.513,.040,.026))
-    lay(recess*face, (.29, .103, .012), (.69, .55, .55))
+    recess = (.20*under_brow + .23*socket + .15*under_eye + .23*spot(.024,1.627,.010,.041)
+              + .22*spot(.030,1.596,.009,.023) + .15*spot(.020,1.590,.007,.005)
+              + .12*spot(.005,1.530,.026,.008) + .12*spot(.066,1.513,.040,.026))
+    lay(recess*face, (.43, .191, .021), (.69, .55, .55))
     cheek = .17*spot(.084,1.626,.041,.034)*face
     lay(cheek, (.99, .530, .033), (1., .505, .65))
 
-    brow_width = .0052*brow_arc**.73 * (1.+.14*(brow_t-.5))
+    brow_width = .0060*brow_arc**.73 * (1.+.14*(brow_t-.5))
     brow_mask = band(brow-.43*brow_width, brow+.57*brow_width, .00048)
     brow_mask *= smooth(.030,.0314,a) * (1.-smooth(.1306,.132,a))
-    lay(brow_mask*.98, (.052, .115, .044), (.98, .61, .13))
+    lay(brow_mask*.98, (.031, .090, .025), (.98, .61, .13))
 
     # A soft curved fold lies above the sliver of exposed eye. Both painted
     # corners darken and taper under the upper lid.
@@ -111,27 +111,27 @@ def face_patch(kind, x, z):
     lay(lash*(.75+.24*arc), (.040,.020,.007), (.93,.60,.13))
 
     # The short, oblique nostril strokes lie slightly below each ala.
-    nostril_t = np.clip((a-.012)/.013, 0., 1.)
-    nostril_z = 1.581 + .0023*nostril_t + .0012*np.sin(np.pi*nostril_t)
-    nostril = np.exp(-((z-nostril_z)/.00185)**2) * np.sin(np.pi*nostril_t).clip(0., 1.)**.8
-    lay(.78*nostril, (.195,.084,.022), (.84,.62,.34))
+    nostril_t = np.clip((a-.0115)/.016, 0., 1.)
+    nostril_z = 1.5858 + .0041*nostril_t + .0027*np.sin(np.pi*nostril_t)
+    nostril = np.exp(-((z-nostril_z)/.0023)**2) * np.sin(np.pi*nostril_t).clip(0., 1.)**.8
+    lay(.91*nostril, (.115,.048,.010), (.84,.62,.34))
 
     lip_ends = 1.-smooth(.0422,.0436,a)
     lips = band(lip_bottom, lip_top, .00084+.0005*lip_t**4)*lip_ends*(1.-.27*lip_t**5)
-    lay(lips, (.409,.041,.015), (.97,.53,.17))
+    lay(lips, (.550,.031,.009), (.97,.53,.17))
     lower_glaze = (1.-smooth(seam-.003,seam+.001,z)) * lips
-    lay(lower_glaze*.79, (.535,.075,.024), (.98,.50,.17))
-    lay(.47*spot(0.,1.542,.024,.0032)*lower_glaze, (.65,.116,.042), (.99,.48,.18))
+    lay(lower_glaze*.79, (.702,.064,.016), (.98,.50,.17))
+    lay(.47*spot(0.,1.547,.024,.0032)*lower_glaze, (.65,.116,.042), (.99,.48,.18))
     meeting = np.exp(-((z-seam)/.00118)**2)*lip_fall*lips
     lay(meeting*.80, (.184,.029,.018), (.86,.60,.10))
 
     whisker_t = np.clip((a-.012)/.045, 0., 1.)
-    whisker_z = (1.5685 - .018*whisker_t + .002*whisker_t**2
+    whisker_z = (1.573 - .017*whisker_t + .002*whisker_t**2
                  - .0017*np.sin(np.pi*whisker_t)**2 + .0016*np.exp(-((whisker_t-.90)/.095)**2))
-    whisker = np.exp(-((z-whisker_z)/.00152)**2)*np.sin(np.pi*whisker_t).clip(0.,1.)**.42
-    lay(.95*whisker, (.089,.109,.036), (.98,.61,.16))
-    stipple = (.90*spot(.057,1.553,.0024,.0023) + .75*spot(.060,1.548,.0018,.0018)
-               + .96*spot(.0124,1.486,.0030,.0033) + .73*spot(0.,1.479,.0023,.0020))
+    whisker = np.exp(-((z-whisker_z)/.0020)**2)*np.sin(np.pi*whisker_t).clip(0.,1.)**.42
+    lay(.95*whisker, (.046,.071,.019), (.98,.61,.16))
+    stipple = (.90*spot(.057,1.558,.0024,.0023) + .75*spot(.060,1.553,.0018,.0018)
+               + .96*spot(.0124,1.489,.0030,.0033) + .73*spot(0.,1.482,.0023,.0020))
     lay(stipple, (.074,.091,.030), (.96,.61,.14))
 
     if color:

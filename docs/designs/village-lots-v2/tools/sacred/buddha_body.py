@@ -281,27 +281,29 @@ def hands(phone, s):
 # Each column follows a fold from the breast around the left arm and back.
 # The low point of each swag moves towards the elbow as the fabric opens.
 DRAPE = [
-    # turn     hem    first  second  third  fourth   neckline
-    (.000,    .674,  .775,  .859,   .947,  1.015,    1.064),
-    (.046,    .674,  .779,  .864,   .959,  1.038,    1.087),
-    (.096,    .683,  .802,  .897,  1.009,  1.115,    1.218),
-    (.145,    .691,  .819,  .920,  1.048,  1.196,    1.407),
-    (.183,    .626,  .745,  .848,   .969,  1.140,    1.446),
-    (.220,    .497,  .609,  .731,   .866,  1.059,    1.451),
-    (.255,    .430,  .521,  .646,   .804,  1.084,    1.453),
-    (.282,    .427,  .507,  .652,   .860,  1.218,    1.453),
-    (.306,    .427,  .542,  .785,  1.082,  1.349,    1.451),
-    (.337,    .428,  .893, 1.186,  1.331,  1.409,    1.448),
-    (.361,    .429, 1.274, 1.350,  1.395,  1.425,    1.443),
-    (.390,    .430, 1.009, 1.173,  1.282,  1.359,    1.404),
-    (.428,    .431,  .684,  .882,  1.060,  1.176,    1.270),
-    (.495,    .431,  .553,  .733,   .900,  1.045,    1.157),
-    (.592,    .433,  .546,  .710,   .862,   .997,    1.091),
-    (.680,    .465,  .574,  .715,   .859,   .986,    1.085),
-    (.758,    .626,  .693,  .798,   .902,   .995,    1.080),
-    (.838,    .690,  .797,  .876,   .952,  1.018,    1.081),
-    (.918,    .683,  .787,  .866,   .945,  1.012,    1.071),
-    (1.00,    .674,  .775,  .859,   .947,  1.015,    1.064),
+    # Turn; lower edge, six fold crests, upper edge.
+    (.000, .675, .752, .821, .886, .951, 1.002, 1.053, 1.101),
+    (.046, .675, .758, .825, .892, .956, 1.008, 1.060, 1.118),
+    (.096, .690, .777, .856, .943, 1.023, 1.099, 1.158, 1.245),
+    (.145, .690, .797, .891, 1.014, 1.126, 1.233, 1.318, 1.418),
+    (.173, .637, .744, .829, .930, 1.027, 1.137, 1.235, 1.451),
+    (.205, .518, .659, .759, .848, .937, 1.041, 1.163, 1.451),
+    (.233, .433, .607, .707, .787, .864, .946, 1.096, 1.451),
+    (.257, .427, .563, .650, .715, .794, .916, 1.096, 1.451),
+    (.279, .427, .529, .607, .680, .776, .943, 1.157, 1.451),
+    (.300, .427, .508, .585, .687, .823, 1.003, 1.261, 1.450),
+    (.318, .427, .512, .622, .747, .934, 1.114, 1.347, 1.449),
+    (.337, .428, .555, .726, .909, 1.097, 1.277, 1.395, 1.447),
+    (.355, .428, .673, .946, 1.140, 1.265, 1.367, 1.416, 1.445),
+    (.374, .430, 1.140, 1.228, 1.291, 1.343, 1.377, 1.408, 1.433),
+    (.405, .431, .801, .978, 1.118, 1.215, 1.279, 1.326, 1.376),
+    (.466, .431, .565, .706, .850, .980, 1.064, 1.132, 1.203),
+    (.555, .431, .545, .658, .780, .886, .982, 1.049, 1.114),
+    (.655, .445, .539, .638, .753, .868, .958, 1.027, 1.086),
+    (.758, .626, .693, .772, .848, .921, .985, 1.039, 1.090),
+    (.838, .690, .761, .827, .893, .952, 1.006, 1.058, 1.105),
+    (.918, .683, .754, .824, .889, .949, 1.002, 1.055, 1.102),
+    (1.00, .675, .752, .821, .886, .951, 1.002, 1.053, 1.101),
 ]
 
 # Horizontal sections of the hanging cloth clear the resting arm and spread
@@ -309,9 +311,9 @@ DRAPE = [
 CLOTH_SECTIONS = [
     # height, left reach, right reach, front depth, back depth, centre Y
     (.400, .561, .553, .420, .402, .015),
-    (.460, .569, .556, .421, .412, .016),
-    (.550, .551, .525, .385, .397, .018),
-    (.640, .499, .439, .299, .348, .019),
+    (.460, .589, .556, .421, .412, .016),
+    (.550, .589, .525, .385, .397, .018),
+    (.640, .519, .439, .299, .348, .019),
     (.720, .433, .295, .201, .274, .020),
     (.800, .388, .233, .170, .222, .021),
     (.900, .371, .238, .168, .203, .022),
@@ -372,7 +374,7 @@ def mantle(phone):
         heights = interpolate(periodic, turn)
         sleeve = max(0, sin(phi))
         back = max(0, -cos(phi))
-        depth = .009 + .018 * sleeve + .015 * back
+        depth = .013 + .023 * sleeve + .014 * back
         # Where the cloth gathers behind the shoulder the spacing shrinks.
         # Reduce the relief there so neighbouring ridges stay separate.
         gather = exp(-((turn - .36) / .047) ** 2)
@@ -532,6 +534,41 @@ def join_wrist(body, hand):
     bpy.data.objects.remove(hand, do_unlink=True)
 
 
+# Shift each section of the seated figure relative to its bearing ring. Both
+# fore and aft offsets are needed: the pelvis sits forward between the knees
+# and the back rises nearly vertically from the rear edge of the mantle.
+# height, anterior and posterior offset, bare and draped lateral offsets (m)
+POSTURE = [
+    (.410, .035, .010, .000, .010), (.490, .033, .004, .000, .018),
+    (.560, .005, .012, .000, .018), (.625, .006, .047, .000, .020),
+    (.700, .042, .105, .004, .014), (.755, .088, .142, .002, -.005),
+    (.825, .125, .158, -.005, .015), (.960, .127, .164, -.009, .048),
+    (1.065, .130, .162, -.012, .043), (1.175, .133, .158, -.006, .027),
+    (1.280, .140, .152, .010, .023), (1.375, .145, .150, .001, .025),
+    (1.455, .150, .152, -.008, -.008), (1.530, .150, .152, -.008, -.008),
+]
+
+
+def fit_seated_posture(objects):
+    for obj in objects:
+        for v in obj.data.vertices:
+            x,y,z = v.co
+            fore, aft, bare, draped = interpolate(POSTURE, z)
+            dx = mix(bare, draped, smooth((x+.20)/.43))
+            dy = mix(fore, aft, smooth((y+.30)/.47))
+            # The mantle and the bare shoulder descend from the neck along a
+            # low round slope. Keep the neck seat and the raised hand intact.
+            shoulder = smooth((abs(x)-.11)/.11) * smooth((z-1.22)/.16)
+            if y > -.20:
+                v.co.z -= .030 * shoulder
+            elif x < -.22:
+                v.co.z += .022 * smooth((-x-.26)/.065) * smooth((z-1.33)/.07)
+                dx -= .010 * smooth((-x-.30)/.06) * smooth((z-1.29)/.09)
+            v.co.x += dx
+            v.co.y += dy
+        obj.data.update()
+
+
 def build_body(phone):
     from buddha_lap import build_lap
     torso, palm = torso_and_arm(phone)
@@ -547,4 +584,6 @@ def build_body(phone):
             mod.ratio = limit / count
             bpy.ops.object.modifier_apply(modifier=mod.name)
     join_wrist(objects[0], objects[1])
-    return [objects[0], *objects[2:], *build_lap(phone)]
+    carvings = [objects[0], *objects[2:], *build_lap(phone)]
+    fit_seated_posture(carvings)
+    return carvings
