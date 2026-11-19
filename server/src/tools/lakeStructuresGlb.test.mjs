@@ -30,6 +30,19 @@ it.each(["a", "b"])("closes both gable ends of fishing hut %s up to the soffit",
     directions.push(dir);
   }
   expect(directions.sort()).toEqual([-1, 1]);
+  const soffit = primitive("lake_hut_" + hut, "M_lake_matte");
+  let roofFaces = 0;
+  for (let f = 0; f < soffit.faces.length; f += 3) {
+    const ids = Array.from(soffit.faces.subarray(f, f + 3));
+    const pts = ids.map(i => soffit.attrs.POSITION.values.subarray(i * 3, i * 3 + 3));
+    if (pts.some(p => p[1] < 2.99) || !pts.some(p => p[1] > 3.65)) continue;
+    const [a, b, c] = pts;
+    const ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+    expect(ny).toBeLessThan(0);
+    expect(soffit.attrs.NORMAL.values[3 * ids[0] + 1]).toBeLessThan(-0.9);
+    roofFaces++;
+  }
+  expect(roofFaces).toBe(4);
 });
 
 it.each(["pier", "pier_t", "walkway_a", "walkway_b", "jwadae_a", "jwadae_b"])("runs oak grain along the individual %s planks at metre scale", (deck) => {

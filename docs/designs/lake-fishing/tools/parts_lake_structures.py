@@ -551,7 +551,7 @@ def hut(rng, key):
     corrugated(mb, V(ex0, ez0, ey), across, V(ex0, cz, ridge_y) - V(ex0, ez0, ey), 0.17, 0.014, P["roof_or"], "paint")
     corrugated(mb, V(ex0, cz, ridge_y), across, V(ex0, ez1, ey) - V(ex0, cz, ridge_y), 0.17, 0.014, jit(rng, P["roof_or"], 0.03), "paint")
     for (za, ya, zb, yb) in ((ez0, ey, cz, ridge_y), (cz, ridge_y, ez1, ey)):
-        mb.quad(V(ex0, za, ya - 0.05), V(ex0, zb, yb - 0.05), V(ex1, zb, yb - 0.05), V(ex1, za, ya - 0.05), P["roof_or_dark"], "matte")
+        mb.quad(V(ex0, za, ya - 0.05), V(ex1, za, ya - 0.05), V(ex1, zb, yb - 0.05), V(ex0, zb, yb - 0.05), P["roof_or_dark"], "matte")
     mb.quad(V(ex0, ez1, ey - 0.12), V(ex1, ez1, ey - 0.12), V(ex1, ez1, ey + 0.02), V(ex0, ez1, ey + 0.02), P["roof_or_dark"], "paint")
     mb.quad(V(ex1, ez0, ey - 0.12), V(ex0, ez0, ey - 0.12), V(ex0, ez0, ey + 0.02), V(ex1, ez0, ey + 0.02), P["roof_or_dark"], "paint")
     for xx, flip in ((ex0, False), (ex1, True)):
