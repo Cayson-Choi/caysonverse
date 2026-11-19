@@ -894,6 +894,25 @@ describe("VillageBgm and the game's sound toggle (final review m4)", () => {
     expect(a.paused).toBe(false);
   });
 
+  it("muting (or switching the music off) takes the level to 0 at the node too, not only the pause; unmuting fades in from 0", async () => {
+    const s = setup({ route: "gain" });
+    const bgm = s.make();
+    bgm.arm();
+    s.gesture();
+    await flush();
+    s.advance(2000, bgm);
+    expect(bgm.level()).toBeGreaterThan(0.3);
+    bgm.setMuted(true);
+    expect(bgm.level()).toBe(0);
+    bgm.setMuted(false);
+    await flush();
+    expect(bgm.level()).toBe(0); // the fade-in starts from silence
+    s.advance(2000, bgm);
+    expect(bgm.level()).toBeGreaterThan(0.3);
+    bgm.setEnabled(false);
+    expect(bgm.level()).toBe(0);
+  });
+
   it("muted from the start: gestures play nothing until it is unmuted", async () => {
     const s = setup();
     const bgm = s.make();

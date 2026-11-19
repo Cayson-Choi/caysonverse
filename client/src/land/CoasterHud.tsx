@@ -8,6 +8,7 @@ import { MOON_DWELL_MS } from "@caysonverse/shared/land/moonBoat";
 import { DROP_DWELL_MS } from "@caysonverse/shared/land/dropTower";
 import { coasterNow, landPose, rideComfort, rideNotice, rideReserved, selfRide, setRideComfort, subscribeRideComfort, type RideComfort } from "./coasterRide";
 import { rideMuted, setRideMuted } from "./coasterAudio";
+import { useSoundStore } from "../stores/soundStore";
 import { useLocalArea } from "../village/villageArea";
 import { RIDES, msUntilBoarding, rideById, type RideDef } from "@caysonverse/shared/land/rides";
 import { villageClock } from "../village/villageClock";
@@ -78,7 +79,10 @@ export function CoasterHud() {
     });
   }, []);
   const comfort = useSyncExternalStore(subscribeRideComfort, rideComfort, rideComfort);
-  const [muted, setMuted] = useState(rideMuted());
+  const [rideOnlyMuted, setMuted] = useState(rideMuted());
+  // the menu's master 소리 switch silences the rides too; the panel's button then shows (and undoes) that
+  const masterMuted = useSoundStore((s) => s.muted);
+  const muted = rideOnlyMuted || masterMuted;
   // a phone keeps the card small (it lies over the ground a thumb taps): the whole card folds to its title and status, and the other rides sit behind one row
   const [more, setMore] = useState(false);
   const [folded, setFolded] = useState(false);
@@ -246,6 +250,7 @@ export function CoasterHud() {
           type="button"
           className="cv-ride-tool"
           onClick={() => {
+            if (masterMuted) useSoundStore.getState().toggleMuted();
             setRideMuted(!muted);
             setMuted(!muted);
           }}
