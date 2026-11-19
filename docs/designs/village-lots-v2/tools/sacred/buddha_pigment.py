@@ -9,7 +9,7 @@ GILT_SKIN = ((.94, .529, .074), .335, .86)
 FACE_AXIS = .0040
 EYE_INNER, EYE_SPAN = .0320, .1055
 BROW_INNER, BROW_SPAN = .030, .108
-LIP_RADIUS = .0465
+LIP_RADIUS = .0415
 
 
 def smooth(lo, hi, value):
@@ -19,15 +19,15 @@ def smooth(lo, hi, value):
 
 def eyelid_height(t, arc):
     # Upper lash in the frontal projection, from the tear duct to the temple.
-    return 1.6816 + .0002*t - .0015*arc - .0027*t**6 - .0020*(1.-t)**8
+    return 1.6815 - .0012*arc + .0038*t**3 - .0065*(1.-t)**11
 
 
 def brow_height(t, arc):
-    return 1.7190 + .0204*arc*(.85+.30*t) - .0062*t*t
+    return 1.7170 + .0185*arc*(.83+.39*t) - .0070*t**3
 
 
 def lip_height(t):
-    return 1.5522 + .0042*t**2 - .0010*(1.-t)**3
+    return 1.5494 + .0025*(4.*t*(1.-t))**2 - .0005*t**8
 
 
 def paint_hairline(result, kind, x, z):
@@ -113,93 +113,133 @@ def face_patch(kind, x, z, phone=False):
     # side plane of the bridge. There is no second drawn contour here.
     orbit_x=.022+.046*smooth(1.676,1.730,z)**1.64
     orbit=np.exp(-((a-orbit_x)/.0145)**2-((z-1.699)/.036)**4)
-    lay(.77*orbit, (.555,.183,.006), (1.,.64,.87))
+    lay(.57*orbit, (.619,.262,.016), (1.,.64,.87))
     lay(.32*spot(.062,1.647,.038,.021), (.995,.63,.108), (1.,.61,.88))
+    # The cast turns away under the inner cleft before the golden cheek.
+    canthus_hollow = spot(.044,1.676,.020,.009)
+    lay(.63*canthus_hollow, (.48,.195,.016), (1.,.67,.78))
+    inner_fold = np.exp(-((z-upper-.0021)/.0036)**2-((a-.051)/.015)**4)
+    lay(.61*inner_fold, (.332,.156,.027), (1.,.66,.75))
 
     brow_t = np.clip((a-BROW_INNER)/BROW_SPAN, 0., 1.)
     brow_arc = np.sin(np.pi*brow_t).clip(0., 1.)
     brow = brow_height(brow_t, brow_arc)
-    brow_width = .0071*brow_arc**.60
-    brow_ends = smooth(BROW_INNER,BROW_INNER+.002,a) * (1.-smooth(.135,.138,a))
-    brow_mask = band(brow-.44*brow_width, brow+.56*brow_width, .00156)*brow_ends
-    lay(.36*np.exp(-((z-brow+.0034)/.0037)**2)*brow_arc, (.483,.320,.040), skin)
-    lay(.96*brow_mask, (.142,.194,.043), ink)
-    brow_rim = np.exp(-((z-brow-.58*brow_width)/.0028)**2)*brow_arc
-    lay(.65*brow_rim, (.93,.652,.209), (1.,.53,.63))
+    # The brush carries most of its paint beyond the crown of the arch.
+    # The lower edge and the fine tail retain the darker first stroke.
+    brow_width = .0110*brow_arc**1.1*(.64+.71*brow_t)
+    brow_ends = smooth(BROW_INNER,BROW_INNER+.0018,a) * (1.-smooth(.135,.138,a))
+    brow_floor = brow-.48*brow_width
+    brow_roof = brow+.52*brow_width
+    brow_mask = band(brow_floor, brow_roof, .0015)*brow_ends
+    lay(.39*np.exp(-((z-brow_floor+.0026)/.0029)**2)*brow_arc, (.945,.545,.103), skin)
+    lay((.54+.42*brow_arc)*brow_mask, (.065,.128,.062), ink)
+    green = smooth(brow_floor-.0010,brow+.14*brow_width,z)*brow_arc**.85
+    lay(green*brow_mask, (.112,.339,.163), ink)
+    brow_rim = np.exp(-((z-brow_roof-.0020)/.0026)**2)*brow_arc
+    lay(.62*brow_rim, (.96,.680,.200), (1.,.53,.63))
 
-    # The half-closed eye shows an amber sclera beside a low umber iris.
-    # Keep the bare inner and outer corners warm and the lash thin.
-    eye_ends = smooth(.031,.035,a) * (1.-smooth(.127,.1375,a))
-    opening = band(lower, upper, .0025)*eye_ends
-    lay(opening, (.37,.143,.025), ink)
-    windows = np.exp(-((eye_t-.237)/.064)**2) + np.exp(-((eye_t-.633)/.061)**2)
-    lay(opening*windows, (.92,.610,.240), ink)
-    iris = ((eye_t-.47)/.166)**2 + ((z-upper+.0004)/.013)**2
-    lay(opening*(1.-smooth(.60,1.34,iris)), (.067,.018,.0015), ink)
+    # A pointed dark canthus turns up into a narrow, warm scleral window.
+    # The lash runs nearly level from that window across the low iris.
+    eye_ends = smooth(.0320,.0400,a) * (1.-smooth(.119,.1365,a))
+    opening = band(lower, upper, .0016)*eye_ends
+    lay(opening, (.290,.113,.019), ink)
+    windows = np.exp(-((eye_t-.184)/.040)**2) + np.exp(-((eye_t-.643)/.059)**2)
+    lay(opening*windows, (.68,.431,.136), ink)
+    iris = ((eye_t-.452)/.182)**2 + ((z-upper+.0006)/.013)**2
+    lay(opening*(1.-smooth(.68,1.24,iris)), (.029,.009,.002), ink)
     lower_rim=np.exp(-((z-lower)/.0037)**2)*arc**1.4
     lay(.34*lower_rim,(.62,.264,.027),ink)
-    lash_width = .0024 + .0015*arc**.60
-    lash = band(upper-.53*lash_width, upper+.47*lash_width, .0017 if phone else .0015)*eye_ends
-    lay(lash*(.77+.19*arc), (.110,.040,.005), ink)
-    wash=np.exp(-((z-upper)/.0042)**2)*smooth(.108,.124,a)*(1.-smooth(.123,.140,a))
-    lay(.50*wash, (.345,.139,.016), (1.,.66,.79))
+    canthus = np.exp(-((eye_t-.105)/.055)**2)
+    lash_width = .0017 + .0013*arc**.60 + .0020*canthus
+    lash = band(upper-.60*lash_width, upper+.40*lash_width, .0016 if phone else .0013)*eye_ends
+    lay(lash*(.80+.18*np.maximum(canthus,arc)), (.030,.009,.0015), ink)
+    # The inner mark is a small drop set into the open slit, tapering on both
+    # sides to expose the fine gold rim next to the glint.
+    duct = np.exp(-((a-.0426)/.0039)**2-((z-upper+.0017)/.0025)**2)
+    lay(.83*duct, (.010,.003,.0007), ink)
+    wash=np.exp(-((z-upper)/.0038)**2)*smooth(.106,.120,a)*(1.-smooth(.122,.138,a))
+    lay(.52*wash, (.485,.237,.031), (1.,.66,.79))
 
     # A warm return around each wing and a tiny occluded aperture tucked
     # beneath it. Leave the strip of gold across the columella unbroken.
     bridge_side = spot(.024,1.675,.014,.052)
-    lay(.46*bridge_side, (.58,.245,.015), (1.,.55,.69))
-    lay(.60*spot(.0,1.649,.012,.034), (1.,.626,.182), (1.,.63,.89))
-    lay(.57*spot(.0,1.643,.010,.024), (1.,.666,.238), (1.,.64,.89))
+    lay(.34*bridge_side, (.66,.310,.028), (1.,.62,.78))
+    lay(.82*spot(.0,1.666,.016,.048), (1.,.752,.375), (1.,.69,.81))
+    lay(.85*spot(.0,1.631,.016,.018), (1.,.786,.422), (1.,.70,.80))
+    # The source has a warm shadow on the left of the bridge through the
+    # inner orbit. Keep the soft, pale reflection to the right of its edge.
+    bridge_return = np.exp(-((x+.0135)/.0075)**2-((z-1.672)/.027)**2)
+    lay(.57*bridge_return, (.524,.205,.016), (1.,.68,.78))
     # The wings turn away on either side of the bridge before their outer
     # rims catch the light. Their high point sits above the tucked apertures.
-    flank=spot(.024,1.633,.012,.022)
-    lay(.78*flank, (.637,.258,.011), (1.,.67,.89))
-    lay(.77*spot(.0,1.606,.021,.015), (.800,.325,.022), (1.,.65,.88))
-    lay(.74*spot(.029,1.618,.008,.0095), (.99,.579,.085), (1.,.65,.88))
-    lay(.58*spot(.0,1.591,.031,.010), (.54,.219,.014), (1.,.56,.68))
-    aperture = np.exp(-((a-.0178)/.0085)**2-((z-1.5905-.112*(a-.0178))/.0044)**2)
-    lay(.84*aperture, (.257,.077,.005), (1.,.63,.50))
-    lay(.65*spot(.0,1.590,.009,.009), (.92,.459,.024), (1.,.64,.83))
+    flank=spot(.023,1.634,.011,.020)
+    lay(.50*flank, (.689,.313,.023), (1.,.68,.85))
+    lay(.71*spot(.0,1.605,.026,.015), (.834,.351,.022), (1.,.69,.83))
+    lay(.71*spot(.029,1.618,.012,.014), (.929,.484,.056), (1.,.69,.83))
+    lay(.50*spot(.025,1.610,.015,.010), (.67,.300,.022), (1.,.70,.79))
+    # Each alar groove follows an arc, reaching furthest into the cheek at
+    # mid-height. A soft roll inside it separates the bulb from the cheek.
+    wing_t = (z-1.614)/.018
+    groove_x = .0372-.0080*wing_t**2
+    groove = np.exp(-((a-groove_x)/.0043)**2-wing_t**4)
+    lay(.57*groove, (.502,.214,.021), (1.,.70,.78))
+    flank_shade = np.exp(-((x+.027)/.018)**2-((z-1.625)/.017)**2)
+    lay(.66*flank_shade, (.430,.195,.013), (1.,.70,.79))
+    wing_glint = spot(.029,1.616,.0065,.007)
+    lay(.53*wing_glint, (.95,.567,.103), (1.,.68,.81))
+    # Each short nostril turns upwards with the contour of its rounded ala.
+    # The two occlusions fade separately over the bottom of the central ball.
+    nostril_z = 1.5887 + .0064*smooth(.016,.035,a)
+    lay(.72*spot(.014,1.589,.030,.013), (.50,.199,.011), (1.,.65,.77))
+    aperture = np.exp(-((a-.0193)/.0101)**2-((z-nostril_z)/.0051)**2)
+    lay((.95-.20*smooth(-.010,.010,x))*aperture, (.198,.056,.003), (1.,.63,.50))
+    lay(.28*spot(.0,1.590,.010,.009), (.81,.348,.018), (1.,.67,.81))
+    right_return = np.exp(-((x-.030)/.012)**2-((z-1.590)/.011)**2)
+    lay(.36*right_return, (.895,.492,.061), (1.,.68,.81))
     lay(.81*spot(.0,1.575,.016,.009), (.600,.222,.013), (1.,.64,.86))
 
     lip_t = np.clip(a/LIP_RADIUS, 0., 1.)
     seam = lip_height(lip_t)
-    lip_fall = (1.-lip_t**2.8)**.87
-    peaks = np.exp(-((lip_t-.38)/.29)**2)
-    top = seam + (.0083+.0048*peaks)*lip_fall
-    bottom = seam - .0184*lip_fall
-    lip_ends = 1.-smooth(.0425,.0470,a)
-    lips = band(bottom, top, .0033+.0018*lip_t**3) * lip_ends
+    lip_fall = (1.-lip_t**3.25)**1.04
+    peaks = np.exp(-((lip_t-.385)/.245)**2)
+    top = seam + (.0077+.0045*peaks)*lip_fall
+    # The bottom bevel spans the centre in a smooth arc below the upper bow.
+    bottom = seam + (1.5345-seam)*lip_fall
+    lip_ends = 1.-smooth(LIP_RADIUS-.0035,LIP_RADIUS+.0005,a)
+    lips = band(bottom, top, .0021+.0007*lip_t**3) * lip_ends
     lay(.62*spot(.0,1.530,.037,.0085), (.585,.190,.005), (1.,.58,.73))
     lay(.70*band(bottom-.0053,top+.0018,.0052)*lip_ends, (.802,.136,.004), (1.,.64,.84))
     lay(lips, (.793,.026,.0012), vermilion)
     lay(.44*spot(.018,1.560,.014,.0048)*lips, (.865,.053,.003), vermilion)
     lower_glaze = lips * (1.-smooth(seam-.005,seam+.0014,z))
     lay(lower_glaze, (.789,.035,.0018), vermilion)
-    gloss_z = seam-.0097+.0048*lip_t**1.5
-    gloss = np.exp(-(x/.030)**2-((z-gloss_z)/.0032)**2)
-    gloss *= .89+.11*np.cos(182*x+.50)
-    lay(.98*gloss*lower_glaze, (.998,.213,.033), (1.,.60,.87))
-    meeting = np.exp(-((z-seam)/.0024)**2)*lip_fall*lips
-    lay(.52*meeting, (.417,.018,.0014), vermilion)
-    lay(.33*spot(.0445,1.5545,.0054,.0035), (.535,.266,.017), skin)
+    gloss_z = 1.5417 + .0034*(1.-np.exp(-(x/.014)**2))
+    gloss = np.exp(-((x+.0018)/.027)**4-((z-gloss_z)/.0026)**2)
+    gloss *= .46 + .51*np.exp(-((a-.020)/.008)**2)
+    lay(.98*gloss*lower_glaze, (.998,.232,.034), (1.,.60,.87))
+    meeting = np.exp(-((z-seam)/.0024)**2)*lips
+    lay(.68*meeting, (.345,.012,.0015), vermilion)
+    lay(.72*spot(LIP_RADIUS-.002,1.551,.0046,.0033), (.284,.072,.009), ink)
 
-    # Two loaded brush strokes descend from the philtrum and turn up clear
-    # of the lip corners. A fine wedge of gold remains between their roots.
-    whisker_t = np.clip((a-.007)/.056, 0., 1.)
-    whisker_z = (1.5760 - .0205*smooth(.00,.71,whisker_t)
-                 + .0031*smooth(.73,1.,whisker_t))
-    load = np.sin(np.pi*whisker_t).clip(0.,1.)**.38
-    whisker = np.exp(-((z-whisker_z)/(.0019+.0014*load))**2)*load
-    # A dry brush splits into a pair of short tapered hairs at the corner.
-    end=smooth(.043,.055,a)*(1.-smooth(.060,.065,a))
-    strokes=(np.exp(-((z-whisker_z-.0037)/.0023)**2)
-             + .76*np.exp(-((z-whisker_z+.0032)/.0019)**2))*end
-    lay(.79*np.maximum(whisker*(1.-.28*smooth(.031,.050,a)),.70*strokes),
-        (.165,.106,.018), ink)
-    # Three brush dabs form the short inverted triangle on the chin.
-    tuft = spot(.013,1.487,.0025,.0035) + spot(.0,1.479,.0024,.0027)
-    lay(.92*tuft, (.086,.054,.012), ink)
+    # Two teal brush marks swell beside the philtrum and skim the upper
+    # vermilion before curling back in a small dark hook at each corner.
+    whisker_z = (1.5638 + .0045*smooth(.008,.024,a)
+                 - .0156*smooth(.024,.056,a) + .0019*smooth(.052,.060,a))
+    load = np.exp(-((a-.024)/.016)**2)
+    width = .0016 + .0037*load
+    whisker = band(whisker_z-width,whisker_z+width,.0022)
+    whisker *= smooth(.007,.018,a)*(1.-smooth(.058,.063,a))
+    patina = smooth(.011,.023,a)*(1.-smooth(.037,.052,a))
+    lay(.88*whisker, (.097,.132,.058), ink)
+    lay(.93*patina*whisker, (.151,.308,.133), ink)
+    hook = np.sqrt(((a-.0583)/.0030)**2 + ((z-1.5556)/.0029)**2)
+    hook_ends = smooth(.055,.059,a) + (1.-smooth(.055,.059,a))*smooth(1.5565,1.559,z)
+    lay(.78*np.exp(-((hook-1.)/.81)**2)*hook_ends, (.087,.094,.046), ink)
+    # Two fine side strokes turn toward the smaller centre tuft on the chin.
+    tuft_z = 1.4820 + .0051*smooth(.006,.014,a)
+    tuft = np.exp(-((z-tuft_z)/.0031)**2-((a-.0118)/.0039)**2)
+    tuft += .80*spot(.000,1.479,.0028,.0024)
+    lay(.83*tuft, (.091,.079,.032), ink)
     # A shallow contact shadow seats the rounded forehead bead.
     lay(.44*spot(.000,1.718,.007,.0050), (.565,.257,.024), (1.,.63,.84))
 

@@ -140,6 +140,11 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices) {
       const lowerFace = Math.exp(-((faceX/.113)**4+((height-1.510)/.057)**2));
       const septum = Math.exp(-((faceX/.008)**2+((height-1.590)/.009)**2));
       const response = radiance(ry,rz,0,phone,rx);
+      // A broad, pale tent reflection crosses the nasal bridge and the
+      // upper face of its bulb. It falls off before the two gilded wings.
+      const noseLight = Math.exp(-(((faceX-.0017)/.0148)**2+((height-1.650)/.033)**4));
+      response[1] += .083*noseLight;
+      response[2] += .115*noseLight;
       // Vermilion takes a broad diffuse return from the doorway. Its moving
       // specular comes from the two modelled lip rolls in the PBR pass.
       const vermilion = clip((rgb[0]-3*rgb[1])/.35)
