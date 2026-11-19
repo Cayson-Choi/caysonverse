@@ -345,7 +345,8 @@ html:not(.cv-touch) .cv-hud-left {
 
 /* ── "내 위치" tag on the overview map (OverviewMarker): a pill above the blinking marker ── */
 .cv-map-me {
-  transform: translateY(-50px);
+  /* MapPlaces steps it aside from the place chips (--cv-me-dx / --cv-me-dy) so both stay readable */
+  transform: translate(var(--cv-me-dx, 0px), calc(-50px + var(--cv-me-dy, 0px)));
   padding: 3px 10px;
   font-size: 13px;
   font-weight: 800;
