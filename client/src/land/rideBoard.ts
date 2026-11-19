@@ -12,7 +12,7 @@ import { DROP_SITE } from "@caysonverse/shared/land/dropTower";
 import { PARK_PLATFORM } from "@caysonverse/shared/village/parkArea";
 
 /** A tap's armed board stays armed this long (ms): the walk across the whole park (the coaster from the wheel is 250 m). */
-export const RIDE_ARM_MS = 240_000;
+export const RIDE_ARM_MS = 90_000; // was 4 min: a ride tapped long ago boarded me when I later wandered onto its pad (owner 2026-11-19)
 /** The board is sent once the walk has brought me within this of the pad's centre, past its radius (m): inside the server's reach (radius + 6). */
 export const RIDE_ARRIVE_M = 3;
 
@@ -45,7 +45,8 @@ export function rideTapZone(x: number, z: number): RideKey | null {
   if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
   if (Math.hypot(x - CAROUSEL_CENTER.x, z - CAROUSEL_CENTER.z) <= CAROUSEL_RADIUS + 3) return "carousel";
   // the wheel: its frame spans x +-24 about the hub, from the north feet to the south steps and the platform
-  if (Math.abs(x - WHEEL_SITE.x) <= 24 && z >= WHEEL_SITE.z - 6 && z <= WHEEL_SITE.z + 12) return "wheel";
+  // (the frame and its base only: the lawn and the pad in front of the platform are ground, a tap there walks and never boards)
+  if (Math.abs(x - WHEEL_SITE.x) <= 24 && z >= WHEEL_SITE.z - 6 && z <= WHEEL_SITE.z + 8.5) return "wheel";
   // the moon boat: its A-frames and the swing lane, the platform and its steps east of it
   if (x >= MOON_BOAT_SITE.x - 6 && x <= MOON_BOAT_SITE.x + 12 && Math.abs(z - MOON_BOAT_SITE.z) <= 11) return "moonboat";
   // the drop tower: its platform and the lawn round its foot (the tower itself is a thin column, so the footprint is the platform plus the walk to the pad)
