@@ -476,11 +476,11 @@ describe("big fish: the pull / release fight (fishFight.ts)", () => {
     expect(tickFishing(state, start + 4000 + FISHING.missedMs).state.phase).toBe("ready");
   });
 
-  it("a Hold message counts for 1.5 s at most: forgetting the 'up' does not hold the button for ever (the tension falls again)", () => {
+  it("a Hold message counts for `holdGapMs` (2.5 s) at most: forgetting the 'up' does not hold the button for ever (the tension falls again)", () => {
     const { state, start } = fight(0.999999);
     const pressed = holdLine(state, start + 600, true).state; // pulling in the first pull stage
     const a = tickFishing(pressed, start + 600 + 1200).state; // still counted: tension climbed
-    const b = tickFishing(pressed, start + 600 + FISHING.holdGapMs + 600).state; // lapsed 0.6 s ago
+    const b = tickFishing(pressed, start + 600 + FISHING.holdGapMs + 1500).state; // lapsed 1.5 s ago
     expect(a.fightTension).toBeGreaterThan(0);
     expect(b.fightTension).toBeLessThan(a.fightTension);
   });

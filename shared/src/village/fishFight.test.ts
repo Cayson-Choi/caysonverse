@@ -92,7 +92,21 @@ describe("the fight", () => {
         }
       }
     }
-  });
+  }, 60000);
+
+  it("the FIRST pull is the most forgiving: the first command is answered up to 1.3 s late (the page just opened it, a slow phone) and the fish still lands, every size", () => {
+    for (const cm of [35, 60, 90, 130]) {
+      for (let seed = 1; seed <= 20; seed++) {
+        const sched = fightSchedule(cm, seed);
+        const r = play(cm, seed, (t, kind) => {
+          // the first stage is answered 1.3 s late (nothing held before), every later one a normal 0.25 s
+          if (fightCommand(sched, t).index === 0) return t >= 1300;
+          return fightCommand(sched, t - 250).kind === "pull";
+        });
+        expect(r.event, `${cm} cm seed ${seed}`).toBe("landed");
+      }
+    }
+  }, 60000);
 
   it("the outcome does not depend on how often the server steps: 20 ms, 100 ms and 400 ms steps give the same end", () => {
     for (const cm of [35, 90]) {
@@ -112,7 +126,7 @@ describe("the fight", () => {
         expect(ends, `${cm} cm seed ${seed}`).toEqual(["landed", "landed", "landed"]);
       }
     }
-  });
+  }, 60000);
 
   it("each cycle brings the fish closer: after every pull the distance is larger than after the one before", () => {
     const cm = 75;

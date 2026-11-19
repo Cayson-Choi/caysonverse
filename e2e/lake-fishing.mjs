@@ -54,8 +54,9 @@ const press3 = async (label, ms = 15000) => {
 /** My schema fields as the server set them (Player.rod, fishSpot, fishPhase, ...) and the phase's name. */
 const view = () =>
   p.page.evaluate(async () => {
-    const net = await window.__imp("/src/lake/lakeNet.ts");
-    const proto = await window.__imp("/src/lake/lakeProtocol.ts");
+    // the modules once (window.__imp scans the resource timings on every call: slow on a throttled page)
+    const m = (window.__cvMods ??= { net: await window.__imp("/src/lake/lakeNet.ts"), proto: await window.__imp("/src/lake/lakeProtocol.ts") });
+    const { net, proto } = m;
     const v = proto.emptyFishView();
     net.readFishView(net.selfId(), v);
     return { ...v, name: proto.phaseName(v.phase) };
@@ -70,9 +71,11 @@ const buttonSoon = async (ok, ms = 700) => {
   }
   return b;
 };
+/** CV_E2E_CPU=4 (a throttled page): every wait is that many times longer */
+const K = Math.max(1, Number(process.env.CV_E2E_CPU) || 1);
 const waitPhase = async (names, ms) => {
   const t0 = Date.now();
-  while (Date.now() - t0 < ms) {
+  while (Date.now() - t0 < ms * K) {
     const v = await view();
     if (names.includes(v.name)) return v;
     await sleep(80);
@@ -154,6 +157,10 @@ async function oneCast(n) {
   // the nibble (a drag may have none), then the bite
   const nb = await waitPhase(["nibble", "bite"], 22000);
   run.check(`cast ${n}: a nibble or a bite came`, !!nb, nb);
+  let struck = false;
+  // the angler is set up BEFORE the strike (its setup is a few page round trips: on a slow page it would eat the first stage's grace)
+  const hookMark = await phaseMark(p);
+  const angler = await startFightAnglerInPage(p);
   if (nb?.name === "nibble") {
     const b = await buttonSoon((x) => x?.label === "살짝… 아직!" || x?.label === "당겨요!");
     run.check(`cast ${n}: nibble — soft button 살짝… 아직! (or already the bite)`, (b?.label === "살짝… 아직!" && b.tone === "soft") || b?.label === "당겨요!", b);
@@ -161,30 +168,36 @@ async function oneCast(n) {
     if (b?.label === "살짝… 아직!") await tapButton(b); // too early: no penalty, no strike sent
     await sleep(150);
     const still = await view();
-    run.check(`cast ${n}: a press at the nibble changes nothing`, ["nibble", "bite"].includes(still.name), still);
+    // a short nibble can turn into the bite between the label read and the tap (a loaded machine): then the tap WAS the strike
+    // (the phase is already past the bite); that is not what this check is about, so it only counts when the tap landed at the nibble
+    struck = ["hooked", "lifting", "fighting", "landed"].includes(still.name);
+    run.check(`cast ${n}: a press at the nibble changes nothing (or the bite had already come: the press struck)`, struck || ["nibble", "bite"].includes(still.name), still);
   }
-  const bite = await waitPhase(["bite"], 6000);
-  const bb = await buttonSoon((x) => x?.label === "당겨요!");
-  run.check(`cast ${n}: bite — red 당겨요!`, !!bite && bb?.label === "당겨요!" && bb.tone === "alert", { bite, bb });
-  await once("bite-" + (bite?.sig ?? 0), `09-bite-sig${bite?.sig ?? 0}`);
-  if (bb) await tapButton(bb);
-  const hookMark = await phaseMark(p);
-  const after = await waitPhase(["hooked", "lifting", "fighting", "missed"], 3000);
+  let bite = null;
+  if (!struck) {
+    bite = await waitPhase(["bite"], 6000);
+    const bb = await buttonSoon((x) => x?.label === "당겨요!");
+    run.check(`cast ${n}: bite — red 당겨요!`, !!bite && bb?.label === "당겨요!" && bb.tone === "alert", { bite, bb });
+    await once("bite-" + (bite?.sig ?? 0), `09-bite-sig${bite?.sig ?? 0}`);
+    if (bb) await tapButton(bb);
+  }
+  // the phase LOG, not a poll: a small fish goes hooked -> lifting -> landed in about 2 s, which a slow poll can step over
+  const after = await waitSeen(p, ["hooked", "lifting", "fighting", "missed"], 3000 * K, hookMark);
   run.check(`cast ${n}: the pull hooked the fish`, !!after && after.name !== "missed", after);
   if (!after || after.name === "missed") {
+    await angler.stop();
     await waitPhase(["ready"], 4000);
     return "missed";
   }
   await sleep(250);
   await once("hooked", "10-hooked");
-  const next = await waitPhase(["lifting", "fighting"], 2000);
+  const next = await waitSeen(p, ["lifting", "fighting"], 2000 * K, hookMark);
   if (next?.name === "fighting") {
     const hb = await waitButton(p, "당기세요", 3000);
     run.check(`cast ${n}: a big fish asks to be pulled (the prompt says 당기세요)`, !!hb, hb);
     await shot("14-fight-before");
     if (hb) {
       // the fight is a pull / release rhythm: the scripted angler does what the prompt says (lib/lakeFight.mjs)
-      const angler = await startFightAnglerInPage(p);
       await sleep(1200);
       await shot("15-fighting");
       // waits on the phase LOG (no phase can pass between two polls), and for as long as a fight can last (fightMaxMs 45 s)
@@ -209,8 +222,9 @@ async function oneCast(n) {
     await sleep(600);
     await once("lifting", "11-lifting");
   }
+  await angler.stop();
   const landed = (await waitSeen(p, ["landed"], 6000, hookMark)) ?? (await waitPhase(["landed"], 2000));
-  run.check(`cast ${n}: landed`, !!landed, landed);
+  run.check(`cast ${n}: landed`, !!landed, landed ?? { phasesSinceTheStrike: await p.page.evaluate((m) => (window.__cvPhaseLog ?? []).slice(m).map((e) => `${e.name}@${e.at % 100000}`), hookMark), notice: await p.page.evaluate(() => document.querySelector(".cv-lake-caption")?.textContent ?? "") });
   const card = await p.page.waitForSelector("[data-lake-card]", { timeout: 4000 }).then(() => true, () => false);
   const text = await p.page.locator("[data-lake-card]").first().textContent().catch(() => "");
   const label = await p.page.evaluate(async (k) => (await window.__imp("/src/lake/lakeProtocol.ts")).species(k)?.label ?? "?", landed?.kind ?? 0);
@@ -236,8 +250,9 @@ await run.step("cast until a small and a big fish (the server's cycle of species
   }
   // every catch, as the page sees the schema (a recorder in the page: a slow screenshot here never misses one)
   await p.page.evaluate(async () => {
-    const net = await window.__imp("/src/lake/lakeNet.ts");
-    const proto = await window.__imp("/src/lake/lakeProtocol.ts");
+    // the modules once (window.__imp scans the resource timings on every call: slow on a throttled page)
+    const m = (window.__cvMods ??= { net: await window.__imp("/src/lake/lakeNet.ts"), proto: await window.__imp("/src/lake/lakeProtocol.ts") });
+    const { net, proto } = m;
     const v = proto.emptyFishView();
     const seen = new Set();
     window.__e2eCaught = [];

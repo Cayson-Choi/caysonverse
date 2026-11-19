@@ -110,12 +110,25 @@ export async function startFightAnglerInPage(p, { mode = "follow", reactMs = 140
     async ([mode, reactMs]) => {
       window.__cvAngler?.stop();
       const net = await window.__imp("/src/lake/lakeNet.ts");
+      const ff = await window.__imp("/shared/src/village/fishFight.ts");
+      const fi = await window.__imp("/shared/src/village/fishing.ts");
+      const fv = net.readFishView ? await window.__imp("/src/lake/lakeProtocol.ts") : null;
+      const log = [];
       let held = false;
       let last = null;
       let pending = 0;
       const set = (want) => {
         if (want === held) return;
         held = want;
+        // how late after the schedule's switch the Hold goes out (ms): the human + the slow page, in the server's own clock
+        try {
+          const v = fv.emptyFishView();
+          net.readFishView(net.selfId(), v);
+          const sched = ff.fightSchedule(v.cm, fi.fishSeed(v.spot, v.seq));
+          const since = net.elapsedSince(v.at);
+          const at = ff.fightSegAt(sched, since);
+          log.push({ want, kind: at.seg.kind, lagMs: Math.round(since - at.seg.startMs), idx: at.index });
+        } catch {}
         net.sendHold(want);
       };
       const id = setInterval(() => {
@@ -135,6 +148,7 @@ export async function startFightAnglerInPage(p, { mode = "follow", reactMs = 140
         }
       }, 20);
       window.__cvAngler = {
+        log,
         stop() {
           clearInterval(id);
           clearTimeout(pending);
@@ -145,5 +159,8 @@ export async function startFightAnglerInPage(p, { mode = "follow", reactMs = 140
     },
     [mode, reactMs],
   );
-  return { stop: () => p.page.evaluate(() => window.__cvAngler?.stop()).catch(() => {}) };
+  return {
+    log: () => p.page.evaluate(() => window.__cvAngler?.log ?? []).catch(() => []),
+    stop: () => p.page.evaluate(() => window.__cvAngler?.stop()).catch(() => {}),
+  };
 }
