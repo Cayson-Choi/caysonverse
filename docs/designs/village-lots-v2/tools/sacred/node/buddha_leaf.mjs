@@ -7,7 +7,7 @@ const VIEW_Y = -.06 / Math.hypot(.06, 1);
 const VIEW_Z = 1 / Math.hypot(.06, 1);
 const STRENGTH = 2;
 // The left-hand swatches are the FINISHES in buddha_mesh.py, in atlas order.
-const CHART_FOR_SWATCH = [2,0,3,3,3,1,2,3];
+const CHART_FOR_SWATCH = [2,0,3,3,3,1,0,3];
 const clip = value => Math.min(1, Math.max(0, value));
 const srgb = x => Math.round(255 * clip(x < .0031308 ? 12.92*x : 1.055*x**(1/2.4)-.055));
 const linear = x => x <= .04045 ? x/12.92 : ((x+.055)/1.055)**2.4;
@@ -56,13 +56,32 @@ function elements({doc, binary}, id) {
   }));
 }
 
-function secondUv(uvs, normals) {
+function atlasSwatch(u, v) {
+  return Math.floor(8*u) + 4*Math.floor(2*(1-v));
+}
+
+// An ear graft retains its source finish. Read the shipped chart assignments
+// before rebuilding the vertex buffer (earlier casts have a polished urna).
+function shippedCharts(model) {
+  const attributes = model.doc.meshes[0].primitives[0].attributes;
+  const paint = elements(model, attributes.TEXCOORD_0);
+  const fill = elements(model, attributes.TEXCOORD_1);
+  const charts = [...CHART_FOR_SWATCH];
+  for (let i=0; i<paint.length; i++) {
+    const [u,v] = paint[i];
+    if (u >= .5) continue;
+    const [s,t] = fill[i];
+    charts[atlasSwatch(u,v)] = Math.floor(4*s/65535) + 2*Math.floor(2*t/65535);
+  }
+  return charts;
+}
+
+function secondUv(uvs, normals, charts) {
   const bytes = Buffer.alloc(uvs.length*4);
   for (const [i, [u,v]] of uvs.entries()) {
     let s = u, t = v;
     if (u < .5) {
-      const swatch = Math.floor(8*u) + 4*Math.floor(2*(1-v));
-      const tile = CHART_FOR_SWATCH[swatch];
+      const tile = charts[atlasSwatch(u,v)];
       if (tile === undefined) throw new Error("Unknown gilt atlas swatch");
       const [,y,z] = reflectedDirection(normals[i]);
       // Five percent padding around the lookup keeps each finish inside its
@@ -111,7 +130,31 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices) {
       const p = y*w+x, rgb = [0,1,2].map(j => linear(pigment[3*p+j]/255));
       const gold = [.94,.529,.074];
       const gilded = clip((rgb[0]-.12)/.78)*(.70+.30*clip(rgb[1]/gold[1]));
-      write(x,y,radiance(ry,rz,0,phone,rx).map((k,j) => k*gilded*clip(rgb[j]/gold[j])));
+      // Bare satin leaf has a broad return from the gilded altar below the
+      // eyes. The reflected panels on the robes use their original chart.
+      const faceX = ((x+.5)/w-.75)*.72-.004;
+      const height = 1.820-.400*(y+.5)/h;
+      const cheek = Math.exp(-(((Math.abs(faceX)-.083)/.081)**2+((height-1.610)/.076)**2));
+      const muzzle = Math.exp(-(((Math.abs(faceX)-.061)/.036)**2+((height-1.586)/.043)**2));
+      const temple = Math.exp(-(((Math.abs(faceX)-.102)/.053)**2+((height-1.754)/.037)**2));
+      const lowerFace = Math.exp(-((faceX/.113)**4+((height-1.510)/.057)**2));
+      const septum = Math.exp(-((faceX/.008)**2+((height-1.590)/.009)**2));
+      const response = radiance(ry,rz,0,phone,rx);
+      // A broad, pale tent reflection crosses the nasal bridge and the
+      // upper face of its bulb. It falls off before the two gilded wings.
+      const noseLight = Math.exp(-(((faceX-.0017)/.0148)**2+((height-1.650)/.033)**4));
+      response[1] += .083*noseLight;
+      response[2] += .115*noseLight;
+      // Vermilion takes a broad diffuse return from the doorway. Its moving
+      // specular comes from the two modelled lip rolls in the PBR pass.
+      const vermilion = clip((rgb[0]-3*rgb[1])/.35)
+        * Math.exp(-((faceX/.047)**8+((height-1.552)/.021)**8));
+      const lipLight = [.41,.20,.045];
+      for (let j=0; j<3; j++) response[j] += .88*vermilion*(lipLight[j]-response[j]);
+      const reflected = [response[0]+.266*cheek+.110*muzzle+.185*temple+.133*lowerFace+.12*septum,
+        response[1]+.104*cheek+.085*muzzle+.085*temple+.027*lowerFace+.062*septum,
+        response[2]*(1.-.26*cheek-.49*lowerFace)];
+      write(x,y,reflected.map((k,j) => k*gilded*clip(rgb[j]/gold[j])));
       covered[p] = 1;
     }
   }
@@ -137,10 +180,10 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices) {
 
 // Returns replacement byte spans for the packed buffer. Retain an existing
 // emissive image when the ear graft promises to keep the shipped pigment.
-export async function dressBuddhaLeaf(model, lod, pigmentFile, replacements, keepPaint) {
+export async function dressBuddhaLeaf(model, lod, pigmentFile, replacements, priorFinish) {
   const {doc} = model, primitive = doc.meshes[0].primitives[0], material = doc.materials[primitive.material];
   const normals = elements(model, primitive.attributes.NORMAL), uv = elements(model, primitive.attributes.TEXCOORD_0);
-  const bytes = secondUv(uv,normals);
+  const bytes = secondUv(uv,normals,priorFinish ? shippedCharts(priorFinish) : CHART_FOR_SWATCH);
   await Promise.all([MeshoptEncoder.ready,MeshoptDecoder.ready]);
   const packed = Buffer.from(MeshoptEncoder.encodeGltfBuffer(bytes, uv.length, 4, "ATTRIBUTES", 0));
   const check = Buffer.alloc(bytes.length);
@@ -174,7 +217,7 @@ export async function dressBuddhaLeaf(model, lod, pigmentFile, replacements, kee
     const sampler = doc.textures[material.pbrMetallicRoughness.baseColorTexture.index].sampler;
     const index = doc.textures.push({sampler,extensions:{KHR_texture_basisu:{source}}})-1;
     material.emissiveTexture = {index,texCoord:1};
-  } else if (keepPaint) {
+  } else if (priorFinish) {
     return;
   }
   const indices = elements(model, primitive.indices).flat();

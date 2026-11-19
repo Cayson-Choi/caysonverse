@@ -71,7 +71,10 @@ function partition(document, region) {
   // The newer oval wraps onto the dedicated right-hand pigment island.
   const hasIsland = oval.maxU > .5;
   const selected = new Set();
-  if (region === "ears") {
+  if (region === "oval") {
+    if (!hasIsland) throw new Error("Oval replacement requires a face with a dedicated pigment island");
+    selected.add(oval.id);
+  } else if (region === "ears") {
     if (!hasIsland) throw new Error("Ear replacement requires the Buddha's current face atlas");
     const sides = new Set();
     for (const { id, min, max, minU, maxU, minV } of components.values()) {

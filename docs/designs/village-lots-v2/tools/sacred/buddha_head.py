@@ -1,11 +1,12 @@
 """Original sculpt of the central Buddha, in metres with the face toward -Y."""
 from bisect import bisect_right
-from math import atan2, cos, exp, pi, sin, sqrt
+from math import atan2, cos, exp, pi, sin, sqrt, tanh
 import bpy
 from mathutils import Vector
 from buddha_ears import make_ears
 from buddha_mesh import mat
-from buddha_pigment import brow_height, eyelid_height, lip_height
+from buddha_pigment import (BROW_INNER, BROW_SPAN, EYE_INNER, EYE_SPAN, FACE_AXIS,
+                            LIP_RADIUS, brow_height, eyelid_height, lip_height)
 
 
 def surface(name, vertices, faces, material):
@@ -73,43 +74,58 @@ def face_section_z(image_row):
     # mouth the jaw rises gently into the throat without lifting the lip seam.
     t=max(0.,min(1.,(image_row-137.)/34.))
     nose_base=.0050*exp(-((image_row-133.8)/4.9)**2)
-    return section_z(image_row)+nose_base+.0070*t*t*(3-2*t)
+    chin=max(0., min(1., (image_row-153.)/18.))
+    return section_z(image_row)+nose_base+.0070*t*t*(3-2*t)-.0066*chin*chin*(3-2*chin)
 
 
 # Profile row, frontal skull half-width (px), anterior facial plane and occiput.
 # The short underside of the chin turns back toward the narrow neck.
 SECTIONS = [
     (171.0, 3, 592, 602), (169.8, 7.7, 584, 607), (168, 13.3, 579.5, 613),
-    (165, 18.9, 574.5, 620), (162, 23.6, 571.4, 627), (158, 27.8, 569.2, 632),
-    (154, 31.1, 568.0, 637), (150, 33.6, 567.2, 641), (147, 35.2, 566.8, 644),
-    (142, 37.7, 566.2, 648), (136, 40.0, 565.7, 650), (130, 41.8, 565.2, 652),
-    (122, 42.9, 564.3, 654), (115, 42.8, 563.1, 657), (108, 42.5, 561.7, 658),
+    (165, 19.8, 574.5, 620), (162, 24.0, 571.4, 627), (158, 27.4, 569.2, 632),
+    (154, 30.3, 568.0, 637), (150, 32.7, 567.2, 641), (147, 34.5, 566.8, 644),
+    (142, 37.4, 566.2, 648), (136, 40.0, 565.7, 650), (130, 41.9, 565.2, 652),
+    (122, 43.3, 564.3, 654), (115, 43.6, 563.1, 657), (108, 43.2, 561.7, 658),
     (103, 42.5, 560.8, 659), (96, 42.6, 559.9, 660), (90, 42.6, 559.8, 660),
     (82, 42.6, 560.3, 659), (75, 42, 561, 658), (65, 39, 565, 652),
     (55, 34, 572, 648), (45, 24, 583, 637), (38, 10, 600, 622)]
 SKULL = [(face_section_z(v), w/PIXELS_PER_METRE, depth(f), depth(b)) for v,w,f,b in SECTIONS]
 
-# Actual profile of the small nasal bulb and the shallow S below it. The bridge
-# slopes nearly linearly from the root before flattening into the rounded tip.
+# Only the facial oval follows these measured jaw widths and orbital depths.
+# The curl casting remains seated on the established skull sections.
+FACE_PLANES = {
+    171:(3,594.5), 169.8:(8.6,590), 168:(14.8,584.6), 165:(21.2,576.7),
+    162:(25,571.8), 158:(28.2,569.4), 154:(30.8,568.5), 150:(33.1,568),
+    147:(34.7,567.3), 122:(43.3,565), 115:(43.6,565.2), 108:(43.2,564.5),
+    103:(42.5,563.2), 96:(42.6,561)}
+FACE = []
+for row,width,front,back in SECTIONS:
+    width,front=FACE_PLANES.get(row,(width,front))
+    FACE.append((face_section_z(row),width/PIXELS_PER_METRE,depth(front),depth(back)))
+
+# Midpoints of the two reflected profile silhouettes. The root has a short
+# saddle at eye level and the lobule turns back under the end of the bridge.
 PROFILE_EDGE = [
-    (171,592),(169.8,584),(168,579.5),(165,573.5),(162,569),(158,566.3),
-    (154,565.3),(150,565.55),(148.5,565.2),(147.1,563.6),(145.5,562.4),
-    (143.0,561.4),(141.8,562.0),(140.6,560.8),(139.5,560.6),(138,560.9),
-    (136.2,559.8),(134.7,558.6),(133.4,556.3),(132.1,554.4),(130.1,552.2),
-    (128.1,550.9),(126.5,550.6),(125.2,550.7),(122.5,551.6),(118,553.3),
-    (114,554.9),(110,556.5),(106,557.9),(102,558.9),(96,559.5),
+    (171,594.5),(169.5,591.9),(168.5,586.9),(166.5,580.4),(163.5,572.9),
+    (161.5,569.0),(158.5,567.4),(154.5,566.9),(150.5,567.0),(149.5,566.9),
+    (147.5,564.8),(145.5,563.4),(143.5,563.1),(142.5,562.5),(141.5,561.4),
+    (140.0,561.1),(138.5,561.3),(136.5,561.8),(135.5,561.2),
+    (134.5,557.6),(133.5,554.7),(132.5,553.5),(131.5,552.4),(130.5,551.8),
+    (128.5,551.3),(126.5,551.4),(124.5,552.0),(122.5,552.9),(118.5,554.6),
+    (114.5,556.4),(111.5,557.6),(108.5,558.8),(105.5,559.5),(102.5,559.2),
+    (99.5,559.0),(96.5,559.3),
     (92,559.7),(90,559.8),(82,560.3),
     (75,561),(65,565),(55,572),(45,583),(38,600)]
-MIDLINE = [(face_section_z(v),depth(u)) for v,u in PROFILE_EDGE]
+MIDLINE = [(section_z(v),depth(u)) for v,u in PROFILE_EDGE]
 
 
 def eye_line(x):
-    t=max(0., min(1., (abs(x)-.030)/.104))
+    t=max(0., min(1., (abs(x)-EYE_INNER)/EYE_SPAN))
     return eyelid_height(t, sin(pi*t))
 
 
 def lip_line(x):
-    return lip_height(min(1., abs(x)/.0435))
+    return lip_height(min(1., abs(x)/LIP_RADIUS))
 
 
 def relief(x,z):
@@ -117,51 +133,61 @@ def relief(x,z):
     def paired(offset,height,width,radius):
         return (exp(-((x-offset)/width)**2)+exp(-((x+offset)/width)**2))*exp(-((z-height)/radius)**2)
 
-    t=max(0.,min(1.,(a-.030)/.104))
+    t=max(0.,min(1.,(a-EYE_INNER)/EYE_SPAN))
     arc=sin(pi*t)
     lid=eye_line(x)
-    brow_t=max(0.,min(1.,(a-.030)/.103))
+    brow_t=max(0.,min(1.,(a-BROW_INNER)/BROW_SPAN))
     brow_arc=sin(pi*brow_t)
     brow=brow_height(brow_t,brow_arc)
     # A continuous padded lid under the arc of the brow. The fold is a change
     # in curvature and the lash sits over a softly turned lower lid.
-    brow_plane=brow_arc*(.0065*exp(-((z-brow)/.019)**2)
-                         - .0017*exp(-((z-brow+.016)/.014)**2))
-    dome=lid+.008+.007*arc
-    lids=arc*(.021*exp(-((z-dome)/.020)**2)
-              + .004*exp(-((z-lid+.009)/.012)**2))
-    cheeks=(.040*paired(.114,1.631,.069,.056)
-            + .003*paired(.081,1.589,.060,.043))
-    # The wing descends into the underside of the tip. Its shallow return
-    # sits below the widest part so the nostrils recede in a frontal view.
-    wings=(.014*paired(.021,1.602,.014,.017)
-           + .009*paired(.023,1.609,.010,.011))
+    brow_plane=(.0038*paired(.082,brow,.046,.010)
+                +.0036*paired(.078,brow-.010,.049,.015))
+    brow_root=.026+.039*max(0.,min(1.,(z-1.680)/.053))**1.5
+    inner_fold=.0038*paired(brow_root,1.705,.015,.026)
+    dome=lid+.012+.007*arc
+    lids=(.013*paired(.081,dome,.042,.026)
+          + .0018*paired(.078,lid-.009,.045,.015)
+          - .0067*paired(.065,1.693,.058,.039)
+          - .0030*paired(.038,lid,.008,.0065))
+    cheeks=(.023*paired(.096,1.627,.077,.072)
+            + .0080*paired(.099,1.601,.078,.060))
+    # The lobes round over the alar crease on the cheek and return underneath
+    # into the nostril. Their low edge sits above the rounded columella.
+    wings=(.0215*paired(.030,1.609,.015,.017)
+           - .0120*paired(.037,1.609,.027,.030)
+           - .0025*paired(.020,1.613,.008,.016)
+           - .0024*paired(.031,1.628,.015,.009)
+           - .0048*paired(.021,1.590,.0092,.0065))
     seam=lip_line(x)
-    mouth=(.0030*paired(.018,seam+.005,.019,.0058)
-           + .0039*paired(.014,seam-.006,.022,.0068)
-           - .0013*paired(.044,seam,.009,.0075))
-    return (brow_plane + lids + cheeks + wings + mouth
-            + .0014*paired(.010,1.571,.012,.014)
+    mouth=(.0040*paired(.018,seam+.006,.018,.0060)
+           + .0055*paired(.014,seam-.008,.023,.0075)
+           - .0043*paired(.044,seam,.0078,.0055))
+    return (brow_plane - inner_fold + lids + cheeks + wings + mouth
+            + .0024*paired(.010,1.573,.0070,.012)
             + .003*paired(.030,1.493,.032,.025))
 
 
 def fy(x,z):
-    w,front,back=profile(SKULL,z)
+    w,front,back=profile(FACE,z)
     q=min(.99999,abs(x)/w)
+    x-=FACE_AXIS
     outline=profile(MIDLINE,z)[0]
-    bulb=exp(-((z-1.610)/.015)**2)
+    bulb=exp(-((z-1.600)/.025)**2)
     muzzle=1/(1+exp(min(80.,(z-1.576)/.0085)))
     chin=1/(1+exp(min(80.,(z-1.517)/.010)))
-    spread=.0162 + .0035*bulb + .007*exp(-((z-1.71)/.035)**2) + .022*muzzle + .047*chin
+    spread=(.0235 + .0082*bulb - .0076*exp(-((z-1.580)/.009)**2)
+            + .0050*exp(-((z-1.71)/.039)**2) + .020*muzzle + .046*chin)
     # Ease the cross section continuously from the bridge to the rounded tip
     # and over the columella, preserving the measured midline at every height.
     bridge=exp(-((z-1.655)/.053)**4)
-    ridge=(front-outline)*exp(-(abs(x)/spread)**(2+.82*bridge+.55*bulb))
+    ridge=(front-outline)*exp(-(abs(x)/spread)**(2+.19*bridge+.10*bulb))
     center=.5*(front+back)
     # Constrain only the midline to the measured sagittal profile. Spreading
     # the lip's correction across a whole section cuts a shelf into both cheeks.
     axial_correction=relief(0,z)*exp(-(x/.023)**2)
-    return center-(center-front)*(1-q*q)**.50-(ridge+relief(x,z)-axial_correction)*(1-q*q)**.65
+    lip_seam=.0019*exp(-(x/.038)**4-((z-lip_line(x))/.0029)**2)
+    return center-(center-front)*(1-q*q)**.50-(ridge+relief(x,z)-axial_correction-lip_seam)*(1-q*q)**.65
 
 
 def soften_face_normals(mesh):
@@ -169,23 +195,42 @@ def soften_face_normals(mesh):
     # triangles on the cheeks, whose averaged triangle normals otherwise imprint
     # angular transitions into the lacquer. Ease into the mesh normals at the jaw.
     normals=[]
-    radius=.0038
     for vertex in mesh.vertices:
         x,y,z=vertex.co
-        width,front,back=profile(SKULL,z)
+        width,front,back=profile(FACE,z)
         weight=max(0.,min(1.,(width-abs(x)-.009)/.022,(z-1.445)/.020))
         if y>=(front+back)*.5 or not weight:
             normals.append((0.,0.,0.))
             continue
+        local_x=x-FACE_AXIS
+        # Filter the very narrow meeting edge of the lips across both rolls.
+        # A triangle bridging different rolls otherwise catches an isolated glint.
+        lip=exp(-(local_x/.043)**4-((z-1.553)/.016)**4)
+        tip=exp(-(local_x/.049)**4-((z-1.607)/.031)**4)
+        radius=.0022+.0036*lip+.0034*tip
         dx=(fy(x+radius,z)-fy(x-radius,z))/(2*radius)
         dz=(fy(x,z+radius)-fy(x,z-radius))/(2*radius)
         # Gently round the steep normals at the sides and underside of the nose,
         # much as the broad bevel of the gilded ground rounds the edge of the cast.
-        nose=exp(-(x/.041)**4-((z-1.626)/.071)**4)
-        bulb=exp(-(x/.036)**4-((z-1.602)/.023)**4)
-        cheek=exp(-((abs(x)-.088)/.047)**4-((z-1.631)/.044)**4)
-        dx *= 1-.40*nose-.12*bulb-.32*cheek
-        dz = dz*(1-.47*nose-.18*bulb-.28*cheek) + .12*cheek
+        nose=exp(-(local_x/.043)**4-((z-1.650)/.075)**4)
+        cheek=exp(-((abs(local_x)-.089)/.057)**4-((z-1.640)/.055)**4)
+        ala=exp(-((abs(local_x)-.028)/.014)**2-((z-1.608)/.019)**2)
+        dx *= 1-.28*nose-.41*cheek-.21*ala
+        dz *= 1-.26*nose-.41*cheek-.20*ala
+        # Turn the leaf around the broad tip and each smaller wing. Across the
+        # base the sagittal profile alone would reflect one horizontal strip.
+        lateral=abs(local_x)
+        wing=.78*exp(-((lateral-.030)/.0125)**4-((z-1.610)/.017)**4)
+        wing_slope=.52*(lateral-.030)/.014 * (1 if local_x>=0 else -1)
+        dx+=wing*(wing_slope-dx)
+        dz+=wing*(.46*tanh((z-1.610)/.009)-dz)
+        dorsum=.90*exp(-(local_x/.026)**4-((z-1.626)/.042)**6)
+        dx+=dorsum*(.40*local_x/.026-dx)
+        dz+=dorsum*(.45*tanh((z-1.607)/.012)-dz)
+        columella=exp(-(local_x/.012)**2-((z-1.590)/.013)**2)
+        dz-=.34*min(0.,dz)*columella
+        under_lip=exp(-(local_x/.055)**4-((z-1.530)/.024)**2)
+        dz*=1-.45*under_lip
         # The lower bevel turns under the goatee over a continuous arc. Its
         # normals receive doorway light even when seen from the player's floor.
         chin_roll=exp(-(x/.120)**4-((z-1.475)/.032)**2)
@@ -197,8 +242,9 @@ def soften_face_normals(mesh):
 
 
 def make_face(phone):
-    front=([0,.065,.132,.20,.285,.42,.57,.74,.94,1.18,pi/2] if phone else
-           [0,.038,.074,.11,.15,.19,.235,.29,.355,.435,.52,.625,.74,.87,1.01,1.17,1.36,pi/2])
+    front=([0,.034,.068,.100,.135,.175,.215,.26,.33,.43,.55,.68,.82,1.00,1.24,pi/2] if phone else
+           [0,.023,.047,.071,.093,.115,.139,.163,.19,.22,.25,.29,.34,.40,
+            .47,.55,.64,.74,.85,.97,1.09,1.22,1.38,pi/2])
     back=3 if phone else 5
     half=front+[pi/2+pi/2*k/back for k in range(1,back+1)]
     angles=half+[-a for a in reversed(half[1:-1])]
@@ -206,22 +252,25 @@ def make_face(phone):
     # only the hidden rear of the cranium uses widely spaced sections.
     rows = [171,169.8,168,165,162,158,154,150,147.1,145.5,143,141.8,140.6,138,
             136.2,134.7,133.4,132.1,130.1,128.1,125.2,122.5,118,114,110,106,
-            103,100,96,92,86,80,72,59,45,38]
+            103,100,96,92,86,80,72,59,45,38,135.4,131.1,126.5,121,112,108]
     if not phone:
-        rows += [167,160,156,152,148.5,146.4,144,139.5,137,135.4,131.1,126.5,
-                 121,116,112,108,104.5,101,98,94,89,83,76]
-    zs=sorted(face_section_z(v) for v in rows)
+        rows += [167,160,156,152,148.5,146.4,144,139.5,137,134.1,132.7,129.2,127.4,
+                 124,119.5,116,113,111,109,107,105,104,101,98,94,89,83,76]
+    # Retain an explicit ring at the contact line and along its two bevels.
+    # The contour offsets below carry these samples through the cupid's bow.
+    zs=sorted([face_section_z(v) for v in rows] + [1.5498,1.553,1.5561])
     vs,fs=[],[]
     for z in zs:
-        w,f,b=profile(SKULL,z)
+        w,f,b=profile(FACE,z)
         for a in angles:
             x=w*sin(a)
             height=z
             if cos(a)>.0001:
                 # Carry the dense muzzle and eyelid loops along their actual
                 # contours so the low LOD keeps a lip seam and a lower lid.
-                height+=(lip_line(x)-1.553)*exp(-(x/.053)**4-((z-1.553)/.019)**2)
-                height+=(eye_line(x)-1.676)*exp(-((abs(x)-.084)/.062)**4-((z-1.676)/.021)**2)
+                local_x=x-FACE_AXIS
+                height+=(lip_line(local_x)-1.553)*exp(-(local_x/.054)**4-((z-1.553)/.019)**2)
+                height+=(eye_line(local_x)-1.680)*exp(-((abs(local_x)-.084)/.062)**4-((z-1.680)/.021)**2)
                 y=fy(x,height)
             else:
                 y=(f+b)/2-(b-f)/2*cos(a)
@@ -238,7 +287,7 @@ def make_face(phone):
     pigment.name='Face pigment'
     obj.data.materials.append(pigment)
     for polygon in obj.data.polygons:
-        _,f,b=profile(SKULL,polygon.center.z)
+        _,f,b=profile(FACE,polygon.center.z)
         if polygon.center.y<(f+b)/2 and len(polygon.vertices)==4:
             polygon.material_index=1
     # Sample the bulb and lash densely, then collapse flat areas between these
@@ -270,8 +319,9 @@ def bead(name,center,radii,material,n=12,rings=5):
 
 
 def make_urna(phone):
-    z=1.725
-    bead('Urna',(0,fy(0,z),z),(.0062,.0046,.0073),'urna',8 if phone else 12,4)
+    z=1.728
+    # Preserve the mount on the forehead when refining the orbital plane below.
+    bead('Urna',(FACE_AXIS,-.061910428,z),(.0067,.0044,.0070),'urna',8 if phone else 12,4)
 
 
 # The cranial vault and ushnisha share a continuous shell. Widths and the
