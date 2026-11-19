@@ -3,7 +3,10 @@
 /* ---- the big button: PC = a pill above the emoji row, touch = a round 80 px+ thumb target (inline rect from the lake HUD) ---- */
 .cv-lake-btn {
   position: fixed;
-  right: 16px;
+  /* the margin holds the button's own motion too (the 1.07 pulse and the 6 px shake of the fight) and the long fight label with its key hint:
+     the button stays fully on the screen at every width */
+  right: 28px;
+  max-width: calc(100vw - 56px);
   bottom: calc(24px + var(--cv-pc-emoji-h, 40px) + 8px);
   z-index: 26;
   display: flex;
