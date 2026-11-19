@@ -330,6 +330,27 @@ async function roomTrip(p, unit, tag) {
     await showHud(p);
     await sleep(400);
   }
+  // CV_HYMN_SHOTS=<dir>: the 예배당's hymn board from the pews and close up (fixed photo cameras, room-frame views)
+  if (unit === "lot_church_nave" && process.env.CV_HYMN_SHOTS) {
+    const dir = process.env.CV_HYMN_SHOTS;
+    mkdirSync(dir, { recursive: true });
+    const V = {
+      pew_far: [1.8, 1.15, 2.2, 0.0, 1.4, 7.075, 58],
+      pew_near: [1.8, 1.15, 4.4, 0.0, 1.4, 7.075, 58],
+      aisle: [3.9, 1.55, 5.0, 0.0, 1.4, 7.075, 60],
+      close: [1.5, 1.5, 7.075, 0.0, 1.4, 7.075, 42],
+      closer: [0.9, 1.45, 7.075, 0.0, 1.4, 7.075, 34],
+    };
+    await hideHud(p);
+    for (const [name, [x, y, z, tx, ty, tz, fov]] of Object.entries(V)) {
+      await p.page.evaluate(([b, x, y, z, tx, ty, tz, fov]) => { window.__cvShot = { x: b.minX + x, y, z: b.minZ + z, tx: b.minX + tx, ty, tz: b.minZ + tz, fov }; }, [info.bounds, x, y, z, tx, ty, tz, fov]);
+      await sleep(1400);
+      await p.page.screenshot({ path: join(dir, `${tag}_${name}.png`) });
+    }
+    await p.page.evaluate(() => { window.__cvShot = null; });
+    await showHud(p);
+    await sleep(400);
+  }
   // 3. the camera never leaves the room
   const out = await cameraStaysIn(p, info);
   run.check(`${tag} ${unit}: the camera stays inside the walls and under the ceiling all the way round`, out.length === 0, out);

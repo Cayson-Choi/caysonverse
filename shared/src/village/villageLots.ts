@@ -1195,13 +1195,13 @@ const CHURCH_IN: LotInteriorSpec = {
   doorWidth: 2.2,
   solids: [
     solid("chancel", 0.4, 7.4, 8.4, 10.4, 0.3), // raised chancel: pulpit, communion table, the cross on the wall
-    solid("organ", 6.6, 7.6, 7.6, 8.4, 1.3), solid("hymn_board", 0.2, 0.5, 7.2, 7.8, 1.8),
+    solid("organ", 6.6, 7.6, 7.6, 8.4, 1.3), solid("hymn_board", 0.2, 0.5, 7.0, 7.85, 1.8),
     ...[0, 1, 2, 3].flatMap((r) => [solid(`pew_l${r + 1}`, 0.5, 3.1, 2.2 + r * 1.5 - 0.35, 2.2 + r * 1.5 + 0.25, 1.0), solid(`pew_r${r + 1}`, 4.7, 7.3, 2.2 + r * 1.5 - 0.35, 2.2 + r * 1.5 + 0.25, 1.0)]),
   ],
   seats: [0, 1, 2, 3].flatMap((r) => [iseat(`lot_church_pew_l${r + 1}`, 1.8, 2.2 + r * 1.5, "in", "backed", 2.6, 3), iseat(`lot_church_pew_r${r + 1}`, 6, 2.2 + r * 1.5, "in", "backed", 2.6, 3)]),
   // phone draws 25 -> 30 (2026-11-19): three framed paintings and the merged props file added 3 draws.
   budget: { pc: { triangles: 70_000, textureMB: 28, draws: 40 }, phone: { triangles: 28_000, textureMB: 8, draws: 30 } },
-  program: ["나무 장의자 8(앉기)", "강대상(설교단)", "성찬상", "단순한 나무 십자가", "찬송 번호판(숫자만)", "오르간 또는 피아노", "맑은 유리 또는 단순한 색유리", "노출 들보 천장", "펜던트 등", "꽃"],
+  program: ["나무 장의자 8(앉기)", "강대상(설교단)", "성찬상", "단순한 나무 십자가", "찬송 게시판(오늘의 찬송: 79·288·305장)", "오르간 또는 피아노", "맑은 유리 또는 단순한 색유리", "노출 들보 천장", "펜던트 등", "꽃"],
 };
 
 /** 대웅전 안: 방석 floor seats (3 x 4) facing the 수미단, wooden floor, 닫집 over the main 불상 and two 협시보살, 탱화 behind. */
