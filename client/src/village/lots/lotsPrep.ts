@@ -540,17 +540,23 @@ export function vestibuleFloor(root: Object3D, l: (typeof VILLAGE_LOTS)[number],
   const isLawn = (o: Object3D) => [(o as Mesh).material].flat().some((m) => /_green$/.test((m as Material | undefined)?.name ?? ""));
   let top = -Infinity;
   let own: Material | null = null;
+  // a probe with no kit floor under it (nothing of the lot there, or only its lawn): the village's own grass shows through the doorway
+  let bare = false;
   for (const k of [0.6, 1.2]) {
     const x = p.centre.x + ix * k;
     const z = p.centre.z + iz * k;
     ray.set(new Vector3(x, 1.2, z), new Vector3(0, -1, 0));
     ray.far = 1.3;
     const hit = ray.intersectObject(root, true).find((h) => Math.abs(h.face?.normal.y ?? 0) > 0.5 && !inDoor(h.object) && (h.object as Mesh).renderOrder !== 3);
+    if (!hit || isLawn(hit.object)) bare = true;
     if (!hit) continue;
     top = Math.max(top, hit.point.y);
     if (!isLawn(hit.object)) own = [(hit.object as Mesh).material].flat()[hit.face?.materialIndex ?? 0] ?? own;
   }
-  if (top > 0.06) return null;
+  // A raised kit floor all the way in (the 대웅전's 마루, 0.9 m) needs nothing. A step at the door line with the village lawn beyond it
+  // (the chapel's 12 cm granite threshold; owner 2026-11-19: "성당에 문이 열렸는데 왜 건물안에 잔디처럼 녹색이 깔려있는거냐") is no floor:
+  // the vestibule is laid at the ground behind it and the step stays a step.
+  if (top > 0.06 && !bare) return null;
   if (own && own.name.startsWith("LM_")) surface = own as MeshStandardMaterial;
   const depth = Math.min(4, hitDist(p.centre.x + ix * 0.05, 1.4, p.centre.z + iz * 0.05, ix, 0, iz, 4));
   if (!Number.isFinite(depth) || depth < 0.3) return null;
@@ -562,7 +568,7 @@ export function vestibuleFloor(root: Object3D, l: (typeof VILLAGE_LOTS)[number],
   const half = d.width / 2 + 1.2;
   const right = Math.min(half, hitDist(mx, 1.4, mz, ax, 0, az, half));
   const left = Math.min(half, hitDist(mx, 1.4, mz, -ax, 0, -az, half));
-  const y = Math.max(VESTIBULE_FLOOR_MIN_Y, top + 0.012);
+  const y = top > 0.06 ? VESTIBULE_FLOOR_MIN_Y : Math.max(VESTIBULE_FLOOR_MIN_Y, top + 0.012);
   const pos: number[] = [];
   const uv: number[] = [];
   const corner = (along: number, across: number) => {

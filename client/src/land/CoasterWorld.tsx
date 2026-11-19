@@ -1,12 +1,13 @@
 import { useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, useTexture } from "@react-three/drei";
-import { BufferGeometry, Color, DoubleSide, Mesh, Group, InstancedMesh, Matrix4, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, type Texture } from "three";
+import { BufferGeometry, Color, DoubleSide, Mesh, Group, InstancedMesh, Matrix4, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector2, type Texture } from "three";
 import { COASTER_CARS, carArc, coasterTrack, emptyFrame, frameAt, STATION_Y } from "@caysonverse/shared/land/coaster";
 import { isTouchDevice } from "../device";
 import { buildTrack, type TrackBuild, type TrackDetail } from "./coasterGeometry";
 import { coasterNow } from "./coasterRide";
 import { parkMaterial, pickSet } from "./pbr";
+import { applyFarSteel, farSteelUniform } from "./farSteel";
 import { signTexture } from "./canvasTextures";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 
@@ -213,6 +214,14 @@ export function CoasterWorld({ all, pine, env }: { all: Texture[]; pine: Texture
   const maps = useMemo(() => ({ metal: pickSet(all, "PaintedMetal013"), concrete: pickSet(all, "Concrete034"), paving: pickSet(all, "PavingStones070") }), [all]);
   // painted steel: the vertex colours are the paint; the set gives the surface (orange-peel bump, the gloss that varies)
   const steelMat = useMemo(() => parkMaterial(maps.metal, 0.5, { useColor: false, vertexColors: true, metalness: 0.25, normalScale: 0.35, envMap: env, envMapIntensity: 0.45 }), [maps, env]);
+  // the far rails stay a steady dark line instead of crawling light dashes (farSteel.ts)
+  useMemo(() => applyFarSteel(steelMat), [steelMat]);
+  const gl = useThree((st) => st.gl);
+  const buf = useMemo(() => new Vector2(), []);
+  useFrame(() => {
+    const h = gl.getDrawingBufferSize(buf).y;
+    if (h > 0) farSteelUniform.value = 2 / h;
+  });
   // (no dispose on cleanup: React's dev double-mount would delete the programs the memoised materials still use)
   if (import.meta.env.DEV && typeof window !== "undefined") (window as unknown as { __cvCoasterTris?: number }).__cvCoasterTris = built.triangles;
   return (

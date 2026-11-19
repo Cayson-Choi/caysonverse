@@ -6,7 +6,7 @@ import { LOT_DETAIL_LOD, LOT_INTERIORS, LOT_ROOMS, VILLAGE_LOTS, lotFootprint, l
 import { pbrSetInfo } from "../pbr/pbrLibrary";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { LOT_TREE_SPECS } from "../veg/treeSkeleton";
-import { PHONE_GOODS_REACH, innerHingePivot, lotSurfaceMaterial, mergeReady, pickLotLevels, setLotDoor, type LotLevel } from "./lotsPrep";
+import { PHONE_GOODS_REACH, VESTIBULE_FLOOR_MIN_Y, innerHingePivot, lotSurfaceMaterial, mergeReady, pickLotLevels, setLotDoor, vestibuleFloor, type LotLevel } from "./lotsPrep";
 import { LOT_DOOR_PADS, LOT_SLOT_HOOKS, lotDoorNotice, lotDoorTarget, lotExitTarget, lotSlotHandlers, onLotSlot } from "./lotTargets";
 import { lotTrimFootprints } from "./LotsVillagePatch";
 import { manifestPaths } from "./lotTextures";
@@ -255,5 +255,33 @@ describe("the chapel's cream limestone (albedoGain on the set's albedo)", () => 
   it("the chapel's manifest carries it on its stone", () => {
     const j = JSON.parse(readFileSync(resolve(__dirname, "../../../public/models/village/lots/chapel/lot_chapel_textures.json"), "utf8"));
     expect(j.materials.LM_chapel_stone.albedoGain).toHaveLength(3);
+  });
+});
+
+describe("the vestibule behind a lot's open door (owner 2026-11-19: grass inside the open chapel door)", () => {
+  // the chapel's door faces west; its inside runs +x from the door line at x = 43
+  const chapel = VILLAGE_LOTS.find((l) => l.id === "lot_chapel")!;
+  const door = chapel.doors[0]!;
+  const granite = () => new MeshStandardMaterial({ name: "LM_chapel_granite" });
+  const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, name = "LM_chapel_granite") => {
+    const m = new Mesh(new BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), new MeshStandardMaterial({ name }));
+    return m;
+  };
+  const room = (floors: Mesh[]) => {
+    const root = new Group();
+    // the inner wall and the side walls (what the floor's extent is measured against)
+    root.add(box(46, 46.3, 0, 4, -41, -33), box(43, 46, 0, 4, -40.3, -40), box(43, 46, 0, 4, -34, -33.7), ...floors);
+    root.updateMatrixWorld(true);
+    return root;
+  };
+  it("a 12 cm threshold with the village lawn beyond it still gets a floor, at the ground (not grass)", () => {
+    const root = room([box(43, 44, 0, 0.12, -38, -36)]);
+    const f = vestibuleFloor(root, chapel, door, granite());
+    expect(f).not.toBeNull();
+    expect(f!.geometry.getAttribute("position").getY(0)).toBeCloseTo(VESTIBULE_FLOOR_MIN_Y, 5);
+  });
+  it("a kit floor raised all the way in (the temple's 마루) needs none", () => {
+    const root = room([box(43, 46, 0, 0.9, -40, -34)]);
+    expect(vestibuleFloor(root, chapel, door, granite())).toBeNull();
   });
 });
