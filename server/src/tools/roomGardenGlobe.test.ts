@@ -47,6 +47,22 @@ async function primitive(room: string, material: string, part?: string) {
       return Array.from({ length: mesh.num_points() }, (_, i) =>
         Array.from({ length: stride }, (_, k) => array.GetValue(i * stride + k) as number));
     }
+    // GLTFLoader requests the accessor's component type from Draco. Reading normalized colors as float alone
+    // misses a float stream declared as uint16: the renderer would receive 0 or 1, then divide by 65535.
+    const color = gltf.accessors![prim.attributes.COLOR_0!];
+    if (material.startsWith("LM_") && color?.componentType === 5123 && (color as { normalized?: boolean }).normalized) {
+      const floats = attr("COLOR_0").flat();
+      const bytes = floats.length * Uint16Array.BYTES_PER_ELEMENT;
+      const pointer = d._malloc(bytes);
+      try {
+        const source = decoder.GetAttributeByUniqueId(mesh, ext.attributes.COLOR_0);
+        expect(decoder.GetAttributeDataArrayForAllPoints(mesh, source, d.DT_UINT16, bytes, pointer)).toBe(true);
+        const gpu = new Uint16Array(d.HEAPU8.buffer, pointer, floats.length);
+        expect(floats.every((value, i) => Math.abs(gpu[i]! / 65535 - value) < 1 / 65535)).toBe(true);
+      } finally {
+        d._free(pointer);
+      }
+    }
     const triangles = Array.from({ length: mesh.num_faces() }, (_, i) => {
       decoder.GetFaceFromMesh(mesh, i, face);
       return [0, 1, 2].map((k) => face.GetValue(k) as number);
