@@ -228,6 +228,7 @@ function buildSolids(): AABB[] {
   for (const s of PARK_SHOPS) out.push(box(s.x - s.d / 2, s.x + s.d / 2, s.z - s.w / 2, s.z + s.w / 2));
   const p = PARK_PLATFORM;
   out.push(box(p.minX, p.maxX, p.minZ, p.maxZ));
+  out.push(box(2 - 3.6, 2 + 3.6, p.minZ - 4.3, p.minZ)); // the station's north steps (the boarding pad is just beyond them)
   // the fountain and its ring
   const f = PARK_PLAZA.fountainHalf;
   out.push(box(PARK_PLAZA.x - f, PARK_PLAZA.x + f, PARK_PLAZA.z - f, PARK_PLAZA.z + f));
