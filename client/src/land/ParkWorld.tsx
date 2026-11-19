@@ -59,6 +59,8 @@ import { soilTextures } from "../village/veg/vegSoil";
 import { CLICK_PICK_KEY } from "../game/clickPick";
 import { PARK_MARBLE_URL_HI, PARK_MARBLE_URL_LO, PARK_PINE_URL_HI, PARK_PINE_URL_LO, useParkAssets } from "./parkAssets";
 import { dayNight } from "../village/dayNightDriver";
+import { makeRippleTexture } from "../village/villageWater";
+import { parkFountainWater } from "./parkFountain";
 import { BulbHalos, LampPools } from "./nightGlow";
 
 const MARBLE_URL = isTouchDevice ? PARK_MARBLE_URL_LO : PARK_MARBLE_URL_HI;
@@ -399,7 +401,7 @@ function GateArch({ all }: { all: Texture[] }) {
 
 /** The plaza's star fountain: a stepped, moulded marble basin, a baluster and a scalloped upper bowl turned on the lathe, a slender
  * column carrying a turning gilt star, eight arching jets, gilt star finials on the rim. Marble from the village's CC0 set. */
-function Fountain({ all, env }: { all: Texture[]; env: Texture }) {
+function Fountain({ env }: { env: Texture }) {
   const marbleTex = useTexture(MARBLE_URL) as Texture;
   const marble = useMemo(() => {
     const t = marbleTex.clone();
@@ -409,8 +411,13 @@ function Fountain({ all, env }: { all: Texture[]; env: Texture }) {
     t.needsUpdate = true;
     return new MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.26, metalness: 0.02, envMap: env, envMapIntensity: 0.55 });
   }, [marbleTex, env]);
-  const stone = useMemo(() => parkMaterial(pickSet(all, "Concrete034"), 1, { color: new Color("#eee6d8"), normalScale: 0.5 }), [all]);
-  const water = useMemo(() => new MeshStandardMaterial({ color: "#6ab4d8", roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.82 }), []);
+  const waterGeo = useMemo(parkFountainWater, []);
+  const ripples = useMemo(makeRippleTexture, []);
+  const water = useMemo(() => new MeshStandardMaterial({
+    vertexColors: true, normalMap: ripples, normalScale: new Vector2(0.28, 0.28),
+    envMap: env, roughness: 0.14, metalness: 0.11, transparent: true, opacity: 0.75, depthWrite: false,
+  }), [env, ripples]);
+  useEffect(() => () => ripples.dispose(), [ripples]);
   const gold = useMemo(() => new MeshStandardMaterial({ color: "#f2c14e", emissive: new Color("#6b4a08"), emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.6 }), []);
   const starGeo = useMemo(() => {
     const sh = new Shape();
@@ -437,40 +444,41 @@ function Fountain({ all, env }: { all: Texture[]; env: Texture }) {
     const W: V3 = [1, 1, 1];
     // the paving apron and the moulded basin (outer foot, ogee lip, inner wall, floor just under the water)
     addLathe(b, 0, 0, [[5.35, 0], [5.35, 0.06], [4.8, 0.1]], [0.96, 0.95, 0.92], 2, 64);
-    addLathe(b, 0, 0, [[0.01, 0.0], [4.6, 0.0], [4.6, 0.2], [4.5, 0.28], [4.5, 0.55], [4.62, 0.62], [4.62, 0.8], [4.5, 0.95], [4.25, 1.0], [4.05, 0.95], [4.0, 0.86], [0.01, 0.86]], W, 2, 72);
+    addLathe(b, 0, 0, [[0.01, 0.0], [4.6, 0.0], [4.6, 0.2], [4.5, 0.28], [4.5, 0.55], [4.62, 0.62], [4.62, 0.8], [4.5, 0.95], [4.25, 1.0], [4.05, 0.95], [4.0, 0.86], [3.96, 0.40], [0.01, 0.40]], W, 2, 72);
     // the baluster: a plinth, a swelling urn, a collar, the upper bowl with a rolled lip, a column to the star
-    addLathe(b, 0, 0, [[0.01, 0.86], [1.05, 0.86], [1.05, 1.0], [0.85, 1.08], [0.6, 1.14], [0.5, 1.4], [0.68, 1.72], [0.62, 1.95], [0.5, 2.1], [0.58, 2.3], [1.2, 2.4], [1.75, 2.62], [1.82, 2.78], [1.7, 2.82], [1.52, 2.74], [1.45, 2.68], [0.01, 2.68]], W, 2, 56);
+    addLathe(b, 0, 0, [[1.05, 0.40], [1.05, 1.0], [0.85, 1.08], [0.6, 1.14], [0.5, 1.4], [0.68, 1.72], [0.62, 1.95], [0.5, 2.1], [0.58, 2.3], [1.2, 2.4], [1.75, 2.62], [1.82, 2.78], [1.7, 2.82], [1.52, 2.74], [1.45, 2.68], [0.01, 2.68]], W, 2, 56);
     addLathe(b, 0, 0, [[0.01, 2.68], [0.46, 2.68], [0.38, 2.88], [0.24, 3.1], [0.2, 3.5], [0.22, 4.2], [0.33, 4.36], [0.3, 4.52], [0.16, 4.64], [0.01, 4.66]], W, 2, 28);
     // eight low piers round the rim, each carrying a small gilt star (the gold is its own mesh below)
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
-      addLathe(b, Math.cos(a) * 4.62, Math.sin(a) * 4.62, [[0.01, 0.95], [0.2, 0.95], [0.2, 1.25], [0.26, 1.32], [0.2, 1.4], [0.01, 1.42]], W, 1, 12);
+      addLathe(b, Math.cos(a) * 4.33, Math.sin(a) * 4.33, [[0.2, 0.92], [0.2, 1.25], [0.26, 1.32], [0.2, 1.4], [0.01, 1.42]], W, 1, 12);
     }
     return b.build();
   }, []);
-  const jets = useMemo(() => Array.from({ length: 8 }, (_, i) => (i / 8) * Math.PI * 2), []);
+  const finials = useRef<InstancedMesh>(null);
+  useLayoutEffect(() => {
+    const mesh = finials.current!, m = new Matrix4();
+    for (let i = 0; i < 8; i++) {
+      const a = (i + 0.5) * Math.PI / 4;
+      mesh.setMatrixAt(i, m.makeRotationY(Math.PI / 2 - a).setPosition(4.33 * Math.cos(a), 1.55, 4.33 * Math.sin(a)));
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, []);
   const ref = useRef<Mesh>(null);
   useFrame(({ clock }) => {
     if (ref.current) ref.current.rotation.y = clock.elapsedTime * 0.4;
+    ripples.offset.set((clock.elapsedTime * 0.045) % 1, (clock.elapsedTime * 0.095) % 1);
+    water.envMapIntensity = 0.8 - 0.65 * dayNight.applied.night;
   });
   const { x, z } = PARK_PLAZA;
-  void stone;
   return (
     <group position={[x, 0, z]}>
       <mesh geometry={marbleGeo} material={marble} castShadow receiveShadow />
-      <mesh position={[0, 0.92, 0]} material={water}><cylinderGeometry args={[4.0, 4.0, 0.08, 40]} /></mesh>
-      <mesh position={[0, 2.75, 0]} material={water}><cylinderGeometry args={[1.45, 1.45, 0.06, 28]} /></mesh>
+      <mesh geometry={waterGeo} material={water} />
       <mesh position={[0, 4.78, 0]} material={gold}><sphereGeometry args={[0.2, 14, 10]} /></mesh>
       <mesh ref={ref} position={[0, 5.45, 0]} geometry={starGeo} material={gold} />
-      {jets.map((a, i) => (
-        <mesh key={i} position={[Math.cos(a) * 2.2, 1.7, Math.sin(a) * 2.2]} rotation={[Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35]} material={water}>
-          <cylinderGeometry args={[0.03, 0.06, 1.4, 6]} />
-        </mesh>
-      ))}
-      {Array.from({ length: 8 }, (_, i) => {
-        const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
-        return <mesh key={`s${i}`} geometry={smallStar} material={gold} position={[Math.cos(a) * 4.62, 1.5, Math.sin(a) * 4.62]} rotation={[0, -a + Math.PI / 2, 0]} castShadow />;
-      })}
+      <instancedMesh ref={finials} args={[smallStar, gold, 8]} castShadow />
     </group>
   );
 }
@@ -654,7 +662,7 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       <Ground all={all} />
       <Shops all={all} />
       <GateArch all={all} />
-      <Fountain all={all} env={env} />
+      <Fountain env={env} />
       <ParkVegetation />
       <Lamps />
       <Beds all={all} />
