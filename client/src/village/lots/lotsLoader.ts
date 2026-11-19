@@ -144,7 +144,9 @@ export async function loadManifestMaps(
       .filter(([, s]) => s.maps?.albedo)
       .map(async ([name, s]) => {
         try {
-          const t = await loadLotOwnMap(gl, dirOf[name]! + s.maps!.albedo);
+          // Shared maps may live beside a lot's folder. Resolve ".." before looking up the content hash.
+          const path = new URL(dirOf[name]! + s.maps!.albedo, location.origin).pathname;
+          const t = await loadLotOwnMap(gl, path);
           own[name] = t;
           textures.push(t);
         } catch (e) {
