@@ -112,12 +112,15 @@ function playOnce(action: AnimationAction | null): number {
  * Another rider drawn in the way of MY view of the bus (review r1: a rider a step in front filled the whole first-person screen
  * with a head; so did a neighbour on the next seat): while my own bus camera is active, a rider whose head is within 1.5 m of the
  * lens (first person) or 0.9 m (the third-person arm) and in front of it is not drawn. A little hysteresis, no flicker.
+ * First person since 2026-11-20 (owner: "1인칭뷰에서 바로 옆에 있는 상대방도 잘 보이도록 해"): a neighbour on the next seat or a step in
+ * front is drawn; only a head the lens would be inside (its centre within 0.55 m: the chibi head is about 0.5 m round) is not.
  */
 const wayV = new Vector3();
 const wayD = new Vector3();
+export const RIDER_WAY_REACH_FP = 0.55;
 function riderInTheWay(camera: Camera, x: number, y: number, z: number, wasHidden: boolean): boolean {
   if (!busCamState.active) return false;
-  const reach = busCamState.firstPerson ? 1.5 : 0.9;
+  const reach = busCamState.firstPerson ? RIDER_WAY_REACH_FP : 0.9;
   const hidden = !wasHidden;
   wayV.set(x - camera.position.x, y + 1.6 - camera.position.y, z - camera.position.z);
   const dist = wayV.length();

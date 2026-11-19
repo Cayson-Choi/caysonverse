@@ -2,9 +2,9 @@ import { armRide } from "../land/rideBoard";
 import { useEffect, useMemo, useRef } from "react";
 import { MessageType, type StandRejectedPayload } from "@caysonverse/shared/messages";
 import { useClickHint } from "../stores/clickHintStore";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useAnimations, useKeyboardControls } from "@react-three/drei";
-import { Group, LoopOnce, type AnimationAction, type AnimationClip, type Plane } from "three";
+import { Group, LoopOnce, Quaternion, Vector3, type AnimationAction, type AnimationClip, type Bone, type Plane } from "three";
 import { setPreferredSeat } from "./seatPreference";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
@@ -103,7 +103,9 @@ import { getTransitRenderPose, useTransitState } from "../net/transitSync";
 import { busWalk, busCamState, busSeatGoal, busSeatPreferred, busWalkGoal, selfBusRide } from "./busRide";
 import { SELF_GAP, SELF_GAP_OUTDOOR, SELF_HEAD_CENTRE, selfGap, stepSelfGapHidden } from "./selfGap";
 import { selfRide } from "../land/coasterRide";
-import { busRiderPoints, takenBusSpots } from "./remoteStore";
+import { rideSeatPose } from "../land/rideSeats";
+import { FP_BODY_BLEND, fpBody, fpBodyOff, installFpBody, restoreHead } from "./fpBody";
+import { busRiderPoints, forEachRemotePosition, takenBusSpots } from "./remoteStore";
 import {
   BUS_SEATS,
   seatApproachPoint,
@@ -678,9 +680,37 @@ export function LocalPlayer({
     [avatar],
   );
 
+  // True first person (fpBody.ts): the own body stays drawn from the neck down, its head shrunk for the drawing and the eye at
+  // the head's eyes. The scene's render hook does both after every frame callback; the head bone and what to keep are set here.
+  const scene = useThree((s) => s.scene);
+  useEffect(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    let head: Bone | null = null;
+    avatar.root.traverse((o) => {
+      if (!head && (o as Bone).isBone && o.name === "head") head = o as Bone;
+    });
+    fpBody.head = head;
+    fpBody.group = group;
+    fpBody.keep = shadowRef.current ? [model, shadowRef.current] : [model];
+    fpBody.forEachNeighbour = forEachRemotePosition; // the other players as drawn: the eye slides back from a head beside it
+    const uninstall = installFpBody(scene, group);
+    return () => {
+      uninstall();
+      if (fpBody.head === head) fpBody.head = null;
+      if (fpBody.group === group) fpBody.group = null;
+    };
+  }, [scene, avatar, model]);
+  const ridePos = useRef(new Vector3()).current;
+  const rideQuat = useRef(new Quaternion()).current;
+  /** Seated in a 케이슨랜드 ride's seat (selfRide): the body is drawn there, in the held seated pose. */
+  const onRideRef = useRef(false);
+
   useFrame((state, delta) => {
     const group = groupRef.current;
     if (!group) return;
+    // the head the render hook shrank for the last frame's drawing: back as the mixer posed it, before anything reads the body
+    restoreHead();
 
     // Own-avatar hiding (design 19): in first-person the LOCAL avatar GROUP is
     // hidden past the mid-blend point — body AND blob shadow together
@@ -714,12 +744,19 @@ export function LocalPlayer({
     const headDist = Math.hypot(cameraProbe.x - pose.x, cameraProbe.y - (group.position.y + HEAD_HEIGHT), cameraProbe.z - pose.z);
     closeHiddenRef.current = indoorCloseHidden(closeHiddenRef.current, indoorTp, headDist, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE);
     const closeIndoors = closeHiddenRef.current && viewState.ovBlend <= OV_VIS_BLEND;
-    // On the 별똥별 급행 the rider's body is drawn by the others in the car; my own eye is the camera (land/coasterRide.ts).
-    group.visible =
-      selfRide.slot < 0 &&
-      (viewState.ovBlend > OV_VIS_BLEND
+    // First person (owner 2026-11-20, fpBody.ts): the own body is drawn from the neck down once the camera is all the way in at
+    // the eye — the head, hair and hat are shrunk away for the drawing — so looking down shows the feet walking, the lap on a
+    // bench, the legs in a ride's seat. On the way in and out (the camera crossing the head) it is hidden as before.
+    const ovShown = viewState.ovBlend > OV_VIS_BLEND;
+    const fpShown = !ovShown && viewState.mode === "fp" && viewState.blend >= FP_BODY_BLEND && !inCloseUp && !fpBodyOff();
+    // A 케이슨랜드 ride: the camera is the ride's own rider eye (land/coasterRide.ts and the others), the body sits in the seat below it.
+    const riding = selfRide.slot >= 0;
+    group.visible = riding
+      ? !ovShown && !fpBodyOff()
+      : ovShown
         ? true
-        : viewState.mode !== "fp" && viewState.blend < HIDE_BLEND && !cameraInsideSelf && !inCloseUp && !closeIndoors);
+        : fpShown || (viewState.mode !== "fp" && viewState.blend < HIDE_BLEND && !cameraInsideSelf && !inCloseUp && !closeIndoors);
+    fpBody.active = group.visible && !ovShown && (riding || fpShown);
     // The destination ring straight ahead, behind the body (a click on the body itself, a walk away from the camera):
     // the body fades and is drawn after the ring, so the ring shows through it (round 6 review: only its dashes showed,
     // on the body, all the way there).
@@ -734,6 +771,30 @@ export function LocalPlayer({
       delta,
       cover ? Math.min(SELF_COVER_FADE_OPACITY, selfBody.hidingRing ? SELF_FADE_OPACITY : 1) : undefined,
     );
+
+    // A 케이슨랜드 ride (the coaster, the carousel, the wheel, the moon boat, the drop tower): the body sits in my seat, on the
+    // shared clock, in the held seated pose — where every other viewer draws me (RemotePlayer, rideSeats.ts) — under the ride's
+    // own first-person eye. Nothing else moves it meanwhile.
+    if (riding) {
+      if (!onRideRef.current) {
+        onRideRef.current = true;
+        startRide("seat");
+      }
+      rideSeatPose(selfRide.ride, selfRide.slot, ridePos, rideQuat);
+      group.position.copy(ridePos);
+      group.quaternion.copy(rideQuat);
+      publishLocalJump(0, true);
+      return;
+    }
+    if (onRideRef.current) {
+      // off the ride: upright again where the server put me down, on my feet
+      onRideRef.current = false;
+      group.rotation.set(0, 0, 0);
+      action(CLIP.sitIdle)?.fadeOut(ANIM_FADE);
+      loopRef.current = null; // the loco step puts a loop back on
+      animStateRef.current = "loco";
+      if (shadowRef.current) shadowRef.current.visible = true;
+    }
 
     // Focus guard: while the chat input owns keyboard input — OR while the
     // resilience driver is reconnecting (world frozen behind the overlay) —
@@ -1061,7 +1122,9 @@ export function LocalPlayer({
       busCamState.avatar = group;
       // first person (the camera all the way in) is the rider's own eye; a third-person lens the cabin pushed within 0.6 m of the head
       // hides the body too (transitCamera.ts busSelfHidden): never the inside of the head on the screen
-      group.visible = !busCamState.firstPerson && !busCamState.selfHidden;
+      // (first person: the body in the seat or the aisle, headless, the eye at its head: fpBody.ts)
+      group.visible = busCamState.firstPerson ? !fpBodyOff() : !busCamState.selfHidden;
+      fpBody.active = busCamState.firstPerson && group.visible;
       pose.x = rp.x;
       pose.z = rp.z;
       pose.yaw = rp.yaw;
@@ -1182,8 +1245,8 @@ export function LocalPlayer({
     fishRig.update(delta, {
       seatMode: animStateRef.current === "sitDown" ? "sitting" : animStateRef.current === "sitIdle" ? "seated" : animStateRef.current === "standUp" ? "standing" : "up",
       baseSit: action(CLIP.sitIdle) ?? null,
-      // first person hides the own body: the catch is held up in front of the camera instead (lake v2)
-      fpCamera: viewState.mode === "fp" ? state.camera : null,
+      // first person keeps the own body (fpBody.ts): the rod and the catch are in its own hands, as everyone else sees them
+      fpCamera: null,
       fpLook: { skin: look.colors.skin, top: look.colors.top },
     });
     fishRig.afterMixer(delta); // the wrist, after the mixer (the animations are ticked before this frame hook)

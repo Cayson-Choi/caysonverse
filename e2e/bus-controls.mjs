@@ -137,6 +137,8 @@ const camInfo = (withFloor = false) =>
       headTop: r(box.max.y),
       headDist: headDist === null ? null : r(headDist),
       drawn,
+      // true first person (fpBody.ts): the body is drawn from the neck down, its head shrunk away: no head in the lens
+      headless: !!(await window.__imp("/src/game/fpBody.ts")).fpBody.active,
       faded,
       pitchDeg: r(pitchDeg),
       share: r(share),
@@ -233,7 +235,7 @@ await run.step("3. the bus stop: the zoomed-in camera never shows the inside of 
     }
   }
   numbers.busstop = rows;
-  const bad = rows.filter((r) => r.drawn && r.headDist !== null && r.headDist < 0.6);
+  const bad = rows.filter((r) => r.drawn && !r.headless && r.headDist !== null && r.headDist < 0.6);
   console.log("bus stop samples", JSON.stringify(rows.map((r) => [r.dir, r.pitch, r.headDist, r.drawn])));
   rule("bus stop: in no zoomed-in view is the drawn head nearer than 0.6 m to the camera", bad.length === 0, { bad, worst });
   // a zoom-in by the real input as well: the wheel on a PC (a pinch on the phone goes through the same applyZoom)
@@ -243,7 +245,7 @@ await run.step("3. the bus stop: the zoomed-in camera never shows the inside of 
     for (let i = 0; i < 6; i++) { await A.page.mouse.wheel(0, -120); await sleep(120); }
     await sleep(900);
     const c = await camInfo();
-    rule("bus stop, the wheel all the way in: the head is hidden or 0.6 m+ away", !c.drawn || c.headDist >= 0.6, c);
+    rule("bus stop, the wheel all the way in: the head is hidden or 0.6 m+ away", !c.drawn || c.headless || c.headDist >= 0.6, c);
     await shot("busstop-wheel-in");
     for (let i = 0; i < 6; i++) { await A.page.mouse.wheel(0, 300); await sleep(100); }
   }

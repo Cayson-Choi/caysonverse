@@ -80,6 +80,8 @@ import { setPreferredSeat } from "./seatPreference";
 import { getLocalLift } from "./jump";
 import { getLocalStepLift } from "../village/houses/houseLift";
 import { useFpCursor } from "./useFpCursor";
+import { CAROUSEL_SIDE, FP_NEAR, fpBodyOff, fpEye } from "./fpBody";
+import { RIDE } from "@caysonverse/shared/land/rides";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose } from "../net/transitSync";
 import { busRiderCamera, busSelfHidden, busShoulderScale, busShoulderSide, clampBusPitch, riderFov, type TransitCameraPose } from "../village/transitCamera";
@@ -281,6 +283,8 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
   /** The lens's field of view before the bus ride widened it (null while not riding). */
   const fovBeforeRideRef = useRef<number | null>(null);
   const nearBeforeRideRef = useRef(0.2);
+  /** The scene's own near plane (read on the first frame; first person draws nearer, FP_NEAR, for the own shoulders and hands). */
+  const baseNear = useRef(0);
   const busRideCam = useRef<TransitCameraPose>({ x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, arm: 0, gap: 0, firstPerson: false }).current;
   /** In the bus: the shoulder the third person stands over (+1 right, -1 left) and the side drawn, eased toward it. */
   const busShoulder = useRef<{ side: 1 | -1; ease: number }>({ side: 1, ease: 1 }).current;
@@ -1176,13 +1180,17 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
     if (seatNow) seatedEyeSeat.current = seatNow;
     const eyeSeat = seatedEyeSeat.current;
     const eye = eyeSeat ? seatedEyeOffset(eyeSeat.yaw, eyeSeat.seatY, seatedEyeW.current) : { dx: 0, dy: 0, dz: 0 };
-    const uPosX = lerp(tpX, pose.x + eye.dx, t);
+    // the first-person eye as estimated from the pose (the render hook moves it onto the head's real eye: fpBody.ts)
+    const uFpX = pose.x + eye.dx;
+    const uFpZ = pose.z + eye.dz;
+    const uPosX = lerp(tpX, uFpX, t);
     // Own hop (jump.ts): the first-person eye and look target rise with the avatar's
     // display-only lift, weighted by the FP blend — the own body is hidden there, so
     // without this a Space press would show nothing. TP (t = 0) is untouched.
     // The porch's lift (A8) too, but not while seated: the seated eye already stands on the seat's own height.
     const hop = getLocalLift() + stepLift * (1 - seatedEyeW.current);
-    const uPosY = lerp(tpY, FP_EYE_HEIGHT + hop + eye.dy, t);
+    const uFpY = FP_EYE_HEIGHT + hop + eye.dy;
+    const uPosY = lerp(tpY, uFpY, t);
     const uPosZ = lerp(tpZ, pose.z + eye.dz, t);
     // TP looks at the (smoothed) follow point, a little above the head; FP at the
     // pose-anchored eye line.
@@ -1427,6 +1435,35 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
         }
       }
     }
+
+    // True first person (fpBody.ts): the eye estimated here from the pose is moved onto the own head's eye point by the scene's
+    // render hook, once the body's pose for this frame is final, by the first person's weight. In the bus's first person and on
+    // a 케이슨랜드 ride the eye is the seated rider's head as well: the ride's own camera keeps its look (the car's frame, the head's
+    // lag and lean), only its point moves onto the head that is drawn in the seat (the rides' eyes sat 0.4 m lower, in the
+    // chest of the body now drawn there). The DEV photo camera is left where it was put.
+    const devShot = import.meta.env.DEV && !!(window as unknown as { __cvShot?: unknown }).__cvShot;
+    if (devShot || fpBodyOff()) fpEye.w = 0;
+    else if (selfBusRide.slot >= 0 || selfRide.slot >= 0) {
+      fpEye.w = selfRide.slot >= 0 || busCamState.firstPerson ? 1 : 0;
+      fpEye.x = camera.position.x;
+      fpEye.y = camera.position.y;
+      fpEye.z = camera.position.z;
+    } else {
+      fpEye.w = t * (1 - ovT) * (1 - fw);
+      fpEye.x = uFpX;
+      fpEye.y = uFpY;
+      fpEye.z = uFpZ;
+      // the near plane: the scene's own in third person and the overview, FP_NEAR once the camera is in at the eye
+      if (baseNear.current === 0) baseNear.current = cam.near;
+      const wantNear = fpEye.w > 0.5 ? FP_NEAR : baseNear.current;
+      if (cam.near !== wantNear) {
+        cam.near = wantNear;
+        cam.updateProjectionMatrix();
+      }
+    }
+    fpEye.side = selfRide.slot >= 0 && selfRide.ride === RIDE.carousel ? CAROUSEL_SIDE : 0;
+    fpEye.camera = camera;
+    fpEye.armed = fpEye.w > 0;
 
     // Publish the live camera for the dev/E2E hook.
     cameraProbe.x = camera.position.x;
