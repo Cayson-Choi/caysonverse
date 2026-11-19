@@ -31,8 +31,8 @@ import { DROP_CROWN_Y } from "@caysonverse/shared/land/dropTowerGeometry";
 
 type K = "plaster" | "concrete" | "deck" | "indigo" | "violet" | "gold" | "cloud" | "glass" | "leather" | "pad" | "white" | "ink" | "steel";
 
-/** Metres per texture tile of each PBR set (the sets' real-world scale: parquet strips, trowelled plaster, poured concrete). */
-const TILES: Partial<Record<K, number>> = { plaster: 1.5, concrete: 2.0, deck: 1.0 };
+/** Metres per texture tile of each PBR set (the sets' real-world scale: WoodFloor051 has ~24 plank rows to a tile, so 3 m makes a plank ~13 cm; trowelled plaster; poured concrete). */
+const TILES: Partial<Record<K, number>> = { plaster: 1.5, concrete: 2.0, deck: 3.0 };
 
 function signTexture(): CanvasTexture {
   const c = document.createElement("canvas");

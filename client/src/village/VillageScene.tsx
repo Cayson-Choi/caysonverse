@@ -286,7 +286,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
       if (target.id.startsWith(RIDE_BOARD_PREFIX)) {
         clearClickTarget();
         startRideAudio(); // inside the press: the browser lets the sound start
-        boardRide(target.id.slice(RIDE_BOARD_PREFIX.length) as "coaster" | "carousel" | "wheel" | "droptower", pose.x, pose.z);
+        boardRide(target.id.slice(RIDE_BOARD_PREFIX.length) as "coaster" | "carousel" | "wheel" | "moonboat" | "droptower", pose.x, pose.z);
         return;
       }
       if (target.id === BUS_RIDE_TARGET_LEAVE) {

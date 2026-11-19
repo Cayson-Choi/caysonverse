@@ -88,6 +88,8 @@ import { resetCarouselCamera, stepCarouselCamera } from "../land/carouselRide";
 import { startCarouselMusic, stopCarouselMusic } from "../land/carouselAudio";
 import { resetWheelCamera, stepWheelCamera } from "../land/wheelRide";
 import { startWheelAudio, stopWheelAudio } from "../land/wheelAudio";
+import { resetMoonBoatCamera, stepMoonBoatCamera } from "../land/moonBoatRide";
+import { startMoonBoatAudio, stopMoonBoatAudio } from "../land/moonBoatAudio";
 import { resetDropCamera, stepDropCamera } from "../land/dropTowerRide";
 import { startDropAudio, stopDropAudio } from "../land/dropTowerAudio";
 import { busCamGoal, busCamState, busSeatGoal, busSeatPreferred, busWalkGoal, riderBusPoint, selfBusRide } from "./busRide";
@@ -1335,11 +1337,13 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
         rideBeforeRef.current = { mode: viewState.mode, fov: persp.fov, near: persp.near };
         if (viewState.mode !== "fp") enterFp(orbit.yaw);
         viewState.fpYaw = 0;
-        viewState.fpPitch = selfRide.ride === 2 ? -0.04 : selfRide.ride === 3 ? 0.12 : selfRide.ride === 5 ? 0.08 : 0.1; // a rider settles looking a little down at the bar (on the carousel: level, over the horse's ears)
+        viewState.fpPitch = selfRide.ride === 2 ? -0.04 : selfRide.ride === 3 ? 0.12 : selfRide.ride === 4 ? -0.12 : selfRide.ride === 5 ? 0.08 : 0.1; // a rider settles looking a little down at the bar (on the carousel: level, over the horse's ears)
         resetRideCamera();
         resetCarouselCamera();
         resetWheelCamera();
+        resetMoonBoatCamera();
         resetDropCamera();
+        if (selfRide.ride === 4) startMoonBoatAudio();
         if (selfRide.ride === 5) startDropAudio();
         if (selfRide.ride === 2) startCarouselMusic();
         if (selfRide.ride === 3) startWheelAudio();
@@ -1347,6 +1351,7 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
         persp.updateProjectionMatrix();
       }
       if (selfRide.ride === 5) stepDropCamera(persp, Math.min(delta, 0.1), viewState.fpYaw, viewState.fpPitch, baseFov.current || rideBeforeRef.current.fov);
+      else if (selfRide.ride === 4) stepMoonBoatCamera(persp, Math.min(delta, 0.1), viewState.fpYaw, viewState.fpPitch, baseFov.current || rideBeforeRef.current.fov);
       else if (selfRide.ride === 3) stepWheelCamera(persp, Math.min(delta, 0.1), viewState.fpYaw, viewState.fpPitch, baseFov.current || rideBeforeRef.current.fov);
       else if (selfRide.ride === 2) stepCarouselCamera(persp, Math.min(delta, 0.1), viewState.fpYaw, viewState.fpPitch, baseFov.current || rideBeforeRef.current.fov);
       else {
@@ -1368,6 +1373,8 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
       stopCarouselMusic();
       resetWheelCamera();
       stopWheelAudio();
+      resetMoonBoatCamera();
+      stopMoonBoatAudio();
       resetDropCamera();
       stopDropAudio();
     }

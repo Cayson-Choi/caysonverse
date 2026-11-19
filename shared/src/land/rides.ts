@@ -7,12 +7,13 @@ import { COASTER_SEATS, coasterAt } from "./coaster";
 import { CAROUSEL_SEATS, carouselAt } from "./carousel";
 import { DROP_SEATS, dropAt, dropCanLeave } from "./dropTower";
 import { WHEEL_RIDE_CYCLES, WHEEL_SEATS, boardingSeatsOfWheel, wheelAt, wheelSeatAtPlatform } from "./wheel";
-import { CAROUSEL_PAD, COASTER_BOARD_REACH_M, COASTER_PAD, DROP_PAD, WHEEL_PAD } from "../village/parkArea";
+import { MOON_BOAT_SEATS, moonBoatAt } from "./moonBoat";
+import { CAROUSEL_PAD, COASTER_BOARD_REACH_M, COASTER_PAD, DROP_PAD, MOON_BOAT_PAD, WHEEL_PAD } from "../village/parkArea";
 
 /** How far (m) past a ride's boarding pad the "board" prompt is offered: the press walks to the pad and boards (client/src/land/rideBoard.ts). */
 export const RIDE_PROMPT_RANGE_M = 45;
 
-export const RIDE = { coaster: 1, carousel: 2, wheel: 3, droptower: 5 } as const;
+export const RIDE = { coaster: 1, carousel: 2, wheel: 3, moonboat: 4, droptower: 5 } as const;
 export type RideKey = keyof typeof RIDE;
 export type RideStatusName = "unloading" | "boarding" | "gate" | "riding";
 
@@ -46,7 +47,7 @@ export const RIDES: readonly RideDef[] = Object.freeze([
   { id: RIDE.coaster, key: "coaster", name: "별똥별 급행", seats: COASTER_SEATS, pad: COASTER_PAD, reach: COASTER_BOARD_REACH_M, statusAt: (t: number): RideStatus => coasterAt(t) },
   { id: RIDE.carousel, key: "carousel", name: "달빛 회전목마", seats: CAROUSEL_SEATS, pad: CAROUSEL_PAD, reach: 6, statusAt: (t: number): RideStatus => carouselAt(t) },
   { id: RIDE.wheel, key: "wheel", name: "하늘 등불 바퀴", seats: WHEEL_SEATS, pad: WHEEL_PAD, reach: 6, statusAt: (t: number): RideStatus => wheelAt(t), rideCycles: WHEEL_RIDE_CYCLES, boardingSeats: boardingSeatsOfWheel, canLeave: wheelSeatAtPlatform },
-  // (id 4 is the moon boat, on its own branch)
+  { id: RIDE.moonboat, key: "moonboat", name: "달배", seats: MOON_BOAT_SEATS, pad: MOON_BOAT_PAD, reach: 6, statusAt: (t: number): RideStatus => moonBoatAt(t) },
   { id: RIDE.droptower, key: "droptower", name: "구름 낙하탑", seats: DROP_SEATS, pad: DROP_PAD, reach: 6, statusAt: (t: number): RideStatus => dropAt(t), canLeave: dropCanLeave },
 ]);
 

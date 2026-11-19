@@ -37,7 +37,7 @@ export interface RemotePlayerRecord {
   busSeat?: number;
   /** The remote's seat on the 별똥별 급행 (`Player.rideSeat`, land/coasterRide.ts): -1 = not riding. A rider is drawn in the car (RemotePlayer). */
   rideSeat?: number;
-  /** Which ride (`Player.rideId`, shared/land/rides.ts RIDE): 1 coaster, 2 carousel, 3 wheel, 5 drop tower; 0 = none or an older server (the coaster). */
+  /** Which ride (`Player.rideId`, shared/land/rides.ts RIDE): 1 coaster, 2 carousel, 3 wheel, 4 moon boat, 5 drop tower; 0 = none or an older server (the coaster). */
   rideId?: number;
   /** The remote's point in the bus's own frame (m ahead of its middle, m towards its doors, the facing's offset: busCabin.ts). */
   busAhead?: number;

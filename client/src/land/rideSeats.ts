@@ -7,6 +7,7 @@ import { SIT_POSE } from "@caysonverse/shared/sitPose";
 import { RIDE } from "@caysonverse/shared/land/rides";
 import { carouselSeatPose, type CarouselSeatPose } from "@caysonverse/shared/land/carousel";
 import { wheelSeatPose, type WheelSeatPose } from "@caysonverse/shared/land/wheel";
+import { moonSeatPose, type MoonSeatPose } from "@caysonverse/shared/land/moonBoat";
 import { dropSeatPose, type DropSeatPose } from "@caysonverse/shared/land/dropTower";
 import { villageClock } from "../village/villageClock";
 import { carSeatPose, coasterNow } from "./coasterRide";
@@ -38,6 +39,16 @@ export function wheelRiderPose(seat: number, nowMs: number, outPos: Vector3, out
   outQuat.premultiply(qz);
 }
 
+const mp: MoonSeatPose = { x: 0, y: 0, z: 0, fy: 0, fz: 1, uy: 1, uz: 0, angle: 0, gload: 1 };
+const axX = new Vector3(1, 0, 0);
+
+/** The moon boat seat's avatar pose: seated on the cushion facing the bow, pitched with the hull (the boat swings along z: a turn about x). */
+export function moonBoatRiderPose(seat: number, nowMs: number, outPos: Vector3, outQuat: Quaternion): void {
+  moonSeatPose(seat, nowMs, mp);
+  outPos.set(mp.x, mp.y - SIT_POSE.contactY * mp.uy + mp.fy * SIT_POSE.hipsBehindRoot, mp.z - SIT_POSE.contactY * mp.uz + mp.fz * SIT_POSE.hipsBehindRoot);
+  outQuat.setFromAxisAngle(axX, -mp.angle);
+}
+
 const dp: DropSeatPose = { x: 0, y: 0, z: 0, fx: 1, fz: 0, face: 0, vy: 0, gload: 1, stage: "idle" };
 
 /** The drop tower seat's avatar pose: hips on the cushion (root 0.397 m ahead of them), facing out over the park, legs dangling. */
@@ -52,6 +63,7 @@ export function dropRiderPose(seat: number, nowMs: number, outPos: Vector3, outQ
 export function rideSeatPose(rideId: number, seat: number, outPos: Vector3, outQuat: Quaternion): void {
   if (rideId === RIDE.carousel) carouselRiderPose(seat, villageClock.liveMs(), outPos, outQuat);
   else if (rideId === RIDE.wheel) wheelRiderPose(seat, villageClock.liveMs(), outPos, outQuat);
+  else if (rideId === RIDE.moonboat) moonBoatRiderPose(seat, villageClock.liveMs(), outPos, outQuat);
   else if (rideId === RIDE.droptower) dropRiderPose(seat, villageClock.liveMs(), outPos, outQuat);
   else carSeatPose(coasterNow().s, seat, outPos, outQuat);
 }

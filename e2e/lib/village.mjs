@@ -33,7 +33,8 @@ export async function act(p) {
 let nickSeq = 0;
 /** Entry screen -> nickname -> 입장하기 -> the village scene is up. Returns what the entry screen showed after the press. */
 export async function joinVillage(p, prefix, time = NOON) {
-  await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(time)}`, { waitUntil: "domcontentloaded" });
+  // a fresh browser context fetches ~600 dev modules: 13-26 s on this machine under load, so the default 30 s is too tight
+  await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(time)}`, { waitUntil: "domcontentloaded", timeout: 120000 });
   await entryReady(p);
   const nick = `${prefix}${++nickSeq}${Math.floor(Math.random() * 90 + 10)}`.slice(0, 10);
   await p.page.locator("input.cv-input").first().fill(nick);
