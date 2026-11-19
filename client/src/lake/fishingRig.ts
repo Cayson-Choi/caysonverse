@@ -360,7 +360,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
           wristAmt = 0;
           rod.root.quaternion.copy(rodQ0);
         } else {
-          const fix = relaxWrist(root, wristAmt, rodHost);
+          const fix = relaxWrist(root, wristAmt, handR);
           if (fix) rod.root.quaternion.copy(rodQ0).premultiply(fix);
         }
       }

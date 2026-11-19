@@ -6,7 +6,7 @@
 export const FISHING_ANIMS_PATH = "/models/lake/fishing_anims.glb";
 
 /** fishing_anims.glb 내용의 sha256 앞 8자리. 모델 URL에 ?v=로 붙인다. */
-export const FISHING_ANIMS_GLB_HASH = "35d6ee8a";
+export const FISHING_ANIMS_GLB_HASH = "8f5b9aa9";
 
 /** 디스크 예산(설계 10장: ≤ 700 KB). */
 export const FISHING_ANIMS_MAX_BYTES = 700 * 1024;
