@@ -118,6 +118,12 @@
     "M_screen": {
       "kind": "screen",
       "note": "the garden-and-sky view behind interior windows: unlit, COLOR_0 is the colour"
+    },
+    "M_garden": {
+      "kind": "garden",
+      "maps": {
+        "albedo": "../garden/ninomaru_garden.ktx2"
+      }
     }
   },
   "pbrSets": [

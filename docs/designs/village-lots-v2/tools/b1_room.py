@@ -1,7 +1,7 @@
 """B1 (lots v2) — walk-in room parts shared by school_room_kit.py and library_room_kit.py (pure python on b1_geom / b1_parts):
 the room box in the interior frame (design 11: x across from the left wall as one comes in, z in from the door wall's inner
 face, y up from the floor), walls with window and door openings seen from inside, a window with its reveal, frame, glazing
-bars, inner sill and a bright garden-and-sky view behind the glass (`M_screen`, emissive), wainscot, skirting, ceiling beams,
+bars, inner sill and the panoramic garden seen through the glass, wainscot, skirting, ceiling beams,
 pendant lamps, and a few furniture kinds.
 """
 import math
@@ -10,7 +10,8 @@ import b1_geom as G
 import b1_parts as P
 from b1_geom import Mesh, S
 
-VIEW = S("M_screen")
+GARDEN = S("M_garden")
+GARDEN_MAP = {"garden": "../garden/ninomaru_garden.ktx2"}
 
 
 def walls(X, Z):
@@ -35,20 +36,10 @@ def box_room(kit, X, Z, H, wall_s, floor_s, ceil_s, holes):
     return W
 
 
-def window(kit, f, uc, sill, w, h, frame_s, sill_s, wall_s, cols=2, rows=3, arch=False, depth=0.35, view_top=None):
-    """A window seen from inside: reveal into the wall, glass, painted frame and bars, the inner sill (projects 5 cm), and the
-    garden view 1.6 m beyond the glass (sky over a hedge line and lawn, vertex colours on M_screen)."""
+def window(kit, f, uc, sill, w, h, frame_s, sill_s, wall_s, cols=2, rows=3, arch=False, depth=0.35):
+    """The outside view is sampled on the glazed aperture along the camera ray."""
     P.sash_window(kit, f, uc, sill, w, h, frame_s, sill_s, wall_s, wall_s, cols=cols, rows=rows, depth=depth, arch=arch,
-                  room=False, glow=None, lights=False, sill_out=0.05)
-    m = kit.S
-    u0, u1 = uc - w / 2 - 0.6, uc + w / 2 + 0.6
-    v0, v1 = sill - 0.6, sill + h + 0.8
-    wv = -depth - 1.6
-    bands = [(v0, (0.42, 0.6, 0.3)), (sill + 0.3, (0.45, 0.66, 0.32)), (sill + 0.75, (0.3, 0.5, 0.26)), (sill + 1.25, (0.62, 0.78, 0.9)), (v1, (0.48, 0.68, 0.92))]
-    for (va, ca), (vb, cb) in zip(bands, bands[1:]):
-        q = [f.p(u0, va, wv), f.p(u1, va, wv), f.p(u1, vb, wv), f.p(u0, vb, wv)]
-        cols4 = [(*ca, 1.0), (*ca, 1.0), (*cb, 1.0), (*cb, 1.0)]
-        m.poly(q, VIEW, cols=cols4)
+                  room=False, glow=None, lights=False, sill_out=0.05, glass=GARDEN)
 
 
 def wainscot(m, f, u0, u1, h, panel_s, rail_s, skip=()):

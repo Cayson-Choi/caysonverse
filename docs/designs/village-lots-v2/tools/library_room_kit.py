@@ -54,6 +54,7 @@ MATS = {
     "LM_library_brass": {"set": "aluminium_brushed", "metal": True, "rough": 0.7},
     "M_glass": {"glass": True},
     "M_screen": {"screen": True},
+    "M_garden": R.GARDEN_MAP,
     "M_painting": {"own": "lot_library_reading_paintings", "note": "public-domain landscapes (Constable, Hobbema, Corot, Ruisdael): SOURCES_lot_library.md"},
     "M_fire": {"fire": True},
 }
@@ -204,20 +205,7 @@ def bay(kit, f, a, b):
                 quad.reverse()
             S_.poly(quad, s)
         gq = [(p[0], 0.55, p[1]), (q[0], 0.55, q[1]), (q[0], 3.2, q[1]), (p[0], 3.2, p[1])]
-        S_.poly(gq, GLASS)
-        # view beyond the glass
-        out = G.mul(inward, -1.6)
-        vq = [G.add((p[0], 0.0, p[1]), out), G.add((q[0], 0.0, q[1]), out), G.add((q[0], 4.0, q[1]), out), G.add((p[0], 4.0, p[1]), out)]
-        if G.dot(G.poly_normal(vq), inward) < 0:
-            vq.reverse()
-        bands = [(0.0, (0.45, 0.66, 0.32)), (0.9, (0.36, 0.56, 0.28)), (1.7, (0.62, 0.78, 0.9)), (4.0, (0.48, 0.68, 0.92))]
-        for (va, ca), (vb, cb) in zip(bands, bands[1:]):
-            qq = [G.add((p[0], va, p[1]), out), G.add((q[0], va, q[1]), out), G.add((q[0], vb, q[1]), out), G.add((p[0], vb, p[1]), out)]
-            cols = [(*ca, 1.0), (*ca, 1.0), (*cb, 1.0), (*cb, 1.0)]
-            if G.dot(G.poly_normal(qq), inward) < 0:
-                qq.reverse()
-                cols = [cols[3], cols[2], cols[1], cols[0]]
-            S_.poly(qq, S("M_screen"), cols=cols)
+        S_.poly(gq, R.GARDEN)
         # frames: transom and mullions (white)
         for v in (0.58, 2.5, 3.18):
             D.member((p[0], v, p[1]), (q[0], v, q[1]), G.prof_box(0.06, 0.06), PAINT)

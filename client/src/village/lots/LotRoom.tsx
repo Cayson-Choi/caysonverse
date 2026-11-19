@@ -39,6 +39,7 @@ import { beginHouseEntry, houseEntryReady, houseEntryState } from "../houseEntry
 import { dayNight } from "../dayNightDriver";
 import { versionedUrl } from "../modelUrl";
 import { lotGltfLoader, loadManifestMaps, disposeLoadedLots } from "./lotsLoader";
+import { gardenWindow } from "./gardenWindow";
 import { applyLotTextures, drawnTris, lotSurfaceMaterial } from "./lotsPrep";
 import { roomBaked } from "./roomBaked";
 import { LotTextureBank, capMips, fetchLotManifest, loadLotOwnMap, manifestPaths, type LotMatSpec } from "./lotTextures";
@@ -634,6 +635,10 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
         m = sm;
       } else if (spec?.kind === "glass" || src.name === "M_glass") {
         m = new MeshStandardMaterial({ name: src.name, color: "#c9d6dc", roughness: 0.05, metalness: 0, transparent: true, opacity: 0.22, depthWrite: false });
+      } else if (spec?.kind === "garden") {
+        const b = gardenWindow(own[src.name]);
+        screens.push(b);
+        m = b;
       } else if (spec?.kind === "screen") {
         const b = new MeshBasicMaterial({ name: src.name, vertexColors: colours, toneMapped: true });
         screens.push(b);
@@ -1043,7 +1048,11 @@ export function LotRoomArea({ area, pose }: { area: string; pose: Pose }) {
     for (const m of loaded.lightpools) m.color.setScalar(0.9 * day * day);
     for (const g of loaded.glass) g.m.emissiveIntensity = g.night + (g.day - g.night) * day;
     colour.setScalar(0.22 + 0.78 * day);
-    for (const m of loaded.screens) m.color.copy(colour);
+    for (const m of loaded.screens) {
+      if (m.name === "M_garden") {
+        m.color.setRGB(0.018 + 0.982 * day, 0.032 + 0.968 * day, 0.071 + 0.929 * day);
+      } else m.color.copy(colour);
+    }
     loaded.glow.opacity = Math.max(0.25, o.lights);
     // the room's lamps: brighter at night (they carry the room then), the fill lower
     const L = ROOM_LIGHTS[loaded.unit];

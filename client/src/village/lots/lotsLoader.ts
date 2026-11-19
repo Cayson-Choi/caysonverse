@@ -141,7 +141,7 @@ export async function loadManifestMaps(
   await Promise.all([
     ...[...sets].map((id) => ((typeof near === "function" ? near(id) : near) ? bank.loadNear(id) : bank.loadFar(id)).catch((e: unknown) => console.error(`[lots] set ${id}`, e))),
     ...Object.entries(specs)
-      .filter(([, s]) => (s.kind === "own" || s.kind === "lightpool") && s.maps?.albedo)
+      .filter(([, s]) => s.maps?.albedo)
       .map(async ([name, s]) => {
         try {
           const t = await loadLotOwnMap(gl, dirOf[name]! + s.maps!.albedo);

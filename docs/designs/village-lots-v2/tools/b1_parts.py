@@ -126,7 +126,7 @@ def arch_spandrels(m, f, uc, w, spring, s, n=10):
 
 def sash_window(kit, f, uc, sill, w, h, paint, stone, wall_s, room_s, cols=2, rows=3, depth=0.22, arch=False, shutters=None,
                 box=None, plant=None, glow="windows", glow_col=WARM, keystone=None, surround=None, room_depth=1.1, sill_out=0.05,
-                lights=True, room=True, fill=None, shutter_gap=0.06):
+                lights=True, room=True, fill=None, shutter_gap=0.06, glass=GLASS):
     """A painted timber window in a wall hole (u = uc +- w/2, v = sill .. sill + h; `arch`: a round head, h includes it):
     reveals and soffit in the wall's material, a frame and glazing bars (cols x rows panes), glass set back `depth`, a stone
     sill, an optional stone surround / keystone, a shallow room behind (plaster walls, ceiling, floor) whose back wall glows at
@@ -167,9 +167,9 @@ def sash_window(kit, f, uc, sill, w, h, paint, stone, wall_s, room_s, cols=2, ro
     if arch:
         pts = G.arch_pts(uc, spring, w, 10)
         outline = [(u0, sill), (u1, sill)] + [(p[0], p[1]) for p in reversed(pts)]
-        f.poly(SH, [(a, b, -depth) for a, b in outline], GLASS)
+        f.poly(SH, [(a, b, -depth) for a, b in outline], glass)
     else:
-        f.quad(SH, u0, u1, sill, top, -depth, GLASS)
+        f.quad(SH, u0, u1, sill, top, -depth, glass)
     # frame + glazing bars (painted), proud of the glass by 4 cm
     fw = 0.075
     wf0, wf1 = -depth - 0.01, -depth + 0.05

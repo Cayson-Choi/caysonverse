@@ -34,3 +34,7 @@
 | pd_hobbema | [Meindert Hobbema - The Alley at Middelharnis - WGA11427.jpg](https://commons.wikimedia.org/wiki/File:Meindert_Hobbema_-_The_Alley_at_Middelharnis_-_WGA11427.jpg) | Meindert Hobbema | Public domain (PD-Art) | 문 벽 위 작은 풍경화 |
 | pd_corot | [Souvenir de Mortefontaine (Camille Corot).jpg](https://commons.wikimedia.org/wiki/File:Souvenir_de_Mortefontaine_(Camille_Corot).jpg) | Jean-Baptiste Camille Corot | Public domain (PD-Art) | 문 벽 위 작은 풍경화 |
 | pd_ruisdael | [De molen bij Wijk bij Duurstede Rijksmuseum SK-C-211.jpeg](https://commons.wikimedia.org/wiki/File:De_molen_bij_Wijk_bij_Duurstede_Rijksmuseum_SK-C-211.jpeg) | Jacob Isaacksz. van Ruisdael | Public domain (PD-Art) | 문 벽 위 작은 풍경화 |
+
+## 교실과 열람실의 창밖 정원
+
+두 방의 창밖은 Greg Zaal의 CC0 전방위 사진 [Ninomaru Teien](https://polyhaven.com/a/ninomaru_teien)을 사용한다. Blender 5.3에 포함된 1K 원본 `forest.exr`의 HDR 명암을 SDR로 변환하고, 1024×512 ETC1S KTX2 한 장에 전체 밉 체인을 넣었다. 세로로 꺾인 돌출창을 포함한 모든 유리면에서 같은 시선 방향으로 이 사진을 읽는다.
