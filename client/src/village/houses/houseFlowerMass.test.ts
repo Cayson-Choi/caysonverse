@@ -46,6 +46,20 @@ describe("the houses' flower masses (street view of the window boxes)", () => {
     geometry.dispose();
   });
 
+  it("carries the drape along the full outer rim of a north–south window box", () => {
+    const { geometry } = flowerMassGeometry([{ kind: "box", x0: -0.3, x1: 0.3, z0: -1.5, z1: 1.5, y: 1, out: [1, 0], plant: "window" }]);
+    const pos = geometry.getAttribute("position");
+    const z: number[] = [];
+    for (let i = 0; i < pos.count; i++) {
+      if (pos.getY(i) >= 1) continue;
+      expect(pos.getX(i)).toBeGreaterThan(0.3);
+      z.push(pos.getZ(i));
+    }
+    expect(Math.min(...z)).toBeLessThan(-1.5);
+    expect(Math.max(...z)).toBeGreaterThan(1.5);
+    geometry.dispose();
+  });
+
   it("keeps the houses' flowers fuller than the village's and grows the mass in where the plants simplify", () => {
     for (const t of ["high", "low"] as const) {
       expect(HOUSE_FLOWER_LOD[t].far[1]).toBeGreaterThan(VEG_TIERS[t].flowers.far[1]);

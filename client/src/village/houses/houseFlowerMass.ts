@@ -128,7 +128,13 @@ export function flowerMassGeometry(beds: readonly BoxBed[]): { geometry: BufferG
       if (kind === "window" && out) {
         // the grid row on the out side
         const jOut = (along === "x" ? out[1] : out[0]) > 0 ? nv : 0;
-        for (let i = 0; i <= nu; i++) ring.push([base + jOut * (nu + 1) + i, i]);
+        // This rim is straight and level. Four spans carry the hanging scallops under
+        // the finer, lumpy crown in either orientation.
+        const spans = Math.min(4, nu);
+        for (let k = 0; k <= spans; k++) {
+          const i = Math.round(k * nu / spans);
+          ring.push([base + jOut * (nu + 1) + i, i]);
+        }
       } else {
         for (let i = 0; i <= nu; i++) ring.push([base + i, 0]);
         for (let j = 1; j <= nv; j++) ring.push([base + j * (nu + 1) + nu, 0]);
