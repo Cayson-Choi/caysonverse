@@ -72,7 +72,7 @@ def local_access(mesh):
 
 
 def dress(mesh, output, lod):
-    from buddha_head import HEAD_X
+    from buddha_head import FACE, HEAD_X, profile
 
     access = local_access(mesh)
     tiles = {key:i for i,key in enumerate(KEYS)}
@@ -175,7 +175,9 @@ def dress(mesh, output, lod):
                     patch[:,:,2] = .83-.73*dome
         x = ((np.arange(w//2)+.5)/(w//2)*2 - 1)*face_limit
         z = chin + (np.arange(h)+.5)/h*(crown-chin)
-        arr[:,w//2:,:3] = face_patch(kind, x[None,:], z[:,None], phone=lod == "phone")
+        jaw_width = np.array([profile(FACE, height)[0] for height in z])
+        arr[:,w//2:,:3] = face_patch(kind, x[None,:], z[:,None], phone=lod == "phone",
+                                      half_width=jaw_width[:,None])
         image = bpy.data.images.new(kind, w, h, alpha=False, float_buffer=False)
         image.colorspace_settings.name = "sRGB" if kind == "color" else "Non-Color"
         image.pixels.foreach_set(arr.ravel())

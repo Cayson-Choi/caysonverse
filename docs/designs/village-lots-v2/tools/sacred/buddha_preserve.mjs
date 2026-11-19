@@ -71,9 +71,17 @@ function partition(document, region) {
   // The newer oval wraps onto the dedicated right-hand pigment island.
   const hasIsland = oval.maxU > .5;
   const selected = new Set();
-  if (region === "oval") {
+  if (region === "oval" || region === "oval-and-scalp") {
     if (!hasIsland) throw new Error("Oval replacement requires a face with a dedicated pigment island");
     selected.add(oval.id);
+    if (region === "oval-and-scalp") {
+      // All curl bands and their folded rim use the hair swatch in the
+      // upper glTF V half. The urna uses the same U columns in the other half.
+      for (const { id, minU, maxU, minV } of components.values()) {
+        if (minU > .25 && maxU < .375 && minV > .5) selected.add(id);
+      }
+      if (selected.size === 1) throw new Error("Missing cast scalp in the hair swatch");
+    }
   } else if (region === "ears") {
     if (!hasIsland) throw new Error("Ear replacement requires the Buddha's current face atlas");
     const sides = new Set();

@@ -57,7 +57,7 @@ def paint_hairline(result, kind, x, z):
     result[region] += (root-result[region])*mask[:, None]
 
 
-def face_patch(kind, x, z, phone=False):
+def face_patch(kind, x, z, phone=False, half_width=None):
     """Return sRGB color or linear ORM/tangent normals, with rows ascending in z."""
     x, z = np.broadcast_arrays(np.asarray(x, dtype=np.float32), np.asarray(z, dtype=np.float32))
     result = np.empty((*x.shape, 3), dtype=np.float32)
@@ -196,6 +196,12 @@ def face_patch(kind, x, z, phone=False):
     lay(.28*spot(.0,1.590,.010,.009), (.81,.348,.018), (1.,.67,.81))
     right_return = np.exp(-((x-.030)/.012)**2-((z-1.590)/.011)**2)
     lay(.36*right_return, (.895,.492,.061), (1.,.68,.81))
+    # Follow the opening around the lateral wall below the rounded wing.
+    # Its outer end is visible just behind the tip in profile.
+    lateral_opening=spot(.0335,1.590,.005,.0038)
+    lay(.12*lateral_opening, (.260,.087,.009), (1.,.68,.65))
+    lateral_ala=spot(.043,1.610,.008,.012)
+    lay(.58*lateral_ala, (.985,.590,.128), (1.,.69,.82))
     lay(.81*spot(.0,1.575,.016,.009), (.600,.222,.013), (1.,.64,.86))
 
     lip_t = np.clip(a/LIP_RADIUS, 0., 1.)
@@ -221,25 +227,22 @@ def face_patch(kind, x, z, phone=False):
     lay(.68*meeting, (.345,.012,.0015), vermilion)
     lay(.72*spot(LIP_RADIUS-.002,1.551,.0046,.0033), (.284,.072,.009), ink)
 
-    # Two teal brush marks swell beside the philtrum and skim the upper
-    # vermilion before curling back in a small dark hook at each corner.
+    # The teal strokes narrow to a fine, rising flick beyond each lip corner.
     whisker_z = (1.5638 + .0045*smooth(.008,.024,a)
-                 - .0156*smooth(.024,.056,a) + .0019*smooth(.052,.060,a))
+                 - .0156*smooth(.024,.053,a) + .0025*smooth(.051,.0565,a))
     load = np.exp(-((a-.024)/.016)**2)
-    width = .0016 + .0037*load
-    whisker = band(whisker_z-width,whisker_z+width,.0022)
-    whisker *= smooth(.007,.018,a)*(1.-smooth(.058,.063,a))
+    taper = smooth(.042,.0565,a)
+    width = .0016 + .0037*load - .0008*taper
+    whisker = band(whisker_z-width,whisker_z+width,.0022-.0014*taper)
+    whisker *= smooth(.007,.018,a)*(1.-smooth(.0545,.0575,a))
     patina = smooth(.011,.023,a)*(1.-smooth(.037,.052,a))
     lay(.88*whisker, (.097,.132,.058), ink)
     lay(.93*patina*whisker, (.151,.308,.133), ink)
-    hook = np.sqrt(((a-.0583)/.0030)**2 + ((z-1.5556)/.0029)**2)
-    hook_ends = smooth(.055,.059,a) + (1.-smooth(.055,.059,a))*smooth(1.5565,1.559,z)
-    lay(.78*np.exp(-((hook-1.)/.81)**2)*hook_ends, (.087,.094,.046), ink)
-    # Two fine side strokes turn toward the smaller centre tuft on the chin.
-    tuft_z = 1.4820 + .0051*smooth(.006,.014,a)
-    tuft = np.exp(-((z-tuft_z)/.0031)**2-((a-.0118)/.0039)**2)
-    tuft += .80*spot(.000,1.479,.0028,.0024)
-    lay(.83*tuft, (.091,.079,.032), ink)
+    # Two short dabs and a fainter, lower centre dab form the shallow chin V.
+    tuft_z = 1.4823 + .0019*smooth(.009,.015,a)
+    tuft = np.exp(-((z-tuft_z)/.0044)**2-((a-.0126)/.0036)**2)
+    tuft += .71*spot(.000,1.4763,.0040,.0035)
+    lay(.87*tuft, (.091,.079,.032), ink)
     # A shallow contact shadow seats the rounded forehead bead.
     lay(.44*spot(.000,1.718,.007,.0050), (.565,.257,.024), (1.,.63,.84))
 
@@ -250,6 +253,11 @@ def face_patch(kind, x, z, phone=False):
         lamp = np.maximum(spot(.0,1.747,.094,.048), spot(.0,1.653,.029,.059))
         result[...,1] += .080*lamp*bare
         result[...,2] += (.94-result[...,2])*.67*lamp*bare
+    if half_width is not None:
+        # The cheek's planar island ends at a narrower section on each step
+        # under the jaw. Burnish its outer edge into the adjoining bare leaf.
+        jaw_rim = smooth(.76,.965,np.abs(scalp_x)/half_width)*(1.-smooth(1.66,1.71,z))
+        lay(jaw_rim, leaf, skin)
     paint_hairline(result, kind, scalp_x, z)
     if color:
         result = np.where(result <= .0031308, 12.92*result, 1.055*result**(1./2.4)-.055)
