@@ -5,6 +5,8 @@ describe("tapping a ride", () => {
   it("knows the rides' footprints", () => {
     expect(rideTapZone(110, -135)).toBe("carousel");
     expect(rideTapZone(205, -140)).toBe("wheel");
+    expect(rideTapZone(-75, -88)).toBe("droptower");
+    expect(rideTapZone(-65, -88)).toBe("droptower"); // its platform
     expect(rideTapZone(2, -14)).toBe("coaster"); // the station apron
     expect(rideTapZone(40, -112)).toBeNull(); // the plaza
   });

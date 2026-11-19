@@ -88,6 +88,8 @@ import { resetCarouselCamera, stepCarouselCamera } from "../land/carouselRide";
 import { startCarouselMusic, stopCarouselMusic } from "../land/carouselAudio";
 import { resetWheelCamera, stepWheelCamera } from "../land/wheelRide";
 import { startWheelAudio, stopWheelAudio } from "../land/wheelAudio";
+import { resetDropCamera, stepDropCamera } from "../land/dropTowerRide";
+import { startDropAudio, stopDropAudio } from "../land/dropTowerAudio";
 import { busCamGoal, busCamState, busSeatGoal, busSeatPreferred, busWalkGoal, riderBusPoint, selfBusRide } from "./busRide";
 import { BUS_SEATS, busPlaceOf, cabinFloorAt, seatBodyPoint } from "@caysonverse/shared/village/busCabin";
 import { busFloorUnderRay, busSeatUnderRay } from "../village/busSeatPick";
@@ -1333,16 +1335,19 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
         rideBeforeRef.current = { mode: viewState.mode, fov: persp.fov, near: persp.near };
         if (viewState.mode !== "fp") enterFp(orbit.yaw);
         viewState.fpYaw = 0;
-        viewState.fpPitch = selfRide.ride === 2 ? -0.04 : selfRide.ride === 3 ? 0.12 : 0.1; // a rider settles looking a little down at the bar (on the carousel: level, over the horse's ears)
+        viewState.fpPitch = selfRide.ride === 2 ? -0.04 : selfRide.ride === 3 ? 0.12 : selfRide.ride === 5 ? 0.08 : 0.1; // a rider settles looking a little down at the bar (on the carousel: level, over the horse's ears)
         resetRideCamera();
         resetCarouselCamera();
         resetWheelCamera();
+        resetDropCamera();
+        if (selfRide.ride === 5) startDropAudio();
         if (selfRide.ride === 2) startCarouselMusic();
         if (selfRide.ride === 3) startWheelAudio();
         persp.near = 0.05;
         persp.updateProjectionMatrix();
       }
-      if (selfRide.ride === 3) stepWheelCamera(persp, Math.min(delta, 0.1), viewState.fpYaw, viewState.fpPitch, baseFov.current || rideBeforeRef.current.fov);
+      if (selfRide.ride === 5) stepDropCamera(persp, Math.min(delta, 0.1), viewState.fpYaw, viewState.fpPitch, baseFov.current || rideBeforeRef.current.fov);
+      else if (selfRide.ride === 3) stepWheelCamera(persp, Math.min(delta, 0.1), viewState.fpYaw, viewState.fpPitch, baseFov.current || rideBeforeRef.current.fov);
       else if (selfRide.ride === 2) stepCarouselCamera(persp, Math.min(delta, 0.1), viewState.fpYaw, viewState.fpPitch, baseFov.current || rideBeforeRef.current.fov);
       else {
         stepRideCamera(persp, Math.min(delta, 0.1), viewState.fpYaw, viewState.fpPitch, baseFov.current || rideBeforeRef.current.fov);
@@ -1363,6 +1368,8 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
       stopCarouselMusic();
       resetWheelCamera();
       stopWheelAudio();
+      resetDropCamera();
+      stopDropAudio();
     }
 
     // Overview looks down from far above; push the fog band out (eased by ovT) so

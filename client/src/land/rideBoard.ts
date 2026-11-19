@@ -7,6 +7,7 @@
 import { RIDES, rideByKey, type RideKey } from "@caysonverse/shared/land/rides";
 import { CAROUSEL_CENTER, CAROUSEL_RADIUS } from "@caysonverse/shared/land/carousel";
 import { WHEEL_SITE } from "@caysonverse/shared/land/wheel";
+import { DROP_SITE } from "@caysonverse/shared/land/dropTower";
 import { PARK_PLATFORM } from "@caysonverse/shared/village/parkArea";
 
 /** A tap's armed board stays armed this long (ms): the walk across the whole park (the coaster from the wheel is 250 m). */
@@ -44,6 +45,8 @@ export function rideTapZone(x: number, z: number): RideKey | null {
   if (Math.hypot(x - CAROUSEL_CENTER.x, z - CAROUSEL_CENTER.z) <= CAROUSEL_RADIUS + 3) return "carousel";
   // the wheel: its frame spans x +-24 about the hub, from the north feet to the south steps and the platform
   if (Math.abs(x - WHEEL_SITE.x) <= 24 && z >= WHEEL_SITE.z - 6 && z <= WHEEL_SITE.z + 12) return "wheel";
+  // the drop tower: its platform and the lawn round its foot (the tower itself is a thin column, so the footprint is the platform plus the walk to the pad)
+  if (x >= DROP_SITE.x - 9 && x <= DROP_SITE.x + 15 && Math.abs(z - DROP_SITE.z) <= 9) return "droptower";
   // the coaster: the station platform and its apron (the boarding pad is at the foot of the platform's north steps)
   const p = PARK_PLATFORM;
   if (x >= p.minX - 4 && x <= p.maxX + 4 && z >= p.minZ - 16 && z <= p.maxZ + 4) return "coaster";
@@ -81,6 +84,8 @@ export function rideForTap(x: number, z: number, ray?: TapRay | null, distance =
     if (py <= 14 && Math.hypot(px - CAROUSEL_CENTER.x, pz - CAROUSEL_CENTER.z) <= CAROUSEL_RADIUS + 1.5) return "carousel";
     // the wheel: a slab 4.4 m thick in z (the rims and spokes) with the A-frames, and its platform
     if (Math.abs(px - WHEEL_SITE.x) <= 23 && pz >= WHEEL_SITE.z - 3.5 && pz <= WHEEL_SITE.z + 12) return "wheel";
+    // the drop tower: the 4 m square column and its ring car along the whole height
+    if (Math.abs(px - DROP_SITE.x) <= 4.5 && Math.abs(pz - DROP_SITE.z) <= 4.5) return "droptower";
   }
   return null;
 }

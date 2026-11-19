@@ -38,6 +38,7 @@ import { CoasterWorld } from "./CoasterWorld";
 import { CarouselWorld } from "./CarouselWorld";
 import { parkReady, setParkReady } from "./parkReady";
 import { WheelWorld } from "./WheelWorld";
+import { DropTowerWorld } from "./DropTowerWorld";
 import { Shops } from "./ParkShops";
 import { ParkMountains, ParkScenery } from "./ParkScenery";
 import { ParkProps } from "./ParkProps";
@@ -639,6 +640,7 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       <CoasterWorld all={all} pine={pine} env={env} />
       <CarouselWorld env={env} all={all} />
       <WheelWorld env={env} all={all} />
+      <DropTowerWorld all={all} />
     </group>
   );
 }
