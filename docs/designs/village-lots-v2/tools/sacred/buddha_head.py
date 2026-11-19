@@ -5,7 +5,7 @@ import bpy
 from mathutils import Vector
 from buddha_ears import make_ears
 from buddha_mesh import mat
-from buddha_pigment import brow_height, eyelid_height
+from buddha_pigment import brow_height, eyelid_height, lip_height
 
 
 def surface(name, vertices, faces, material):
@@ -95,13 +95,12 @@ MIDLINE = [(section_z(v),depth(u)) for v,u in PROFILE_EDGE]
 
 
 def eye_line(x):
-    t=max(0., min(1., (abs(x)-.031)/.099))
+    t=max(0., min(1., (abs(x)-.030)/.104))
     return eyelid_height(t, sin(pi*t))
 
 
 def lip_line(x):
-    t=min(1., abs(x)/.0435)
-    return 1.553 + .0025*t*t - .00115*exp(-(t/.23)**2)
+    return lip_height(min(1., abs(x)/.0435))
 
 
 def relief(x,z):
@@ -109,19 +108,32 @@ def relief(x,z):
     def paired(offset,height,width,radius):
         return (exp(-((x-offset)/width)**2)+exp(-((x+offset)/width)**2))*exp(-((z-height)/radius)**2)
 
-    t=max(0.,min(1.,(a-.031)/.099))
+    t=max(0.,min(1.,(a-.030)/.104))
     arc=sin(pi*t)
     lid=eye_line(x)
-    fold=lid+.006+.015*arc
-    brow=brow_height(t,arc)
-    socket=arc*(.008*exp(-((z-brow)/.016)**2)-.006*exp(-((z-brow+.014)/.015)**2))
-    lids=arc*(.012*exp(-((z-lid-.008)/.013)**2)-.002*exp(-((z-fold)/.005)**2)
-              +.003*exp(-((z-lid+.009)/.009)**2))
-    return (socket+lids + .015*paired(.089,1.621,.053,.057)
-            + .008*paired(.088,1.571,.058,.051)
-            + .005*paired(.111,1.690,.039,.023)
-            + .024*paired(.025,1.604,.012,.017) - .009*paired(.020,1.590,.0065,.0065)
-            + .004*paired(.009,1.569,.008,.013))
+    brow_t=max(0.,min(1.,(a-.030)/.103))
+    brow_arc=sin(pi*brow_t)
+    brow=brow_height(brow_t,brow_arc)
+    # A continuous padded lid under the arc of the brow. The fold is a change
+    # in curvature and the lash sits over a softly turned lower lid.
+    brow_plane=brow_arc*(.0065*exp(-((z-brow)/.019)**2)
+                         - .0017*exp(-((z-brow+.016)/.014)**2))
+    dome=lid+.008+.007*arc
+    lids=arc*(.021*exp(-((z-dome)/.020)**2)
+              + .004*exp(-((z-lid+.009)/.012)**2))
+    cheeks=(.019*paired(.083,1.625,.055,.058)
+            + .010*paired(.079,1.565,.060,.059))
+    # The wing descends into the underside of the tip. Its shallow return
+    # sits below the widest part so the nostrils recede in a frontal view.
+    wings=(.013*paired(.021,1.596,.013,.019)
+           + .009*paired(.023,1.603,.0085,.011))
+    seam=lip_line(x)
+    mouth=(.0030*paired(.018,seam+.005,.019,.0058)
+           + .0039*paired(.014,seam-.006,.022,.0068)
+           - .0013*paired(.044,seam,.009,.0075))
+    return (brow_plane + lids + cheeks + wings + mouth
+            + .003*paired(.009,1.571,.009,.013)
+            + .004*paired(.038,1.485,.035,.026))
 
 
 def fy(x,z):
@@ -131,13 +143,41 @@ def fy(x,z):
     bulb=exp(-((z-1.607)/.018)**2)
     muzzle=1/(1+exp(min(80.,(z-1.576)/.0035)))
     chin=1/(1+exp(min(80.,(z-1.517)/.010)))
-    spread=.016 + .005*bulb + .005*exp(-((z-1.70)/.034)**2) + .022*muzzle + .047*chin
-    # The columella tapers between two shallow, separate narial pockets.
-    spread -= .0078*exp(-((z-1.584)/.012)**2)
-    # A round section at the bulb becomes a narrow dorsal ridge near the eyes.
-    ridge=(front-outline)*exp(-(abs(x)/spread)**(2+.38*bulb))
+    spread=.0165 + .0025*bulb + .007*exp(-((z-1.70)/.040)**2) + .022*muzzle + .047*chin
+    # Ease the cross section continuously from the bridge to the rounded tip
+    # and over the columella, preserving the measured midline at every height.
+    ridge=(front-outline)*exp(-(abs(x)/spread)**(2+.85*bulb))
     center=.5*(front+back)
-    return center-(center-front)*(1-q*q)**.50-(ridge+relief(x,z)-relief(0,z))*(1-q*q)**.65
+    # Constrain only the midline to the measured sagittal profile. Spreading
+    # the lip's correction across a whole section cuts a shelf into both cheeks.
+    axial_correction=relief(0,z)*exp(-(x/.023)**2)
+    return center-(center-front)*(1-q*q)**.50-(ridge+relief(x,z)-axial_correction)*(1-q*q)**.65
+
+
+def soften_face_normals(mesh):
+    # Both LODs shade from the same continuous sculpt. Decimation leaves large
+    # triangles on the cheeks, whose averaged triangle normals otherwise imprint
+    # angular transitions into the lacquer. Ease into the mesh normals at the jaw.
+    normals=[]
+    radius=.005
+    for vertex in mesh.vertices:
+        x,y,z=vertex.co
+        width,front,back=profile(SKULL,z)
+        weight=max(0.,min(1.,(width-abs(x)-.009)/.022,(z-1.451)/.028))
+        if y>=(front+back)*.5 or not weight:
+            normals.append((0.,0.,0.))
+            continue
+        dx=(fy(x+radius,z)-fy(x-radius,z))/(2*radius)
+        dz=(fy(x,z+radius)-fy(x,z-radius))/(2*radius)
+        # Gently round the steep normals at the sides and underside of the nose,
+        # much as the broad bevel of the gilded ground rounds the edge of the cast.
+        nose=exp(-(x/.039)**4-((z-1.614)/.054)**4)
+        bulb=exp(-(x/.031)**4-((z-1.599)/.020)**4)
+        lacquer=Vector((dx*(1-.24*nose-.12*bulb),-1.,dz*(1-.35*nose-.12*bulb))).normalized()
+        weight=weight*weight*(3-2*weight)
+        normals.append(vertex.normal.lerp(lacquer,weight).normalized())
+    mesh.normals_split_custom_set_from_vertices(normals)
+
 
 def make_face(phone):
     front=([0,.065,.132,.20,.285,.42,.57,.74,.94,1.18,pi/2] if phone else
@@ -192,6 +232,7 @@ def make_face(phone):
     simplify.ratio=min(1.,(1210 if phone else 3860)/total)
     simplify.use_collapse_triangulate=True
     bpy.ops.object.modifier_apply(modifier=simplify.name)
+    soften_face_normals(obj.data)
 
 
 def bead(name,center,radii,material,n=12,rings=5):

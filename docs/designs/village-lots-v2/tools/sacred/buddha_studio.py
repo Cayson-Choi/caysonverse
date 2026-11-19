@@ -3,6 +3,7 @@
 Render the exported GLB in the fixed reference coordinate system. With --scene
 save the editable model, cameras and two photographic alignment planes outside
 the repository. First run buddha_measure.mjs prepare to create the calibration.
+Pass portrait as the only view for a soft frontal light and the registered face crop.
 """
 import json
 from pathlib import Path
@@ -55,7 +56,7 @@ def load_model(model, output):
     bpy.ops.import_scene.gltf(filepath=str(local/"model.gltf"), import_ktx_texture=False)
 
 
-def studio(scene):
+def render_settings(scene):
     scene.render.engine = "CYCLES"
     device_prefs = bpy.context.preferences.addons["cycles"].preferences
     for backend in ("OPTIX","CUDA"):
@@ -79,6 +80,18 @@ def studio(scene):
     scene.view_settings.view_transform = "AgX"
     scene.view_settings.look = "AgX - Medium High Contrast"
     scene.view_settings.exposure = -.20
+
+
+def softbox(scene, name, pos, target, width, height, power):
+    light = bpy.data.lights.new(name, "AREA")
+    light.energy, light.shape, light.size, light.size_y = power, "RECTANGLE", width, height
+    obj = bpy.data.objects.new(name, light)
+    scene.collection.objects.link(obj)
+    obj.location = pos
+    obj.rotation_euler = (Vector(target)-obj.location).to_track_quat("-Z","Y").to_euler()
+
+
+def studio(scene):
     scene.world = bpy.data.worlds.new("Softbox studio")
     scene.world.use_nodes = True
     nodes = scene.world.node_tree
@@ -96,12 +109,7 @@ def studio(scene):
         ("Key",(-2,-2.7,3.7),2.4,3,175), ("Rim",(2.1,-.8,2.6),.58,2.5,105),
         ("Top",(.4,.9,3.2),1.8,1.5,180), ("Front",(0,-2.3,.42),1.9,.62,18),
         ("Back",(-2,1.7,1.25),1.3,2.7,160), ("Under",(0,-.8,-2.1),2,1.1,100)]:
-        light = bpy.data.lights.new(name, "AREA")
-        light.energy, light.shape, light.size, light.size_y = power, "RECTANGLE", width, height
-        obj = bpy.data.objects.new(name, light)
-        scene.collection.objects.link(obj)
-        obj.location = pos
-        obj.rotation_euler = (Vector((0,0,.95))-obj.location).to_track_quat("-Z","Y").to_euler()
+        softbox(scene,name,pos,(0,0,.95),width,height,power)
 
 
 def camera(scene, name, outward, target, span):
@@ -113,6 +121,33 @@ def camera(scene, name, outward, target, span):
     obj.location = Vector(target)+direction*5
     obj.rotation_euler = (-direction).to_track_quat("-Z","Y").to_euler()
     return obj
+
+
+def portrait(scene, reg, output):
+    # The owner's front crop covers (130,16) through (255,178) on the
+    # registered panel. Keep the same sight line and magnification for every LOD.
+    left, top, width, height = 130, 16, 125, 162
+    p = reg["pixelsPerMetre"]
+    direction = Vector((0,-1,reg["pitchTangent"])).normalized()
+    right = Vector((1,0,0))
+    up = direction.cross(right)
+    center = (right*(left+width/2-reg["front"]["originX"])
+              + up*(reg["groundRow"]-top-height/2))/p
+    scene.camera = camera(scene,"Portrait",direction,center,height/p)
+    scene.world = bpy.data.worlds.new("Neutral photographic fill")
+    scene.world.use_nodes = True
+    bg = next(n for n in scene.world.node_tree.nodes if n.type == "BACKGROUND")
+    bg.inputs["Color"].default_value = (1.,.84,.78,1)
+    bg.inputs["Strength"].default_value = 1.02
+    softbox(scene,"Upper frontal silk",(-.16,-1.48,2.71),(0,0,1.67),2.80,2.20,60)
+    softbox(scene,"Reflected fill",(.24,-1.52,1.40),(0,0,1.62),2.50,1.90,11)
+    scene.view_settings.view_transform = "Standard"
+    scene.view_settings.look = "None"
+    scene.view_settings.exposure = -.45
+    scene.cycles.samples = 48
+    scene.render.resolution_x,scene.render.resolution_y = 4*width,4*height
+    scene.render.filepath = str(output/"portrait.png")
+    bpy.ops.render.render(write_still=True)
 
 
 def photo_plane(scene, name, camera_obj, width, height, image, registration):
@@ -156,8 +191,12 @@ def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     load_model(model,output)
     scene = bpy.context.scene
-    studio(scene)
+    render_settings(scene)
     reg = json.loads((refs/"calibration.json").read_text(encoding="utf-8"))
+    if options == ["portrait"]:
+        portrait(scene,reg,output)
+        return
+    studio(scene)
     p, t = reg["pixelsPerMetre"], reg["pitchTangent"]
     w, h = reg["width"], reg["height"]
     views = {}

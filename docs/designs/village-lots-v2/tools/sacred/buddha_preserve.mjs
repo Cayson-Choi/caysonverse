@@ -56,10 +56,11 @@ function partition(document, region) {
     component.minV = Math.min(component.minV, uv[2*i+1]);
   }
   // The oval spans the head from the underside of the chin to beneath the
-  // curls. Ears and separate curls only occupy one side or their own height.
-  const ovals = [...components.values()].filter(({ min, max }) =>
+  // curls. The registered sculpt has a shallower nasal projection than the
+  // legacy oval and can be recognized by its dedicated frontal pigment island.
+  const ovals = [...components.values()].filter(({ min, max, maxU }) =>
     min[0] < -.14 && max[0] > .14 && min[1] > 1.41 && min[1] < 1.47 &&
-    max[1] > 1.77 && max[1] < 1.915 && min[2] < -.11 && max[2] > .16);
+    max[1] > 1.77 && max[1] < 1.96 && (maxU > .5 || (min[2] < -.11 && max[2] > .16)));
   if (ovals.length !== 1) throw new Error("Cannot locate the seated Buddha's facial oval");
   const oval = ovals[0];
   // On the legacy mesh the oval uses only the skin swatch (U < 1/2).
@@ -87,8 +88,9 @@ function partition(document, region) {
       // Among the components on the front of the oval, only the urna and the
       // old pigment strokes use malachite, vermilion, pearl or crease swatches.
       const tile = Math.floor(uv[2*sample]*paletteColumns) + 4*Math.floor((1-uv[2*sample+1])*2);
+      const frontDepth = tile === 6 ? 0 : .07; // The pearl sits on the forehead, behind the lips.
       if (min[0] > -.145 && max[0] < .145 && min[1] > 1.45 && max[1] < 1.775 &&
-          min[2] > .07 && [3,4,6,7].includes(tile)) selected.add(id);
+          min[2] > frontDepth && [3,4,6,7].includes(tile)) selected.add(id);
     }
     if (selected.size < 2) throw new Error("Cannot locate the Buddha's forehead jewel");
   }

@@ -71,40 +71,6 @@ def local_access(mesh):
     return access
 
 
-def face_visibility(xs, zs):
-    """Skylight reaching the sculpt, sampled on the frontal pigment island."""
-    from buddha_head import SKULL, fy, profile
-
-    # In the hall the face receives a uniform fill. The gilding underpaint
-    # carries the soft contact shadows of the actual brow, lids and nostrils.
-    step = .0025
-    x = np.arange(-.18, .1801, step)
-    z = np.arange(1.420, 1.8201, step)
-    height = np.array([[-fy(i,j) for i in x] for j in z])
-    margin = 16
-    padded = np.pad(height, margin, mode="edge")
-    blocked = np.zeros_like(height)
-    for dx, dz, weight in ((0,1,.44), (-1,1,.17), (1,1,.17),
-                           (-1,0,.09), (1,0,.09), (0,-1,.04)):
-        horizon = np.zeros_like(height)
-        for n in (1,2,4,7,11,margin):
-            row, col = margin+n*dz, margin+n*dx
-            neighbor = padded[row:row+len(z), col:col+len(x)]
-            slope = (neighbor-height)/(n*step*math.hypot(dx,dz))
-            np.maximum(horizon, slope, out=horizon)
-        blocked += weight*np.arctan(horizon)*(2/math.pi)
-    # The side rolls into the original gilt at the ear. Keep the planar
-    # island's cut edge invisible, even at the narrowest part of the jaw.
-    width = np.array([profile(SKULL,j)[0] for j in z])[:,None]
-    fade = np.clip((width-np.abs(x))/.030, 0, 1)
-    # Reflected light from the gilt upper lip reaches the central columella.
-    # Leave the two lateral nostril recesses shaded independently.
-    bounce = .72*np.exp(-(x[None,:]/.010)**2-((z[:,None]-1.587)/.012)**2)
-    visibility = 1-.69*blocked*(1-bounce)*fade**2*(3-2*fade)
-    rows = np.array([np.interp(xs,x,row) for row in visibility])
-    return np.array([np.interp(zs,z,col) for col in rows.T]).T
-
-
 def dress(mesh, output, lod):
     from buddha_head import HEAD_X
 
@@ -176,13 +142,7 @@ def dress(mesh, output, lod):
                 patch[:,:,2] = 1
         x = ((np.arange(w//2)+.5)/(w//2)*2 - 1)*face_limit
         z = chin + (np.arange(h)+.5)/h*(crown-chin)
-        face = face_patch(kind, x[None,:], z[:,None])
-        if kind == "color":
-            # Apply visibility in linear light, then return to sRGB storage.
-            light = face_visibility(x,z)[:,:,None]
-            linear = np.where(face <= .04045, face/12.92, ((face+.055)/1.055)**2.4)*light
-            face = np.where(linear <= .0031308, 12.92*linear, 1.055*linear**(1/2.4)-.055)
-        arr[:,w//2:,:3] = face
+        arr[:,w//2:,:3] = face_patch(kind, x[None,:], z[:,None], phone=lod == "phone")
         image = bpy.data.images.new(kind, w, h, alpha=False, float_buffer=False)
         image.colorspace_settings.name = "sRGB" if kind == "color" else "Non-Color"
         image.pixels.foreach_set(arr.ravel())
