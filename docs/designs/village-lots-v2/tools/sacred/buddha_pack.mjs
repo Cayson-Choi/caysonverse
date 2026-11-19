@@ -145,7 +145,8 @@ for (const lod of ["pc", "phone"]) {
   // The historical ear-only workflow also accepts casts that predate the
   // photographic finish, and promises to preserve their original textures.
   if (!keepPaint || statue.doc.images.some(image => image.name === lod+"-photographic-fill")) {
-    await dressBuddhaLeaf(statue, lod, path.join(work,lod+"-color.png"), replacements, keepPaint);
+    const priorFinish = keepPaint ? readGlb(path.join(seedDirectory, name + ".glb")) : null;
+    await dressBuddhaLeaf(statue, lod, path.join(work,lod+"-color.png"), replacements, priorFinish);
   }
   packed.set(path.join(destination, name + ".glb"), writeSpans(statue, replacements));
 }
