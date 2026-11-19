@@ -405,150 +405,101 @@
   white-space: nowrap;
 }
 
-/* ---- the big fish's fight (LakeFight.tsx): the command in big letters, the line tension and the distance ---- */
-.cv-lake-btn.tone-release {
-  background: #2c6fc9;
+/* ---- the big fish's fight: the big button alone guides it (owner 2026-11-19: no panel over the view) ---- */
+.cv-lake-btn.tone-hold {
+  background: conic-gradient(#ffc233 var(--cv-lake-ring, 0%), #8a4b12 0);
   touch-action: none;
 }
-.cv-fight {
-  position: fixed;
-  left: 50%;
-  top: 17%;
-  transform: translateX(-50%);
-  z-index: 25;
-  width: min(92vw, 460px);
-  padding: 10px 14px 12px;
-  border-radius: 20px;
-  text-align: center;
-  color: #fff;
-  background: rgba(20, 30, 28, 0.62);
-  border: 3px solid rgba(255, 255, 255, 0.8);
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4);
-  pointer-events: none;
-  user-select: none;
-  -webkit-user-select: none;
+.cv-lake-btn.tone-release {
+  background: conic-gradient(#7cc4ff var(--cv-lake-ring, 0%), #17458f 0);
+  touch-action: none;
 }
-.cv-fight.is-pull {
-  border-color: #ffb02e;
+.cv-lake-btn.is-fight {
+  border-color: #fff;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25), 0 4px 16px rgba(0, 0, 0, 0.4);
 }
-.cv-fight.is-run {
-  border-color: #5aa8ff;
+.cv-lake-btn.is-fight.tone-hold {
+  box-shadow: 0 0 0 4px rgba(255, 194, 51, 0.55), 0 4px 16px rgba(0, 0, 0, 0.4);
 }
-.cv-fight-cmd {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  font-size: clamp(34px, 9vw, 52px);
+.cv-lake-btn.is-fight.tone-release {
+  box-shadow: 0 0 0 4px rgba(124, 196, 255, 0.6), 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.cv-lake-btn.is-fight .cv-lake-icon {
+  font-size: 1.5em;
   font-weight: 900;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
 }
-.cv-fight.is-pull .cv-fight-cmd {
-  color: #ffd070;
+.cv-lake-btn.is-fight .cv-lake-text {
+  font-size: 1.1em;
 }
-.cv-fight.is-run .cv-fight-cmd {
-  color: #9fcdff;
-}
-.cv-fight-arrow {
-  display: inline-block;
-  animation: cv-fight-bob 0.55s ease-in-out infinite alternate;
-}
-.cv-fight.is-run .cv-fight-arrow {
-  animation-name: cv-fight-bob-down;
-}
-.cv-fight.is-grace .cv-fight-cmd {
-  opacity: 0.8;
-}
-.cv-fight-hint {
-  margin-top: 4px;
-  word-break: keep-all;
-  font-size: clamp(13px, 3.6vw, 16px);
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.92);
-}
-.cv-fight-meters {
-  display: grid;
-  gap: 6px;
-  margin-top: 8px;
-}
-.cv-fight-meter {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.cv-fight-label {
-  width: 2.2em;
-  font-size: 13px;
-  font-weight: 800;
-  text-align: right;
-}
-.cv-fight-bar {
-  position: relative;
-  flex: 1;
-  height: 14px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.22);
-  border-radius: 8px;
-}
-.cv-fight-bar > i {
+/* the line's tension: a thin bar INSIDE the button along its bottom edge (green -> yellow -> red) */
+.cv-lake-btn.is-fight::after {
+  content: "";
   position: absolute;
-  inset: 0 auto 0 0;
-  display: block;
-  width: 0;
-  background: #7bd88f;
-  border-radius: 8px;
-  transition: width 0.15s linear, background 0.2s ease;
+  left: 16%;
+  right: 16%;
+  bottom: 6px;
+  height: 6px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #7bd88f var(--cv-fight-tension, 0%), rgba(0, 0, 0, 0.38) 0);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
 }
-.cv-fight-meter.tension.is-tight .cv-fight-bar > i {
-  background: #ffd23f;
+.cv-lake-btn.is-fight.tension-tight::after {
+  background: linear-gradient(90deg, #ffd23f var(--cv-fight-tension, 0%), rgba(0, 0, 0, 0.38) 0);
 }
-.cv-fight-meter.tension.is-danger .cv-fight-bar > i {
-  background: #ff4b3e;
+.cv-lake-btn.is-fight.tension-danger::after {
+  background: linear-gradient(90deg, #ff4b3e var(--cv-fight-tension, 0%), rgba(0, 0, 0, 0.38) 0);
 }
-.cv-fight-meter.distance .cv-fight-bar > i {
-  background: #5aa8ff;
+.cv-lake-btn.is-fight.sw-0 {
+  animation: cv-fight-pulse-a 0.38s ease-out 1;
 }
-.cv-fight.is-danger {
-  animation: cv-fight-shake 0.18s linear infinite;
-  border-color: #ff4b3e;
+.cv-lake-btn.is-fight.sw-1 {
+  animation: cv-fight-pulse-b 0.38s ease-out 1;
 }
-@keyframes cv-fight-bob {
-  from {
-    transform: translateY(2px);
+.cv-lake-btn.is-fight.tension-danger {
+  animation: cv-fight-shake 0.16s linear infinite;
+}
+@keyframes cv-fight-pulse-a {
+  0% {
+    transform: scale(1.22);
   }
-  to {
-    transform: translateY(-6px);
+  100% {
+    transform: scale(1);
   }
 }
-@keyframes cv-fight-bob-down {
-  from {
-    transform: translateY(-4px);
+@keyframes cv-fight-pulse-b {
+  0% {
+    transform: scale(1.22);
   }
-  to {
-    transform: translateY(4px);
+  100% {
+    transform: scale(1);
   }
 }
 @keyframes cv-fight-shake {
   0% {
-    transform: translateX(-50%) translateX(-2px);
+    transform: translateX(-3px);
   }
   50% {
-    transform: translateX(-50%) translateX(2px);
+    transform: translateX(3px);
   }
   100% {
-    transform: translateX(-50%) translateX(-2px);
+    transform: translateX(-3px);
   }
 }
-@media (max-width: 480px) {
-  .cv-fight {
-    /* under the HUD's left column (chat, dex, telescope) and the top buttons */
-    top: 25%;
-    width: min(94vw, 460px);
-    padding: 6px 10px 8px;
-  }
-  .cv-fight-cmd {
-    font-size: clamp(30px, 8.5vw, 44px);
-  }
+/* the first fight's one small line above the button */
+.cv-lake-btnhint {
+  position: fixed;
+  right: 16px;
+  bottom: calc(24px + var(--cv-pc-emoji-h, 40px) + 8px + 56px + 8px);
+  z-index: 26;
+  max-width: min(78vw, 340px);
+  padding: 5px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: right;
+  word-break: keep-all;
+  color: #fff;
+  background: rgba(20, 30, 28, 0.7);
+  border-radius: 10px;
+  pointer-events: none;
 }

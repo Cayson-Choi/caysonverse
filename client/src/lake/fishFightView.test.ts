@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FIGHT, fightSchedule } from "@caysonverse/shared/village/fishFight";
 import { fishSeed } from "@caysonverse/shared/village/fishing";
 import { FISH_PHASE, emptyFishView } from "./lakeProtocol";
-import { fightHint, fightPromptOf, fightWords, reelDistance, reelTension, tensionLevel } from "./fishFightView";
+import { FIGHT_HINT, fightPromptOf, fightWords, reelDistance, reelTension, tensionLevel } from "./fishFightView";
 import { lakeButton, lakeCaption, type LakeContext } from "./lakeHudModel";
 
 const view = (patch: object = {}) => ({ ...emptyFishView(), rod: 1, spot: 4, phase: FISH_PHASE.fighting, seq: 3, kind: 6, cm: 60, at: 1000, reel: 0, ...patch });
@@ -49,13 +49,9 @@ describe("the fight prompt", () => {
     expect(lakeCaption(ctx("pull"), false)).toBe(""); // the prompt (LakeFight) speaks, not the caption
   });
 
-  it("the hint: the first fight gets the whole rule in one line; later, what to do now; a warning near the snap", () => {
-    const p = fightPromptOf(view(), 100)!;
-    expect(fightHint(p, false, true)).toContain("꾹 누르면");
-    expect(fightHint(p, false, true)).toContain("시키는 대로");
-    expect(fightHint(p, true, true)).toContain("버튼을");
-    expect(fightHint({ ...p, kind: "run", tension: 0.9 }, false, false)).toContain("지금 놓아요");
-    expect(fightHint({ ...p, kind: "pull", tension: 0.1 }, false, false)).toContain("당겨요");
+  it("the first fight gets one small line above the button; the words are the button's", () => {
+    expect(FIGHT_HINT).toContain("시키는 대로");
+    expect(FIGHT_HINT.length).toBeLessThan(40);
   });
 
   it("a lost fight says why", () => {
