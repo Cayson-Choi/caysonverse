@@ -1242,7 +1242,7 @@ export function buildVillageGeometry(
   /** The finished houses' colliders (housesGeometry.ts `houseColliders`); absent: the twenty rooms are empty (walls only). */
   houses?: GeneratedColliders,
   /** The lot buildings' boxes (villageLots.ts `lotGeometryColliders`, L5): only lots whose model holds them; absent: none. */
-  lots?: GeneratedColliders,
+  lots?: GeneratedColliders & { hurdles?: readonly CameraBox[] },
 ): MapGeometry {
   const village: GeneratedColliders =
     "obstacles" in colliders
@@ -1281,6 +1281,7 @@ export function buildVillageGeometry(
       ...(lots?.cameraBoxes ?? []),
       ...lotRoomColliders().cameraBoxes,
     ],
+    lots?.hurdles ?? [], // low things the camera rises over (the temple's wall, the fountains: villageLots.ts LOT_HURDLES)
   );
 }
 

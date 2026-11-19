@@ -14,7 +14,7 @@
  * Seat ids: this file adds NONE to the village's seat table (docs/designs/caysonland/DESIGN.md section 2: 400+ is reserved, rides use rideSeat).
  */
 import { LOT_DOOR_REACH_M, lotDoorPoint, villageLot } from "./villageLots";
-import type { AABB } from "../collision";
+import type { AABB, CameraBox } from "../collision";
 import { shopWindows, WINDOW_BOX } from "./parkShopWindowLayout";
 import type { Bounds, MapGeometry } from "../school/geometry";
 import { makeGeometry } from "../school/geometry";
@@ -271,4 +271,10 @@ function buildSolids(): AABB[] {
 }
 export const PARK_SOLIDS: readonly AABB[] = Object.freeze(buildSolids());
 
-export const parkGeometry: MapGeometry = makeGeometry("park", PARK_BOUNDS, [], PARK_SOLIDS);
+/** The star plaza's low solids the camera rises over (QA 2026-11-20): the fountain's basin (its bowl hides an avatar's lower body) and the stone troughs (0.84 m). */
+export const PARK_HURDLES: readonly CameraBox[] = Object.freeze([
+  { minX: PARK_PLAZA.x - PARK_PLAZA.fountainHalf, maxX: PARK_PLAZA.x + PARK_PLAZA.fountainHalf, minZ: PARK_PLAZA.z - PARK_PLAZA.fountainHalf, maxZ: PARK_PLAZA.z + PARK_PLAZA.fountainHalf, height: 1.1 },
+  ...PARK_TROUGHS.map((t) => ({ minX: t.x0, maxX: t.x1, minZ: t.z0, maxZ: t.z1, height: t.y })),
+]);
+
+export const parkGeometry: MapGeometry = makeGeometry("park", PARK_BOUNDS, [], PARK_SOLIDS, [], PARK_HURDLES);

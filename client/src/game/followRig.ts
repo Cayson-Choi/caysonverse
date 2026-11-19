@@ -36,7 +36,7 @@ import {
   type CameraLimit,
   type Vec3,
 } from "./indoorCamera";
-import { ARM_FREE, armBoxes, armHeightScaleAt, armLookLiftAt, cameraPad, indoorArmShape, segmentHitFraction, springArmDistance, stepArmLimit } from "./cameraCollision";
+import { ARM_FREE, armBoxes, armHeightScaleAt, armLookLiftAt, cameraPad, hurdleLift, indoorArmShape, segmentHitFraction, springArmDistance, stepArmLimit, stepHurdleLift } from "./cameraCollision";
 import { CENTER_CEILING_GAP, centerLive, createShoulderPose, portraitWeight, shoulderPose, shoulderTarget, stepShoulder, stepShoulderCenter, stepShoulderSide } from "./cameraShoulder";
 import { getActiveMap } from "./activeMap";
 import { HUNG, cameraSolids } from "./cameraSolids";
@@ -64,6 +64,8 @@ export interface FollowRig {
   shoulderCenter: number;
   /** The clear length of the line from the head through the place's solid model (cameraSolids.ts), eased like the arm (m). */
   solidLimit: number;
+  /** How far (m) the camera is raised over a low solid between it and the avatar (cameraCollision.ts hurdleLift), eased. */
+  hurdleLift: number;
 }
 
 /** One frame's third-person camera spot. */
@@ -96,6 +98,7 @@ export function createFollowRig(orbit: Readonly<Orbit>): FollowRig {
     shoulderSideEase: 0,
     shoulderCenter: 0,
     solidLimit: ARM_FREE,
+    hurdleLift: 0,
   };
 }
 
@@ -123,6 +126,7 @@ export function noteAreaLimit(rig: FollowRig, orbit: Readonly<Orbit>, areaLimit:
   rig.shoulderSideEase = 0;
   rig.shoulderCenter = 0;
   rig.solidLimit = ARM_FREE;
+  rig.hurdleLift = 0;
   return true;
 }
 
@@ -285,6 +289,12 @@ export function stepFollowRig(
     if (tpY > cap) tpY = Math.max(head, cap);
   }
   rig.solidLimit = ARM_FREE;
+
+  // Over the low things (a fountain's bowl, a garden wall): outdoors, with no ceiling in play, the lens rises until the line to the
+  // body clears them (cameraCollision.ts hurdleLift), eased, never written to the player's orbit.
+  const lifting = armActive && engage === 0 && !indoorArmAt(map, limitNow);
+  rig.hurdleLift = stepHurdleLift(rig.hurdleLift, lifting ? hurdleLift(x, z, lift, tpX, tpY, tpZ) : 0, dt);
+  if (rig.hurdleLift > 0) tpY += rig.hurdleLift;
 
   // The last word: never inside a wall's own box. A thin partition's end beside a doorway (12 cm, 집 실내 G house 2 upstairs) could take
   // the shoulder's side leg past the padded corner and leave the lens in the board: pulled back along the head's line to just before it.

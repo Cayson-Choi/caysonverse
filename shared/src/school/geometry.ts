@@ -27,6 +27,12 @@ export interface MapGeometry {
   obstacles: readonly AABB[];
   /** The boxes the third-person camera must not see through: the walls, and the props taller than the camera can look over (each states its `height`). */
   cameraBoxes: readonly CameraBox[];
+  /**
+   * LOW things the camera looks over but that still hide the avatar's lower body when one stands between the lens and it (a fountain's
+   * bowl, a garden wall, a planter): boxes with their real `height`. They never shorten the arm; the follow camera rises over them
+   * instead (client/src/game/cameraCollision.ts `hurdleLift`). Absent: none.
+   */
+  hurdles?: readonly CameraBox[];
 }
 
 /**
@@ -108,6 +114,7 @@ export function makeGeometry(
   walls: readonly AABB[],
   props: readonly AABB[],
   tallProps: readonly CameraBox[] = [],
+  hurdles: readonly CameraBox[] = [],
 ): MapGeometry {
-  return { id, bounds, obstacles: [...walls, ...props], cameraBoxes: [...walls, ...tallProps] };
+  return { id, bounds, obstacles: [...walls, ...props], cameraBoxes: [...walls, ...tallProps], ...(hurdles.length ? { hurdles: [...hurdles] } : {}) };
 }

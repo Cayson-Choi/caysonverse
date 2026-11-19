@@ -1013,20 +1013,40 @@ export function lotSeatFurnitureBoxes(l: VillageLot): AABB[] {
   return out;
 }
 
-/** The lots' boxes as the village geometry takes them: every collider an obstacle, the tall ones and the roof slabs camera boxes. */
-export function lotGeometryColliders(ids: readonly LotId[] = LOTS_WITH_MODEL): { obstacles: AABB[]; cameraBoxes: CameraBox[] } {
+/**
+ * The lots' low solids that hide an avatar's lower body from a camera behind them (QA 2026-11-20): collider id -> its real height (m).
+ * The camera looks over them (cameraHeight 0: they never shorten the arm) but rises over them when one is between the lens and the
+ * avatar (client/src/game/cameraCollision.ts `hurdleLift`). The stone garden wall of the temple (1.5 m), the basins and planters.
+ */
+export const LOT_HURDLES: Readonly<Record<string, number>> = Object.freeze({
+  lot_temple_wall_fl: 1.5,
+  lot_temple_wall_fr: 1.5,
+  lot_temple_wall_l: 1.5,
+  lot_temple_wall_r: 1.5,
+  lot_temple_wall_b: 1.5,
+  lot_temple_pond: 0.6,
+  lot_chapel_fountain: 0.9,
+  lot_gate_fountain: 1.1,
+  lot_gate_planter_l: 0.9,
+  lot_gate_planter_r: 0.9,
+});
+
+/** The lots' boxes as the village geometry takes them: every collider an obstacle, the tall ones and the roof slabs camera boxes (`hurdles`: LOT_HURDLES). */
+export function lotGeometryColliders(ids: readonly LotId[] = LOTS_WITH_MODEL): { obstacles: AABB[]; cameraBoxes: CameraBox[]; hurdles: CameraBox[] } {
   const obstacles: AABB[] = [];
   const cameraBoxes: CameraBox[] = [];
+  const hurdles: CameraBox[] = [];
   for (const l of VILLAGE_LOTS) {
     if (!ids.includes(l.id)) continue;
     for (const c of lotColliders(l)) {
       obstacles.push(c.box);
       if (c.camera) cameraBoxes.push({ ...c.box, height: c.cameraHeight });
+      else if (LOT_HURDLES[c.id] !== undefined) hurdles.push({ ...c.box, height: LOT_HURDLES[c.id]! });
     }
     obstacles.push(...lotSeatFurnitureBoxes(l));
     for (const s of LOT_ROOF_SLABS[l.id]) cameraBoxes.push({ ...lotBox(l, s.rect), minY: s.minY, height: s.height });
   }
-  return { obstacles, cameraBoxes };
+  return { obstacles, cameraBoxes, hurdles };
 }
 
 /**

@@ -379,3 +379,75 @@ export function keepOutArmDistance(headX: number, headY: number, headZ: number, 
   for (let d = from - KEEP_OUT_STEP; d > SPRING.minDist; d -= KEEP_OUT_STEP) if (!at(d)) return d;
   return SPRING.minDist;
 }
+
+// ───────────────────────────────────── low things the camera rises over ─────────────────────────────────────
+
+/**
+ * QA 2026-11-20: a LOW solid between the lens and the avatar (a fountain's bowl, a garden wall, a planter) is looked over, so it never
+ * shortens the arm, but it hides the avatar's lower body, and behind a 1.5 m stone wall only the head showed. The camera does not move
+ * in for it (that was the bad spot): it RISES until the line from the lens to the avatar's body clears the thing's top.
+ *   `bodyY`: the point of the body the line must see (m above the feet: hip height, so the legs show over the rim);
+ *   `clear`: the margin over the top (m); `minT`: a thing hugging the avatar (the line's horizontal share < this) is judged as if it
+ *   stood this far along, so the lift stays finite; `maxLift`: the most the camera is raised (m).
+ */
+export const HURDLE = { bodyY: 0.35, clear: 0.15, minT: 0.1, maxLift: 2 } as const;
+
+/** The low solids of the map the player stands in (`MapGeometry.hurdles`); none when the map has none. */
+export function hurdleBoxes(): readonly CameraBox[] {
+  return getActiveMap().geometry.hurdles ?? NO_HURDLES;
+}
+const NO_HURDLES: readonly CameraBox[] = [];
+
+/**
+ * How much (m) the lens at (camX, camY, camZ) must rise so the line to the body at (x, z) clears every hurdle between them: 0 when
+ * clear. The line B -> C is cut by each box in the ground plane at its entry fraction t0 (measured from the body); its height there is
+ * `bodyY + (camY' - bodyY) * t0`, which must reach the box's top plus `clear`. Boxes the body stands in or touches are ignored (the
+ * avatar on the steps of a basin must not send the camera up), and so are boxes the segment never reaches. At most `HURDLE.maxLift`.
+ */
+export function hurdleLift(x: number, z: number, groundY: number, camX: number, camY: number, camZ: number, boxes: readonly CameraBox[] = hurdleBoxes()): number {
+  if (boxes.length === 0) return 0;
+  const by = groundY + HURDLE.bodyY;
+  const dx = camX - x;
+  const dz = camZ - z;
+  let need = camY;
+  for (let i = 0; i < boxes.length; i++) {
+    const b = boxes[i]!;
+    const top = groundY + (b.height ?? 0) + HURDLE.clear;
+    if (camY >= top && by >= top) continue;
+    if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ) continue; // the body is in it: no lift for what it stands on
+    // the segment's horizontal entry into the box (slab test on x and z)
+    let t0 = 0;
+    let t1 = 1;
+    if (dx === 0) {
+      if (x < b.minX || x > b.maxX) continue;
+    } else {
+      let a = (b.minX - x) / dx;
+      let c = (b.maxX - x) / dx;
+      if (a > c) [a, c] = [c, a];
+      if (a > t0) t0 = a;
+      if (c < t1) t1 = c;
+      if (t0 > t1) continue;
+    }
+    if (dz === 0) {
+      if (z < b.minZ || z > b.maxZ) continue;
+    } else {
+      let a = (b.minZ - z) / dz;
+      let c = (b.maxZ - z) / dz;
+      if (a > c) [a, c] = [c, a];
+      if (a > t0) t0 = a;
+      if (c < t1) t1 = c;
+      if (t0 > t1) continue;
+    }
+    if (t0 >= 1) continue;
+    const y = by + (top - by) / Math.max(t0, HURDLE.minT);
+    if (y > need) need = y;
+  }
+  return Math.min(HURDLE.maxLift, Math.max(0, need - camY));
+}
+
+/** One frame of the eased hurdle lift: up quickly (the wall is in the way now), back down gently once the way is clear. */
+export function stepHurdleLift(current: number, target: number, dt: number): number {
+  const rate = target > current ? 8 : 3;
+  const step = rate * dt;
+  return target > current ? Math.min(target, current + step) : Math.max(target, current - step);
+}
