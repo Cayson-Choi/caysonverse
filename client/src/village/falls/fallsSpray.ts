@@ -176,6 +176,7 @@ attribute vec4 aLife; // life (s), phase, size (m), kind
 varying vec2 vC;
 varying vec2 vHalf;
 varying vec3 vColor;
+varying vec3 vHalfLight;
 varying float vAlpha;
 varying float vSoft;
 void main() {
@@ -232,10 +233,10 @@ void main() {
   vHalf = vec2( hw, hl );
   vSoft = soft;
   vec3 V = normalize( cameraPosition - p );
-  vec3 col = flWarm( flWhite( V, 1.0 - 0.5 * soft ), p, 1.4 );
-  float tw = fract( sin( dot( vec2( aLife.y * 97.0, floor( uTime * 9.0 + aLife.y * 61.0 ) ), vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );
-  col += uGlintColor * step( 0.93, tw ) * ( 0.6 + 1.6 * clamp( dot( -uKeyDir, V ), 0.0, 1.0 ) ) * ( 1.0 - soft );
-  vColor = col;
+  vec3 H = uKeyDir + V;
+  H = mat3( viewMatrix ) * H / max( length( H ), 0.001 );
+  vHalfLight = vec3( dot( H.xy, axisW ), dot( H.xy, axisL ), H.z );
+  vColor = flWarm( flWhite( V, 1.0 - 0.5 * soft ), p, 1.4 );
   vAlpha = vis * ink;
   if ( vAlpha < 0.002 ) gl_Position = vec4( 0.0, 0.0, 2.0, 1.0 );
   #ifdef USE_FOG
@@ -251,19 +252,31 @@ const SPRAY_FRAGMENT = /* glsl */ `
 varying vec2 vC;
 varying vec2 vHalf;
 varying vec3 vColor;
+varying vec3 vHalfLight;
+uniform vec3 uGlintColor;
 varying float vAlpha;
 varying float vSoft;
 void main() {
   float m;
-  if ( vSoft > 0.5 ) m = exp( -3.2 * dot( vC, vC ) );
+  vec3 color = vColor;
+  if ( vSoft > 0.5 ) {
+    float r2 = dot( vC, vC );
+    m = exp( -3.2 * r2 ) * ( 1.0 - smoothstep( 0.65, 1.0, r2 ) );
+  }
   else {
-    vec2 pp = vC * vHalf;
-    float d = length( vec2( pp.x, max( abs( pp.y ) - max( vHalf.y - vHalf.x, 0.0 ), 0.0 ) ) );
-    m = 1.0 - smoothstep( max( vHalf.x - 0.8, 0.0 ), vHalf.x + 0.2, d );
+    // A rounded head at the leading end of the exposure and a narrower translucent trail.
+    float smear = 1.0 - vHalf.x / max( vHalf.y, 0.001 );
+    vec2 disc = vec2( vC.x / ( 1.0 - 0.32 * smear * ( 1.0 - vC.y ) ), vC.y );
+    float radius = length( disc );
+    float aa = clamp( fwidth( radius ), 0.025, 0.65 );
+    m = ( 1.0 - smoothstep( 1.0 - aa, 1.0, radius ) ) * mix( 1.0, 0.60 + 0.40 * vC.y, smear );
+    vec3 normal = vec3( disc, sqrt( max( 0.0, 1.0 - radius * radius ) ) );
+    float glint = pow( max( dot( normal, vHalfLight ), 0.0 ), 18.0 );
+    color = vColor * ( 0.66 + 0.34 * normal.z ) + uGlintColor * glint;
   }
   float a = vAlpha * m;
   if ( a < 0.002 ) discard;
-  gl_FragColor = vec4( vColor, a );
+  gl_FragColor = vec4( color, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
   #include <fog_fragment>
