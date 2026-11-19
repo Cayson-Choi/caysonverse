@@ -12,7 +12,7 @@ import { DROP_SITE } from "@caysonverse/shared/land/dropTower";
 import { PARK_PLATFORM } from "@caysonverse/shared/village/parkArea";
 
 /** A tap's armed board stays armed this long (ms): the walk across the whole park (the coaster from the wheel is 250 m). */
-export const RIDE_ARM_MS = 90_000; // was 4 min: a ride tapped long ago boarded me when I later wandered onto its pad (owner 2026-11-19)
+export const RIDE_ARM_MS = 240_000; // long walks across the park on a slow device must still board on arrival; moving by keys or stick disarms it (LocalPlayer)
 /** The board is sent once the walk has brought me within this of the pad's centre, past its radius (m): inside the server's reach (radius + 6). */
 export const RIDE_ARRIVE_M = 3;
 
