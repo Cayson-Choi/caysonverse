@@ -15,7 +15,7 @@ import { mkdirSync } from "node:fs";
 import { DESKTOP, PHONE, REPO, createRun, launchBrowser, openPlayer, pos, press, sleep, touchDown, touchUp, visibleButtons, walkAndWait, layoutReport } from "./lib/common.mjs";
 import { joinVillage } from "./lib/village.mjs";
 import { bigButton, waitButton } from "./lib/lakeMock.mjs";
-import { startFightAngler } from "./lib/lakeFight.mjs";
+import { installPhaseLog, phaseMark, startFightAnglerInPage, waitSeen } from "./lib/lakeFight.mjs";
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => (args.find((a) => a.startsWith(`--${name}=`)) ?? `--${name}=${fallback}`).slice(name.length + 3);
@@ -82,6 +82,7 @@ const waitPhase = async (names, ms) => {
 
 await run.step("join and walk to the pad", async () => {
   await joinVillage(p, "낚", time);
+  await installPhaseLog(p);
   for (const [x, z] of [[40, 0], [80, -9], [100, -12]]) await walkAndWait(p, x, z, 40000, 2);
   await walkAndWait(p, 102, -14.6, 20000, 1);
   await sleep(800);
@@ -167,6 +168,7 @@ async function oneCast(n) {
   run.check(`cast ${n}: bite — red 당겨요!`, !!bite && bb?.label === "당겨요!" && bb.tone === "alert", { bite, bb });
   await once("bite-" + (bite?.sig ?? 0), `09-bite-sig${bite?.sig ?? 0}`);
   if (bb) await tapButton(bb);
+  const hookMark = await phaseMark(p);
   const after = await waitPhase(["hooked", "lifting", "fighting", "missed"], 3000);
   run.check(`cast ${n}: the pull hooked the fish`, !!after && after.name !== "missed", after);
   if (!after || after.name === "missed") {
@@ -182,10 +184,11 @@ async function oneCast(n) {
     await shot("14-fight-before");
     if (hb) {
       // the fight is a pull / release rhythm: the scripted angler does what the prompt says (lib/lakeFight.mjs)
-      const angler = startFightAngler(p, { touch });
+      const angler = await startFightAnglerInPage(p);
       await sleep(1200);
       await shot("15-fighting");
-      const netting = await waitPhase(["lifting", "landed", "missed"], 40000);
+      // waits on the phase LOG (no phase can pass between two polls), and for as long as a fight can last (fightMaxMs 45 s)
+      const netting = await waitSeen(p, ["lifting", "landed", "missed"], 60000, hookMark);
       await angler.stop();
       run.check(`cast ${n}: following the prompt (pull / let go) brought the fish in (lifted out on the line)`, netting?.name === "lifting" || netting?.name === "landed", netting);
       await sleep(700);
@@ -206,7 +209,7 @@ async function oneCast(n) {
     await sleep(600);
     await once("lifting", "11-lifting");
   }
-  const landed = await waitPhase(["landed"], 5000);
+  const landed = (await waitSeen(p, ["landed"], 6000, hookMark)) ?? (await waitPhase(["landed"], 2000));
   run.check(`cast ${n}: landed`, !!landed, landed);
   const card = await p.page.waitForSelector("[data-lake-card]", { timeout: 4000 }).then(() => true, () => false);
   const text = await p.page.locator("[data-lake-card]").first().textContent().catch(() => "");

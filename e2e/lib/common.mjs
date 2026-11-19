@@ -193,6 +193,11 @@ export async function openPlayer(browser, run, { tag, device = DESKTOP, settings
     } catch {}
   }, settings);
   const page = await ctx.newPage();
+  // CV_E2E_CPU=4: the page runs on a CPU throttled to 1/4 (a slow phone), through the DevTools protocol
+  if (Number(process.env.CV_E2E_CPU) > 1) {
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: Number(process.env.CV_E2E_CPU) });
+  }
   if (SLOW > 1) {
     page.setDefaultTimeout(30000 * SLOW);
     page.setDefaultNavigationTimeout(30000 * SLOW);

@@ -83,6 +83,37 @@ describe("the fight", () => {
     }
   });
 
+  it("a slow phone still lands it: a late reaction of up to 0.9 s (a slow frame + the network + a human) lands every size (owner 2026-11-19: frame rate and timing)", () => {
+    for (const cm of [35, 60, 90, 130]) {
+      for (const lag of [600, 750, 900]) {
+        for (let seed = 1; seed <= 20; seed++) {
+          const r = play(cm, seed, follower(lag, cm, seed));
+          expect(r.event, `${cm} cm lag ${lag} seed ${seed}`).toBe("landed");
+        }
+      }
+    }
+  });
+
+  it("the outcome does not depend on how often the server steps: 20 ms, 100 ms and 400 ms steps give the same end", () => {
+    for (const cm of [35, 90]) {
+      for (let seed = 1; seed <= 6; seed++) {
+        const sched = fightSchedule(cm, seed);
+        const ends = [20, 100, 400].map((step) => {
+          let run: FightRun = { progress: FIGHT.startProgress, tension: 0 };
+          const press = follower(300, cm, seed);
+          for (let t = 0; t < 60000; t += step) {
+            // the button state is the same whatever the step (it is read at the start of each stretch)
+            const r = stepFight(sched, run, t, t + step, press(t) ? { from: t, to: t + step } : null);
+            run = r.run;
+            if (r.event) return r.event;
+          }
+          return "none";
+        });
+        expect(ends, `${cm} cm seed ${seed}`).toEqual(["landed", "landed", "landed"]);
+      }
+    }
+  });
+
   it("each cycle brings the fish closer: after every pull the distance is larger than after the one before", () => {
     const cm = 75;
     const seed = 5;

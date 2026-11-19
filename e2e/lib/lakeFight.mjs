@@ -61,3 +61,89 @@ export function startFightAngler(p, { touch, mode = "follow", reactMs = 140, inp
     },
   };
 }
+
+// --- robust variants (owner 2026-11-19: the big fish's landing check failed in 2 of 3 runs on a loaded machine) ------------------------
+// The outside angler above talks to the page through Playwright: on a loaded (or CPU-throttled) machine every round trip takes
+// hundreds of ms, the prompt is answered late and a 1 s grace is spent on the wire, and a phase that lasts a second (the fish
+// out of the water, the card) can pass between two polls. Two helpers that wait on STATE, inside the page:
+//   - `installPhaseLog`: the page records every phase the server's fields go through (name, cast, time); `waitSeen` looks the log up
+//     (no phase is ever skipped, however slow the polling is);
+//   - `startFightAnglerInPage`: the angler runs in the page itself (timers there are the page's own, so a throttled phone is a slow
+//     player, not a slow test): it reads the same `[data-fight-cmd]` the HUD shows and sends the Hold the button would send.
+/** Start recording the phases of this page's own cast (idempotent). */
+export async function installPhaseLog(p) {
+  await p.page.evaluate(async () => {
+    if (window.__cvPhaseLog) return;
+    const net = await window.__imp("/src/lake/lakeNet.ts");
+    const proto = await window.__imp("/src/lake/lakeProtocol.ts");
+    const log = (window.__cvPhaseLog = []);
+    let last = -1;
+    let lastSeq = -1;
+    const v = proto.emptyFishView();
+    setInterval(() => {
+      if (!net.readFishView(net.selfId(), v)) return;
+      if (v.phase !== last || v.seq !== lastSeq) {
+        last = v.phase;
+        lastSeq = v.seq;
+        log.push({ name: proto.phaseName(v.phase), seq: v.seq, kind: v.kind, cm: v.cm, at: Date.now() });
+      }
+    }, 25);
+  });
+}
+
+/** The log's length now: pass it to `waitSeen` as `from` to look only at what happens after this point. */
+export const phaseMark = (p) => p.page.evaluate(() => window.__cvPhaseLog?.length ?? 0);
+
+/** The first logged phase (from index `from`) whose name is in `names`, waiting up to `ms`; null when none came. */
+export async function waitSeen(p, names, ms, from = 0) {
+  const t0 = Date.now();
+  for (;;) {
+    const hit = await p.page.evaluate(([names, from]) => (window.__cvPhaseLog ?? []).slice(from).find((e) => names.includes(e.name)) ?? null, [names, from]).catch(() => null);
+    if (hit || Date.now() - t0 > ms) return hit;
+    await sleep(100);
+  }
+}
+
+/** The scripted angler inside the page: `mode` "follow" | "hold" | "none", `reactMs` a human's reaction after each new command. */
+export async function startFightAnglerInPage(p, { mode = "follow", reactMs = 140 } = {}) {
+  await p.page.evaluate(
+    async ([mode, reactMs]) => {
+      window.__cvAngler?.stop();
+      const net = await window.__imp("/src/lake/lakeNet.ts");
+      let held = false;
+      let last = null;
+      let pending = 0;
+      const set = (want) => {
+        if (want === held) return;
+        held = want;
+        net.sendHold(want);
+      };
+      const id = setInterval(() => {
+        const el = document.querySelector("[data-fight-cmd]");
+        if (!el) {
+          if (held) set(false);
+          last = null;
+          return;
+        }
+        const cmd = el.getAttribute("data-fight-cmd");
+        if (mode === "hold") return set(true);
+        if (mode === "none") return;
+        if (cmd !== last) {
+          last = cmd;
+          clearTimeout(pending);
+          pending = setTimeout(() => set(cmd === "pull"), reactMs);
+        }
+      }, 20);
+      window.__cvAngler = {
+        stop() {
+          clearInterval(id);
+          clearTimeout(pending);
+          if (held) set(false);
+          window.__cvAngler = null;
+        },
+      };
+    },
+    [mode, reactMs],
+  );
+  return { stop: () => p.page.evaluate(() => window.__cvAngler?.stop()).catch(() => {}) };
+}
