@@ -27,7 +27,7 @@ export interface TriView {
 export type DressBox = readonly [number, number, number, number, number, number];
 
 /** How the faces' UVs are made: the file's own UVs scaled (`keep`, `unit` = metres per UV unit), or planar from the face's own plane (`box`). */
-export type UvMode = { mode: "keep"; unit: number } | { mode: "box" } | { mode: "parasol" };
+export type UvMode = { mode: "keep"; unit: number } | { mode: "box" };
 
 export interface FaceRule {
   id: string;
@@ -85,7 +85,7 @@ export const SURFACES: Readonly<Record<string, SurfaceSpec>> = Object.freeze({
   seam: { pbr: "metal_roof_seam", uv: { mode: "box" }, tint: [3.4, 3.6, 3.9], normalStrength: 1, roughness: 1, metalness: 0.3 },
   granite: { pbr: "granite_flamed", uv: { mode: "box" }, tint: [0.3, 0.31, 0.34], normalStrength: 1, roughness: 1, metalness: 0 },
   render: { pbr: "stucco_white", uv: { mode: "keep", unit: 1 }, tint: [1.02, 0.98, 0.92], normalStrength: 1.2, roughness: 1, metalness: 0 },
-  parasol: { pbr: null, uv: { mode: "parasol" }, tint: [0.88, 0.88, 0.88], normalStrength: 1, roughness: 0.9, metalness: 0, doubleSided: true },
+  parasol: { pbr: null, uv: { mode: "box" }, tint: [0.88, 0.88, 0.88], normalStrength: 1, roughness: 0.9, metalness: 0, doubleSided: true },
   giwa: { pbr: "roof_giwa", uv: { mode: "keep", unit: 2 }, tint: [4.6, 4.6, 4.8], normalStrength: 1.2, roughness: 1, metalness: 0, doubleSided: true },
   oak: { pbr: "wood_oak", uv: { mode: "box" }, tint: [1.05, 0.9, 0.7], normalStrength: 1, roughness: 1, metalness: 0 },
 });
@@ -174,11 +174,8 @@ export interface TakenFaces {
   triangles: number;
 }
 
-/**
- * The faces at `taken` of a mesh as a standalone world-space geometry with the surface's UVs. `tile` is the set's tile size (m);
- * for the parasol mode `centres` are the parasols' middles (xz) the stripes radiate from.
- */
-export function takeFaces(mesh: Mesh, taken: readonly number[], uvMode: UvMode, tile: number, centres: ReadonlyArray<readonly [number, number]> = []): TakenFaces {
+/** The faces at `taken` in world space with the surface's UVs. `tile` is the set's tile size in metres. */
+export function takeFaces(mesh: Mesh, taken: readonly number[], uvMode: UvMode, tile: number): TakenFaces {
   const g = mesh.geometry;
   const pos = g.getAttribute("position");
   const nor = g.getAttribute("normal");
@@ -198,21 +195,6 @@ export function takeFaces(mesh: Mesh, taken: readonly number[], uvMode: UvMode, 
       if (nor) n3[k]!.fromBufferAttribute(nor, i).applyMatrix3(nm).normalize();
     });
     const face = new Vector3().subVectors(v3[1]!, v3[0]!).cross(new Vector3().subVectors(v3[2]!, v3[0]!)).normalize();
-    // the parasol's centre: the nearest one to the face
-    let centre: readonly [number, number] | null = null;
-    if (uvMode.mode === "parasol") {
-      let best = Infinity;
-      const fx = (v3[0]!.x + v3[1]!.x + v3[2]!.x) / 3;
-      const fz = (v3[0]!.z + v3[1]!.z + v3[2]!.z) / 3;
-      for (const c of centres) {
-        const d = Math.hypot(c[0] - fx, c[1] - fz);
-        if (d < best) {
-          best = d;
-          centre = c;
-        }
-      }
-    }
-    let theta0 = 0;
     for (let k = 0; k < 3; k++) {
       const p = v3[k]!;
       const n = nor ? n3[k]! : face;
@@ -221,17 +203,6 @@ export function takeFaces(mesh: Mesh, taken: readonly number[], uvMode: UvMode, 
       if (uvMode.mode === "keep") {
         const s = uvMode.unit / tile;
         U.push((uv ? uv.getX(ids[k]!) : 0) * s, (uv ? uv.getY(ids[k]!) : 0) * s);
-      } else if (uvMode.mode === "parasol") {
-        const cx = centre ? centre[0] : 0;
-        const cz = centre ? centre[1] : 0;
-        let th = Math.atan2(p.z - cz, p.x - cx);
-        if (k === 0) theta0 = th;
-        else {
-          while (th - theta0 > Math.PI) th -= 2 * Math.PI;
-          while (th - theta0 < -Math.PI) th += 2 * Math.PI;
-        }
-        // eight pairs of panels round: the texture holds one coral and one cream panel
-        U.push((th / (2 * Math.PI)) * 8, Math.hypot(p.x - cx, p.z - cz) / 1.4);
       } else {
         const [u, v] = boxUv(p.x, p.y, p.z, face.x, face.y, face.z, tile);
         U.push(u, v);
@@ -245,20 +216,6 @@ export function takeFaces(mesh: Mesh, taken: readonly number[], uvMode: UvMode, 
   out.computeBoundingSphere();
   out.computeBoundingBox();
   return { geometry: out, triangles: taken.length };
-}
-
-/** Parasol middles (xz) from the faces' centroids: faces within `reach` metres of an existing middle join it. */
-export function clusterCentres(points: ReadonlyArray<readonly [number, number]>, reach = 2.2): Array<[number, number]> {
-  const cl: Array<{ x: number; z: number; n: number }> = [];
-  for (const [x, z] of points) {
-    const hit = cl.find((c) => Math.hypot(c.x / c.n - x, c.z / c.n - z) < reach);
-    if (hit) {
-      hit.x += x;
-      hit.z += z;
-      hit.n++;
-    } else cl.push({ x, z, n: 1 });
-  }
-  return cl.map((c) => [c.x / c.n, c.z / c.n]);
 }
 
 export interface FaceSplit {

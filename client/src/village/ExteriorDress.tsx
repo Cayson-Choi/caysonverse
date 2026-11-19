@@ -18,7 +18,8 @@ import {
 import { getPbrSet, createPbrMaterial, pbrSetInfo, pbrTierFor, type PbrSet } from "./pbr/pbrLibrary";
 import { patchHouseLight } from "./houses/housesPrep";
 import { litUniform, type VillageTier } from "./villageModelPrep";
-import { SURFACES, clusterCentres, findSplits, geometryWithout, takeFaces, type FaceSplit, type SurfaceSpec } from "./exteriorFaces";
+import { SURFACES, findSplits, geometryWithout, takeFaces, type FaceSplit, type SurfaceSpec } from "./exteriorFaces";
+import { terraceParasol } from "./cafe/terraceParasol";
 
 /** White veined marble (canvas, 512, tiling): a warm white body with soft cloud and a few long grey veins, no joints. */
 export function marbleTexture(): CanvasTexture {
@@ -77,15 +78,15 @@ export function marbleTexture(): CanvasTexture {
   return t;
 }
 
-/** The parasol's cloth (canvas, 128 x 64): one coral and one cream panel with a fine weave, tiling eight times round. */
+/** Coral and cream gores with a stitched hem. The hardware samples the charcoal swatch at the wrapping edge. */
 export function parasolTexture(): CanvasTexture {
   const c = document.createElement("canvas");
   c.width = 128;
   c.height = 64;
   const ctx = c.getContext("2d")!;
-  ctx.fillStyle = "#e66b58";
+  ctx.fillStyle = "#bf5c4b";
   ctx.fillRect(0, 0, 64, 64);
-  ctx.fillStyle = "#f2ece1";
+  ctx.fillStyle = "#ebe0cd";
   ctx.fillRect(64, 0, 64, 64);
   // the weave: faint threads both ways
   ctx.globalAlpha = 0.1;
@@ -98,6 +99,11 @@ export function parasolTexture(): CanvasTexture {
     ctx.fillRect(0, j, 128, 1);
   }
   ctx.globalAlpha = 1;
+  ctx.fillStyle = "rgba(90,60,45,0.26)";
+  ctx.fillRect(0, 54, 128, 1);
+  ctx.fillStyle = "#5c5851";
+  ctx.fillRect(0, 0, 128, 2);
+  ctx.fillRect(0, 59, 128, 5);
   const t = new CanvasTexture(c);
   t.colorSpace = SRGBColorSpace;
   t.wrapS = t.wrapT = RepeatWrapping;
@@ -174,16 +180,6 @@ export function applyDress(root: Object3D, splits: FaceSplit[], sets: ReadonlyMa
     if (m) materials.set(key, m);
     return m;
   };
-  const parasolCentres = clusterCentres(
-    splits.filter((s) => s.rule.surface === "parasol").flatMap((s) => {
-      const pos = s.mesh.geometry.getAttribute("position");
-      const idx = s.mesh.geometry.index;
-      return s.taken.map((t) => {
-        const i = idx ? idx.getX(t) : t;
-        return [pos.getX(i), pos.getZ(i)] as const;
-      });
-    }),
-  );
   // build the new meshes first (a surface that cannot be made leaves its faces where they are)
   const done = new Set<FaceSplit>();
   for (const s of splits) {
@@ -191,15 +187,20 @@ export function applyDress(root: Object3D, splits: FaceSplit[], sets: ReadonlyMa
     if (!mat) continue;
     const spec = SURFACES[s.rule.surface]!;
     const tile = spec.pbr ? pbrSetInfo(spec.pbr).tileMeters : 1;
-    const faces = takeFaces(s.mesh, s.taken, spec.uv, tile, parasolCentres);
-    const m = new Mesh(faces.geometry, mat);
+    const faces = takeFaces(s.mesh, s.taken, spec.uv, tile);
+    const parasol = s.rule.surface === "parasol";
+    const geometry = parasol ? terraceParasol(faces.geometry) : faces.geometry;
+    if (parasol) faces.geometry.dispose();
+    const m = new Mesh(geometry, mat);
+    m.castShadow = parasol;
+    m.receiveShadow = parasol;
     m.name = `dress__${s.rule.id}`;
     m.matrixAutoUpdate = false;
     m.updateMatrix();
     m.userData.cvDress = true;
     root.add(m);
     added.push(m);
-    geometries.push(faces.geometry);
+    geometries.push(geometry);
     done.add(s);
   }
   for (const [mesh, taken] of byMesh) {
