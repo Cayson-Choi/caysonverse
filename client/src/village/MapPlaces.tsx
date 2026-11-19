@@ -7,6 +7,7 @@ import { useViewStore } from "../stores/viewStore";
 import type { Pose, SeatState } from "../game/types";
 import { MAP_PLACES } from "./villagePlaces";
 import { cancelMapWalk, startMapWalk } from "./mapWalk";
+import { mapPlaceKey, mapPlaceZRange } from "./mapPlaceStack";
 import "./mapPlaces.css";
 
 /**
@@ -78,7 +79,7 @@ export function MapPlaces({ pose, seat }: { pose: Pose; seat: SeatState }) {
     <>
       {MAP_PLACES.map((m, i) => (
         <group key={m.id} position={[m.label.x, 1, m.label.z]}>
-          <Html center zIndexRange={[picked === m.id ? 14 : 13, 0]} style={{ pointerEvents: "none" }}>
+          <Html key={mapPlaceKey(picked === m.id)} center zIndexRange={mapPlaceZRange(picked === m.id)} style={{ pointerEvents: "none" }}>
             <div
               ref={(el) => {
                 tags.current[i] = el;
