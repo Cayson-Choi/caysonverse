@@ -28,7 +28,8 @@ function useCanvasContextMenuSuppression() {
  * room leave is handled by the resilience driver (reconnect behind the overlay, or
  * fall back to entry). The VillageScene is keyed by `connectionEpoch` so a reconnect
  * remounts it against the new room (rebinding every scene-level room subscription);
- * the reconnection overlay lives OUTSIDE that key so it survives the remount.
+ * the reconnection overlay lives OUTSIDE that key so it survives the remount, and stays (over a picture of the village taken
+ * before the drop) until the new scene is in view (appStore.resuming), so the player never sees it black.
  * AppErrorBoundary wraps both screens: an uncaught render error (e.g. inside the
  * 3D scene) shows a refresh prompt instead of React unmounting the root to a blank
  * page, and leaves any open room.

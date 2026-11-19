@@ -6,13 +6,34 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(16, 12, 34, 0.62);
-  backdrop-filter: blur(3px);
+  background-color: transparent;
+  background-size: cover;
+  background-position: center;
   /* Swallow input so nothing behind the overlay reacts while we recover. */
   pointer-events: all;
 }
 
+/* the dim (and soft blur) over the live village, or over the picture of it while the new scene loads */
+.cv-reconnecting-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(16, 12, 34, 0.62);
+  backdrop-filter: blur(3px);
+}
+
+/* the new scene's canvas is black until loaded: the overlay is opaque (a dark base under the picture) until it lifts */
+.cv-reconnecting.is-resuming {
+  background-color: #0b0b14;
+}
+
+.cv-reconnecting.is-leaving {
+  opacity: 0;
+  transition: opacity 400ms ease-out;
+  pointer-events: none;
+}
+
 .cv-reconnecting-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;

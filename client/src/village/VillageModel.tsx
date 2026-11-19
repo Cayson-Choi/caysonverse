@@ -46,6 +46,7 @@ import { preloadHouses } from "./houses/housesLoader";
 import { LoadBoundary } from "./LoadBoundary";
 import { clearHousesFiles } from "./villageRelease";
 import { ensureShadowPlaceholder, liveSunEnabled } from "./sunShadows";
+import { reconnectFrame } from "../ui/reconnectFrame";
 
 declare global {
   interface Window {
@@ -250,7 +251,9 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   useEffect(() => {
     // Dev/E2E probe: the dressed model (draw-call and material checks). Tree-shaken in production.
     if (import.meta.env.DEV) window.__cvVillage = () => nodes;
+    reconnectFrame.villageIn(); // the village is in the scene: a reconnect's overlay may lift (ReconnectingOverlay)
     return () => {
+      reconnectFrame.villageOut();
       if (import.meta.env.DEV) delete window.__cvVillage;
       disposeVillage(nodes);
     };

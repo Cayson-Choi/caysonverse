@@ -37,6 +37,11 @@ interface AppState {
    * remote store is rebuilt clean. The first join uses generation 0.
    */
   connectionEpoch: number;
+  /**
+   * True from a successful reconnection until the remounted village is back in view: the overlay stays up (over a picture of
+   * the village taken before the drop) so the player never sees the new scene's black first seconds. Input stays suspended.
+   */
+  resuming: boolean;
 
   /** Enter 케이슨 마을 after a successful village join. */
   enterVillage: (identity: Identity) => void;
@@ -52,6 +57,8 @@ interface AppState {
    * the scene, and clear the reconnection overlay.
    */
   reconnected: (sessionId: string) => void;
+  /** The remounted village is in view again: lift the overlay and resume input. */
+  finishResume: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -60,9 +67,10 @@ export const useAppStore = create<AppState>((set) => ({
   notice: null,
   reconnecting: false,
   connectionEpoch: 0,
+  resuming: false,
 
-  enterVillage: (identity) => set({ screen: "village", identity, notice: null, reconnecting: false }),
-  leaveToEntry: (notice = null) => set({ screen: "entry", identity: null, notice, reconnecting: false }),
+  enterVillage: (identity) => set({ screen: "village", identity, notice: null, reconnecting: false, resuming: false }),
+  leaveToEntry: (notice = null) => set({ screen: "entry", identity: null, notice, reconnecting: false, resuming: false }),
   clearNotice: () => set({ notice: null }),
   setReconnecting: (reconnecting) => set({ reconnecting }),
   reconnected: (sessionId) =>
@@ -70,5 +78,7 @@ export const useAppStore = create<AppState>((set) => ({
       identity: s.identity ? { ...s.identity, sessionId } : s.identity,
       connectionEpoch: s.connectionEpoch + 1,
       reconnecting: false,
+      resuming: true,
     })),
+  finishResume: () => set({ resuming: false }),
 }));

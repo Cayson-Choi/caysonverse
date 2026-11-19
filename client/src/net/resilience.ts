@@ -124,7 +124,8 @@ export function attachResilience(room: Room<WorldState>, onLeave = handleLeave):
 
 /** True while recovering — read each frame (no subscribe) to suspend input. */
 export function isInputSuspended(): boolean {
-  return useAppStore.getState().reconnecting;
+  const s = useAppStore.getState();
+  return s.reconnecting || s.resuming; // resuming: the remounted village is not in view yet (ReconnectingOverlay)
 }
 
 /** A first state and a disconnect may race before EntryScreen has installed this tab's identity. */
