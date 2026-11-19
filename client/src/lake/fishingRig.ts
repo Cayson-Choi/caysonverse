@@ -11,6 +11,7 @@
 // The rod folds to 1.15 m for walking and opens to 3.6 m over 0.6 s when the angler sits.
 
 import { AnimationMixer, LoopOnce, LoopRepeat, Object3D, Quaternion, Vector3, type AnimationAction, type AnimationClip, type Camera } from "three";
+import { relaxWrist, restoreWrist, WRIST_RELAX } from "./wristRelax";
 import { FISHING_CLIPS, GRIP_OFFSET, ROD_AXIS_R, type FishingClip } from "@caysonverse/shared/village/fishingAnims";
 import type { BuiltAvatar } from "../game/characterAvatar";
 import { fishingAnimsNow, loadFishingAnims, withoutRightArm } from "./fishAnims";
@@ -197,6 +198,8 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
   const q = new Quaternion();
   let handR: Object3D | null = null;
   let handL: Object3D | null = null;
+  let wristAmt = 0;
+  const rodQ0 = new Quaternion();
 
   const ensureActions = (): boolean => {
     const clips = fishingAnimsNow();
@@ -227,6 +230,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     if (rod.real) rod.root.quaternion.identity();
     else rod.root.quaternion.copy(q.setFromUnitVectors(Y, new Vector3(...ROD_AXIS_R).normalize()));
     rod.root.position.set(GRIP_OFFSET[0], GRIP_OFFSET[1], GRIP_OFFSET[2]);
+    rodQ0.copy(rod.root.quaternion);
     // the held item goes to the shop: the rod hangs from the proxy of the shrunk hand slot
     if (hasItem && !stow) {
       stow = stowHandItem(handR);
@@ -242,6 +246,8 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     unregisterTip?.();
     unregisterTip = null;
     rodHost?.remove(rod.root);
+    restoreWrist(root);
+    wristAmt = 0;
     rod.dispose();
     rod = null;
     unfold = 0;
@@ -345,6 +351,18 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
         unfold += Math.max(-delta / UNFOLD_S, Math.min(delta / UNFOLD_S, openTarget - unfold));
         rod.setUnfold(unfold);
         rod.setBend(atSpot ? rodBend(view, t) : 0);
+      }
+      // the wrist (owner 2026-11-19): the clips turn the hand far off the forearm; eased back after the mixer, the rod keeps its world direction
+      if (rod) {
+        wristAmt += ((atSpot && seated ? ((globalThis as { __cvWristRelax?: number }).__cvWristRelax ?? WRIST_RELAX) : 0) - wristAmt) * Math.min(1, delta * 10);
+        if (wristAmt < 1e-3) {
+          if (wristAmt > 0) restoreWrist(root);
+          wristAmt = 0;
+          rod.root.quaternion.copy(rodQ0);
+        } else {
+          const fix = relaxWrist(root, wristAmt, rodHost);
+          if (fix) rod.root.quaternion.copy(rodQ0).premultiply(fix);
+        }
       }
       // the fish (lake v2, catchRig.ts): under the water, out on the line, into the hand, taken in the arms, let go
       handR = handR ?? bone(root, "handslot.r");
