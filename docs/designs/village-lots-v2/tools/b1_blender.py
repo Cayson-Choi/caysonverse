@@ -135,6 +135,25 @@ def make_materials(matdefs):
                 pass
             mats[name] = m
             continue
+        if d.get("garden"):
+            # Camera rays see the panorama. Other rays pass through so the sun still lights the room during bakes.
+            tex = nt.nodes.new("ShaderNodeTexEnvironment")
+            tex.image = load_png(os.path.join(PNG, "ninomaru_garden.png"))
+            direction = nt.nodes.new("ShaderNodeVectorMath")
+            direction.operation = "SCALE"
+            direction.inputs["Scale"].default_value = -1
+            nt.links.new(nt.nodes.new("ShaderNodeNewGeometry").outputs["Incoming"], direction.inputs[0])
+            nt.links.new(direction.outputs[0], tex.inputs["Vector"])
+            emit = nt.nodes.new("ShaderNodeEmission")
+            nt.links.new(tex.outputs[0], emit.inputs[0])
+            mix = nt.nodes.new("ShaderNodeMixShader")
+            nt.links.new(nt.nodes.new("ShaderNodeLightPath").outputs["Is Camera Ray"], mix.inputs[0])
+            nt.links.new(nt.nodes.new("ShaderNodeBsdfTransparent").outputs[0], mix.inputs[1])
+            nt.links.new(emit.outputs[0], mix.inputs[2])
+            out = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL")
+            nt.links.new(mix.outputs[0], out.inputs["Surface"])
+            mats[name] = m
+            continue
         if d.get("screen"):
             b.inputs["Base Color"].default_value = (0, 0, 0, 1)
             nt.links.new(vc.outputs["Color"], b.inputs["Emission Color"])
@@ -585,6 +604,9 @@ def write_manifest(kit, lot, path):
             continue
         if d.get("glass"):
             mats[name] = {"kind": "glass"}
+            continue
+        if d.get("garden"):
+            mats[name] = {"kind": "garden", "maps": {"albedo": d["garden"]}}
             continue
         if d.get("screen"):
             mats[name] = {"kind": "screen", "note": "the garden-and-sky view behind interior windows: unlit, COLOR_0 is the colour"}

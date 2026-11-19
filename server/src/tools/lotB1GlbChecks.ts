@@ -247,7 +247,7 @@ export function describeRoomGlb(unitId: string, dir: string): void {
         const m = man.materials[name];
         expect(m, name).toBeDefined();
         if (m!.kind === "glass" || m!.kind === "screen" || m!.kind === "fire") continue;
-        if (m!.kind === "own") {
+        if (m!.kind === "own" || m!.kind === "garden") {
           // a lot's own map (KTX2 only), next to the manifest
           const own = (m as unknown as { maps: { albedo: string } }).maps.albedo;
           expect(own.endsWith(".ktx2"), own).toBe(true);

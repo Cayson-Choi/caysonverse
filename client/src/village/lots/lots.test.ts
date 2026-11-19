@@ -68,7 +68,7 @@ describe("the v2 models and their manifests", () => {
         const spec = man.materials[mat.name];
         expect(spec, `${m} ${mat.name}`).toBeDefined();
         if (spec!.pbr) expect(() => pbrSetInfo(spec!.pbr!)).not.toThrow();
-        else expect(["glass", "screen", "fire", "own", "lightpool", "lamp", "emit"]).toContain(spec!.kind);
+        else expect(["glass", "screen", "garden", "fire", "own", "lightpool", "lamp", "emit"]).toContain(spec!.kind);
         if (spec!.maps?.albedo) expect(existsSync(join(LOTS_DIR, "..", paths[0]!.replace(/[^/]+$/, ""), spec!.maps.albedo)), spec!.maps.albedo).toBe(true);
       }
     }

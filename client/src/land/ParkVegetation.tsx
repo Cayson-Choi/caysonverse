@@ -6,12 +6,17 @@ import { PARK_BOUNDS, PARK_PLANTERS, PARK_TREES, PARK_TROUGHS } from "@caysonver
 import { PARK_PONDS } from "./ParkScenery";
 import type { Bed } from "../village/veg/flowerPlacement";
 import type { Card } from "../village/veg/vegCards";
+import { flowerMassMesh } from "../village/houses/houseFlowerMass";
+import { CLICK_PICK_KEY } from "../game/clickPick";
 import { isTouchDevice } from "../device";
 import { selfRide } from "./coasterRide";
 import { createVegetation, type VillageVegetation } from "../village/veg/villageVegetation";
 import type { Bush } from "../village/veg/shrubs";
 import type { TreeSpec } from "../village/veg/treeSkeleton";
 import { circuitGround, taken } from "./ParkScenery";
+import { parkBorders, parkFlowerCrowns } from "./parkBorders";
+import { applyVegetationDayNight } from "../village/villageModelPrep";
+import { dayNight } from "../village/dayNightDriver";
 
 /** A phone draws the park's trees to 380 m and its bushes to 170 m (the tier's bands go to 600 and 300): the wheel's top sees the whole park. */
 export const PHONE_FAR_RANGE = { trees: 380, bush: 170 } as const;
@@ -49,6 +54,7 @@ export function parkBeds(): { beds: Bed[]; cards: Card[] } {
       beds.push({ kind: "box", x0: cx - 0.9, x1: cx + 0.9, z0: cz - 0.6, z1: cz + 0.6, y: 0.1, out: null, plant: "border" });
     }
   }
+  beds.push(...parkBorders().flowers);
   // a planting card standing in each bed (pink, yellow or purple row): the village's placement fills the whole bed round it
   const cards: Card[] = beds.map((b, id) => {
     if (b.kind !== "box") throw new Error("box beds only");
@@ -134,7 +140,7 @@ export function parkTreeSpecs(): { trees: TreeSpec[]; bushes: Bush[] } {
     const s = 0.9 + rnd() * 0.5;
     hedge.push({ x, y: 0, z: -2.7, h: 1.15 * s, r: 1.45 * s, seed: rnd(), cards: [] });
   }
-  return { trees, bushes: [...bushes, ...hedge, ...understorey] };
+  return { trees, bushes: [...bushes, ...hedge, ...understorey, ...parkBorders().bushes] };
 }
 
 export function ParkVegetation() {
@@ -142,6 +148,16 @@ export function ParkVegetation() {
   const [veg, setVeg] = useState<VillageVegetation | null>(null);
   const specs = useMemo(parkTreeSpecs, []);
   const flowerBeds = useMemo(parkBeds, []);
+  // A low flowering crown stays on the soil after the individual petunias thin out.
+  const planterBlooms = useMemo(() => {
+    const pots = flowerBeds.beds.filter((bed): bed is Extract<Bed, { kind: "box" }> => bed.kind === "box" && bed.plant === "pot");
+    const blooms = flowerMassMesh(parkFlowerCrowns(pots), 8, 18, "park");
+    blooms.mesh.name = "park_planting_blooms";
+    blooms.mesh.frustumCulled = true;
+    blooms.mesh.userData[CLICK_PICK_KEY] = "ignore";
+    return blooms;
+  }, [flowerBeds]);
+  useEffect(() => () => planterBlooms.dispose(), [planterBlooms]);
   const lastSweep = useRef(-1);
   useEffect(() => {
     let dead = false;
@@ -178,6 +194,7 @@ export function ParkVegetation() {
     };
   }, [specs, flowerBeds, getThree]);
   useFrame(({ clock, gl, camera }) => {
+    applyVegetationDayNight(dayNight.applied);
     // a carousel or wheel ride: the vegetation is judged from the ride's foot, not from the turning / rising eye
     if (veg) veg.setViewOverride(selfRide.slot >= 0 && selfRide.ride === 2 ? [110, 1.7, -119] : selfRide.slot >= 0 && selfRide.ride === 3 ? [205, 1.7, -128.2] : null);
     veg?.update(camera, clock.elapsedTime, gl.domElement.height);
@@ -189,5 +206,8 @@ export function ParkVegetation() {
       });
     }
   });
-  return veg ? <primitive object={veg.group} dispose={null} /> : null;
+  return <>
+    <primitive object={planterBlooms.mesh} dispose={null} />
+    {veg && <primitive object={veg.group} dispose={null} />}
+  </>;
 }

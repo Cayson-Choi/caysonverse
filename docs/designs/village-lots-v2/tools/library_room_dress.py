@@ -470,24 +470,34 @@ def side_table(m, glow, lights, cx, cz):
 
 
 def globe(m, cx, cz):
-    """A floor globe: an oak tripod stand with a horizon ring, a brass meridian, the sphere in antique parchment and sage
-    lands (vertex-coloured continents)."""
+    """An atlas globe on the oak tripod, with a brass meridian and a continuous longitude/latitude chart."""
     for k in range(3):
         a = k * 2 * math.pi / 3
         m.member((cx + 0.28 * math.cos(a), 0.0, cz + 0.28 * math.sin(a)), (cx + 0.2 * math.cos(a), 0.62, cz + 0.2 * math.sin(a)), G.prof_round(0.022, 6), OAK_RICH)
     m.lathe([(0.34, 0.0), (0.34, 0.03), (0.28, 0.03), (0.28, 0.0)], 20, OAK, cx, cz, 0.62)
     m.member((cx, 0.12, cz), (cx, 0.62, cz), G.prof_round(0.025, 6), OAK_RICH)
     gy = 0.9
-    sph = Mesh("g")
-    sph.sphere(0.0, 0.0, 0.0, 0.27, S("LM_library_plaster", G.hexc("FFFFFF")), n=20, rings=12)
-    land, sea = G.hexc("A8B37A"), G.hexc("E3D3A6")
-    for q in sph.polys:
-        c = G.mul(G.add(G.add(q.pts[0], q.pts[1]), q.pts[2]), 1 / 3)
-        v = math.sin(c[0] * 14 + 1.0) + math.sin(c[1] * 11 + 2.0 * c[2] * 9) + math.cos(c[2] * 13 - c[0] * 5)
-        col = land if v > 0.9 else sea
-        q.col = [(*col, 1.0)] * len(q.pts)
     tilt = math.radians(23)
-    m.extend(sph.transformed(lambda p: (cx + p[0] * math.cos(tilt) - p[1] * math.sin(tilt), gy + p[0] * math.sin(tilt) + p[1] * math.cos(tilt), cz + p[2])))
+    chart = S("M_globe")
+    def surface(u, v):
+        # East Asia faces the aisle; the north pole follows the instrument's tilted axis.
+        lon = (u - 0.5) * math.tau + math.radians(124)
+        lat = (v - 0.5) * math.pi
+        x = 0.27 * math.cos(lat) * math.sin(lon)
+        y = 0.27 * math.sin(lat)
+        z = 0.27 * math.cos(lat) * math.cos(lon)
+        return (cx + x * math.cos(tilt) - y * math.sin(tilt), gy + x * math.sin(tilt) + y * math.cos(tilt), cz + z)
+    for j in range(16):
+        v0, v1 = j / 16, (j + 1) / 16
+        for i in range(32):
+            u0, u1 = i / 32, (i + 1) / 32
+            if j == 0:
+                uv = [((u0 + u1) / 2, v0), (u1, v1), (u0, v1)]
+            elif j == 15:
+                uv = [(u0, v0), (u1, v0), ((u0 + u1) / 2, v1)]
+            else:
+                uv = [(u0, v0), (u1, v0), (u1, v1), (u0, v1)]
+            m.poly([surface(u, v) for u, v in uv], chart, uv=uv, smooth=True)
     pts = [(cx + 0.3 * math.sin(math.pi * t / 16 * 2) * math.cos(tilt) - 0.3 * math.cos(math.pi * t / 16 * 2) * math.sin(tilt) * 0.0, gy + 0.3 * math.cos(math.pi * t / 16 * 2), cz) for t in range(17)]
     for p, q in zip(pts, pts[1:]):
         m.member(p, q, G.prof_box(0.012, 0.02), BRASS)

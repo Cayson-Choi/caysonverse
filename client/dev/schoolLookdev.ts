@@ -28,6 +28,7 @@ import {
   type Material,
   type Object3D,
 } from "three";
+import { gardenWindow } from "../src/village/lots/gardenWindow";
 import { DRACOLoader, GLTFLoader } from "three-stdlib";
 import { DAY_LOOK, NIGHT_LOOK, NIGHT_MOON, directionFrom } from "../src/village/dayNightBlend";
 import { createPbrMaterial, getPbrKtx2Loader, getPbrSet, type PbrTier } from "../src/village/pbr/pbrLibrary";
@@ -122,6 +123,15 @@ export async function runLookdev(defaultModel: string): Promise<void> {
   for (const [name, m] of Object.entries(man.materials)) {
     if (m.kind === "glass") {
       mats.set(name, new MeshStandardMaterial({ color: "#a8bcc4", roughness: 0.04, metalness: 0.2, transparent: true, opacity: 0.25, vertexColors: false, depthWrite: false }));
+      continue;
+    }
+    if (m.kind === "garden" && m.maps) {
+      const tex = await getPbrKtx2Loader(renderer).loadAsync(`/models/village/lots/${dir}/${m.maps.albedo}`);
+      tex.colorSpace = SRGBColorSpace;
+      tex.flipY = false;
+      const window = gardenWindow(tex);
+      if (night) window.color.setRGB(0.018, 0.032, 0.071);
+      mats.set(name, window);
       continue;
     }
     if (m.kind === "screen") {

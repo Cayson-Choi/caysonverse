@@ -79,7 +79,7 @@ function plazaShape(bed: Bed, plants: Plant[]): SoilShape {
 }
 
 /** Bed plants (not the meadow's wild flowers, not grass or reeds). */
-const isBedPlant = (p: Plant) => !p.wild && p.species !== SPECIES.grass && p.species !== SPECIES.reed;
+const isBedPlant = (p: Plant) => !p.wild && !p.soilProvided && p.species !== SPECIES.grass && p.species !== SPECIES.reed;
 
 /** Which plaza bed a plant is on, or null. */
 function plazaBedOf(p: Plant): Bed | null {
@@ -380,6 +380,7 @@ export function buildSoil(plants: readonly Plant[]): Soil {
     copingGeo = b.build();
   }
   const heightAt = (p: Plant): number | null => {
+    if (p.soilProvided) return null;
     for (const { s } of shapes) {
       const [x0, x1, z0, z1] = s.bbox;
       if (p.x < x0 || p.x > x1 || p.z < z0 || p.z > z1 || Math.abs(p.y - s.floor) > 0.2) continue;

@@ -34,10 +34,10 @@ LOW_AZ = 70.0                        # the valley opens east-north-east (over th
 # Layers, near to far. R: crest radius (m) and its wander; Rin: the foot; H: crest height range (m, above y = 0);
 # segs x rows: the mesh grid; tex: atlas rows; crowns: the forest's crown size in the texture (m), 0 = none.
 LAYERS = [
-    dict(name="near", Rin=215.0, R=410.0, dR=70.0, H=(34.0, 92.0), segs=768, rows=10, tex=352, crowns=5.0, rough=2.2, west=0.3, seed=11, freq=5.0, ravine=0.20),
-    dict(name="mid", Rin=380.0, R=660.0, dR=95.0, H=(70.0, 165.0), segs=512, rows=8, tex=208, crowns=8.0, rough=3.0, west=0.18, seed=23, freq=4.2, ravine=0.17),
-    dict(name="far", Rin=600.0, R=940.0, dR=95.0, H=(120.0, 245.0), segs=320, rows=6, tex=128, crowns=0.0, rough=2.0, seed=37, freq=3.6, ravine=0.14),
-    dict(name="farthest", Rin=900.0, R=1255.0, dR=55.0, H=(160.0, 320.0), segs=256, rows=5, tex=96, crowns=0.0, rough=1.5, seed=53, freq=3.0, ravine=0.10),
+    dict(name="near", Rin=215.0, R=410.0, dR=70.0, H=(34.0, 92.0), segs=896, rows=8, blur_deg=0.95, tex=352, crowns=5.0, rough=2.2, west=0.3, seed=11, freq=5.0, ravine=0.20),
+    dict(name="mid", Rin=380.0, R=660.0, dR=95.0, H=(70.0, 165.0), segs=640, rows=7, blur_deg=1.10, tex=208, crowns=8.0, rough=3.0, west=0.18, seed=23, freq=4.2, ravine=0.17),
+    dict(name="far", Rin=600.0, R=940.0, dR=95.0, H=(120.0, 245.0), segs=448, rows=5, blur_deg=1.30, tex=128, crowns=0.0, rough=2.0, seed=37, freq=3.6, ravine=0.14),
+    dict(name="farthest", Rin=900.0, R=1255.0, dR=55.0, H=(160.0, 320.0), segs=400, rows=4, blur_deg=1.50, tex=96, crowns=0.0, rough=1.5, seed=53, freq=3.0, ravine=0.10),
 ]
 ATLAS_W = 4096
 PAD = 8                              # atlas rows between strips (mip bleeding)
@@ -288,6 +288,17 @@ def grid(layer):
     TH, T = np.meshgrid(theta, t)
     x, y, z = layer.surface(TH, T, fine=False)
     r = np.hypot(x, z)
+    # The row below the crest can form the visible skyline, especially from an elevated ride.
+    # Round the shoulders on the whole upper slope. Wrap the filter at north to keep the ring closed.
+    sigma = s["blur_deg"] * N / 360.0
+    extent = math.ceil(3 * sigma)
+    offsets = np.arange(-extent, extent + 1)
+    weights = np.exp(-0.5 * (offsets / sigma) ** 2)
+    weights /= weights.sum()
+    upper = smoothstep(0.0, 0.65, t)[:, None]
+    for data in (r, y):
+        rounded = sum(w * np.roll(data, off, axis=1) for off, w in zip(offsets, weights))
+        data += upper * (rounded - data)
     return t, r, y
 
 

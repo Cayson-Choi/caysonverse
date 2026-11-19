@@ -54,6 +54,8 @@ MATS = {
     "LM_library_brass": {"set": "aluminium_brushed", "metal": True, "rough": 0.7},
     "M_glass": {"glass": True},
     "M_screen": {"screen": True},
+    "M_garden": R.GARDEN_MAP,
+    "M_globe": {"own": "lot_library_globe", "note": "Natural Earth land and rivers; SOURCES_lot_library.md"},
     "M_painting": {"own": "lot_library_reading_paintings", "note": "public-domain landscapes (Constable, Hobbema, Corot, Ruisdael): SOURCES_lot_library.md"},
     "M_fire": {"fire": True},
 }
@@ -177,9 +179,8 @@ def door(kit, f):
     f.box(D, 5.42, 5.6, 0.0, 3.58, 0.0, 0.05, OAK_DK, skip=("-w",))
     f.box(D, 7.8, 7.98, 0.0, 3.58, 0.0, 0.05, OAK_DK, skip=("-w",))
     f.box(D, 5.42, 7.98, 3.4, 3.58, 0.0, 0.05, OAK_DK, skip=("-w",))
-    # the view through the fanlight
-    R.window  # (the fanlight shows the porch's lantern light: a warm screen)
-    f.quad(S_, 5.6, 7.8, 2.8, 3.4, -0.6, S("M_screen"))
+    # The porch lantern's diffuser sits 2 mm behind the glazing and overlaps the jamb and head.
+    f.quad(S_, 5.55, 7.85, 2.77, 3.45, -0.122, S("M_screen"))
 
 
 def bay(kit, f, a, b):
@@ -191,8 +192,9 @@ def bay(kit, f, a, b):
     cant = 0.5
     A, B, C, Dd = (a, 0.0), (a + cant, zb), (b - cant, zb), (b, 0.0)
     # alcove floor, ceiling (3.3), the reveal of the opening
-    S_.poly([(a, 0.0, 0.0), (b, 0.0, 0.0), (C[0], 0.0, zb), (B[0], 0.0, zb)][::-1], FLOOR)
-    S_.poly([(a, 3.3, 0.0), (b, 3.3, 0.0), (C[0], 3.3, zb), (B[0], 3.3, zb)], CEIL)
+    footprint = [A, Dd, C, B]  # counter-clockwise seen from above
+    S_.poly([(x, 0.0, z) for x, z in footprint], FLOOR)
+    S_.poly([(x, 3.3, z) for x, z in reversed(footprint)], CEIL)
     for (p, q) in ((A, B), (B, C), (C, Dd)):
         L = math.dist(p, q)
         d = ((q[0] - p[0]) / L, (q[1] - p[1]) / L)
@@ -204,20 +206,7 @@ def bay(kit, f, a, b):
                 quad.reverse()
             S_.poly(quad, s)
         gq = [(p[0], 0.55, p[1]), (q[0], 0.55, q[1]), (q[0], 3.2, q[1]), (p[0], 3.2, p[1])]
-        S_.poly(gq, GLASS)
-        # view beyond the glass
-        out = G.mul(inward, -1.6)
-        vq = [G.add((p[0], 0.0, p[1]), out), G.add((q[0], 0.0, q[1]), out), G.add((q[0], 4.0, q[1]), out), G.add((p[0], 4.0, p[1]), out)]
-        if G.dot(G.poly_normal(vq), inward) < 0:
-            vq.reverse()
-        bands = [(0.0, (0.45, 0.66, 0.32)), (0.9, (0.36, 0.56, 0.28)), (1.7, (0.62, 0.78, 0.9)), (4.0, (0.48, 0.68, 0.92))]
-        for (va, ca), (vb, cb) in zip(bands, bands[1:]):
-            qq = [G.add((p[0], va, p[1]), out), G.add((q[0], va, q[1]), out), G.add((q[0], vb, q[1]), out), G.add((p[0], vb, p[1]), out)]
-            cols = [(*ca, 1.0), (*ca, 1.0), (*cb, 1.0), (*cb, 1.0)]
-            if G.dot(G.poly_normal(qq), inward) < 0:
-                qq.reverse()
-                cols = [cols[3], cols[2], cols[1], cols[0]]
-            S_.poly(qq, S("M_screen"), cols=cols)
+        S_.poly(gq, R.GARDEN)
         # frames: transom and mullions (white)
         for v in (0.58, 2.5, 3.18):
             D.member((p[0], v, p[1]), (q[0], v, q[1]), G.prof_box(0.06, 0.06), PAINT)

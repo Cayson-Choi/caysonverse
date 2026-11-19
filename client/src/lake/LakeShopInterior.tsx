@@ -20,11 +20,22 @@ import { versionedUrl } from "../village/modelUrl";
 import { LoadBoundary } from "../village/LoadBoundary";
 import { SceneWarmUp } from "../game/SceneWarmUp";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
+import { dayNight } from "../village/dayNightDriver";
 
 export const SHOP_INTERIOR_URL = versionedUrl("/models/lake/lake_shop_interior.glb");
 
 /** COLOR_0 holds half the baked light (so highlights up to 2x fit the 0..1 range). */
 const LIGHT_SCALE = 2.0;
+
+// The shop is lit by its own fluorescent fixtures. Cap the outdoor camera's
+// night adaptation on the baked surfaces so the paper, wood and tiles retain detail.
+const SHOP_EXPOSURE = 0.78;
+export function applyShopExposure(materials: readonly MeshBasicMaterial[], outdoorExposure: number): void {
+  const scale = LIGHT_SCALE * Math.min(1, SHOP_EXPOSURE / outdoorExposure);
+  for (const material of materials) {
+    if (material.vertexColors) material.color.setScalar(scale);
+  }
+}
 
 /** The unlit copy of one of the model's materials (by the material's name: atlas, floor, wall, ..., glass, emit). */
 export function shopInteriorMaterial(src: MeshStandardMaterial): MeshBasicMaterial {
@@ -49,7 +60,7 @@ export function shopInteriorMaterial(src: MeshStandardMaterial): MeshBasicMateri
 }
 
 /** Swap the loader's lit materials for the unlit baked-light ones (returns the new materials, to dispose). */
-export function prepareShopInterior(root: Object3D): Material[] {
+export function prepareShopInterior(root: Object3D): MeshBasicMaterial[] {
   const made = new Map<Material, MeshBasicMaterial>();
   root.traverse((o) => {
     const mesh = o as Mesh;
@@ -121,8 +132,14 @@ function ShopInteriorModel() {
   const gltf = useGLTF(SHOP_INTERIOR_URL, DRACO_PATH);
   const dressed = useMemo(() => {
     const root = gltf.scene.clone(true);
-    return { root, mats: prepareShopInterior(root) };
+    return { root, mats: prepareShopInterior(root), lastExposure: -1 };
   }, [gltf]);
+  useFrame(() => {
+    const exposure = dayNight.outdoor.exposure;
+    if (dressed.lastExposure === exposure) return;
+    applyShopExposure(dressed.mats, exposure);
+    dressed.lastExposure = exposure;
+  });
   useEffect(() => () => dressed.mats.forEach((m) => m.dispose()), [dressed]);
   useEffect(() => {
     if (!import.meta.env.DEV) return;
