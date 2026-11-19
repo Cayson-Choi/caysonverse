@@ -72,20 +72,65 @@ def deckbox(i):
 # ---------------------------------------------------------------------------------------------------- decks
 
 
-def planks(mb, rng, x0, x1, z0, z1, run, top=0.0, th=0.04, w=0.14, gap=0.012, col=None, jit_amt=0.09):
-    """Deck boards. run='x': boards run along x and are stacked along z; run='z': the other way."""
-    col = col or P["deck"]
+class Deck(MB):
+    """Cut the rim boards, piers and joists from the same stock as the walking surface."""
+    def finish(self, collection=None, name=None):
+        timber = set()
+        for i, (indices, mat, smooth, uv) in enumerate(self.faces):
+            if mat != "wood":
+                continue
+            timber.update(indices)
+            pts = [self.v[k] for k in indices]
+            x, z, y = ([p[0] for p in pts], [-p[1] for p in pts], [p[2] for p in pts])
+            dx, dz = max(x) - min(x), max(z) - min(z)
+            along, across = (x, z) if dx >= dz else (z, x)
+            cross = across if max(y) - min(y) < 0.002 else y
+            uv = [((a - min(along)) / 1.4 + 0.17, 1 - (s - min(cross)) / 1.4 - 0.31) for a, s in zip(along, cross)]
+            self.faces[i] = (indices, "deck", smooth, uv)
+        for i in timber:
+            r, g, b, a = self.col[i]
+            self.col[i] = (min(1, 2.49 * r), min(1, 4.05 * g), min(1, 7.1 * b), a)
+        return super().finish(collection, name)
+
+
+def planks(mb, rng, x0, x1, z0, z1, run, top=0.0, th=0.04, w=0.14, gap=0.012):
+    """Sawn decking with eased arrises and staggered butt joints. The oak grain runs along each board."""
     lo, hi = (z0, z1) if run == "x" else (x0, x1)
+    start, end = (x0, x1) if run == "x" else (z0, z1)
     n = int((hi - lo + gap) // (w + gap))
     pitch = (hi - lo) / n
     for i in range(n):
         a = lo + i * pitch
         b = a + pitch - gap
-        c = jit(rng, col, jit_amt)
-        if run == "x":
-            boxw(mb, x0, x1, top - th, top, a, b, c, "wood", skip="LRDFB")
-        else:
-            boxw(mb, a, b, top - th, top, z0, z1, c, "wood", skip="LRDFB")
+        color = jit(rng, (0.76, 0.80, 0.83, 1), 0.09)
+        profile = [(a, -th), (a, -0.006), (a + 0.005, 0), (b - 0.005, 0), (b, -0.006), (b, -th)]
+        def point(along, across, height):
+            return V(along, across, top + height) if run == "x" else V(across, along, top + height)
+        cuts = [start]
+        if end - start > 3.8:
+            seam = start + (1.6 if i % 2 else 3.2)
+            while seam < end - 0.55:
+                cuts.append(seam)
+                seam += 3.2
+        cuts.append(end)
+        for j, (left, right) in enumerate(zip(cuts, cuts[1:])):
+            u0 = (i * 0.618034 + j * 0.37) % 1
+            v0 = (i * 0.414214 + j * 0.27) % 1
+            left += 0.004 if j else 0
+            right -= 0.004 if j + 1 < len(cuts) - 1 else 0
+            for k, (p, q) in enumerate(zip(profile, profile[1:])):
+                corners = [(left, *p), (left, *q), (right, *q), (right, *p)]
+                if run == "z":
+                    corners.reverse()
+                pts = [point(*v) for v in corners]
+                uv = [(u0 + (l - left) / 1.4, 1 - v0 - (s - a + h) / 1.4) for l, s, h in corners]
+                shade = (0.58, 0.91, 1, 0.91, 0.58)[k]
+                mb.quad_uv(*pts, uv, mulc(color, shade), "deck")
+            for l in (left, right):
+                section = profile if ((l == right) == (run == "x")) else profile[::-1]
+                pts = [point(l, s, h) for s, h in section]
+                uv = [(u0 + (s - a) / 1.4, 1 - v0 - h / 1.4) for s, h in section]
+                mb.face(mb.verts(pts, mulc(color, 0.65)), "deck", False, uv)
     boxw(mb, x0, x1, top - th - 0.004, top - th, z0, z1, hexc("#2a2018"), "matte", skip="D")  # the dark seen through the gaps
 
 
@@ -221,7 +266,7 @@ def instance(name, data, collection, x, z, yaw, y=0.0):
 
 def build_pier(rng):
     d = deckbox("pier")
-    mb = MB("lake_pier")
+    mb = Deck("lake_pier")
     x0, x1, z0, z1 = d["minX"], d["maxX"], d["minZ"], d["maxZ"]
     planks(mb, rng, x0, x1, z0, z1, "z")
     # joists run along x, bearers across at every post line, posts into the water
@@ -261,7 +306,7 @@ def lifebuoy(mb, x, z):
 
 def build_pier_t(rng):
     d = deckbox("pier_t")
-    mb = MB("lake_pier_t")
+    mb = Deck("lake_pier_t")
     x0, x1, z0, z1 = d["minX"], d["maxX"], d["minZ"], d["maxZ"]
     planks(mb, rng, x0, x1, z0, z1, "x")
     for x in (x0 + 0.08, x0 + 1.5, (x0 + x1) / 2, x1 - 1.5, x1 - 0.08):
@@ -295,9 +340,9 @@ def build_pier_t(rng):
 
 def walkway(rng, key):
     d = deckbox(key)
-    mb = MB("lake_" + key)
+    mb = Deck("lake_" + key)
     x0, x1, z0, z1 = d["minX"], d["maxX"], d["minZ"], d["maxZ"]
-    planks(mb, rng, x0, x1, z0, z1, "x", w=0.12, col=P["deck"])
+    planks(mb, rng, x0, x1, z0, z1, "x", w=0.12)
     n = 8
     pitch = (z1 - z0) / n
     for x in (x0 + 0.08, x1 - 0.08):
@@ -328,7 +373,7 @@ def jwadae(rng, key, hut_key, face_in):
     """A floating platform: board deck on a timber frame over blue drums, pipe railings opened in front of the chairs and at the
     walkway. face_in = 'n' if the walkway joins its north edge (좌대 B), 's' if its south edge (좌대 A)."""
     d = deckbox(key)
-    mb = MB("lake_" + key)
+    mb = Deck("lake_" + key)
     x0, x1, z0, z1 = d["minX"], d["maxX"], d["minZ"], d["maxZ"]
     planks(mb, rng, x0, x1, z0, z1, "x", w=0.15)
     # frame under the boards: joists along z, edge beams, drums along the edges
