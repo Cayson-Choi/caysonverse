@@ -136,7 +136,7 @@ function buildTrees(): ParkTree[] {
     if (onPath(x, z, 5)) return false;
     if (PARK_SHOPS.some((s) => Math.abs(x - s.x) < s.d / 2 + 5 && Math.abs(z - s.z) < s.w / 2 + 4)) return false;
     if (Math.hypot(x - PARK_EXIT_PAD.x, z - PARK_EXIT_PAD.z) < 14) return false;
-    if (Math.hypot(x - 110, z + 135) < 30 || Math.hypot(x - 205, z + 135) < 34 || Math.hypot(x - MOON_BOAT_SITE_AT.x - 4, z - MOON_BOAT_SITE_AT.z) < 28 || Math.hypot(x - DROP_SITE_AT.x - 6, z - DROP_SITE_AT.z) < 24) return false; // the ride plots (the carousel's, the wheel's, the moon boat's, the drop tower's) stay open
+    if (Math.hypot(x - 110, z + 135) < 30 || Math.hypot(x - 205, z + 135) < 34 || Math.hypot(x - MOON_BOAT_SITE_AT.x - 4, z - MOON_BOAT_SITE_AT.z) < 32 || Math.hypot(x - DROP_SITE_AT.x - 6, z - DROP_SITE_AT.z) < 24) return false; // the ride plots (the carousel's, the wheel's, the moon boat's, the drop tower's) stay open
     return true;
   };
   // groves: clusters of trees with open lawn between them (lawns stay open beside the paths, the plaza and the ride plots)
@@ -258,8 +258,8 @@ function buildSolids(): AABB[] {
   out.push(box(205 - 3.5, 205 + 3.5, -140 + 4.45, -140 + 8.8)); // the platform's deck (the steps south of it are walked on)
   // the moon boat: the swing's lane under the hull, the four feet of its A-frames and the boarding deck (the steps east of it are walked on up to the pad)
   const M = MOON_BOAT_SITE_AT;
-  out.push(box(M.x - 2.9, M.x + 2.9, M.z - 11, M.z + 11));
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) out.push(box(M.x + sx * 3.9 - 1, M.x + sx * 3.9 + 1, M.z + sz * 9.5 - 1, M.z + sz * 9.5 + 1));
+  out.push(box(M.x - 2.9, M.x + 2.9, M.z - 20, M.z + 20)); // the lane under the swinging hull (it is below 4.6 m only within 26 degrees of the bottom: z within 20 m)
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) out.push(box(M.x + sx * 4.7 - 1.8, M.x + sx * 4.7 + 1.8, M.z + sz * 15 - 1.8, M.z + sz * 15 + 1.8));
   out.push(box(M.x + 3.0, M.x + 7.9, M.z - 4.3, M.z + 4.3));
   // the drop tower: its platform (the car's station, a 14.8 m square) is a solid; the boarding pad lies east of it
   out.push(box(DROP_SITE_AT.x - 7.4, DROP_SITE_AT.x + 7.4, DROP_SITE_AT.z - 7.4, DROP_SITE_AT.z + 7.4));

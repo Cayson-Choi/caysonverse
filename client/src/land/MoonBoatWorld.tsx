@@ -21,10 +21,12 @@ import {
   Quaternion,
   Shape,
   SphereGeometry,
+  RepeatWrapping,
   SRGBColorSpace,
   Texture,
   TorusGeometry,
   TubeGeometry,
+  Vector2,
   Vector3,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -50,7 +52,7 @@ import {
 import { MOON_DECK, MOON_DECK_Y, MOON_STEPS } from "@caysonverse/shared/land/moonBoatGeometry";
 
 type V3 = [number, number, number];
-type MatKey = "goldBright" | "velvet" | "hullOut" | "deck" | "metal" | "concrete" | "gold" | "indigoPaint" | "violet" | "cushion" | "white" | "earpink" | "ink" | "stone";
+type MatKey = "brass" | "steel" | "chrome" | "hullWood" | "goldBright" | "velvet" | "hullOut" | "deck" | "metal" | "concrete" | "gold" | "indigoPaint" | "violet" | "cushion" | "white" | "earpink" | "ink" | "stone";
 
 /** Which keys get UVs in metres (their material tile, m) after merging; the rest keep their own UVs (cylinders' wrap, the hull's explicit ones). */
 /** Metres per texture tile. WoodFloor051 has about 24 plank rows to a tile: 3 m a tile makes a plank 12.5 cm wide (a boat deck plank is 12-15 cm). */
@@ -270,6 +272,81 @@ function crescentGeometry(r: number, depth: number): BufferGeometry {
   return g;
 }
 
+/** Tufted leather: a 1024 px diamond-tufted, grained height map turned into a normal map, a deep violet colour map with the creases darkened (anisotropic, repeating). */
+function leatherMaterial(): MeshStandardMaterial {
+  const N = 1024;
+  const h = new Float32Array(N * N);
+  let seed = 7;
+  const rnd = (): number => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const lat = (cells: number): Float32Array => Float32Array.from({ length: cells * cells }, rnd);
+  const octave = (g: Float32Array, cells: number, x: number, y: number): number => {
+    const fx = (x / N) * cells;
+    const fy = (y / N) * cells;
+    const x0 = Math.floor(fx) % cells;
+    const y0 = Math.floor(fy) % cells;
+    const x1 = (x0 + 1) % cells;
+    const y1 = (y0 + 1) % cells;
+    const tx = fx - Math.floor(fx);
+    const ty = fy - Math.floor(fy);
+    const a = g[y0 * cells + x0]! * (1 - tx) + g[y0 * cells + x1]! * tx;
+    const b = g[y1 * cells + x0]! * (1 - tx) + g[y1 * cells + x1]! * tx;
+    return a * (1 - ty) + b * ty;
+  };
+  const g1 = lat(128);
+  const g2 = lat(256);
+  const col = new Uint8ClampedArray(new ArrayBuffer(N * N * 4));
+  for (let y = 0; y < N; y++)
+    for (let x = 0; x < N; x++) {
+      const a = (x / N) * 4 + (y / N) * 4;
+      const b = (x / N) * 4 - (y / N) * 4;
+      const fa = Math.abs((((a % 2) + 2) % 2) - 1);
+      const fb = Math.abs((((b % 2) + 2) % 2) - 1);
+      const pillow = Math.pow(Math.min(1, Math.min(fa, fb) * 1.6), 0.7); // 0 in the creases, 1 on the cushion
+      const grain = octave(g1, 128, x, y) * 0.6 + octave(g2, 256, x, y) * 0.4;
+      const v = pillow * 0.75 + grain * 0.12;
+      h[y * N + x] = v;
+      const shade = 0.55 + 0.45 * pillow;
+      const o = (y * N + x) * 4;
+      col[o] = (92 + grain * 26) * shade;
+      col[o + 1] = (62 + grain * 18) * shade;
+      col[o + 2] = (172 + grain * 30) * shade;
+      col[o + 3] = 255;
+    }
+  const nrm = new Uint8ClampedArray(new ArrayBuffer(N * N * 4));
+  for (let y = 0; y < N; y++)
+    for (let x = 0; x < N; x++) {
+      const xl = h[y * N + ((x + N - 1) % N)]!;
+      const xr = h[y * N + ((x + 1) % N)]!;
+      const yu = h[((y + N - 1) % N) * N + x]!;
+      const yd = h[((y + 1) % N) * N + x]!;
+      let nx = (xl - xr) * 6;
+      let ny = (yu - yd) * 6;
+      const nz = 1;
+      const l = Math.hypot(nx, ny, nz);
+      nx /= l;
+      ny /= l;
+      const o = (y * N + x) * 4;
+      nrm[o] = (nx * 0.5 + 0.5) * 255;
+      nrm[o + 1] = (ny * 0.5 + 0.5) * 255;
+      nrm[o + 2] = (nz / l * 0.5 + 0.5) * 255;
+      nrm[o + 3] = 255;
+    }
+  const make = (data: Uint8ClampedArray<ArrayBuffer>, srgb: boolean): CanvasTexture => {
+    const c = document.createElement("canvas");
+    c.width = c.height = N;
+    c.getContext("2d")!.putImageData(new ImageData(data, N, N), 0, 0);
+    const t = new CanvasTexture(c);
+    t.wrapS = t.wrapT = RepeatWrapping;
+    t.anisotropy = 8;
+    if (srgb) t.colorSpace = SRGBColorSpace;
+    return t;
+  };
+  return new MeshStandardMaterial({ map: make(col, true), normalMap: make(nrm, false), normalScale: new Vector2(1, 1), roughness: 0.5, metalness: 0.0, emissive: new Color("#2a2070"), emissiveIntensity: 0.4 });
+}
+
 interface BoatBuild {
   boat: Mesh[];
   frame: Mesh[];
@@ -285,23 +362,29 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
   const frameBulbs: V3[] = [];
 
   // ── the boat (axle at the origin, y up, z toward the bow) ──
-  const hullOut = new Mesh(loft(outerAt, 56, 1.8), mats.hullOut);
+  const hullOut = new Mesh(loft(outerAt, 56, 3.0), mats.hullWood);
   const hullIn = new Mesh(loft(innerAt, 56, 3.0), mats.deck);
   const cap = new Mesh(rimCap(56), mats.gold);
   for (const m of [hullOut, hullIn, cap]) {
     m.castShadow = true;
     m.receiveShadow = true;
   }
-  // ribs: indigo bands round the outer hull every 1.5 m, and a violet stripe along each flank, gold leaf along the keel
+  // the planking: black caulked seams between the strakes, brass rivet rows along two of them, then the painted flank stripes and the gilt keel
   const outerPt = (z: number, u: number, out = 0.03): Vector3 => {
     const [x, y] = outerAt(z, u);
     return new Vector3(x + Math.sign(u || 1) * out, y, z);
   };
-  for (let z = -HZ * 0.82; z <= HZ * 0.82 + 0.01; z += 1.5) {
-    const pts: Vector3[] = [];
-    for (let j = 0; j < SIGNED.length; j++) pts.push(outerPt(z, SIGNED[j]!, 0.025));
-    boat.tube("indigoPaint", pts, 0.05, 6);
-  }
+  for (const sg of [-1, 1])
+    for (const u of [0.12, 0.3, 0.46, 0.6, 0.86]) {
+      const seam: Vector3[] = [];
+      for (let z = -HZ * 0.96; z <= HZ * 0.96 + 0.01; z += 0.6) seam.push(outerPt(z, sg * u, 0.012));
+      boat.tube("ink", seam, 0.011, 4);
+    }
+  for (const sg of [-1, 1])
+    for (const u of [0.3, 0.6]) for (let z = -HZ * 0.9; z <= HZ * 0.9 + 0.01; z += 0.36) {
+      const q = outerPt(z, sg * u, 0.014);
+      boat.ball("brass", 0.02, q.x, q.y + 0.045, q.z, 1, 1, 0.6, 6);
+    }
   for (const s of [-1, 1]) {
     const flank: Vector3[] = [];
     const flank2: Vector3[] = [];
@@ -323,6 +406,8 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
     stars.push({ p: [x + 0.06, y, z], side: 1 });
     stars.push({ p: [-x - 0.06, y, z], side: -1 });
   }
+  // a string of bulbs along each flank stripe
+  for (const sg of [-1, 1]) for (let z = -HZ * 0.85; z <= HZ * 0.85 + 0.01; z += 1.2) { const q = outerPt(z, sg * 0.9, 0.08); boatBulbs.push([q.x, q.y, q.z]); }
   // gunwale bulbs along the rim cap, small and realistic
   for (const s of [-1, 1])
     for (let z = -HZ * 0.9; z <= HZ * 0.9 + 0.01; z += 0.7) {
@@ -370,9 +455,13 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
     }
     // the lap bar: a padded indigo bar, posts at the ends with gold caps
     const by = fy + 0.82;
-    boat.rod("indigoPaint", [-half + 0.18, by, z + 0.46], [half - 0.18, by, z + 0.46], 0.05, 0.05, 10);
+    boat.rod("chrome", [-half + 0.18, by, z + 0.46], [half - 0.18, by, z + 0.46], 0.032, 0.032, 12);
+    for (let col = 0; col < MOON_BOAT_COLS; col++) {
+      const x = (col - (MOON_BOAT_COLS - 1) / 2) * MOON_SEAT.dx;
+      boat.rod("velvet", [x - 0.3, by, z + 0.46], [x + 0.3, by, z + 0.46], 0.06, 0.06, 12); // the padded sleeve over each rider's lap
+    }
     for (const s of [-1, 1]) {
-      boat.rod("indigoPaint", [s * (half - 0.18), fy + 0.04, z + 0.46], [s * (half - 0.18), by, z + 0.46], 0.04, 0.04, 8);
+      boat.rod("chrome", [s * (half - 0.18), fy + 0.04, z + 0.46], [s * (half - 0.18), by, z + 0.46], 0.03, 0.03, 10);
       boat.ball("goldBright", 0.036, s * (half - 0.18), by + 0.02, z + 0.46, 1, 1, 1, 8);
     }
   }
@@ -394,16 +483,34 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
       boat.ball("goldBright", 0.03, xo - sg * 0.01, yo + 0.012, zz, 1, 0.7, 0.8, 8);
     }
   }
-  // the swing arms: a pair each side, splayed fore and aft from the axle collar to brackets on the rim (gold)
+  // the swing arms (28 m long): a pair each side, splayed fore and aft from the axle collar to brackets on the rim: steel tubes with ring clamps, cross ties and X braces every 4 m
   for (const sx of [-1, 1]) {
     const x = sx * MOON_FRAME.armX;
+    const yTop = -0.15;
+    const zb = 0.95;
+    const yb = rimY(zb) - 0.1;
     for (const sz of [-1, 1]) {
-      const zb = sz * 0.95;
-      const yb = rimY(zb) - 0.1;
-      boat.rod("metal", [x, -0.15, sz * 0.12], [x, yb, zb], 0.09, 0.09, 12);
-      boat.ball("gold", 0.12, x, yb, zb, 1, 1, 1, 10);
+      boat.rod("steel", [x, yTop, sz * 0.12], [x, yb, sz * zb], 0.14, 0.14, 12);
+      boat.ball("gold", 0.2, x, yb, sz * zb, 1, 1, 1, 12);
+      boat.rod("gold", [x, yb + 0.25, sz * zb], [x, yb - 0.25, sz * zb], 0.19, 0.19, 12); // the bracket collar
     }
-    boat.rod("gold", [x, -0.35, 0], [x, 0.0, 0], 0.2, 0.2, 14);
+    const nArm = 7;
+    for (let k = 1; k <= nArm; k++) {
+      const f = k / (nArm + 1);
+      const y = yTop + (yb - yTop) * f;
+      const z = 0.12 + (zb - 0.12) * f;
+      boat.rod("steel", [x, y, -z], [x, y, z], 0.06, 0.06, 6); // a cross tie
+      for (const sz of [-1, 1]) boat.rod("gold", [x, y - 0.1, sz * z], [x, y + 0.1, sz * z], 0.17, 0.17, 10); // a ring clamp
+      if (k < nArm) {
+        const f2 = (k + 1) / (nArm + 1);
+        const y2 = yTop + (yb - yTop) * f2;
+        const z2 = 0.12 + (zb - 0.12) * f2;
+        boat.rod("steel", [x, y, -z], [x, y2, z2], 0.035, 0.035, 5);
+        boat.rod("steel", [x, y, z], [x, y2, -z2], 0.035, 0.035, 5);
+      }
+      if (k % 2 === 0) boatBulbs.push([x + sx * 0.2, y, 0]);
+    }
+    boat.rod("gold", [x, -0.35, 0], [x, 0.0, 0], 0.26, 0.26, 14);
   }
 
   // the bow horn: a gold finial, a violet crescent pillow and, standing behind, a gold crescent moon with the sleeping moon-rabbit curled in front of it
@@ -439,48 +546,77 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
   boat.ball("gold", 0.1, 0, sy + 1.42, -HZ + 0.3, 1, 0.6, 1, 10);
   boatBulbs.push([0, sy + 1.1, -HZ + 0.3]);
 
-  // ── the fixed frame (park frame relative to the site: x east, y up, z south) ──
-  const zAt = (y: number): number => MOON_FRAME.footZ + (0.5 - MOON_FRAME.footZ) * ((y - 0.45) / (MOON_PIVOT_Y + 0.05));
+  // ── the fixed frame (park frame relative to the site: x east, y up, z south): two A-frames of tubular steel lattice, each leg two chords joined by rungs, zig-zag
+  // diagonals and bolted gusset plates, 30 m to the axle; concrete footings with base plates and anchor bolts; ties and X braces between the legs ──
+  const HY = MOON_PIVOT_Y + 0.05;
+  const zAt = (y: number): number => MOON_FRAME.footZ + (0.5 - MOON_FRAME.footZ) * ((y - 0.45) / HY);
+  const CH = MOON_FRAME.chord;
   for (const sx of [-1, 1]) {
     const lx = sx * MOON_FRAME.legX;
     for (const sz of [-1, 1]) {
       const fz = sz * MOON_FRAME.footZ;
-      frame.rod("metal", [lx, 0.45, fz], [lx, MOON_PIVOT_Y + 0.5, sz * 0.5], 0.44, 0.28, 14);
-      frame.soft("concrete", 2.8, 0.5, 2.8, lx, 0.25, fz, 0.06);
-      frame.rod("gold", [lx, 0.5, fz], [lx, 0.62, fz], 0.62, 0.62, 18); // the base plate
-      for (let k = 0; k < 4; k++) {
-        const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
-        frame.rod("gold", [lx + Math.cos(a) * 0.52, 0.5, fz + Math.sin(a) * 0.52], [lx + Math.cos(a) * 0.52, 0.72, fz + Math.sin(a) * 0.52], 0.04, 0.04, 6); // anchor bolts
+      for (const c of [-CH, CH]) {
+        frame.rod("steel", [lx + c, 0.45, fz], [lx + c, MOON_PIVOT_Y + 0.5, sz * 0.5], MOON_FRAME.chordR + 0.05, MOON_FRAME.chordR - 0.05, 12);
+        frame.soft("concrete", 1.7, 0.5, 1.7, lx + c, 0.25, fz, 0.05);
+        frame.rod("gold", [lx + c, 0.5, fz], [lx + c, 0.6, fz], 0.42, 0.42, 16); // the base plate
+        for (let k = 0; k < 4; k++) {
+          const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+          frame.rod("chrome", [lx + c + Math.cos(a) * 0.32, 0.5, fz + Math.sin(a) * 0.32], [lx + c + Math.cos(a) * 0.32, 0.7, fz + Math.sin(a) * 0.32], 0.035, 0.035, 6); // anchor bolts
+        }
       }
-      for (const f of [0.3, 0.6, 0.85]) {
-        const y = 0.45 + (MOON_PIVOT_Y + 0.05) * f;
+      // the lattice between the two chords: a rung and a diagonal at every node (2 m along the leg)
+      const nodes = 16;
+      for (let k = 0; k <= nodes; k++) {
+        const f = (k / nodes) * 0.97 + 0.02;
+        const y = 0.6 + (MOON_PIVOT_Y - 0.4) * f;
         const z = sz * zAt(y);
-        frame.rod("gold", [lx, y - 0.09, z], [lx, y + 0.09, z], 0.43 - 0.15 * f, 0.43 - 0.15 * f, 16); // gold bands
+        frame.rod("steel", [lx - CH, y, z], [lx + CH, y, z], 0.05, 0.05, 6);
+        if (k < nodes) {
+          const f2 = ((k + 1) / nodes) * 0.97 + 0.02;
+          const y2 = 0.6 + (MOON_PIVOT_Y - 0.4) * f2;
+          const z2 = sz * zAt(y2);
+          const a = k % 2 === 0 ? -CH : CH;
+          frame.rod("steel", [lx + a, y, z], [lx - a, y2, z2], 0.04, 0.04, 6);
+        }
+        // a gusset plate with four bolts at the node, and a night bulb on the outer chord
+        frame.box("steel", 2 * CH + 0.3, 0.34, 0.07, lx, y, z + sz * 0.0);
+        for (const bx of [-CH - 0.1, -CH + 0.1, CH - 0.1, CH + 0.1]) frame.ball("chrome", 0.03, lx + bx, y, z + sz * 0.05, 1, 1, 0.7, 6);
+        if (k % 2 === 0) frameBulbs.push([lx + sx * (CH + 0.28), y, z]);
+      }
+      // painted collars (gold bands) on the chords
+      for (const f of [0.3, 0.6, 0.85]) {
+        const y = 0.45 + HY * f;
+        const z = sz * zAt(y);
+        for (const c of [-CH, CH]) frame.rod("gold", [lx + c, y - 0.09, z], [lx + c, y + 0.09, z], 0.3 - 0.1 * f, 0.3 - 0.1 * f, 14);
       }
     }
-    // cross bracing: two levels of horizontal ties with X braces between the two legs of an A-frame
-    const y1 = 3.4;
-    const y2 = 7.0;
-    for (const y of [y1, y2]) frame.rod("metal", [lx, y, -zAt(y)], [lx, y, zAt(y)], 0.16, 0.16, 10);
-    frame.rod("metal", [lx, y1, -zAt(y1)], [lx, y2, zAt(y2)], 0.1, 0.1, 8);
-    frame.rod("metal", [lx, y1, zAt(y1)], [lx, y2, -zAt(y2)], 0.1, 0.1, 8);
-    // the bearing housing: an indigo block, gold end caps with bolts, a violet finial
-    frame.soft("indigoPaint", 1.1, 1.3, 1.5, lx, MOON_PIVOT_Y, 0, 0.12);
-    frame.rod("gold", [lx + sx * 0.55, MOON_PIVOT_Y, 0], [lx + sx * 0.78, MOON_PIVOT_Y, 0], 0.72, 0.72, 24);
+    // ties and X braces between the two legs of an A-frame, four levels, on both chords
+    const levels = [5, 11, 17, 23];
+    for (const c of [-CH, CH]) {
+      for (let i = 0; i < levels.length; i++) {
+        const y = levels[i]!;
+        frame.rod("steel", [lx + c, y, -zAt(y)], [lx + c, y, zAt(y)], 0.14, 0.14, 8);
+        frame.ball("gold", 0.2, lx + c, y, zAt(y), 1, 1, 1, 10);
+        frame.ball("gold", 0.2, lx + c, y, -zAt(y), 1, 1, 1, 10);
+        if (i + 1 < levels.length) {
+          const y2 = levels[i + 1]!;
+          frame.rod("steel", [lx + c, y, -zAt(y)], [lx + c, y2, zAt(y2)], 0.09, 0.09, 6);
+          frame.rod("steel", [lx + c, y, zAt(y)], [lx + c, y2, -zAt(y2)], 0.09, 0.09, 6);
+        }
+      }
+    }
+    // the bearing housing: a steel block, gold end caps with bolts, a violet finial
+    frame.soft("indigoPaint", 1.5, 1.7, 1.9, lx, MOON_PIVOT_Y, 0, 0.14);
+    frame.rod("gold", [lx + sx * 0.75, MOON_PIVOT_Y, 0], [lx + sx * 1.0, MOON_PIVOT_Y, 0], 0.9, 0.9, 24);
     for (let k = 0; k < 8; k++) {
       const a = (k / 8) * Math.PI * 2;
-      frame.ball("gold", 0.05, lx + sx * 0.8, MOON_PIVOT_Y + Math.cos(a) * 0.55, Math.sin(a) * 0.55, 1, 1, 1, 8);
+      frame.ball("chrome", 0.06, lx + sx * 1.02, MOON_PIVOT_Y + Math.cos(a) * 0.68, Math.sin(a) * 0.68, 1, 1, 1, 8);
     }
-    frame.ball("violet", 0.34, lx, MOON_PIVOT_Y + 0.98, 0, 1, 1, 1, 18);
-    frame.add("goldBright", crescentGeometry(0.5, 0.14), new Matrix4().compose(new Vector3(lx, MOON_PIVOT_Y + 1.75, 0), new Quaternion().setFromEuler(new Euler(0, Math.PI / 2, 0)), new Vector3(1, 1, 1)));
-    // small string-light bulbs up the legs
-    for (const sz of [-1, 1])
-      for (let k = 0; k < 8; k++) {
-        const y = 1.4 + k * 1.45;
-        frameBulbs.push([lx + sx * 0.4, y, sz * zAt(y)]);
-      }
+    frame.ball("violet", 0.42, lx, MOON_PIVOT_Y + 1.25, 0, 1, 1, 1, 18);
+    frame.add("goldBright", crescentGeometry(0.7, 0.18), new Matrix4().compose(new Vector3(lx, MOON_PIVOT_Y + 2.3, 0), new Quaternion().setFromEuler(new Euler(0, Math.PI / 2, 0)), new Vector3(1, 1, 1)));
+    frameBulbs.push([lx, MOON_PIVOT_Y + 2.3, 0], [lx + sx * 0.4, MOON_PIVOT_Y + 3.1, 0]);
   }
-  frame.rod("gold", [-MOON_FRAME.legX - 0.8, MOON_PIVOT_Y, 0], [MOON_FRAME.legX + 0.8, MOON_PIVOT_Y, 0], 0.26, 0.26, 16);
+  frame.rod("gold", [-MOON_FRAME.legX - CH - 1.0, MOON_PIVOT_Y, 0], [MOON_FRAME.legX + CH + 1.0, MOON_PIVOT_Y, 0], 0.3, 0.3, 16);
 
   // ── the boarding platform: a concrete podium with a plank deck flush with the hull's floor, turned-baluster rails, concrete steps with wooden nosings ──
   const dx = (MOON_DECK.x0 + MOON_DECK.x1) / 2;
@@ -566,6 +702,12 @@ export function MoonBoatWorld({ all }: { all: Texture[] }) {
     const plas = pickSet(all, "Plaster003");
     return {
       hullOut: parkMaterial(plas, 1, { color: new Color(1.22, 1.16, 1.0), normalScale: 0.5, side: DoubleSide }),
+      // lacquered mahogany strakes: the plank map tinted a deep red-brown, the gloss up (roughness scales its map), a little glow so the shade stays wood
+      hullWood: parkMaterial(wood, 1, { color: new Color(1.5, 0.78, 0.5), normalScale: 1.0, side: DoubleSide, roughness: 0.62, metalness: 0.02, emissive: new Color("#5a2a14"), emissiveIntensity: 0.5 }),
+      // painted tubular steel: the paint's own normal and gloss maps, a deep indigo-blue, a glow floor for the shade
+      steel: parkMaterial(metal, [2, 10], { useColor: false, color: new Color("#2d38b0"), normalScale: 0.6, metalness: 0.4, roughness: 0.8, emissive: new Color("#1a2290"), emissiveIntensity: 0.45 }),
+      chrome: flat("#e4eaf4", { roughness: 0.25, metalness: 0.7, emissive: new Color("#a7b2cc"), emissiveIntensity: 0.9 }),
+      brass: flat("#e0b445", { roughness: 0.3, metalness: 0.5, emissive: new Color("#8a6410"), emissiveIntensity: 0.8 }),
       deck: parkMaterial(wood, 1, { color: new Color(1.9, 1.62, 1.3), normalScale: 0.9, side: DoubleSide, emissive: new Color("#6a4524"), emissiveIntensity: 0.55 }), // the emissive floor keeps wood brown, not black, where the sun does not reach (the posts and bench backs in shade)
       metal: parkMaterial(metal, [2, 6], { useColor: false, color: new Color("#4a52dc"), normalScale: 0.5, metalness: 0.45, emissive: new Color("#2a30a0"), emissiveIntensity: 0.5 }),
       concrete: parkMaterial(conc, 1, { color: new Color("#e8e1d3"), normalScale: 0.8 }),
@@ -575,14 +717,14 @@ export function MoonBoatWorld({ all }: { all: Texture[] }) {
       indigoPaint: flat("#3a3ea8", { roughness: 0.4, metalness: 0.2, emissive: new Color("#2328a0"), emissiveIntensity: 0.5 }),
       violet: flat("#8b5cf6", { roughness: 0.45 }),
       cushion: flat("#ee9dbb", { roughness: 0.7, emissive: new Color("#40182a"), emissiveIntensity: 0.35 }),
-      velvet: flat("#7a66d0", { roughness: 0.9, emissive: new Color("#2a2070"), emissiveIntensity: 0.7 }),
+      velvet: leatherMaterial(),
       white: flat("#fbf4e6", { roughness: 0.8, emissive: new Color("#8a7c60"), emissiveIntensity: 0.55 }),
       earpink: flat("#f3a5be", { roughness: 0.8 }),
       ink: flat("#2c2440", { roughness: 0.8 }),
     };
   }, [all]);
   const built = useMemo(() => build(mats), [mats]);
-  const bulbGeo = useMemo(() => new SphereGeometry(0.03, 8, 6), []);
+  const bulbGeo = useMemo(() => new SphereGeometry(0.06, 8, 6), []);
   const bulbMat = useMemo(() => new MeshStandardMaterial({ color: "#fff1c8", emissive: nightColor, emissiveIntensity: 1.8, roughness: 0.3 }), []);
   const boatBulbRef = useRef<InstancedMesh>(null);
   const frameBulbRef = useRef<InstancedMesh>(null);
@@ -642,14 +784,14 @@ export function MoonBoatWorld({ all }: { all: Texture[] }) {
           <primitive key={i} object={m} />
         ))}
         <instancedMesh ref={frameBulbRef} args={[bulbGeo, bulbMat, built.frameBulbs.length]} frustumCulled={false} dispose={null} />
-        <BulbHalos places={built.frameBulbs} size={0.7} strength={0.8} />
+        <BulbHalos places={built.frameBulbs} size={1.5} strength={1.0} />
         <group ref={boatRef} position={[0, MOON_PIVOT_Y, 0]}>
           {built.boat.map((m, i) => (
             <primitive key={i} object={m} />
           ))}
           <instancedMesh ref={boatBulbRef} args={[bulbGeo, bulbMat, built.boatBulbs.length]} frustumCulled={false} dispose={null} />
           <instancedMesh ref={starRef} args={[starGeo, starMat, built.stars.length]} frustumCulled={false} dispose={null} />
-          <BulbHalos places={built.boatBulbs} size={0.3} strength={0.35} />
+          <BulbHalos places={built.boatBulbs} size={0.6} strength={0.55} />
         </group>
         <mesh position={[MOON_STEPS.x1 + 1.5, 2.1, -4.6]} rotation={[0, Math.PI / 2, 0]} material={signMat}>
           <planeGeometry args={[4.2, 1.575]} />

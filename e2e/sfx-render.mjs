@@ -201,7 +201,7 @@ const findStart = (key, rider, excerptStartRule) =>
         }
       }
       // the others are cycle-periodic: the start of a cycle plus `rule` ms
-      const cyc = { carousel: 150_000, droptower: 60_000, moonboat: 130_000 }[key];
+      const cyc = { carousel: 150_000, droptower: 68_000, moonboat: 150_000 }[key];
       return Math.ceil(base / cyc) * cyc + rule;
     },
     { key, rider, rule: excerptStartRule },
