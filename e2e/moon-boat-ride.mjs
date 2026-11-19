@@ -105,7 +105,7 @@ const log = [];
 let fps = null;
 
 // phase 1: the boat from outside, at rest and at the turning point of the swing (it swings by the clock whether or not anyone rides it)
-{
+if (!process.argv.includes("--seat-only")) {
   const b = await launchBrowser();
   const O = await openPlayer(b, run, { tag: "O-pc", device: DESKTOP });
   await run.step("outside", async () => {
@@ -161,6 +161,18 @@ let fps = null;
     await sleep(1500);
     run.check("the ride panel is up", (await R.page.locator("[data-testid=coaster-ride-hud]").count()) === 1);
     await run.shot(R, "m05-seated-at-the-platform.png");
+    if (process.argv.includes("--seat-only")) {
+      // just the seated view (before/after photos of the first-person look): a few more angles at the platform, then done
+      for (const [i, yaw] of [[1, 0.5], [2, -0.5]]) {
+        await R.page.keyboard.down(yaw > 0 ? "ArrowRight" : "ArrowLeft");
+        await sleep(450);
+        await R.page.keyboard.up(yaw > 0 ? "ArrowRight" : "ArrowLeft");
+        await sleep(500);
+        await run.shot(R, `m05-${i}-seated-turned.png`);
+      }
+      await b.close();
+      process.exit(run.finish({}));
+    }
     const eye = (await probe(R)).probe.eye;
     run.check("the eye is in the boat, 2-4.5 m over the ground", eye[1] > 2 && eye[1] < 4.5, { eye });
   });

@@ -566,13 +566,13 @@ export function MoonBoatWorld({ all }: { all: Texture[] }) {
     const plas = pickSet(all, "Plaster003");
     return {
       hullOut: parkMaterial(plas, 1, { color: new Color(1.22, 1.16, 1.0), normalScale: 0.5, side: DoubleSide }),
-      deck: parkMaterial(wood, 1, { color: new Color(1.9, 1.62, 1.3), normalScale: 0.9, side: DoubleSide }),
-      metal: parkMaterial(metal, [2, 6], { useColor: false, color: new Color("#4a52dc"), normalScale: 0.5, metalness: 0.45 }),
+      deck: parkMaterial(wood, 1, { color: new Color(1.9, 1.62, 1.3), normalScale: 0.9, side: DoubleSide, emissive: new Color("#6a4524"), emissiveIntensity: 0.55 }), // the emissive floor keeps wood brown, not black, where the sun does not reach (the posts and bench backs in shade)
+      metal: parkMaterial(metal, [2, 6], { useColor: false, color: new Color("#4a52dc"), normalScale: 0.5, metalness: 0.45, emissive: new Color("#2a30a0"), emissiveIntensity: 0.5 }),
       concrete: parkMaterial(conc, 1, { color: new Color("#e8e1d3"), normalScale: 0.8 }),
       stone: parkMaterial(conc, 1, { color: new Color("#d9d1c3"), normalScale: 0.9 }),
-      gold: flat("#f4c752", { roughness: 0.3, metalness: 0.3, emissive: new Color("#8a6410"), emissiveIntensity: 0.9, side: DoubleSide }),
-      goldBright: flat("#ffd566", { roughness: 0.25, metalness: 0.15, emissive: new Color("#d6a024"), emissiveIntensity: 1.1, side: DoubleSide }),
-      indigoPaint: flat("#3a3ea8", { roughness: 0.4, metalness: 0.2 }),
+      gold: flat("#f4c752", { roughness: 0.3, metalness: 0.2, emissive: new Color("#a67a18"), emissiveIntensity: 1.2, side: DoubleSide }),
+      goldBright: flat("#ffe08a", { roughness: 0.3, metalness: 0.05, emissive: new Color("#e8b030"), emissiveIntensity: 1.75, side: DoubleSide }),
+      indigoPaint: flat("#3a3ea8", { roughness: 0.4, metalness: 0.2, emissive: new Color("#2328a0"), emissiveIntensity: 0.5 }),
       violet: flat("#8b5cf6", { roughness: 0.45 }),
       cushion: flat("#ee9dbb", { roughness: 0.7, emissive: new Color("#40182a"), emissiveIntensity: 0.35 }),
       velvet: flat("#7a66d0", { roughness: 0.9, emissive: new Color("#2a2070"), emissiveIntensity: 0.7 }),

@@ -22,7 +22,7 @@ import {
   dropSeatPose,
   type DropStage,
 } from "./dropTower";
-import { DROP_COLUMN, DROP_CROWN, DROP_PLATFORM_BOXES, dropRidingPoints, pointBoxDistance } from "./dropTowerGeometry";
+import { DROP_CAR_REACH, DROP_COLUMN, DROP_CROWN, DROP_CROWN_Y, DROP_PLATFORM_BOXES, dropFrameReach, dropRidingPoints, pointBoxDistance } from "./dropTowerGeometry";
 import { RIDES, rideByKey } from "./rides";
 
 const motion = (t: number): { y: number; v: number; a: number; stage: DropStage } => {
@@ -119,5 +119,11 @@ describe("drop tower clearances through the whole ride", () => {
     }
     expect(minFloorY).toBeGreaterThanOrEqual(DROP_DECK_Y - 1e-9);
     expect(minGap).toBeGreaterThan(0.25);
+  });
+  it("the tower's outer frame (legs, beams, arches) stays 0.5 m clear of the car's swept cylinder at every height, and the widening capital is above every rider", () => {
+    for (let y = 0; y <= DROP_CROWN_Y; y += 0.25) expect(dropFrameReach(y) - DROP_CAR_REACH).toBeGreaterThan(0.5);
+    let topRider = 0;
+    for (let t = 0; t <= DROP_RIDE_MS / 1000; t += dt) for (const { p } of dropRidingPoints(motion(t).y)) topRider = Math.max(topRider, p[1]);
+    expect(DROP_CROWN_Y - 1.6 - topRider).toBeGreaterThan(1.2);
   });
 });
