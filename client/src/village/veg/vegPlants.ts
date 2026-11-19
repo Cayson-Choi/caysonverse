@@ -575,6 +575,41 @@ export function planterSprig(species: "pansy" | "petunia", simple: boolean, seed
   return b.build();
 }
 
+/** A 45 cm clipped boxwood. The short woody scaffold stays visible underneath
+ * the shell of forked shoots; each atlas sprig carries opposite pairs of small leaves. */
+export function fountainBoxwood(simple: boolean): BufferGeometry {
+  const b = builder(0.28), rand = mulberry32(638);
+  const woody = rgba("#725e41");
+  const fork: Vec3 = [0.009, 0.080, -0.006];
+  stalk(b, [[0, -0.008, 0], fork], 0.017, 0.010, woody);
+  const limbs = simple ? 3 : 7;
+  for (let i = 0; i < limbs; i++) {
+    const a = i * 2.4 + rand() * 0.24;
+    const tip: Vec3 = [0.14 * Math.cos(a), 0.13 + rand() * 0.05, 0.14 * Math.sin(a)];
+    stalk(b, [fork, tip], 0.009, 0.003, woody);
+  }
+  const shoots = simple ? 24 : 84;
+  for (let i = 0; i < shoots; i++) {
+    const y = 1 - (i + 0.5) / shoots * 1.72;
+    const a = i * 2.39996 + rand() * 0.24;
+    const horizontal = Math.sqrt(1 - y * y);
+    const n: Vec3 = [horizontal * Math.cos(a), y, horizontal * Math.sin(a)];
+    const inner = i % 5 === 3;
+    const radius = (inner ? 0.14 : 0.198) * (0.93 + 0.11 * rand());
+    const surface: Vec3 = [n[0] * radius, 0.155 + n[1] * radius * 0.54, n[2] * radius];
+    // A branchlet emerges from under the adjacent flush. On the crown it leans
+    // sideways, preserving the low dome and exposing its leaves to the sky.
+    const tangent = norm(cross(n, [Math.sin(a + 0.8), 0.45, Math.cos(a - 0.7)]));
+    const axis = norm(add(mul(n, 0.58), tangent));
+    const size = (simple ? 0.185 : 0.145) * (0.88 + rand() * 0.2);
+    const shade = (inner ? 0.67 : 0.96) * (0.65 + 0.35 * (y + 0.72) / 1.72);
+    card(b, sub(surface, mul(axis, size * 0.52)), axis, n, size, size,
+      inner ? PLANT_CELL.boxIn : i % 2 ? PLANT_CELL.boxA : PLANT_CELL.boxB, grey(shade, 0),
+      { fold: simple ? 0 : 0.15, shadeN: n, colTop: grey(shade * 1.12, 0) });
+  }
+  return b.build();
+}
+
 /** A flowering lateral of a climbing rose. Its base attaches to a trained cane. */
 export function climbingRoseSpray(simple: boolean): BufferGeometry {
   const b = builder(0.23);

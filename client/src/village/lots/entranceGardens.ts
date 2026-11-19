@@ -7,7 +7,7 @@ import { LOT_DOOR_YAW, VILLAGE_LOTS, lotWorldToLocal, type VillageLot } from "@c
 import { GeoBuilder, type V3 } from "../../land/geoBuilder";
 import { versionedUrl } from "../modelUrl";
 import { PLANT_CELL } from "../veg/plantCells";
-import { climbingRoseSpray, planterSprig, tulipPlant2 } from "../veg/vegPlants";
+import { climbingRoseSpray, fountainBoxwood, planterSprig, tulipPlant2 } from "../veg/vegPlants";
 import { mulberry32 } from "../veg/vegRandom";
 import { lotSurfaceMaterial, patchLotLight, visibleLoad, type LotNodes } from "./lotsPrep";
 
@@ -65,11 +65,13 @@ export function clearEntranceBeds(goods: Object3D, lot: VillageLot, id: GardenLo
   });
 }
 
-// The eight cells in forecourt_flowers.webp are 128 px extracts from drawPlantAtlas().
+// Each occupied 128 px cell in forecourt_flowers.webp is extracted from drawPlantAtlas().
 const ATLAS_CELLS: readonly number[] = [
   PLANT_CELL.pansy, PLANT_CELL.leafPansy, PLANT_CELL.muscari, PLANT_CELL.solid,
   PLANT_CELL.petunia, PLANT_CELL.leafPetunia, PLANT_CELL.tulip, PLANT_CELL.strap,
+  PLANT_CELL.boxA, PLANT_CELL.boxB, PLANT_CELL.boxIn,
 ];
+const atlasRows = Math.ceil(ATLAS_CELLS.length / 4);
 
 function tintFlower(geometry: BufferGeometry, tint: Color): BufferGeometry {
   const original = geometry.getAttribute("color");
@@ -80,7 +82,7 @@ function tintFlower(geometry: BufferGeometry, tint: Color): BufferGeometry {
     rgb.push(original.getX(i) * (1 + mask * (tint.r - 1)), original.getY(i) * (1 + mask * (tint.g - 1)), original.getZ(i) * (1 + mask * (tint.b - 1)));
     const x = uv.getX(i) * 4, y = uv.getY(i) * 4;
     const cell = ATLAS_CELLS.indexOf(Math.floor(y) * 4 + Math.floor(x));
-    uv.setXY(i, (cell % 4 + x % 1) / 4, (Math.floor(cell / 4) + y % 1) / 2);
+    uv.setXY(i, (cell % 4 + x % 1) / 4, (Math.floor(cell / 4) + y % 1) / atlasRows);
   }
   geometry.setAttribute("color", new Float32BufferAttribute(rgb, 3));
   return geometry;
@@ -123,7 +125,7 @@ export function plantRoseArch(goods: Object3D, garden: Group, low: boolean, plan
   // Land tubes carry tiling UVs. Sample the little atlas's white cell for the bark.
   const wood = cane.build();
   const uv = wood.getAttribute("uv");
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, 0.875, 0.25);
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, 0.875, 0.5 / atlasRows);
   const trunks = new Mesh(wood, plants);
   trunks.name = "chapel_rose_canes";
   sprays.name = "chapel_climbing_roses";
@@ -133,6 +135,22 @@ export function plantRoseArch(goods: Object3D, garden: Group, low: boolean, plan
     mesh.raycast = () => {};
     garden.add(mesh);
   }
+}
+
+/** The ring keeps the gardener's original spacing and its two paths to the basin. */
+export function plantFountainRing(goods: Object3D, low: boolean, plants: MeshStandardMaterial): void {
+  const old = goods.getObjectByName("lotinst__lot_chapel_box_ball");
+  if (!(old instanceof InstancedMesh) || !old.parent) return;
+  const hedge = old.clone(false);
+  hedge.name = "chapel_fountain_boxwood";
+  hedge.geometry = tintFlower(fountainBoxwood(low), new Color(0xffffff));
+  hedge.material = plants;
+  hedge.castShadow = hedge.receiveShadow = true;
+  hedge.raycast = () => {};
+  hedge.computeBoundingSphere();
+  old.visible = false;
+  old.parent.add(hedge);
+  plants.addEventListener("dispose", () => hedge.dispose());
 }
 
 // Pockets beside the fountain and the rose walk, in the frame of chapel_kit.py.
@@ -310,7 +328,10 @@ export function installEntranceGardens(nodes: LotNodes, low: boolean): void {
       const lot = VILLAGE_LOTS.find((l) => l.id === id)!;
       clearEntranceBeds(goods, lot, id);
       const garden = makeEntranceGarden(id, low, { plants, soil, kerb });
-      if (id === "lot_chapel") plantRoseArch(goods, garden, low, plants);
+      if (id === "lot_chapel") {
+        plantRoseArch(goods, garden, low, plants);
+        plantFountainRing(goods, low, plants);
+      }
       garden.position.set(lot.centre.x, 0, lot.centre.z);
       garden.rotation.y = LOT_DOOR_YAW[lot.doorSide];
       goods.add(garden);

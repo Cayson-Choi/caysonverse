@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, Vector3 } from "three";
 import { VILLAGE_LOTS, lotLocalToWorld } from "@caysonverse/shared/village/villageLots";
-import { clearEntranceBeds, makeEntranceGarden, plantExistingBoxes, plantRoseArch } from "./entranceGardens";
+import { clearEntranceBeds, makeEntranceGarden, plantExistingBoxes, plantFountainRing, plantRoseArch } from "./entranceGardens";
 import { visibleLoad } from "./lotsPrep";
 
 const materials = { plants: new MeshStandardMaterial(), soil: new MeshStandardMaterial(), kerb: new MeshStandardMaterial() };
@@ -87,6 +87,29 @@ describe("entrance gardens", () => {
     expect(draws).toBe(2);
     // The art file drew 27 instances of an 88-triangle cluster.
     if (low) expect(triangles).toBeLessThanOrEqual(27 * 88);
+  });
+
+  it.each([false, true])("keeps the fountain boxwood rooted at the original clipping positions in one draw (low %s)", (low) => {
+    const root = new Group();
+    const old = new InstancedMesh(new BoxGeometry(), materials.plants, 21);
+    old.name = "lotinst__lot_chapel_box_ball";
+    const placed = new Matrix4().makeTranslation(47, 0, -29);
+    old.setMatrixAt(0, placed);
+    root.add(old);
+    plantFountainRing(root, low, materials.plants);
+    const hedge = root.getObjectByName("chapel_fountain_boxwood") as InstancedMesh;
+    const matrix = new Matrix4();
+    hedge.getMatrixAt(0, matrix);
+    expect(matrix.equals(placed)).toBe(true);
+    expect(old.visible).toBe(false);
+    hedge.geometry.computeBoundingBox();
+    const box = hedge.geometry.boundingBox!;
+    expect(box.min.y).toBeLessThan(0);
+    expect(box.max.y).toBeLessThan(0.37);
+    expect(box.max.x - box.min.x).toBeGreaterThan(0.40);
+    const { draws, triangles } = visibleLoad(root);
+    expect(draws).toBe(1);
+    if (low) expect(triangles).toBeLessThanOrEqual(21 * 72);
   });
 
   it("dresses the library's bay planters without moving the flowers off the narrow sills or changing the pergola", () => {
