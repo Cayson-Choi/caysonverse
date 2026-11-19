@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeFakeContext } from "../land/sfx/fakeAudio.testkit";
 
 // A fake window gives the village's shared AudioContext a constructor, so the live code path runs in node.
+vi.setConfig({ testTimeout: 30_000 }); // the first build bakes the droplet loops: slow on a loaded machine
 const fake = makeFakeContext("running");
 vi.stubGlobal("window", {
   AudioContext: function () {
