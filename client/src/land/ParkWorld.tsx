@@ -171,7 +171,7 @@ function Ground({ all }: { all: Texture[] }) {
     return [
       [40, -161, 18, 54, "p"], // the promenade
       [161, -112, 368, 12, "p"], // the east-west avenue
-      [2, -59, 12, 94, "g"], // the station approach (gravel): from the avenue's south edge (z -106; the avenue spans -118..-106) to the apron's (z -19), never on or under either
+      [2, -62.5, 12, 87, "g"], // the station approach (gravel): from the avenue's south edge (z -106; the avenue spans -118..-106) to the apron's (z -19), never on or under either (was 94 m long and overlapped the apron by 7 m: z-fighting shimmer)
       [2, -13, 18, 12, "p"], // the station apron: paving at the foot of the platform's north steps (the boarding pad)
     ] as const;
   }, []);

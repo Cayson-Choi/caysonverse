@@ -47,9 +47,10 @@ export function rideTapZone(x: number, z: number): RideKey | null {
   if (Math.abs(x - WHEEL_SITE.x) <= 24 && z >= WHEEL_SITE.z - 6 && z <= WHEEL_SITE.z + 12) return "wheel";
   // the drop tower: its platform and the lawn round its foot (the tower itself is a thin column, so the footprint is the platform plus the walk to the pad)
   if (x >= DROP_SITE.x - 9 && x <= DROP_SITE.x + 15 && Math.abs(z - DROP_SITE.z) <= 9) return "droptower";
-  // the coaster: the station platform and its apron (the boarding pad is at the foot of the platform's north steps)
+  // the coaster: the station platform itself only. The paved apron and the gravel approach in front of it are ground: a tap there walks,
+  // it never boards (owner 2026-11-19: "땅만 찍어도 별똥별 급행에 탑승하는 문제가 있어").
   const p = PARK_PLATFORM;
-  if (x >= p.minX - 4 && x <= p.maxX + 4 && z >= p.minZ - 16 && z <= p.maxZ + 4) return "coaster";
+  if (x >= p.minX && x <= p.maxX && z >= p.minZ && z <= p.maxZ) return "coaster";
   return null;
 }
 

@@ -225,6 +225,9 @@ export function applyDress(root: Object3D, splits: FaceSplit[], sets: ReadonlyMa
 }
 
 /** Swap the fountain crescent's material for polished marble (the original goes back on undo). */
+/** Off: the veined marble on the plaza crescent read as cracks (owner 2026-11-19). */
+const MARBLE_MOON = false;
+
 export function applyMarbleMoon(root: Object3D, map: Texture): () => void {
   let mesh: Mesh | null = null;
   root.traverse((o) => {
@@ -260,7 +263,7 @@ export function ExteriorDress({ root, tier }: { root: Object3D; tier: VillageTie
         const sets = new Map<string, PbrSet>();
         const loaded = await Promise.all(ids.map((id) => getPbrSet(id, pbrTierFor(tier), gl as WebGLRenderer).then((s) => [id, s] as const).catch(() => null)));
         for (const e of loaded) if (e) sets.set(e[0], e[1]);
-        const marble: Texture | null = typeof document === "undefined" ? null : marbleTexture();
+        const marble: Texture | null = !MARBLE_MOON || typeof document === "undefined" ? null : marbleTexture();
         if (cancelled) {
           marble?.dispose();
           return;
@@ -273,7 +276,8 @@ export function ExteriorDress({ root, tier }: { root: Object3D; tier: VillageTie
         // the faces are found again now: another patch (the old houses cut, the street) may have swapped a mesh geometry while the sets loaded
         const dress = applyDress(root, findSplits(root), sets, parasol);
         let unMoon: (() => void) | null = null;
-        if (marble) {
+        // the plaza crescent keeps its own smooth white (owner 2026-11-19: "하얀 초승달이 왜 이모양이 됐어?" — the marble's dark veins read as cracks)
+        if (marble && MARBLE_MOON) {
           textures.push(marble);
           unMoon = applyMarbleMoon(root, marble);
         }
