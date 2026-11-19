@@ -225,7 +225,7 @@ function SignalUnits() {
     tex.flipY = false; // glTF UVs run from the top, like the file's own textures
     return { ctx, tex };
   }, []);
-  const last = useMemo(() => ({ key: "" }), []);
+  const last = useMemo(() => ({ key: "", at: -1 }), []);
   useEffect(() => {
     if (!lamps) return;
     lamps.count.color = new Color("#ffffff");
@@ -244,8 +244,12 @@ function SignalUnits() {
       display?.tex.dispose();
     };
   }, [lamps, display, last]);
-  useFrame(() => {
+  useFrame(({ clock }) => {
     if (!lamps) return;
+    // The lamps change at most twice a second (the flashing figure's 500 ms blink): look every 100 ms, not every frame.
+    const now = clock.elapsedTime;
+    if (now - last.at < 0.1 && now >= last.at) return;
+    last.at = now;
     const override = import.meta.env.DEV ? window.__cvSignals : null;
     const state = lampsAt(transitNowMs(), override);
     const key = lampKey(state);
