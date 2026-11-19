@@ -1,11 +1,12 @@
 /** Reflected altar panels stored in one small sRGB atlas. +Y is up, +Z is the front of the cast. */
 import sharp from "sharp";
-import { encodeToKTX2 } from "ktx2-encoder";
+import { NodeBasisEncoder } from "ktx2-encoder";
 import { MeshoptEncoder, MeshoptDecoder } from "meshoptimizer";
 
 const VIEW_Y = -.06 / Math.hypot(.06, 1);
 const VIEW_Z = 1 / Math.hypot(.06, 1);
 const STRENGTH = 2;
+const codec = new NodeBasisEncoder();
 // The left-hand swatches are the FINISHES in buddha_mesh.py, in atlas order.
 const CHART_FOR_SWATCH = [2,0,3,3,3,1,0,3];
 const clip = value => Math.min(1, Math.max(0, value));
@@ -95,7 +96,29 @@ function secondUv(uvs, normals, charts) {
   return bytes;
 }
 
-async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices) {
+async function priorLightingCharts(model, lod, width, height) {
+  const image = model?.doc.images.find(im => im.name === lod+"-photographic-fill");
+  // Casts predating the spatial face atlas use the procedural charts below.
+  if (!image) return null;
+  const view = model.doc.bufferViews[image.bufferView], offset = view.byteOffset || 0;
+  const basis = await codec.init();
+  const file = new basis.KTX2File(model.binary.subarray(offset,offset+view.byteLength));
+  try {
+    if (!file.isValid()) throw new Error("Invalid prior Buddha lighting atlas");
+    if (file.getWidth() !== width || file.getHeight() !== height) return null;
+    const pixels = Buffer.alloc(width*height*4);
+    const format = basis.transcoder_texture_format.cTFRGBA32.value;
+    if (!file.startTranscoding() || !file.transcodeImage(pixels,0,0,0,format,0,-1,-1)) {
+      throw new Error("Could not read the prior Buddha lighting charts");
+    }
+    return pixels;
+  } finally {
+    file.close();
+    file.delete();
+  }
+}
+
+async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices, chartSource) {
   const phone = lod === "phone", w = phone ? 512 : 1024, h = w/2, side = h/2;
   const pigment = await sharp(pigmentFile).resize(w,h,{fit:"fill"}).removeAlpha().raw().toBuffer();
   const pixels = Buffer.alloc(w*h*4);
@@ -103,7 +126,12 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices) {
     const at = 4*(x+y*w);
     for (let c=0; c<3; c++) pixels[at+c] = srgb(rgb[c]/STRENGTH);
   }
-  for (let y=0; y<h; y++) for (let x=0; x<w/2; x++) {
+  // A portrait graft changes only the right half. Re-encoding the idealised
+  // panels can pick different ETC1S selectors from the approved casting.
+  const prior = await priorLightingCharts(chartSource,lod,w,h);
+  if (prior) {
+    for (let y=0; y<h; y++) prior.copy(pixels,4*y*w,4*y*w,4*(y*w+w/2));
+  } else for (let y=0; y<h; y++) for (let x=0; x<w/2; x++) {
     const finish = Math.floor(x/side)+2*Math.floor(y/side);
     const ry = 2*((x%side+.5)/side-.5)*1.05, rz = 2*(.5-(y%side+.5)/side)*1.05;
     write(x,y,radiance(ry,rz,finish,phone));
@@ -140,11 +168,20 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices) {
       const lowerFace = Math.exp(-((faceX/.113)**4+((height-1.510)/.057)**2));
       const septum = Math.exp(-((faceX/.008)**2+((height-1.590)/.009)**2));
       const response = radiance(ry,rz,0,phone,rx);
+      // The silk catches the upper lid while the lower, left-facing planes
+      // turn away from it. Keep the gold under the mouth softer than the lid.
+      const upperLid = Math.exp(-(((Math.abs(faceX)-.081)/.042)**2+((height-1.705)/.014)**2));
+      const cheekTurn = cheek*(.75-.25*Math.tanh(faceX/.040));
+      const chin = Math.exp(-((faceX/.061)**2+((height-1.505)/.029)**2));
+      const brighterLid = .5+.5*Math.tanh(faceX/.034);
+      response[0] = response[0]*(1-.33*cheekTurn-.57*chin)+(.10+.04*brighterLid)*upperLid;
+      response[1] = response[1]*(1-.28*cheekTurn-.40*chin)+(.12+.03*brighterLid)*upperLid;
+      response[2] += (.10-.035*brighterLid)*upperLid;
       // A broad, pale tent reflection crosses the nasal bridge and the
       // upper face of its bulb. It falls off before the two gilded wings.
       const noseLight = Math.exp(-(((faceX-.0017)/.0148)**2+((height-1.650)/.033)**4));
-      response[1] += .083*noseLight;
-      response[2] += .115*noseLight;
+      response[1] += .112*noseLight;
+      response[2] += .181*noseLight;
       // The round outer wing sits behind the frontal bulb and picks up a
       // broader side light above the short aperture.
       const ala = Math.exp(-(((Math.abs(faceX)-.035)/.015)**2+((height-1.612)/.017)**2));
@@ -160,7 +197,7 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices) {
       // The photographic left cheek is in softer light. Ease the reflected
       // return across the face, keeping the nose and opposite cheek modelled.
       const cheekFill = cheek*(.50+.28*Math.tanh(faceX/.043));
-      const reflected = [response[0]+.266*cheekFill+.085*muzzle+.185*temple+.133*lowerFace+.12*septum,
+      const reflected = [response[0]+.212*cheekFill+.085*muzzle+.185*temple+.105*lowerFace+.12*septum,
         response[1]+.104*cheekFill+.066*muzzle+.085*temple+.027*lowerFace+.062*septum,
         response[2]*(1.-.26*cheek-.49*lowerFace)];
       // Where the lower cheek turns into the side of the head, transition to
@@ -186,7 +223,7 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices) {
     }
   }
   for (let i=3; i<pixels.length; i+=4) pixels[i] = 255;
-  return Buffer.from(await encodeToKTX2(new Uint8Array(1), {
+  return Buffer.from(await codec.encode(new Uint8Array(1), {
     isUASTC:false, qualityLevel:255, compressionLevel:2, isPerceptual:true, isSetKTX2SRGBTransferFunc:true,
     generateMipmap:true, isKTX2File:true, isYFlip:false,
     imageDecoder:async () => ({width:w,height:h,data:new Uint8Array(pixels)}),
@@ -195,7 +232,7 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices) {
 
 // Returns replacement byte spans for the packed buffer. Retain an existing
 // emissive image when the ear graft promises to keep the shipped pigment.
-export async function dressBuddhaLeaf(model, lod, pigmentFile, replacements, priorFinish) {
+export async function dressBuddhaLeaf(model, lod, pigmentFile, replacements, priorFinish, chartSource) {
   const {doc} = model, primitive = doc.meshes[0].primitives[0], material = doc.materials[primitive.material];
   const normals = elements(model, primitive.attributes.NORMAL), uv = elements(model, primitive.attributes.TEXCOORD_0);
   const bytes = secondUv(uv,normals,priorFinish ? shippedCharts(priorFinish) : CHART_FOR_SWATCH);
@@ -236,7 +273,7 @@ export async function dressBuddhaLeaf(model, lod, pigmentFile, replacements, pri
     return;
   }
   const indices = elements(model, primitive.indices).flat();
-  replacements.set(doc.bufferViews[image.bufferView], await emissiveAtlas(lod,pigmentFile,normals,uv,indices));
+  replacements.set(doc.bufferViews[image.bufferView], await emissiveAtlas(lod,pigmentFile,normals,uv,indices,chartSource));
   material.name = "Main Buddha gold leaf";
   material.emissiveFactor = [1,1,1];
   material.pbrMetallicRoughness.baseColorFactor = lod === "phone" ? [.92,.80,.64,1] : [.77,.79,.64,1];

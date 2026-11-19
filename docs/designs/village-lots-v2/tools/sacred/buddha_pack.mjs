@@ -150,8 +150,9 @@ for (const lod of ["pc", "phone"]) {
   const replacements = texturesOnly ? coreAtlases(statue, readGlb(model)) : new Map();
   // Geometry-only grafts can also use casts that predate the photographic finish.
   if (!keepPaint || statue.doc.images.some(image => image.name === lod+"-photographic-fill")) {
-    const priorFinish = keepPaint ? readGlb(path.join(seedDirectory, name + ".glb")) : null;
-    await dressBuddhaLeaf(statue, lod, path.join(work,lod+"-color.png"), replacements, priorFinish);
+    const prior = keepPaint || flag === "--portrait-from" ? readGlb(path.join(seedDirectory, name + ".glb")) : null;
+    await dressBuddhaLeaf(statue, lod, path.join(work,lod+"-color.png"), replacements,
+      keepPaint ? prior : null, flag === "--portrait-from" ? prior : null);
   }
   packed.set(path.join(destination, name + ".glb"), writeSpans(statue, replacements));
 }
