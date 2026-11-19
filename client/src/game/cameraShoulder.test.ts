@@ -5,7 +5,7 @@ import { CAMERA_LOOK_LIFT } from "./cameraControls";
 import { HALL_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
 import { HALL_CAMERA_LIMIT } from "./indoorCamera";
 import { createFollowRig, createFollowSpot, stepFollowRig, type FollowSpot } from "./followRig";
-import { SHOULDER, shoulderTarget } from "./cameraShoulder";
+import { SHOULDER, centerWeight, createShoulderPose, shoulderPose, shoulderTarget } from "./cameraShoulder";
 import { resetViewMode } from "./viewState";
 
 const DT = 1 / 60;
@@ -28,18 +28,6 @@ function settle(x: number, z: number, yaw: number, aspect: number, pitch = 0.35,
   const spot = createFollowSpot();
   for (let i = 0; i < seconds / DT; i++) stepFollowRig(rig, orbit, x, z, aspect, DT, true, spot);
   return spot;
-}
-
-/** Angle (deg) between the camera's view axis and the direction to the head. */
-function headOffAxis(spot: FollowSpot, x: number, z: number): number {
-  const tx = x + spot.lookX - spot.x;
-  const ty = HEAD_HEIGHT + CAMERA_LOOK_LIFT + spot.lookLift - spot.y;
-  const tz = z + spot.lookZ - spot.z;
-  const hx = x - spot.x;
-  const hy = HEAD_HEIGHT - spot.y;
-  const hz = z - spot.z;
-  const cos = (tx * hx + ty * hy + tz * hz) / (Math.hypot(tx, ty, tz) * Math.hypot(hx, hy, hz));
-  return (Math.acos(Math.min(1, cos)) * 180) / Math.PI;
 }
 
 /** The view's tilt below the horizon (deg). */
@@ -70,19 +58,16 @@ describe("over-the-shoulder camera against an indoor wall (round 6 review)", () 
 
   for (const aspect of [DESKTOP, PHONE]) {
     for (const s of WALL_SPOTS) {
-      it(`${s.name} (${aspect > 1 ? "PC" : "phone"}): the camera is beside and over the head, looking level into the room`, () => {
+      it(`${s.name} (${aspect > 1 ? "PC" : "phone"}): the camera is right behind the head on the view axis, a little over it, looking level`, () => {
         for (const pitch of [0.2, 0.35, 0.7]) {
           const spot = settle(s.x, s.z, s.yaw, aspect, pitch);
-          const head = Math.hypot(spot.x - s.x, spot.y - HEAD_HEIGHT, spot.z - s.z);
-          expect(head, `pitch ${pitch} head distance`).toBeGreaterThanOrEqual(SHOULDER.minHeadDist - 1e-6);
+          const side = (spot.x - s.x) * Math.cos(s.yaw) - (spot.z - s.z) * Math.sin(s.yaw);
+          expect(Math.abs(side), `pitch ${pitch} lateral`).toBeLessThan(0.05);
           expect(spot.y).toBeLessThanOrEqual(HALL_CAMERA_LIMIT.maxY + 1e-9);
-          // a level look (a slight look down onto the floor), not down at the head
+          expect(spot.y, `pitch ${pitch} over the head`).toBeGreaterThan(HEAD_HEIGHT);
           const down = lookDown(spot, s.x, s.z);
-          expect(down, `pitch ${pitch} look down`).toBeGreaterThan(0);
+          expect(down, `pitch ${pitch} look down`).toBeGreaterThan(-1);
           expect(down, `pitch ${pitch} look down`).toBeLessThan(18);
-          // the head is off to a lower corner (PC) / below the middle (a phone), not in the middle of the view (round 6: it was
-          // straight under the lens); the whole head-and-shoulders framing is checked in cameraShoulderFrame.test.ts
-          expect(headOffAxis(spot, s.x, s.z), `pitch ${pitch} head off axis`).toBeGreaterThan(aspect > 1 ? 15 : 5);
         }
       });
     }
@@ -118,5 +103,27 @@ describe("over-the-shoulder camera against an indoor wall (round 6 review)", () 
     expect(spot.y).toBeCloseTo(HEAD_HEIGHT + 4 * Math.sin(0.35), 6);
     // no pop: never more than 0.25 m in one frame while easing out (walking adds 0.03 m a frame)
     expect(maxJump).toBeLessThan(0.25);
+  });
+});
+
+describe("centred view (owner 2026-11-19, every interior)", () => {
+  it("the side view never triggers: the centred weight is 1 whatever the wall's distance", () => {
+    for (const arm of [0, 0.3, 0.7, 1, 1.5, 2.2, 3]) expect(centerWeight(arm), `arm ${arm}`).toBe(1);
+  });
+
+  it.each([
+    ["desktop", DESKTOP],
+    ["phone", PHONE],
+  ])("%s: a wall 0.7 / 1.9 m behind puts the camera on the view axis, the look straight ahead and level", (_n, aspect) => {
+    const yaw = Math.PI; // the camera behind a body facing +z
+    for (const arm of [0.7, 1.9]) {
+      const out = shoulderPose(10, 10, yaw, 10 + Math.sin(yaw) * arm, 10 + Math.cos(yaw) * arm, aspect, 0, [], 0.3, createShoulderPose());
+      expect(Math.abs(out.x - 10), `arm ${arm}`).toBeLessThan(1e-6);
+      expect(out.z).toBeCloseTo(10 - arm, 6);
+      expect(out.y).toBeGreaterThan(HEAD_HEIGHT + 0.5);
+      expect(Math.abs(out.lookX)).toBeLessThan(1e-6);
+      expect(out.lookZ).toBeGreaterThan(1);
+      expect(out.center).toBe(1);
+    }
   });
 });
