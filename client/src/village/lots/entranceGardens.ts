@@ -7,7 +7,7 @@ import { LOT_DOOR_YAW, VILLAGE_LOTS, lotWorldToLocal, type VillageLot } from "@c
 import { GeoBuilder, type V3 } from "../../land/geoBuilder";
 import { versionedUrl } from "../modelUrl";
 import { PLANT_CELL } from "../veg/plantCells";
-import { climbingRoseSpray, fountainBoxwood, planterSprig, tulipPlant2 } from "../veg/vegPlants";
+import { climbingRoseSpray, fountainBoxwood, planterSprig, forecourtTulips } from "../veg/vegPlants";
 import { mulberry32 } from "../veg/vegRandom";
 import { lotSurfaceMaterial, patchLotLight, visibleLoad, type LotNodes } from "./lotsPrep";
 
@@ -216,7 +216,7 @@ export function makeEntranceGarden(id: GardenLot, low: boolean, materials: { pla
     }
   }
   garden.add(new Mesh(soil.build(), materials.soil), new Mesh(kerb.build(), materials.kerb));
-  const tulip = tintFlower(tulipPlant2(low, 31, low ? 1 : 2), new Color(id === "lot_chapel" ? "#fff2d9" : "#eaa1a5"));
+  const tulip = tintFlower(forecourtTulips(low), new Color(id === "lot_chapel" ? "#fff2d9" : "#eaa1a5"));
   const pansy = tintFlower(planterSprig("pansy", low, 17), new Color(id === "lot_chapel" ? "#b7a0c2" : "#ead6be"));
   for (const [geometry, spots] of [[tulip, tulips], [pansy, pansies]] as const) {
     const mesh = new InstancedMesh(geometry, materials.plants, spots.length);

@@ -528,6 +528,72 @@ export function muscariPlant2(simple: boolean, seed = 3): BufferGeometry {
   return b.build();
 }
 
+/** Two whorls of open tepals with a pollen-bearing centre, seen looking down into a
+ * forecourt border. The low mesh keeps all six petals and the same perforated rim. */
+export function forecourtTulips(low: boolean, seed = 31): BufferGeometry {
+  const b = builder(0.35), rand = mulberry32(seed);
+  const stems = low ? 1 : 2;
+  for (let stem = 0; stem < stems; stem++) {
+    const az = stem * 2.8 + rand() * 0.6;
+    const dx = Math.cos(az), dz = Math.sin(az);
+    const base: Vec3 = [dx * 0.04, 0, dz * 0.04];
+    const h = 0.27 + rand() * 0.075;
+    const crown: Vec3 = [base[0] + dx * 0.042, h, base[2] + dz * 0.042];
+    const stemPath: Vec3[] = low ? [base, crown] : [base, [base[0], h * 0.53, base[2]], crown];
+    stalk(b, stemPath, 0.0041, 0.0032, rgba("#64873e"));
+    for (let k = 0; k < (low ? 1 : 2); k++) {
+      const a = az + (k ? 2.5 : -0.67);
+      strapLeaf(b, base, [Math.cos(a) * 0.64, 0.91, Math.sin(a) * 0.64], 0.22, 0.047, rgba("#7c9b69"), 0.39, low);
+    }
+    const up = norm([dx * 0.32, 1, dz * 0.32]);
+    const [x, z] = basis(up);
+    const roll = rand() * Math.PI * 2;
+    const radius = 0.037 + rand() * 0.004;
+    for (let k = 0; k < 6; k++) {
+      const a = roll + k * Math.PI / 3 + 0.06 * (k % 2);
+      const radial = add(mul(x, Math.cos(a)), mul(z, Math.sin(a)));
+      const side = cross(up, radial);
+      const r = radius * (k % 2 ? 0.86 : 1);
+      const height = radius * (k % 2 ? 0.98 : 0.79) * (0.94 + 0.10 * rand());
+      const shoulder = rgba(k % 2 ? "#e1a6a1" : "#edc2b3", 1);
+      const lip = rgba(k % 3 ? "#fff2dc" : "#f8cecc", 1);
+      const vertex = (out: number, rise: number, across: number, u: number, v: number, colour: Rgba) => {
+        const p = add(crown, add(mul(up, height * rise), add(mul(radial, r * out), mul(side, r * across))));
+        const normal = norm(add(mul(up, 0.50 + 0.39 * out), add(mul(radial, -0.86 + 0.41 * out), mul(side, -0.56 * across))));
+        return b.v(p, normal, colour, plantUv(PLANT_CELL.tulip, u, v));
+      };
+      const foot = vertex(0.07, 0, 0, 0.5, 0.98, rgba("#ca8b4f", 1));
+      const l = vertex(0.57, 0.55, -0.49, 0.03, 0.54, shoulder);
+      const rgt = vertex(0.57, 0.55, 0.49, 0.97, 0.54, shoulder);
+      const tl = vertex(1.00, 1.02, -0.32, 0.24, 0.08, lip);
+      const tr = vertex(1.00, 1.04, 0.32, 0.76, 0.08, lip);
+      if (low) {
+        b.tri(foot, l, tl); b.tri(foot, tl, tr); b.tri(foot, tr, rgt);
+      } else {
+        const rib = vertex(0.50, 0.35, 0, 0.5, 0.58, rgba("#f5cdb8", 1));
+        const tip = vertex(1.11, 1.14, 0, 0.5, 0.02, lip);
+        b.tri(foot, l, rib); b.tri(foot, rib, rgt); b.tri(rib, l, tl);
+        b.tri(rib, tl, tip); b.tri(rib, tip, tr); b.tri(rib, tr, rgt);
+      }
+    }
+    // Golden anthers lean apart above the darker throat. Their broad tips remain
+    // visible from above and the three low-tier anthers cost six triangles total.
+    for (let k = 0; k < (low ? 3 : 5); k++) {
+      const a = roll + k * Math.PI * 2 / (low ? 3 : 5);
+      const radial = add(mul(x, Math.cos(a)), mul(z, Math.sin(a)));
+      const side = cross(up, radial);
+      const middle = add(crown, add(mul(up, 0.014), mul(radial, 0.009)));
+      const foot = b.v(add(crown, mul(radial, 0.002)), up, rgba("#875c35"));
+      const left = b.v(add(middle, mul(side, -0.0035)), up, rgba("#e9aa43"));
+      const right = b.v(add(middle, mul(side, 0.0035)), up, rgba("#e9aa43"));
+      const tip = b.v(add(middle, add(mul(up, 0.005), mul(radial, 0.003))), up, rgba("#ffd367"));
+      b.tri(foot, left, right); b.tri(left, tip, right);
+    }
+  }
+  return b.build();
+}
+
+
 /** Two or three tulips (stems 25-35 cm), each with two broad strap leaves. */
 export function tulipPlant2(simple: boolean, seed = 4, stems = simple ? 2 : 3): BufferGeometry {
   const b = builder(0.35);
