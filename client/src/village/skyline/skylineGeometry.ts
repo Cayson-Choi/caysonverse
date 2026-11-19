@@ -27,7 +27,7 @@ import {
 import { GONDOLA_BOXES, frameCapsules, RIM_Z } from "@caysonverse/shared/land/wheelGeometry";
 import { WHEEL_HUB_Y, WHEEL_N, WHEEL_R, WHEEL_SITE } from "@caysonverse/shared/land/wheel";
 import { CAROUSEL_CANOPY_Y, CAROUSEL_CENTER, CAROUSEL_DECK_Y, CAROUSEL_RADIUS } from "@caysonverse/shared/land/carousel";
-import { PARK_PLAZA, COASTER_QUEUE_PAD } from "@caysonverse/shared/village/parkArea";
+import { PARK_PLAZA, COASTER_PAD } from "@caysonverse/shared/village/parkArea";
 import { addBellRoof } from "../../land/parkShapes";
 import { GeoBuilder, cross, norm, type V3 } from "../../land/geoBuilder";
 
@@ -281,7 +281,7 @@ export function buildSkyline(tier: SkylineTier, ground: GroundLocal = () => 0): 
     s.cylinder([PARK_PLAZA.x, fy + 1.9, PARK_PLAZA.z], [PARK_PLAZA.x, fy + 5.2, PARK_PLAZA.z], 0.8, 0.35, 6, C.cream, true);
     s.cylinder([PARK_PLAZA.x, fy + 5.2, PARK_PLAZA.z], [PARK_PLAZA.x, fy + 7.6, PARK_PLAZA.z], 1.1, 0.05, 5, C.gold);
     // west to the coaster's queue, east to the carousel and the wheel
-    addGroundBand(s, [[PARK_PLAZA.x - 22, PARK_PLAZA.z + 6], [COASTER_QUEUE_PAD.x, COASTER_QUEUE_PAD.z + 4]], 3.6, C.paving, lift, 12);
+    addGroundBand(s, [[PARK_PLAZA.x - 22, PARK_PLAZA.z + 6], [COASTER_PAD.x, COASTER_PAD.z + 4]], 3.6, C.paving, lift, 12);
     addGroundBand(s, [[PARK_PLAZA.x + 24, PARK_PLAZA.z - 4], [CAROUSEL_CENTER.x, CAROUSEL_CENTER.z + 24], [WHEEL_SITE.x, WHEEL_SITE.z + 12]], 3.6, C.paving, lift, 12);
   }
 
@@ -385,14 +385,11 @@ export function buildSkyline(tier: SkylineTier, ground: GroundLocal = () => 0): 
       const p = at(i);
       bulbsStatic.push(p[0], p[1] + 1.2, p[2]);
     }
-    // the station platform and its queue pavilion (park-local: the platform at x -9 .. 9.6, the pavilion on the queue side)
+    // the station platform (park-local: x -9 .. 9.6); the coaster boards from it, there is no queue pavilion
     const sg = Math.min(ground(0, -3), ground(0, 4), ground(-10, 0), ground(10, 0));
     s.box([0.3, (sg + STATION_Y) / 2 - 0.3, -3.2], X, Y, 11, (STATION_Y - sg) / 2 + 0.3, 3.2, C.sandDark);
     s.box([0.3, STATION_Y + 5.2, -3.2], X, Y, 12, 0.35, 4.2, C.coral);
     for (const sx of [-1, 1]) s.box([0.3 + sx * 10.5, STATION_Y + 2.6, -3.2], X, Y, 0.3, 2.6, 0.3, C.cream);
-    const qh = Math.min(ground(COASTER_QUEUE_PAD.x, -12), ground(COASTER_QUEUE_PAD.x, -4));
-    s.box([COASTER_QUEUE_PAD.x, (qh + 5) / 2 - 0.5, -8], X, Y, 9, (5 - qh) / 2 + 0.5, 4.5, C.sand);
-    addCone(s, COASTER_QUEUE_PAD.x, 5, -8, 11, 4.4, C.roofGreen, 4);
   }
 
   // — lamp posts along the promenade and round the plaza, and the string lights between them —
@@ -471,7 +468,7 @@ export function buildSkyline(tier: SkylineTier, ground: GroundLocal = () => 0): 
       (x, z) => x > -25 && x < 30 && z > -62 && z < 8,
       (x, z) => z > -70 && z < -10 && Math.hypot(x - 20, z + 40) < 55,
       // the side paths (the plaza to the queue, and to the carousel and the wheel)
-      (x, z) => distToSeg(x, z, PARK_PLAZA.x - 22, PARK_PLAZA.z + 6, COASTER_QUEUE_PAD.x, COASTER_QUEUE_PAD.z + 4) < 8,
+      (x, z) => distToSeg(x, z, PARK_PLAZA.x - 22, PARK_PLAZA.z + 6, COASTER_PAD.x, COASTER_PAD.z + 4) < 8,
       (x, z) => distToSeg(x, z, PARK_PLAZA.x + 24, PARK_PLAZA.z - 4, CAROUSEL_CENTER.x, CAROUSEL_CENTER.z + 24) < 8 || distToSeg(x, z, CAROUSEL_CENTER.x, CAROUSEL_CENTER.z + 24, WHEEL_SITE.x, WHEEL_SITE.z + 12) < 8,
     ];
     const greens: V3[] = [
