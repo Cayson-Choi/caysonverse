@@ -71,17 +71,17 @@ function partition(document, region) {
   // The newer oval wraps onto the dedicated right-hand pigment island.
   const hasIsland = oval.maxU > .5;
   const selected = new Set();
-  if (region === "oval" || region === "oval-and-scalp") {
-    if (!hasIsland) throw new Error("Oval replacement requires a face with a dedicated pigment island");
-    selected.add(oval.id);
-    if (region === "oval-and-scalp") {
+  if (region === "oval" || region === "oval-and-scalp" || region === "scalp") {
+    if (!hasIsland) throw new Error("Expected a registered face with a dedicated pigment island");
+    if (region !== "oval") {
       // All curl bands and their folded rim use the hair swatch in the
       // upper glTF V half. The urna uses the same U columns in the other half.
       for (const { id, minU, maxU, minV } of components.values()) {
         if (minU > .25 && maxU < .375 && minV > .5) selected.add(id);
       }
-      if (selected.size === 1) throw new Error("Missing cast scalp in the hair swatch");
+      if (!selected.size) throw new Error("Missing cast scalp in the hair swatch");
     }
+    if (region !== "scalp") selected.add(oval.id);
   } else if (region === "ears") {
     if (!hasIsland) throw new Error("Ear replacement requires the Buddha's current face atlas");
     const sides = new Set();
@@ -134,8 +134,9 @@ export async function preserveSurroundingStatue(previous, replacement, output, r
   if (before.name !== after.name || !after.hasIsland || before.preservedCount !== after.preservedCount) {
     throw new Error(`Incompatible Buddha models supplied for ${region} replacement`);
   }
-  if (region === "ears" && !shipped.getRoot().listExtensionsRequired().some(e => e.extensionName === "KHR_texture_basisu")) {
-    throw new Error("Ear replacement requires a shipped KTX2 Buddha as its source");
+  const keepPaint = region === "ears" || region === "scalp";
+  if (keepPaint && !shipped.getRoot().listExtensionsRequired().some(e => e.extensionName === "KHR_texture_basisu")) {
+    throw new Error(`The ${region} graft requires a shipped KTX2 Buddha as its source`);
   }
   const positions = [], normals = [], uvs = [], indices = [];
   function append(model, takeReplacement) {
@@ -156,13 +157,17 @@ export async function preserveSurroundingStatue(previous, replacement, output, r
   }
   append(before, false);
   const kept = indices.length;
-  const candidateBodyIndices = after.indices.reduce((n,i) => n + Number(!after.replace[i]), 0);
-  if (kept !== candidateBodyIndices) throw new Error(`Triangle count outside the ${region} changed across Buddha builds`);
+  // A scalp graft discards the entire donor statue except its hair swatch.
+  // Its new hairline changes hidden-oval culling, and Blender can choose
+  // different decimation edges on the body even for the same sculpt.
+  if (region !== "scalp") {
+    const candidateBodyIndices = after.indices.reduce((n,i) => n + Number(!after.replace[i]), 0);
+    if (kept !== candidateBodyIndices) throw new Error(`Triangle count outside the ${region} changed across Buddha builds`);
+  }
   append(after, true);
-  // Ears use the existing gilt swatch. Retain the shipped KTX2 images and
-  // materials byte-for-byte, then let the packer rebuild both geometry paths.
-  const document = region === "ears" ? shipped : sculpt;
-  const p = region === "ears" ? before.primitive : after.primitive;
+  // The ear and curl grafts use existing swatches on the shipped KTX2 atlases.
+  const document = keepPaint ? shipped : sculpt;
+  const p = keepPaint ? before.primitive : after.primitive;
   document.getRoot().listExtensionsUsed().find(e => e.extensionName === "EXT_meshopt_compression")?.dispose();
   p.getAttribute("POSITION").setArray(new Float32Array(positions));
   p.getAttribute("NORMAL").setArray(new Float32Array(normals));

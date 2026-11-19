@@ -1,8 +1,9 @@
 /** Finish the original hall Buddha after the Blender build.
- * node buddha_pack.mjs <build-directory> <sacred-GLB-directory> [--preserve-from|--face-oval-only-from|--face-and-scalp-from|--preserve-ears-from|--preserve-head-from|--textures-only-from <prior-GLB-directory>]
+ * node buddha_pack.mjs <build-directory> <sacred-GLB-directory> [--preserve-from|--face-oval-only-from|--face-and-scalp-from|--scalp-only-from|--preserve-ears-from|--preserve-head-from|--textures-only-from <prior-GLB-directory>]
  * For a face revision, pass the shipped pair's directory to --preserve-from.
  * For a registered face with an approved urna, --face-oval-only-from keeps the original jewel and its baked shading.
  * For a hairline revision, --face-and-scalp-from also replaces the cast curls over the facial oval.
+ * For a curl-only revision, --scalp-only-from retains the shipped facial oval and all KTX2 atlases.
  * For an ear revision, --preserve-ears-from keeps the shipped face, body and KTX2 textures.
  * For a full head revision, --preserve-head-from retains the body and ears around the new throat, face and hair.
  * For a finish revision, --textures-only-from puts the new atlases on the exact shipped geometry, including its meshopt fallback.
@@ -21,7 +22,7 @@ import { preserveSurroundingStatue } from "./buddha_preserve.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const [work, destination, flag, seedDirectory, ...extra] = process.argv.slice(2);
 const regions = new Map([["--preserve-from", "face"], ["--face-oval-only-from", "oval"], ["--face-and-scalp-from", "oval-and-scalp"],
-  ["--preserve-ears-from", "ears"], ["--preserve-head-from", "head"]]);
+  ["--scalp-only-from", "scalp"], ["--preserve-ears-from", "ears"], ["--preserve-head-from", "head"]]);
 const texturesOnly = flag === "--textures-only-from";
 if (!work || !destination || (flag && ((!texturesOnly && !regions.has(flag)) || !seedDirectory)) || extra.length) {
   throw new Error("Expected build directory, sacred GLB directory and an optional preservation flag and source directory");
@@ -135,7 +136,8 @@ for (const lod of ["pc", "phone"]) {
     await preserveSurroundingStatue(path.join(seedDirectory, name + ".glb"), model, graft, region);
     model = graft;
   }
-  if (flag !== "--preserve-ears-from") {
+  const keepPaint = flag === "--preserve-ears-from" || flag === "--scalp-only-from";
+  if (!keepPaint) {
     const ktx = path.join(work, lod + "-ktx.glb");
     execFileSync(process.execPath, [path.join(here, "node", "ktx2_glb.mjs"),
       model, ktx, "2048", "all", "2048"], {stdio: "inherit"});
@@ -144,9 +146,7 @@ for (const lod of ["pc", "phone"]) {
   const source = texturesOnly ? path.join(seedDirectory, name + ".glb") : compressGeometry(model);
   const statue = readGlb(source);
   const replacements = texturesOnly ? coreAtlases(statue, readGlb(model)) : new Map();
-  const keepPaint = flag === "--preserve-ears-from";
-  // The historical ear-only workflow also accepts casts that predate the
-  // photographic finish, and promises to preserve their original textures.
+  // Geometry-only grafts can also use casts that predate the photographic finish.
   if (!keepPaint || statue.doc.images.some(image => image.name === lod+"-photographic-fill")) {
     const priorFinish = keepPaint ? readGlb(path.join(seedDirectory, name + ".glb")) : null;
     await dressBuddhaLeaf(statue, lod, path.join(work,lod+"-color.png"), replacements, priorFinish);
