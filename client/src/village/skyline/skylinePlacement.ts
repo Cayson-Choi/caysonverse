@@ -32,7 +32,7 @@ export interface SkylinePlacement {
 }
 
 /** Park-local rectangle the skyline covers: from the gate to the coaster's far side. */
-export const PARK_EXTENT = Object.freeze({ minX: -130, maxX: 360, minZ: -196, maxZ: 70 });
+export const PARK_EXTENT = Object.freeze({ minX: -135, maxX: 360, minZ: -196, maxZ: 70 });
 
 export function skylinePlacement(heightAt: (x: number, z: number) => number): SkylinePlacement {
   const s = SKYLINE_SCALE;

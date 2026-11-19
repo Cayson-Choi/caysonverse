@@ -40,7 +40,7 @@ export function parkBeds(): { beds: Bed[]; cards: Card[] } {
   for (const p of PARK_PLANTERS) beds.push({ kind: "box", x0: p.x - p.w / 2 + 0.1, x1: p.x + p.w / 2 - 0.1, z0: p.z - p.d / 2 + 0.1, z1: p.z + p.d / 2 - 0.1, y: 0.84, out: null, plant: "pot" });
   const ground = circuitGround();
   ground.forEach((g, i) => {
-    if (i % 4 !== 2 || (g.z < 9 && g.x > -45 && g.x < 35)) return;
+    if (i % 4 !== 2 || (g.z < 10 && g.x > -84 && g.x < 35)) return;
     const side = i % 8 === 2 ? 1 : -1;
     const cx = g.x + g.px * 4.2 * side;
     const cz = g.z + g.pz * 4.2 * side;
@@ -123,14 +123,14 @@ export function parkTreeSpecs(): { trees: TreeSpec[]; bushes: Bush[] } {
   // bushes along the circuit's path (the village's boxwood and azalea)
   const bushes: Bush[] = [];
   ground.forEach((g, i) => {
-    if (i % 3 !== 1 || (g.z < 9 && g.x > -45 && g.x < 35)) return;
+    if (i % 3 !== 1 || (g.z < 10 && g.x > -84 && g.x < 35)) return;
     const s = 0.8 + rnd() * 0.7;
     bushes.push({ x: g.x + g.px * 5.4, y: 0, z: g.z + g.pz * 5.4, h: 0.9 * s, r: 0.7 * s, seed: rnd(), cards: [] });
   });
   // the hedge along the path's left edge and the park's south boundary: a continuous row of the village's clipped shrubs (replaces box hedges)
   const hedge: Bush[] = [];
   ground.forEach((g, gi) => {
-    if (g.z < 9 && g.x > -45 && g.x < 35) return;
+    if (g.z < 10 && g.x > -84 && g.x < 35) return;
     if (isTouchDevice && gi % 2 === 1) return; // a phone gets every second shrub of the hedge (each a bit wider)
     const s = (isTouchDevice ? 1.25 : 0.9) + rnd() * 0.5;
     hedge.push({ x: g.x - g.px * 3.5, y: 0, z: g.z - g.pz * 3.5, h: 1.0 * s, r: 1.25 * s, seed: rnd(), cards: [] });

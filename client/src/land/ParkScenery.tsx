@@ -23,6 +23,7 @@ import {
   LinearMipmapLinearFilter,
 } from "three";
 import { coasterTrack } from "@caysonverse/shared/land/coaster";
+import { coasterSupports } from "@caysonverse/shared/land/coasterSupports";
 import { PARK_PLAZA, PARK_SHOPS } from "@caysonverse/shared/village/parkArea";
 import { LIGHTING } from "../game/sceneLighting";
 import { dayNight } from "../village/dayNightDriver";
@@ -51,15 +52,31 @@ export function circuitGround(): { x: number; z: number; px: number; pz: number;
   return out;
 }
 
-/** The ponds: one under the loop, one under the first drop (ellipses, metres). */
+/** The ponds: one inside the ground helix, one beside the first drop's pull-out (ellipses, metres). */
 export const PARK_PONDS: readonly { x: number; z: number; rx: number; rz: number }[] = (() => {
   const t = coasterTrack();
-  const li = Math.round(((t.marks.loopFrom ?? 0) + (t.marks.loopTo ?? 0)) / 2);
-  const di = Math.min(t.n - 1, t.liftTo + 50);
+  const h0 = t.marks.helixFrom ?? 0;
+  const h1 = t.marks.helixTo ?? 0;
+  let cx = 0;
+  let cz = 0;
+  for (let i = h0; i < h1; i++) {
+    cx += t.pos[3 * i]!;
+    cz += t.pos[3 * i + 2]!;
+  }
+  cx /= Math.max(1, h1 - h0);
+  cz /= Math.max(1, h1 - h0);
+  const di = t.marks.dropTo ?? Math.min(t.n - 1, t.liftTo + 50);
   return Object.freeze([
-    { x: t.pos[3 * li]! + 6, z: 20, rx: 20, rz: 13 },
-    { x: t.pos[3 * di]! + 4, z: 15, rx: 10, rz: 6.5 },
+    { x: cx, z: cz, rx: 12, rz: 10 },
+    { x: t.pos[3 * di]! - 8, z: t.pos[3 * di + 2]! + 11, rx: 10, rz: 6 },
   ]);
+})();
+
+/** The supports' footings (shared/land/coasterSupports.ts): trees keep 4.5 m off them. */
+const SUPPORT_FEET: readonly { x: number; z: number }[] = (() => {
+  const out: { x: number; z: number }[] = [];
+  for (const sp of coasterSupports(coasterTrack(), "full")) for (const l of sp.legs) out.push({ x: l.foot[0], z: l.foot[2] });
+  return out;
 })();
 
 /** Whether the lawn at (x, z) is taken: a path, the plaza, a building, the station, the pond, the circuit's own ground. */
@@ -72,7 +89,8 @@ export function taken(x: number, z: number, ground: ReturnType<typeof circuitGro
   if (PARK_SHOPS.some((s) => Math.abs(x - s.x) < s.d / 2 + 5 && Math.abs(z - s.z) < s.w / 2 + 4)) return true;
   void pond;
   for (const p of PARK_PONDS) if (Math.hypot((x - p.x) / (p.rx + 1.5), (z - p.z) / (p.rz + 1.5)) < 1) return true;
-  for (const g of ground) if (Math.hypot(g.x - x, g.z - z) < 7) return true;
+  for (const g of ground) if (Math.hypot(g.x - x, g.z - z) < 7 + Math.min(5, g.y * 0.08)) return true;
+  for (const f of SUPPORT_FEET) if (Math.hypot(f.x - x, f.z - z) < 4.5) return true;
   return false;
 }
 
@@ -112,7 +130,7 @@ function CircuitGround({ all }: { all: Texture[] }) {
     const b = new GeoBuilder();
     const rails: V3[][] = [[], []];
     ground.forEach((g, i) => {
-      if (g.z < 9 && g.x > -45 && g.x < 35) return; // not through the station
+      if (g.z < 10 && g.x > -84 && g.x < 35) return; // not through the station or the tunnel
       if (i % 2 === 0) b.box([g.x + g.px * 3.5, 0.55, g.z + g.pz * 3.5], X, Y, 0.06, 0.55, 0.06, [0.92, 0.9, 0.84]);
       void rails;
     });
@@ -120,7 +138,7 @@ function CircuitGround({ all }: { all: Texture[] }) {
     for (let i = 0; i < ground.length - 2; i += 2) {
       const a = ground[i]!;
       const c = ground[i + 2]!;
-      if (a.z < 9 && a.x > -45 && a.x < 35) continue;
+      if (a.z < 10 && a.x > -84 && a.x < 35) continue;
       for (const y of [0.38, 0.85]) b.cylinder([a.x + a.px * 3.5, y, a.z + a.pz * 3.5], [c.x + c.px * 3.5, y, c.z + c.pz * 3.5], 0.035, 0.035, 5, [0.92, 0.9, 0.84]);
     }
     return b.build();
