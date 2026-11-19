@@ -1,4 +1,5 @@
 import { HudButton } from "../../ui/HudButton";
+import { afterPaint } from "../../ui/afterPaint";
 import { useLocalArea } from "../villageArea";
 import { useTransitState } from "../../net/transitSync";
 import { resumeVillageAudio } from "../villageAudio";
@@ -22,8 +23,8 @@ export function StarFinderButton() {
       className={"cv-sky-hud-btn" + (day && !open ? " is-day" : "")}
       onClick={() => {
         resumeVillageAudio(); // a gesture: the found chime may play later
-        if (open) closeFinder();
-        else openFinder();
+        // the card mounts after the press has painted (INP: paint first, then the heavy work)
+        afterPaint(open ? closeFinder : openFinder);
       }}
     >
       🔭
