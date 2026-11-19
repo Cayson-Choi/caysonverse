@@ -99,6 +99,25 @@ it("faces both bay ceilings and floors into their alcoves", async () => {
   }
 });
 
+it("keeps the porch diffuser behind the entire fanlight from the room centre and either jamb", () => {
+  const { gltf } = parseGlb(readFileSync(path.join(lots, "lot_library_reading.glb")));
+  const shell = gltf.meshes!.find((m) => m.name?.endsWith("_shell"))!;
+  const screen = shell.primitives.find((p) => gltf.materials![p.material!]?.name === "M_screen")!;
+  const { min, max } = gltf.accessors![screen.attributes.POSITION!]!;
+  const backZ = max![2]!, glassZ = -0.12;
+  expect(backZ).toBeLessThan(glassZ);
+  for (const eye of [[477.37, 1.6, 7.8], [470.5, 1.3, 0.4], [482.9, 1.8, 0.4]]) {
+    const t = (backZ - eye[2]!) / (glassZ - eye[2]!);
+    for (const x of [475.6, 477.8]) for (const y of [2.8, 3.4]) {
+      const bx = eye[0]! + (x - eye[0]!) * t, by = eye[1]! + (y - eye[1]!) * t;
+      expect(bx).toBeGreaterThanOrEqual(min![0]!);
+      expect(bx).toBeLessThanOrEqual(max![0]!);
+      expect(by).toBeGreaterThanOrEqual(min![1]!);
+      expect(by).toBeLessThanOrEqual(max![1]!);
+    }
+  }
+});
+
 it("wraps one equirectangular chart around the tilted sphere, north up, without a triangle crossing the map seam", async () => {
   const { points, normals, uv, triangles } = await primitive("library_reading", "M_globe");
   const centre = new Vector3(471.625, 0.9, 2.925);

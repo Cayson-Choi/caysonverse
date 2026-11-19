@@ -179,9 +179,8 @@ def door(kit, f):
     f.box(D, 5.42, 5.6, 0.0, 3.58, 0.0, 0.05, OAK_DK, skip=("-w",))
     f.box(D, 7.8, 7.98, 0.0, 3.58, 0.0, 0.05, OAK_DK, skip=("-w",))
     f.box(D, 5.42, 7.98, 3.4, 3.58, 0.0, 0.05, OAK_DK, skip=("-w",))
-    # the view through the fanlight
-    R.window  # (the fanlight shows the porch's lantern light: a warm screen)
-    f.quad(S_, 5.6, 7.8, 2.8, 3.4, -0.6, S("M_screen"))
+    # The porch lantern's diffuser sits 2 mm behind the glazing and overlaps the jamb and head.
+    f.quad(S_, 5.55, 7.85, 2.77, 3.45, -0.122, S("M_screen"))
 
 
 def bay(kit, f, a, b):
