@@ -130,7 +130,7 @@ function uvTube(b: GeoBuilder, pts: Vec3[], radii: number[], sides: number, cell
     for (let s = 0; s <= sides; s++) {
       const a = (s / sides) * Math.PI * 2;
       const nr = add(mul(tx, Math.cos(a)), mul(ty, Math.sin(a)));
-      ring.push(b.v(add(pts[i]!, mul(nr, radii[i]!)), nr, col(t), plantUv(cell, s / sides, v0 + (v1 - v0) * t, 0.0)));
+      ring.push(b.v(add(pts[i]!, mul(nr, radii[i]!)), nr, col(t), cell === PLANT_CELL.solid ? SOLID_UV : plantUv(cell, s / sides, v0 + (v1 - v0) * t, 0.0)));
     }
     rings.push(ring);
   }
@@ -529,10 +529,10 @@ export function muscariPlant2(simple: boolean, seed = 3): BufferGeometry {
 }
 
 /** Two or three tulips (stems 25-35 cm), each with two broad strap leaves. */
-export function tulipPlant2(simple: boolean, seed = 4): BufferGeometry {
+export function tulipPlant2(simple: boolean, seed = 4, stems = simple ? 2 : 3): BufferGeometry {
   const b = builder(0.35);
   const rand = mulberry32(seed);
-  const n = simple ? 2 : 3;
+  const n = stems;
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + rand() * 0.8;
     const at: Vec3 = [Math.cos(a) * 0.05, 0, Math.sin(a) * 0.05];
@@ -543,6 +543,34 @@ export function tulipPlant2(simple: boolean, seed = 4): BufferGeometry {
       strapLeaf(b, at, [Math.cos(la) * Math.cos(el), Math.sin(el), Math.sin(la) * Math.cos(el)], 0.17 + rand() * 0.05, 0.045, rgba("#7A9E62"), 0.45, simple);
     }
     tulipCup(b, at, 0.26 + rand() * 0.1, lean, simple ? 0.026 : 0.021, rand() * 6.28, simple);
+  }
+  return b.build();
+}
+
+/** A rooted bedding sprig for shallow sill boxes and entrance borders, with each bloom
+ * and leaf growing from the same crown. Keep the pedicels even on the phone mesh. */
+export function planterSprig(species: "pansy" | "petunia", simple: boolean, seed = 7): BufferGeometry {
+  const b = builder(0.16);
+  const rand = mulberry32(seed);
+  const leaves = simple ? 4 : 7;
+  const tips = simple ? 2 : 3;
+  const pansy = species === "pansy";
+  for (let i = 0; i < leaves; i++) {
+    const a = i * 2.4 + rand() * 0.5;
+    texLeaf(b, [0, 0.012, 0], [Math.cos(a), 0.28 + rand() * 0.55, Math.sin(a)], [0, 1, 0],
+      0.08 + rand() * 0.045, 0.047 + rand() * 0.015, pansy ? PLANT_CELL.leafPansy : PLANT_CELL.leafPetunia,
+      grey(0.77 + rand() * 0.21, 0), { simple, fold: 0.27, droop: 0.38 });
+  }
+  for (let i = 0; i < tips; i++) {
+    const a = (i + rand() * 0.4) * 2 * Math.PI / tips;
+    const radius = 0.045 + rand() * 0.035;
+    const x = radius * Math.cos(a), z = radius * Math.sin(a), h = 0.12 + rand() * 0.055;
+    const tip: Vec3 = [x, h, z];
+    const stem: Vec3[] = simple ? [[0, 0, 0], tip] : [[0, 0, 0], [x * 0.75, h * 0.57, z * 0.75], tip];
+    stalk(b, stem, 0.0037, 0.0021, rgba("#58823b"));
+    const face = norm([Math.cos(a), 0.6 + rand() * 0.6, Math.sin(a)]);
+    if (pansy) pansyFace(b, tip, face, 0.033, a, simple);
+    else petuniaFlower(b, add(tip, mul(face, 0.025)), face, 0.038, a, simple);
   }
   return b.build();
 }
