@@ -189,7 +189,7 @@ if (!only3) {
         for (const [name, test] of [
           ["d09-lift-first-metres", st.stage === "lift" && st.y > 12],
           ["d10-lift-half-way", st.stage === "lift" && st.y > 45],
-          ["d11-the-hold-at-85m", st.stage === "hold" && st.rideT > 21.5],
+          ["d11-the-hold-at-85m", st.stage === "hold" && st.rideT > 20.6],
           ["d12-free-fall", st.stage === "fall" && st.rideT > 25.4],
           ["d13-brakes", st.stage === "brake" && st.rideT > 28.3],
         ])
