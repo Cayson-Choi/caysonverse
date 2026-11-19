@@ -80,8 +80,8 @@
 /* ── Top-right: 👁 🗺 ☰ ── */
 .cv-hud-right {
   position: fixed;
-  top: 16px;
-  right: 16px;
+  top: max(16px, env(safe-area-inset-top, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
   z-index: 22;
   display: flex;
   gap: 8px;
@@ -95,14 +95,14 @@
 /* ── Top-left: room name + 👥, then the roster / chat-log toggle / admin panel ── */
 .cv-hud-left {
   position: fixed;
-  top: 16px;
-  left: 16px;
+  top: max(16px, env(safe-area-inset-top, 0px));
+  left: max(16px, env(safe-area-inset-left, 0px));
   z-index: 22;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100vw - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
   pointer-events: none; /* empty column space must not eat canvas clicks */
 }
 
@@ -124,7 +124,7 @@
    log's worst-case height from the bottom): it ends at least 8 px above it. The room chip
    and 👥 never shrink; the roster list and the admin panel's body scroll inside what is left. */
 html:not(.cv-touch) .cv-hud-left {
-  max-height: calc(100vh - 16px - var(--cv-log-reserve, 360px) - 8px);
+  max-height: calc(100vh - max(16px, env(safe-area-inset-top, 0px)) - var(--cv-log-reserve, 360px) - 8px);
   overflow: hidden;
 }
 
@@ -278,8 +278,8 @@ html:not(.cv-touch) .cv-hud-left {
   --cv-compass-ring: 0deg;
   --cv-compass-letter: 0deg;
   position: fixed;
-  top: calc(16px + var(--cv-hud-btn, 48px) + 12px);
-  right: 16px;
+  top: calc(max(16px, env(safe-area-inset-top, 0px)) + var(--cv-hud-btn, 48px) + 12px);
+  right: max(16px, env(safe-area-inset-right, 0px));
   z-index: 21;
   width: var(--cv-compass-size);
   height: var(--cv-compass-size);
