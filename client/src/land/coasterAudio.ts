@@ -4,6 +4,7 @@
  * A mute switch lives in the ride panel. Nothing here touches the village's own music.
  */
 import { rideProbe } from "./coasterRide";
+import { useSoundStore } from "../stores/soundStore";
 
 interface Voices {
   ctx: AudioContext;
@@ -101,6 +102,8 @@ export function stepRideAudio(nowMs: number): void {
   const v = voices;
   if (!v) return;
   const t = v.ctx.currentTime;
+  // the menu's 소리 switch silences the ride as well as the panel's own mute
+  v.master.gain.setTargetAtTime(muted || useSoundStore.getState().muted ? 0 : 0.9, t, 0.1);
   const sp = rideProbe.speed;
   const k = Math.min(1, sp / 26);
   v.wind.gain.setTargetAtTime(0.05 + 0.5 * k * k, t, 0.12);

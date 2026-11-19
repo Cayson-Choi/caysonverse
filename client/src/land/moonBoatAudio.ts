@@ -1,137 +1,162 @@
 /**
- * The moon boat's sound (WebAudio, synthesised, shares the ride mute switch): the wind rising with the swing's speed, a slow creak-like hum that follows the
- * height, and a soft celesta bell at each turning point (a lullaby pentatonic). Everything is built once at the start (a noise loop, a hum, a pool of three
- * bell voices); the 150 ms timer only retunes gains and reschedules a bell's pitch and envelope: no node is created while riding.
+ * 달배's sound (Web Audio, synthesised: no files). One mix; the rider hears all of it, someone near the boat hears it quieter and
+ * duller, without the wind and the pad (land/rideSfx.ts sets the level and the air).
+ *
+ *   - the swing's whoosh: a swept band that opens with the boat's speed, so it swells at the bottom of every pass and dies away at
+ *     the ends, growing as the amplitude builds; under it the low breath of the moved air;
+ *   - the frame: at each end of the swing a creak of the A-frame and a soft knock, louder for a bigger swing, and now and then a
+ *     groan of the hangers;
+ *   - the wind: a gusting band, the rider's;
+ *   - the dream: a lullaby motif ("달배 자장가", original: eight soft bell notes in D, one at each end of the swing, through a long
+ *     echo) over a slow pad of two sines (rider), a rising chime as the boat sets off and a falling one as it stops.
+ * Built once; a tick moves parameters and schedules the events at the swing's turns.
  */
-import { rideMuted } from "./coasterAudio";
-import { moonBoatAt, type MoonBoatState } from "@caysonverse/shared/land/moonBoat";
-import { villageClock } from "../village/villageClock";
+import { MOON_MAX_ANGLE, MOON_PERIOD_S, moonBoatAt, type MoonBoatState } from "@caysonverse/shared/land/moonBoat";
+import {
+  BellPool,
+  CreakVoice,
+  breath,
+  burst,
+  clamp01,
+  createEcho,
+  disconnectAll,
+  ease,
+  filter,
+  gain,
+  hz,
+  lfo,
+  loopSource,
+  noiseBuffer,
+  seededRandom,
+  stopQuiet,
+  thud,
+} from "./sfx/sfxKit";
+import type { RideMix } from "./sfx/rideMix";
 
-let ctx: AudioContext | null = null;
-let master: GainNode | null = null;
-let wind: GainNode | null = null;
-let windFilter: BiquadFilterNode | null = null;
-let hum: GainNode | null = null;
-let humOsc: OscillatorNode | null = null;
-let noise: AudioBufferSourceNode | null = null;
-let timer = 0;
-let lastSign = 0;
-let note = 0;
-const ST: MoonBoatState = { cycle: 0, phase: 0, status: "boarding", angle: 0, omega: 0, alpha: 0, rideT: 0, departsInMs: 0 };
-const BELLS = [72, 76, 79, 81, 84];
-const hz = (m: number): number => 440 * Math.pow(2, (m - 69) / 12);
-const PARTIALS: readonly (readonly [number, number])[] = [[1, 1], [2.76, 0.3], [5.4, 0.1]];
-
-interface Voice {
-  osc: OscillatorNode[];
-  gain: GainNode[];
+export interface MoonBoatInput {
+  rider: boolean;
+  status: "unloading" | "boarding" | "gate" | "riding";
+  /** the swing angle (rad) and its angular speed (rad/s) */
+  angle: number;
+  omega: number;
 }
-let voices: Voice[] = [];
-let nextVoice = 0;
 
-function ring(freq: number, t: number, gain: number): void {
-  if (!ctx || voices.length === 0) return;
-  const v = voices[nextVoice++ % voices.length]!;
-  for (let k = 0; k < PARTIALS.length; k++) {
-    const [mul, g] = PARTIALS[k]!;
-    v.osc[k]!.frequency.setValueAtTime(freq * mul, t);
-    const gp = v.gain[k]!.gain;
-    gp.cancelScheduledValues(t);
-    gp.setValueAtTime(0, t);
-    gp.linearRampToValueAtTime(gain * g, t + 0.005);
-    gp.exponentialRampToValueAtTime(0.0001, t + 1.8 / mul ** 0.3);
+/** The lullaby: MIDI notes, one at each turn of the swing, round and round (D major). */
+export const MOON_MOTIF: readonly number[] = [78, 81, 83, 81, 78, 76, 74, 76];
+/** The swing's top angular speed (rad/s): amplitude x angular frequency. */
+const OMEGA_TOP = MOON_MAX_ANGLE * ((2 * Math.PI) / MOON_PERIOD_S);
+
+export function buildMoonBoatMix(ctx: BaseAudioContext, out: AudioNode): RideMix<MoonBoatInput> {
+  const rnd = seededRandom(0x400b);
+  const nodes: AudioNode[] = [];
+  const stops: { stop(): void }[] = [];
+  const keep = <T extends AudioNode>(n: T): T => {
+    nodes.push(n);
+    return n;
+  };
+  const master = keep(gain(ctx, 1));
+  master.connect(out);
+  const echo = createEcho(ctx, master, 0.46, 0.44, 2600, 0.55);
+  nodes.push(...echo.nodes);
+
+  // the swing's whoosh and the breath of air
+  const whooshSrc = loopSource(ctx, noiseBuffer(ctx, 4, "pink", 61));
+  stops.push(whooshSrc);
+  const whooshBand = keep(filter(ctx, "bandpass", 300, 0.6));
+  const whooshG = keep(gain(ctx, 0));
+  whooshSrc.connect(whooshBand).connect(whooshG).connect(master);
+  const airSrc = loopSource(ctx, noiseBuffer(ctx, 4, "brown", 67), 1, 1.2);
+  stops.push(airSrc);
+  const airLp = keep(filter(ctx, "lowpass", 340, 0.6));
+  const airG = keep(gain(ctx, 0));
+  airSrc.connect(airLp).connect(airG).connect(master);
+  // the wind (rider)
+  const windSrc = loopSource(ctx, noiseBuffer(ctx, 4, "pink", 71), 1, 0.6);
+  stops.push(windSrc);
+  const windBand = keep(filter(ctx, "bandpass", 1500, 0.6));
+  const windG = keep(gain(ctx, 0));
+  const gust = breath(ctx, 0.17, 0.3);
+  windSrc.connect(windBand).connect(gust.node).connect(windG).connect(master);
+  stops.push(gust.osc, lfo(ctx, 0.31, 260, windBand.frequency));
+  // the pad: D and A, a slow shimmer (rider)
+  const padG = keep(gain(ctx, 0));
+  padG.connect(echo.input);
+  for (const [f, lfoHz] of [[hz(50), 0.23], [hz(57), 0.31], [hz(62), 0.19]] as const) {
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.value = f;
+    const tg = keep(gain(ctx, 0.5));
+    o.connect(tg).connect(padG);
+    o.start();
+    stops.push(o, lfo(ctx, lfoHz, 0.4, tg.gain));
   }
-}
 
-export function startMoonBoatAudio(): void {
-  if (ctx || typeof AudioContext === "undefined") return;
-  try {
-    const c = new AudioContext();
-    ctx = c;
-    master = c.createGain();
-    master.gain.value = 0;
-    master.connect(c.destination);
-    const buf = c.createBuffer(1, c.sampleRate, c.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    noise = c.createBufferSource();
-    noise.buffer = buf;
-    noise.loop = true;
-    windFilter = c.createBiquadFilter();
-    windFilter.type = "bandpass";
-    windFilter.frequency.value = 400;
-    wind = c.createGain();
-    wind.gain.value = 0;
-    noise.connect(windFilter).connect(wind).connect(master);
-    noise.start();
-    humOsc = c.createOscillator();
-    humOsc.type = "triangle";
-    humOsc.frequency.value = 62;
-    const hf = c.createBiquadFilter();
-    hf.type = "lowpass";
-    hf.frequency.value = 160;
-    hum = c.createGain();
-    hum.gain.value = 0;
-    humOsc.connect(hf).connect(hum).connect(master);
-    humOsc.start();
-    voices = [];
-    for (let v = 0; v < 3; v++) {
-      const voice: Voice = { osc: [], gain: [] };
-      for (let k = 0; k < PARTIALS.length; k++) {
-        const o = c.createOscillator();
-        const g = c.createGain();
-        o.type = "sine";
-        g.gain.value = 0;
-        o.connect(g).connect(master);
-        o.start();
-        voice.osc.push(o);
-        voice.gain.push(g);
+  const creaks = [new CreakVoice(ctx, master), new CreakVoice(ctx, master)];
+  const chime = new BellPool(ctx, echo.input, [[1, 1], [2.0, 0.3], [3.0, 0.12], [4.2, 0.05]], 4);
+
+  let prevStatus: MoonBoatInput["status"] | null = null;
+  let lastSign = 0;
+  let motif = 0;
+  let creakN = 0;
+  let nextGroan = 4;
+  return {
+    update(t, inp) {
+      const rv = inp.rider ? 1 : 0;
+      const riding = inp.status === "riding";
+      const sp = clamp01(Math.abs(inp.omega) / OMEGA_TOP);
+      const amp = clamp01(Math.abs(inp.angle) / MOON_MAX_ANGLE);
+      // whoosh: opens with the speed (strongest at the bottom of a pass)
+      ease(whooshG.gain, riding ? 0.03 + 0.36 * Math.pow(sp, 1.4) : 0, t, 0.09);
+      ease(whooshBand.frequency, 230 + 1500 * Math.pow(sp, 1.2), t, 0.1);
+      ease(airG.gain, riding ? 0.26 * sp : 0, t, 0.12);
+      ease(windG.gain, riding ? rv * (0.01 + 0.1 * sp) : 0, t, 0.3);
+      ease(padG.gain, riding ? rv * 0.03 * (0.4 + 0.6 * amp) : 0, t, 0.8);
+
+      // the swing's turns: a creak, a knock and the next note of the lullaby
+      const sign = inp.omega > 0.02 ? 1 : inp.omega < -0.02 ? -1 : lastSign;
+      if (riding && lastSign !== 0 && sign !== lastSign && Math.abs(inp.angle) > 0.18) {
+        const k = 0.35 + 0.65 * amp;
+        const f = 95 + rnd() * 50;
+        creaks[creakN++ % creaks.length]!.fire(t + 0.02, f * (sign > 0 ? 0.85 : 1.2), f * (sign > 0 ? 1.25 : 0.8), 0.4 + 0.3 * amp, (0.05 + 0.07 * amp) * (inp.rider ? 1 : 0.7), 600 + rnd() * 400);
+        thud(ctx, master, t + 0.03, 0.07 * k, 75, 40, 0.22);
+        burst(ctx, master, t + 0.03, 0.06, 0.03 * k, "bandpass", 900, 1.2);
+        chime.ring(hz(MOON_MOTIF[motif++ % MOON_MOTIF.length]!), t + 0.06, 0.09 + 0.05 * amp, 2.8);
       }
-      voices.push(voice);
-    }
-    lastSign = 0;
-    timer = window.setInterval(() => {
-      if (!ctx || !master || !wind || !windFilter || !hum || !humOsc) return;
-      const st = moonBoatAt(villageClock.liveMs(), ST);
-      const t = ctx.currentTime;
-      const speed = Math.min(1, Math.abs(st.omega) / 0.9);
-      const height = Math.max(0, Math.min(1, (st.angle === 0 ? 0 : Math.abs(st.angle)) / 0.96));
-      master.gain.setTargetAtTime(rideMuted() ? 0 : 0.5, t, 0.3);
-      wind.gain.setTargetAtTime(speed * 0.09, t, 0.25);
-      windFilter.frequency.setTargetAtTime(280 + speed * 900, t, 0.25);
-      hum.gain.setTargetAtTime(0.03 + height * 0.04, t, 0.4);
-      humOsc.frequency.setTargetAtTime(58 + height * 18, t, 0.4);
-      const sign = st.omega > 0.02 ? 1 : st.omega < -0.02 ? -1 : lastSign;
-      // a bell at each turning point once the swing is big enough to feel
-      if (lastSign !== 0 && sign !== lastSign && Math.abs(st.angle) > 0.3) ring(hz(BELLS[note++ % BELLS.length]!), t + 0.02, 0.05 + Math.abs(st.angle) * 0.05);
       lastSign = sign;
-    }, 150);
-  } catch {
-    ctx = null;
-  }
-}
-
-export function stopMoonBoatAudio(): void {
-  window.clearInterval(timer);
-  const c = ctx;
-  const m = master;
-  ctx = null;
-  master = null;
-  voices = [];
-  if (!c || !m) return;
-  try {
-    m.gain.setTargetAtTime(0, c.currentTime, 0.2);
-    window.setTimeout(() => {
-      try {
-        noise?.stop();
-        humOsc?.stop();
-      } catch {
-        /* stopped */
+      // now and then a groan of the hangers while it swings high
+      if (riding && amp > 0.4 && t >= nextGroan) {
+        const f = 70 + rnd() * 40;
+        creaks[creakN++ % creaks.length]!.fire(t + 0.05, f, f * 1.18, 0.6, 0.03 * (inp.rider ? 1 : 0.6), 500);
+        nextGroan = t + 3 + rnd() * 4;
       }
-      void c.close().catch(() => undefined);
-    }, 800);
-  } catch {
-    /* ignore */
-  }
+
+      // setting off and stopping
+      if (riding && prevStatus !== null && prevStatus !== "riding") {
+        for (const [i, m] of [74, 78, 81, 86].entries()) chime.ring(hz(m), t + 0.05 + i * 0.22, 0.11, 2.6);
+        thud(ctx, master, t + 0.02, 0.1, 90, 45, 0.22);
+      } else if (!riding && prevStatus === "riding") {
+        for (const [i, m] of [86, 81, 78, 74].entries()) chime.ring(hz(m), t + 0.1 + i * 0.3, 0.09, 3.0);
+        thud(ctx, master, t + 0.05, 0.09, 80, 38, 0.3);
+      }
+      prevStatus = inp.status;
+    },
+    dispose() {
+      for (const s of stops) stopQuiet(s);
+      for (const c of creaks) c.dispose();
+      chime.dispose();
+      disconnectAll(nodes);
+    },
+  };
 }
 
+const ST: MoonBoatState = { cycle: 0, phase: 0, status: "boarding", angle: 0, omega: 0, alpha: 0, rideT: 0, departsInMs: 0 };
+
+/** The boat's state as the mix needs it. */
+export function moonBoatInput(nowMs: number, rider: boolean, out: MoonBoatInput = { rider: false, status: "boarding", angle: 0, omega: 0 }): MoonBoatInput {
+  moonBoatAt(nowMs, ST);
+  out.rider = rider;
+  out.status = ST.status;
+  out.angle = ST.angle;
+  out.omega = ST.omega;
+  return out;
+}
