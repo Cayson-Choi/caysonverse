@@ -61,6 +61,7 @@ import { PARK_MARBLE_URL_HI, PARK_MARBLE_URL_LO, PARK_PINE_URL_HI, PARK_PINE_URL
 import { dayNight } from "../village/dayNightDriver";
 import { makeRippleTexture } from "../village/villageWater";
 import { parkFountainWater } from "./parkFountain";
+import { addGateArch, addGateStar } from "./parkGateStone";
 import { BulbHalos, LampPools } from "./nightGlow";
 
 const MARBLE_URL = isTouchDevice ? PARK_MARBLE_URL_LO : PARK_MARBLE_URL_HI;
@@ -326,27 +327,9 @@ function GateArch({ all }: { all: Texture[] }) {
         for (const sx of [-1, 1]) b.box([tx + sx * 0.46, 7.9, CZ + sz * 3.54], X, Y, 0.07, 1.0, 0.08, sand, 1.4);
       }
     }
-    // the segmental arch of 17 voussoirs between the towers (span 14 m, rise 2 m: R 13.25, springing at y 5.2), 1 m deep ring, a stepped keystone
-    const R = 13.25;
-    const yc = 7.2 - R;
-    const thMax = Math.asin(7 / R);
-    const n = 17;
-    const dth = (2 * thMax) / n;
-    for (let i = 0; i < n; i++) {
-      const th = -thMax + (i + 0.5) * dth;
-      const key = i === (n - 1) / 2;
-      const rc = R + 0.5 + (key ? 0.2 : 0);
-      const tone = 0.93 + 0.07 * Math.sin(i * 2.1);
-      b.box([40 + rc * Math.sin(th), yc + rc * Math.cos(th), CZ], [Math.cos(th), -Math.sin(th), 0], [Math.sin(th), Math.cos(th), 0], (rc * dth) / 2 + (key ? 0.12 : -0.02), key ? 0.72 : 0.5, key ? 1.78 : 1.6, [tone, tone * 0.98, tone * 0.95], 1.4);
-    }
-    // the imposts (the springing blocks) and the spandrel above the arch, up to the attic
+    addGateArch(b, CZ);
+    // Impost blocks at the springing points.
     for (const sx of [-1, 1]) b.box([40 + sx * 6.85, 5.1, CZ], X, Y, 0.34, 0.13, 1.8, [0.9, 0.88, 0.84], 1.4);
-    for (let x = 33.25; x < 47; x += 0.5) {
-      const dx = x - 40;
-      const yExt = yc + Math.sqrt((R + 1.0) ** 2 - dx * dx);
-      const h = 8.2 - yExt;
-      if (h > 0.02) b.box([x, yExt + h / 2, CZ], X, Y, 0.255, h / 2, 1.6, [1, 0.97, 0.93], 1.4);
-    }
     b.box([40, 9.1, CZ], X, Y, 7.0, 0.9, 1.6, [1, 0.97, 0.93], 1.4); // the attic that carries the name board
     // the carved board's frame: a raised stone border round the name board, on both faces
     for (const sz of [-1, 1]) {
@@ -377,6 +360,13 @@ function GateArch({ all }: { all: Texture[] }) {
     for (const sz of [-1, 1]) {
       const z = CZ + sz * 1.74;
       for (const sx of [-1, 1]) for (const yy of [8.35, 9.85]) b.cylinder([40 + sx * 3.95, yy, z], [40 + sx * 3.95, yy, z + sz * 0.1], 0.13, 0.1, 10, [1, 1, 1], true);
+      // The enamel face sits on a brass tray, with a projecting lip and two folded star reliefs.
+      b.box([40, 9.1, CZ + sz * 1.67], X, Y, 2.85, 0.745, 0.077, [1, 1, 1]);
+      for (const edge of [-1, 1]) {
+        b.box([40, 9.1 + edge * 0.724, CZ + sz * 1.760], X, Y, 2.85, 0.021, 0.032, [1, 1, 1]);
+        b.box([40 + edge * 2.829, 9.1, CZ + sz * 1.760], X, Y, 0.021, 0.702, 0.032, [1, 1, 1]);
+        addGateStar(b, 40 + edge * 2.14, 9.1, CZ + sz * 1.767, sz);
+      }
     }
     // gilt window sills on the towers and the arch's keystone boss
     for (const tx of [31.25, 48.75]) for (const sz of [-1, 1]) b.box([tx, 6.9, CZ + sz * 3.7], X, Y, 0.52, 0.04, 0.1, [1, 1, 1]);
@@ -388,10 +378,10 @@ function GateArch({ all }: { all: Texture[] }) {
       <mesh geometry={geoStone} material={stone} castShadow receiveShadow />
       <mesh geometry={roofGeo} material={roof} castShadow />
       <mesh geometry={trimGeo} material={gold} castShadow />
-      <mesh position={[40, 9.1, CZ + 1.66]} material={signMat}>
+      <mesh position={[40, 9.1, CZ + 1.765]} material={signMat}>
         <planeGeometry args={[5.6, 1.4]} />
       </mesh>
-      <mesh position={[40, 9.1, CZ - 1.66]} rotation={[0, Math.PI, 0]} material={signMat}>
+      <mesh position={[40, 9.1, CZ - 1.765]} rotation={[0, Math.PI, 0]} material={signMat}>
         <planeGeometry args={[5.6, 1.4]} />
       </mesh>
       <mesh geometry={starGeo} material={gold} position={[40, 12.2, CZ - 0.2]} scale={1.2} />

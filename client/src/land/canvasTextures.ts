@@ -40,7 +40,7 @@ function star(ctx: CanvasRenderingContext2D, x: number, y: number, r1: number, r
   ctx.fill();
 }
 
-/** The park's gate board: "케이슨랜드" with a star, cream on indigo. */
+/** The lettering on the gate's enamel plaque. Its brass frame and stars are geometry. */
 export function gateSignTexture(): CanvasTexture {
   const c = document.createElement("canvas");
   c.width = 1024;
@@ -51,11 +51,6 @@ export function gateSignTexture(): CanvasTexture {
   grd.addColorStop(1, "#2f3399");
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, 1024, 256);
-  ctx.strokeStyle = "#f2c14e";
-  ctx.lineWidth = 10;
-  ctx.strokeRect(12, 12, 1000, 232);
-  star(ctx, 120, 128, 70, 30);
-  star(ctx, 904, 128, 70, 30);
   ctx.fillStyle = "#f3efea";
   ctx.font = "bold 140px 'Jua', 'Malgun Gothic', 'Noto Sans KR', sans-serif";
   ctx.textBaseline = "middle";
