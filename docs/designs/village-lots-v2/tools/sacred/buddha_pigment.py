@@ -23,6 +23,33 @@ def lip_height(t):
     return 1.553 + .0036*t**2 - .00055*(1.-t)**4
 
 
+def paint_hairline(result, kind, x, z):
+    # Continue the last row of cast curls onto the forehead pigment island.
+    # The charcoal edge dips at the centre and rejoins the casting at each temple.
+    region = (np.abs(x) < .146) & (z > 1.770)
+    a, height = np.abs(x[region]), z[region]
+    edge = (1.7875 + .0023*np.sin(.5*np.pi*np.minimum(a/.085, 1.))**2
+            - .014*(np.maximum(a-.077, 0.)/.071)**2)
+    mask = smooth(edge-.0013, edge+.0016, height) * (1.-smooth(.138, .146, a))
+    # The scalp has forty curls per turn at this height. Stagger this shallow
+    # row by half a curl and taper its relief into the black lacquer between rows.
+    angle = np.arcsin(a/.160)
+    u = 2.*(np.mod(angle*40./(2.*np.pi)+.5, 1.)-.5)
+    v = 2.*(height-edge)/.014 - 1.
+    pad = np.maximum(0., 1.-u*u-v*v)
+    if kind == "color":
+        field = .0018 + .016*pad**1.5
+        root = np.stack((field, field*1.09, field*1.16), axis=-1)
+    elif kind == "orm":
+        root = np.stack((.65+.30*pad, .45-.14*pad, .78-.59*pad), axis=-1)
+    else:
+        nx = .31*np.sign(x[region])*u*pad*mask
+        ny = .44*v*pad*mask
+        result[region] = .5 + .5*np.stack((nx, ny, np.sqrt(1.-nx*nx-ny*ny)), axis=-1)
+        return
+    result[region] += (root-result[region])*mask[:, None]
+
+
 def face_patch(kind, x, z, phone=False):
     """Return sRGB color or linear ORM/tangent normals, with rows ascending in z."""
     x, z = np.broadcast_arrays(np.asarray(x, dtype=np.float32), np.asarray(z, dtype=np.float32))
@@ -31,6 +58,7 @@ def face_patch(kind, x, z, phone=False):
     if kind == "normal":
         # The integrated lids, alae and lips supply their own smooth normals.
         result[...] = (.5, .5, 1.)
+        paint_hairline(result, kind, x, z)
         return result
     if kind not in ("color", "orm"):
         raise ValueError(f"Unknown Buddha face map {kind!r}")
@@ -137,11 +165,21 @@ def face_patch(kind, x, z, phone=False):
         # matching leaf at the temples and throat, and preserve the painted ink.
         face = (1.-smooth(.130,.163,a))*smooth(1.446,1.489,z)
         high_planes = np.maximum(spot(.084,1.643,.064,.055),spot(.0,1.636,.033,.066))
-        result[...,1] += (.062+.030*high_planes)*face*(1.-smooth(.39,.56,result[...,1]))
-    else:
+        # Slightly more satin down the narrow bridge, where the lamps otherwise
+        # join into a single bright stripe. Keep the small highlight on the tip.
+        bridge = spot(.0,1.665,.021,.049)
+        glabella = spot(.0,1.710,.038,.024)
+        # The overhead lamps also catch the forehead and upper cheeks at night.
+        forehead = spot(.0,1.752,.086,.048)
+        cheek = spot(.079,1.647,.058,.047)
+        satin = np.maximum.reduce((bridge, .72*glabella, .84*forehead, .70*cheek))
+        bare_leaf = face*(1.-smooth(.39,.56,result[...,1]))
+        result[...,1] += (.062+.030*high_planes+.31*satin)*bare_leaf
+    elif not phone:
         # Keep the eye ink and vermilion at their accepted desktop density.
-        if not phone:
-            pigment = np.maximum.reduce((lips, opening, lash, brow_mask))
-            result *= 1. - pigment[..., None]*np.array((.24,.21,.16), dtype=np.float32)
+        pigment = np.maximum.reduce((lips, opening, lash, brow_mask))
+        result *= 1. - pigment[..., None]*np.array((.24,.21,.16), dtype=np.float32)
+    paint_hairline(result, kind, x, z)
+    if color:
         result = np.where(result <= .0031308, 12.92*result, 1.055*result**(1./2.4)-.055)
     return result.astype(np.float32, copy=False)

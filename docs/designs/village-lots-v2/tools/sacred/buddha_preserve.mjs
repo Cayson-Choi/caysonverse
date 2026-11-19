@@ -11,6 +11,10 @@ function partition(document, region) {
   const primitives = meshes[0]?.listPrimitives();
   if (meshes.length !== 1 || primitives?.length !== 1) throw new Error("Expected one Buddha primitive");
   const primitive = primitives[0];
+  // The second UV is derived from the final merged normals by the packer.
+  if (primitive.getMaterial()?.getEmissiveTexture()?.getName().endsWith("-photographic-fill")) {
+    primitive.getAttribute("TEXCOORD_1")?.dispose();
+  }
   if (primitive.getMode() !== 4 || primitive.listSemantics().sort().join() !== "NORMAL,POSITION,TEXCOORD_0") {
     throw new Error("Unexpected Buddha vertex layout");
   }
