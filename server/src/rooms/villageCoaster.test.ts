@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Client } from "colyseus";
 import { COASTER_CYCLE_MS, COASTER_DWELL_MS, COASTER_SEATS, COASTER_UNLOAD_MS } from "@caysonverse/shared/land/coaster";
 import { VillageMsg, VillageServerMsg } from "@caysonverse/shared/village/messages";
+import { DROP_CYCLE_MS } from "@caysonverse/shared/land/dropTower";
 import { CAROUSEL_CYCLE_MS, CAROUSEL_SEATS } from "@caysonverse/shared/land/carousel";
 import { WHEEL_BOARD_HALF_MS, WHEEL_REV_MS, WHEEL_STEP_MS, WHEEL_SEATS_PER, boardingSeatsOfWheel } from "@caysonverse/shared/land/wheel";
 import { VillageCoaster, type CoasterHost } from "./villageCoaster";
@@ -285,7 +286,7 @@ describe("VillageCoaster (server rules)", () => {
   });
   it("the drop tower: 16 seats fill face by face, a rider cannot get off aloft and is put off when the cycle ends", () => {
     const r = rig();
-    const T0 = 21 * 60_000 + 10_000; // 10 s into a cycle: boarding
+    const T0 = 21 * DROP_CYCLE_MS + 10_000; // 10 s into a cycle: boarding
     r.setNow(T0);
     for (let i = 0; i < 17; i++) {
       r.add(`d${i}`);
@@ -301,11 +302,11 @@ describe("VillageCoaster (server rules)", () => {
     expect(r.players.get("d15")!.rideSeat).toBe(15);
     expect(r.players.get("d16")!.rideSeat).toBe(-1); // full
     // aloft: the leave is refused with a notice
-    r.setNow(21 * 60_000 + 36_000 + 18_000);
+    r.setNow(21 * DROP_CYCLE_MS + 36_000 + 18_000);
     r.send("d0", VillageMsg.RideLeave);
     expect(p0.rideSeat).toBe(0);
     expect(r.sent.some((m) => m.sid === "d0" && (m.msg as { reason?: string }).reason === "aloft")).toBe(true);
-    r.setNow(22 * 60_000 + 300);
+    r.setNow(22 * DROP_CYCLE_MS + 300);
     r.coaster.tick();
     expect(p0.rideSeat).toBe(-1);
     expect(p0.rideId).toBe(0);

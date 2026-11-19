@@ -89,8 +89,8 @@ await run.step("village skyline view", async () => {
     return { x, z };
   });
   console.log("tower in the village", JSON.stringify(at));
-  if (!skipTower && !skipVillage) await shotFrom(P, "v1-skyline-from-the-gate.png", at.x, 6, 84, at.x, 22, at.z, phone ? 46 : 38);
-  if (!skipTower && !skipVillage) await shotFrom(P, "v2-skyline-from-the-street.png", -30, 4.5, 90, at.x, 22, at.z, phone ? 46 : 36);
+  if (!skipTower && !skipVillage) await shotFrom(P, "v1-skyline-from-the-gate.png", at.x, 6, 84, at.x, 30, at.z, phone ? 50 : 42);
+  if (!skipTower && !skipVillage) await shotFrom(P, "v2-skyline-from-the-street.png", -30, 4.5, 90, at.x, 30, at.z, phone ? 50 : 40);
 });
 if (process.argv.includes("--village-only")) {
   await b.close();
@@ -102,17 +102,20 @@ await run.step("enter the park", async () => {
 });
 await run.step("plaza and mid distance", async () => {
   if (skipTower) return;
-  await shotFrom(P, "t1-from-the-plaza.png", 40, 2.4, -112, SITE.x, 28, SITE.z, phone ? 38 : 40);
-  await shotFrom(P, "t2-far-field.png", SITE.x + 70, 3, SITE.z + 22, SITE.x, 28, SITE.z, phone ? 55 : 44);
-  await shotFrom(P, "t3-mid-distance.png", SITE.x + 36, 5, SITE.z + 18, SITE.x, 30, SITE.z, phone ? 62 : 52);
-  await shotFrom(P, "t4-mid-from-the-west.png", SITE.x - 34, 5, SITE.z - 16, SITE.x, 30, SITE.z, phone ? 62 : 52);
+  await shotFrom(P, "t1-from-the-plaza.png", 40, 2.4, -112, SITE.x, 52, SITE.z, phone ? 60 : 62);
+  await shotFrom(P, "t2-far-field.png", SITE.x + 125, 16, SITE.z + 30, SITE.x, 52, SITE.z, phone ? 62 : 60);
+  await shotFrom(P, "t3-mid-distance.png", SITE.x + 55, 5, SITE.z + 28, SITE.x, 55, SITE.z, phone ? 70 : 62);
+  await shotFrom(P, "t4-mid-from-the-west.png", SITE.x - 55, 5, SITE.z - 26, SITE.x, 55, SITE.z, phone ? 70 : 62);
 });
 await run.step("close", async () => {
   if (skipTower) return;
   await shotFrom(P, "t5-up-close-base.png", SITE.x + 15, 2.2, SITE.z + 7, SITE.x, 9, SITE.z, phone ? 70 : 62);
-  await shotFrom(P, "t6-frame-and-arches.png", SITE.x + 16, 6, SITE.z + 2, SITE.x, 24, SITE.z, phone ? 66 : 56);
-  await shotFrom(P, "t7-crown.png", SITE.x - 20, 34, SITE.z - 14, SITE.x, 52, SITE.z, phone ? 56 : 50);
+  await shotFrom(P, "t6-frame-and-arches.png", SITE.x + 22, 6, SITE.z + 4, SITE.x, 30, SITE.z, phone ? 70 : 62);
+  await shotFrom(P, "t7-crown.png", SITE.x - 34, 74, SITE.z - 22, SITE.x, 94, SITE.z, phone ? 56 : 50);
   await shotFrom(P, "t8-platform-lamps.png", SITE.x + 19, 3.6, SITE.z + 11, SITE.x + 2, 2.5, SITE.z, phone ? 70 : 60);
+  // the view from the top (the car's eye at the 85 m hold: out over the park, the tower's own frame below)
+  await shotFrom(P, "t9-view-from-the-top-east.png", SITE.x + 3.2, 86.4, SITE.z, SITE.x + 90, 60, SITE.z - 10, phone ? 82 : 75);
+  await shotFrom(P, "t10-view-from-the-top-down.png", SITE.x + 3.2, 86.4, SITE.z, SITE.x + 8, 20, SITE.z + 4, phone ? 82 : 75);
   await P.page.evaluate(() => { window.__cvShot = null; });
 });
 await run.step("moon boat seated view", async () => {
@@ -136,6 +139,23 @@ await run.step("moon boat seated view", async () => {
   const e = eyes[1];
   await shotFrom(P, "s4-seat-looking-down-left.png", e.x, e.y, e.z, e.x - 1.6, e.y - 0.9, e.z + 1.2, phone ? 78 : 70);
   await shotFrom(P, "s5-seat-looking-down-right.png", e.x, e.y, e.z, e.x + 1.6, e.y - 0.9, e.z + 1.2, phone ? 78 : 70);
+  // the boat at the peak of its swing: from the ground (two places) and from the end seats' own eyes
+  const atPeak = async (ms) => until(async () => (await P.page.evaluate(async () => { const m = await window.__imp("/land/moonBoat.ts"); const c = await window.__imp("/src/village/villageClock.ts"); const n = m.moonBoatAt(c.villageClock.liveMs()); return n.status === "riding" && Math.abs(n.angle) > 1.36 && Math.abs(n.omega) < 0.3; })), ms);
+  const cam = (x, y, z, tx, ty, tz, fov) => P.page.evaluate(([x, y, z, tx, ty, tz, fov]) => { window.__cvShot = { x, y, z, tx, ty, tz, fov }; }, [x, y, z, tx, ty, tz, fov]);
+  await P.page.evaluate(() => { window.__cvShot = { x: -62, y: 4, z: -128, tx: -95, ty: 8, tz: -140, fov: 62 }; });
+  for (const [name, c] of [["p1-peak-from-the-ground.png", [-62, 4, -128, -95, 9, -140, phone ? 70 : 62]], ["p2-peak-from-afar.png", [-60, 14, -165, -95, 9, -140, phone ? 66 : 58]]]) {
+    run.check(`the swing is at its peak for ${name}`, await atPeak(400000));
+    await cam(...c);
+    await sleep(120);
+    await run.shot(P, name);
+  }
+  for (const [name, seat] of [["p3-peak-from-the-bow-end-seat.png", 24], ["p4-peak-from-the-stern-end-seat.png", 31]]) {
+    run.check(`the swing is at its peak for ${name}`, await atPeak(400000));
+    const e = await P.page.evaluate(async (seat) => { const m = await window.__imp("/land/moonBoat.ts"); const c = await window.__imp("/src/village/villageClock.ts"); const p = m.moonSeatPose(seat, c.villageClock.liveMs()); return { x: p.x, y: p.y + p.uy * 0.9, z: p.z + p.uz * 0.9, fy: p.fy, fz: p.fz }; }, seat);
+    await cam(e.x, e.y, e.z, e.x, e.y + e.fy * 8, e.z + e.fz * 8, phone ? 80 : 72);
+    await sleep(120);
+    await run.shot(P, name);
+  }
   await P.page.evaluate(() => { window.__cvShot = null; });
 });
 await b.close();

@@ -3,7 +3,7 @@
  * O (an observer, PC) and R (the rider; a phone with --phone) walk into the park. Outside shots of the boat at rest (day/night). On a PC a third
  * visitor G boards and closes the page (the ghost rule: the seat frees, O no longer sees G). R then boards, rides the whole swing (first-person
  * shots at the platform, as the swing builds, at the top of the swing, at the bottom), O photographs the swing from outside; R is put off.
- * Also: the swing reaches 55 degrees, the seat gets light (g < 0.7) at the top and heavy (g > 1.7) at the bottom, the eye never goes underground.
+ * Also: the swing reaches 82 degrees, the seat gets light (g < 0.7) at the top and heavy (g > 1.7, under 3) at the bottom, the eye never goes underground.
  *   CV_CLIENT_URL=http://localhost:5411 node e2e/moon-boat-ride.mjs [--phone] [--night] [--out=<folder>]
  */
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -119,11 +119,11 @@ if (!process.argv.includes("--seat-only")) {
     await shotFrom(O, "m04-bow-rabbit.png", -92, 2.4, -122, SITE.x, 3.4, SITE.z + 6.6, 48);
     const t0 = Date.now();
     let a = await probe(O);
-    while (!(Math.abs(a.angle) > 0.9 && Math.abs(a.omega) < 0.3) && Date.now() - t0 < 300000 * SLOW) {
+    while (!(Math.abs(a.angle) > 1.35 && Math.abs(a.omega) < 0.35) && Date.now() - t0 < 300000 * SLOW) {
       await sleep(120);
       a = await probe(O);
     }
-    run.check("the swing's turning point (55 degrees) is on the clock", Math.abs(a.angle) > 0.9, { deg: Math.round((a.angle * 180) / Math.PI) });
+    run.check("the swing's turning point (82 degrees) is on the clock", Math.abs(a.angle) > 1.35, { deg: Math.round((a.angle * 180) / Math.PI) });
     await shotFrom(O, "m10-swing-top-from-outside-side.png", -62, 4, -128, SITE.x, 8, SITE.z, 62);
     await shotFrom(O, "m10b-swing-top-from-outside-far.png", -60, 14, -152, SITE.x, 6, SITE.z, 58);
     await O.page.evaluate(() => { window.__cvShot = null; });
@@ -194,7 +194,7 @@ if (!process.argv.includes("--seat-only")) {
         }
         minEyeY = Math.min(minEyeY, st.probe.eye[1]);
         log.push({ t: Math.round(st.rideT * 10) / 10, a: Math.round(st.angle * 1000) / 1000, g: Math.round(st.g * 100) / 100, y: Math.round(st.probe.eye[1] * 10) / 10 });
-        const big = Math.abs(st.angle) > 0.88 && Math.abs(st.omega) < 0.25;
+        const big = Math.abs(st.angle) > 1.3 && Math.abs(st.omega) < 0.3;
         const up = st.angle > 0;
         for (const [name, test] of [
           ["m06-first-swings", st.rideT > 8 && Math.abs(st.angle) > 0.12],
@@ -209,8 +209,8 @@ if (!process.argv.includes("--seat-only")) {
       }
       await sleep(phone ? 250 : 140);
     }
-    run.check("the swing reached 55 degrees", maxA > 0.95, { maxDeg: Math.round((maxA * 180) / Math.PI) });
-    run.check("weightless at the top (g < 0.7) and heavy at the bottom (g > 1.7)", minG < 0.7 && maxG > 1.7, { minG: Math.round(minG * 100) / 100, maxG: Math.round(maxG * 100) / 100 });
+    run.check("the swing reached 82 degrees", maxA > 1.38, { maxDeg: Math.round((maxA * 180) / Math.PI) });
+    run.check("weightless at the top (g < 0.7) and heavy at the bottom (g > 1.7)", minG < 0.7 && maxG > 1.7 && maxG < 3, { minG: Math.round(minG * 100) / 100, maxG: Math.round(maxG * 100) / 100 });
     run.check("the eye never goes under the ground (> 1 m)", minEyeY > 1, { minEyeY });
     run.check("every checkpoint photographed", shot.size === 4, { got: [...shot] });
   });

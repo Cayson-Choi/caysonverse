@@ -2,25 +2,25 @@
  * 케이슨랜드 구름 낙하탑 (Cloud Drop Tower): the timeline and the seats. Browser-safe pure maths, like coaster.ts / carousel.ts / wheel.ts: the SERVER and every
  * CLIENT evaluate the same functions of the wall clock; the server only keeps who sits where.
  *
- * Park-local frame (parkArea.ts). A square tower (2 m across, 52 m tall, a sculpted cloud crown on top) stands at DROP_SITE. A ring-shaped car rides up its
+ * Park-local frame (parkArea.ts). A square tower (2 m across, 95 m tall, a sculpted cloud crown on top) stands at DROP_SITE. A ring-shaped car rides up its
  * four faces: sixteen seats, four to a face (seat = face * 4 + k), each rider facing OUT over the park, legs dangling, shoulder harness down. Face 0 looks
  * east (toward the boarding pad), then south, west, north.
  *
- * One cycle is 60 s: 4 s unloading, 26 s boarding, 6 s gate, then 24 s of ride: a slow lift (14 s, eased) to 42 m, a hold (4.5 s: the pause that makes your
- * stomach drop), a true free fall (2.17 s at g: weightless), magnetic braking (1.66 s at 1.3 g) to the station, and a settling rest. The height is
+ * One cycle is 68 s: 4 s unloading, 26 s boarding, 6 s gate, then 32 s of ride: a slow lift (20 s, eased) to 85 m, a hold (4.5 s: the pause that makes your
+ * stomach drop), a true free fall (49 m in 3.16 s at g: weightless, 31 m/s at the end), magnetic braking (2.2 s at 1.4 g) to the station, and a settling rest. The height is
  * the seat's hip height; everything is a pure function of the clock.
  */
 
 export const DROP_SITE = Object.freeze({ x: -75, z: -88 });
-export const DROP_TOWER_H = 52;
+export const DROP_TOWER_H = 95;
 export const DROP_SEATS = 16;
 export const DROP_SEATS_PER_FACE = 4;
 
 /** The hip height of a seat at the station (the car's floor is flush with the platform deck, 0.9 m) and at the top hold. */
 export const DROP_STATION_Y = 1.4;
-export const DROP_TOP_Y = 42;
+export const DROP_TOP_Y = 85;
 /** Where the free fall ends and the magnetic brakes take over (hip height, m). */
-export const DROP_BRAKE_Y = 19;
+export const DROP_BRAKE_Y = 36;
 export const DROP_G = 9.81;
 
 /** The car: hips' radius from the tower's axis, the sideways spacing of seats on a face, the car floor under the hips, the tower's half width. */
@@ -32,10 +32,10 @@ export const DROP_PLATFORM_INNER = 3.85;
 export const DROP_UNLOAD_MS = 4000;
 export const DROP_DWELL_MS = 36_000;
 export const DROP_GATE_MS = 6000;
-export const DROP_RIDE_MS = 24_000;
+export const DROP_RIDE_MS = 32_000;
 export const DROP_CYCLE_MS = DROP_DWELL_MS + DROP_RIDE_MS;
 
-export const DROP_LIFT_S = 14;
+export const DROP_LIFT_S = 20;
 export const DROP_HOLD_S = 4.5;
 /** The free fall's length (s) and its end speed (m/s), the brake's deceleration (m/s^2) and length (s). */
 export const DROP_FALL_S = Math.sqrt((2 * (DROP_TOP_Y - DROP_BRAKE_Y)) / DROP_G);

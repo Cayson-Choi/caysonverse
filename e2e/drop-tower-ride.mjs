@@ -105,7 +105,7 @@ const log = [];
 let fps = null;
 
 const only3 = process.argv.includes("--remote-only");
-// phase 1: the tower from outside (the car rides by the clock whether or not anyone is aboard): at rest, and with the car at the 42 m hold
+// phase 1: the tower from outside (the car rides by the clock whether or not anyone is aboard): at rest, and with the car at the 85 m hold
 if (!only3) {
   const b = await launchBrowser();
   const O = await openPlayer(b, run, { tag: "O-pc", device: DESKTOP });
@@ -116,24 +116,24 @@ if (!only3) {
     await goTo(O, SITE.x + 18, SITE.z, 4);
     await shotFrom(O, "d01-approach-eye-level.png", SITE.x + 24, 1.7, SITE.z, SITE.x, 7, SITE.z, 62);
     await shotFrom(O, "d02-platform-higher.png", SITE.x + 15, 5.5, SITE.z + 8, SITE.x + 3, 3, SITE.z, 62);
-    await shotFrom(O, "d03-whole-tower.png", SITE.x + 52, 14, SITE.z + 8, SITE.x, 26, SITE.z, 62);
-    await shotFrom(O, "d04-cloud-crown.png", SITE.x - 20, 34, SITE.z - 14, SITE.x, 50, SITE.z, 50);
+    await shotFrom(O, "d03-whole-tower.png", SITE.x + 120, 12, SITE.z + 20, SITE.x, 48, SITE.z, 62);
+    await shotFrom(O, "d04-cloud-crown.png", SITE.x - 30, 70, SITE.z - 20, SITE.x, 92, SITE.z, 50);
     await shotFrom(O, "d05-car-close.png", SITE.x + 12, 3.4, SITE.z - 4, SITE.x + 3, 2.2, SITE.z, 52);
     const t0 = Date.now();
     let a = await probe(O);
-    while (!(a.stage === "hold" && a.rideT > 15) && Date.now() - t0 < 300000 * SLOW) {
+    while (!(a.stage === "hold" && a.rideT > 21) && Date.now() - t0 < 300000 * SLOW) {
       await sleep(120);
       a = await probe(O);
     }
-    run.check("the car holds at 42 m on the clock", a.stage === "hold" && Math.abs(a.y - 42) < 0.2, { stage: a.stage, y: a.y });
-    await shotFrom(O, "d06-car-at-the-top.png", SITE.x + 28, 8, SITE.z + 12, SITE.x, 38, SITE.z, 56);
-    await shotFrom(O, "d07-car-at-the-top-close.png", SITE.x + 16, 22, SITE.z + 4, SITE.x + 1, 42, SITE.z, 42);
+    run.check("the car holds at 85 m on the clock", a.stage === "hold" && Math.abs(a.y - 85) < 0.2, { stage: a.stage, y: a.y });
+    await shotFrom(O, "d06-car-at-the-top.png", SITE.x + 70, 10, SITE.z + 25, SITE.x, 70, SITE.z, 56);
+    await shotFrom(O, "d07-car-at-the-top-close.png", SITE.x + 22, 70, SITE.z + 6, SITE.x + 1, 85, SITE.z, 42);
     await O.page.evaluate(() => { window.__cvShot = null; });
   });
   await b.close();
 }
 
-// phase 2: the rider (PC or phone) alone: board, the slow lift, the hold at 42 m, the free fall, the brakes, put off
+// phase 2: the rider (PC or phone) alone: board, the slow lift, the hold at 85 m, the free fall, the brakes, put off
 if (!only3) {
   const b = await launchBrowser();
   const R = await openPlayer(b, run, { tag: phone ? "R-phone" : "R-pc", device: phone ? PHONE : DESKTOP });
@@ -187,11 +187,11 @@ if (!only3) {
         if (st.stage === "brake") maxG = Math.max(maxG, st.g);
         log.push({ t: Math.round(st.rideT * 10) / 10, y: Math.round(st.y * 10) / 10, v: Math.round(st.v * 10) / 10, g: Math.round(st.g * 100) / 100, st: st.stage });
         for (const [name, test] of [
-          ["d09-lift-first-metres", st.stage === "lift" && st.y > 8],
-          ["d10-lift-half-way", st.stage === "lift" && st.y > 24],
-          ["d11-the-hold-at-42m", st.stage === "hold" && st.rideT > 15.5],
-          ["d12-free-fall", st.stage === "fall" && st.rideT > 19.9],
-          ["d13-brakes", st.stage === "brake" && st.rideT > 21.3],
+          ["d09-lift-first-metres", st.stage === "lift" && st.y > 12],
+          ["d10-lift-half-way", st.stage === "lift" && st.y > 45],
+          ["d11-the-hold-at-85m", st.stage === "hold" && st.rideT > 21.5],
+          ["d12-free-fall", st.stage === "fall" && st.rideT > 25.4],
+          ["d13-brakes", st.stage === "brake" && st.rideT > 28.3],
         ])
           if (!shot.has(name) && test) {
             shot.add(name);
@@ -200,7 +200,7 @@ if (!only3) {
       }
       await sleep(phone ? 200 : 100);
     }
-    run.check("the car reached 42 m (the eye above 42.5 m)", maxY > 42.5, { maxEyeY: Math.round(maxY * 10) / 10 });
+    run.check("the car reached 85 m (the eye above 85.5 m)", maxY > 85.5, { maxEyeY: Math.round(maxY * 10) / 10 });
     run.check("every stage ran: lift, hold, fall, brake", ["lift", "hold", "fall", "brake"].every((s) => seenStages.has(s)), { seen: [...seenStages] });
     run.check("weightless in the fall (g < 0.15) and pressed into the seat in the brakes (g > 1.2)", minG < 0.15 && maxG > 1.2, { minG: Math.round(minG * 100) / 100, maxG: Math.round(maxG * 100) / 100 });
     run.check("the view opens with the speed (field of view widens by 4 degrees or more)", maxFov > 4, { maxFov: Math.round(maxFov * 10) / 10 });
