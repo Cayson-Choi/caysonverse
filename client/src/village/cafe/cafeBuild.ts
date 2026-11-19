@@ -306,14 +306,15 @@ function bretzelBowl(b: MeshBuilder, x: number, z: number, y: number): void {
   }
 }
 
-/** A round loaf (boule) on a small board. */
-function loaf(b: MeshBuilder, x: number, z: number, y: number, R: number, seed: number): void {
+/** A round loaf (boule), either on a board or resting in a shallow bread basket. */
+function loaf(b: MeshBuilder, x: number, z: number, y: number, R: number, seed: number, board = true): void {
   const r = rng(seed);
-  b.box(x - R * 1.25, x + R * 1.25, y, y + 0.02, z - R * 1.1, z + R * 1.1, C.oak, WOOD);
+  if (board) b.box(x - R * 1.25, x + R * 1.25, y, y + 0.02, z - R * 1.1, z + R * 1.1, C.oak, WOOD);
+  const bottom = y + (board ? 0.02 : 0);
   const prof: [number, number][] = [];
   for (let i = 0; i <= 6; i++) {
     const a = (i / 6) * Math.PI * 0.5;
-    prof.push([R * Math.cos(a), y + 0.02 + R * 0.62 * Math.sin(a)]);
+    prof.push([R * Math.cos(a), bottom + R * 0.62 * Math.sin(a)]);
   }
   b.lathe(x, z, prof, r() > 0.5 ? lin("#C68A45") : lin("#B97D3C"), MATTE, 12);
 }
@@ -473,10 +474,21 @@ export function buildCafe(): CafeParts {
     f.box(x0, x1, height - 0.03, height, zb, zf, C.walnut, WOOD);
     const zc = zb + 0.15;
     // bottom shelf (y .45 top): wicker baskets of loaves
-    for (const [x, R] of [[5.85, 0.13], [6.2, 0.14], [6.52, 0.12]] as const) {
-      f.lathe(x, zc, [[R * 0.8, 0.0], [R, 0.18], [R * 1.05, 0.2]], C.wicker, MATTE, 10);
+    for (const [x, radius] of [[5.85, 0.13], [6.2, 0.14], [6.52, 0.12]] as const) {
+      const shelf = ys[0]!;
+      const base = radius * 0.77;
+      f.lathe(x, zc, [[base, shelf], [base, shelf + 0.01], [radius, shelf + 0.047],
+        [radius * 1.025, shelf + 0.052], [radius, shelf + 0.057], [radius * 0.94, shelf + 0.055],
+        [base, shelf + 0.012], [0, shelf + 0.012]], C.wicker, MATTE, 20);
+      // Willow stakes turn out from the foot into the rolled rim.
+      for (let i = 0; i < 20; i++) {
+        const a = i * Math.PI / 10;
+        f.tube([[x + base * Math.cos(a), shelf + 0.009, zc + base * Math.sin(a)],
+          [x + radius * Math.cos(a + 0.12), shelf + 0.049, zc + radius * Math.sin(a + 0.12)]],
+        0.0025, C.crustDark, MATTE, 3);
+      }
+      loaf(f, x, zc, shelf + 0.012, base, 40 + Math.round(x * 10), false);
     }
-    for (const x of [5.85, 6.2, 6.52]) loaf(f, x, zc, 0.45, 0.1, 40 + Math.round(x * 10));
     // y .95: jars of beans, sugar, flour, tea
     const jars = ["#4A2E20", "#EEE8D8", "#E9DFC2", "#7C5B3A", "#9AA37A", "#4A2E20"];
     for (const [i, c] of jars.entries()) jar(f, 5.62 + i * 0.2, zc, 0.95, 0.18 + (i % 2) * 0.04, 0.065, c);
@@ -515,7 +527,8 @@ export function buildCafe(): CafeParts {
     for (let k = 0; k < 24; k++) {
       const a0 = (k / 24) * Math.PI * 2;
       const a1 = ((k + 1) / 24) * Math.PI * 2;
-      f.tri([cx, cy, zf - 0.02], [cx + mr * Math.cos(a1), cy + mr * Math.sin(a1), zf - 0.02], [cx + mr * Math.cos(a0), cy + mr * Math.sin(a0), zf - 0.02], lin(k % 2 ? "#B9C8CC" : "#A7B8BD"), POLISH, [0, 0, -1]);
+      // The mirror shares the art draw. Its fully polished surface samples the captured café in the reflected direction.
+      art.tri([cx, cy, zf - 0.02], [cx + mr * Math.cos(a1), cy + mr * Math.sin(a1), zf - 0.02], [cx + mr * Math.cos(a0), cy + mr * Math.sin(a0), zf - 0.02], white, { glow: 0, gloss: 1 }, [0, 0, -1]);
     }
     // the clock
     const kx = 4.6;

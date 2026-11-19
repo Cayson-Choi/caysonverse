@@ -88,15 +88,40 @@ const FRAG_LIGHT = /* glsl */ `{
 }
 #include <opaque_fragment>`;
 
+// A local reflection probe photographed from the glass at noon and night (two 640 × 400 images packed vertically).
+// Intersecting the reflected ray with the room first keeps the counter and shelving in place as the viewer shifts.
+const MIRROR = /* glsl */ `uniform sampler2D uMirrorProbe;
+vec3 roomReflection(vec3 surface) {
+  const vec3 probe = vec3(46.94, 1.75, -9.10);
+  const vec3 roomMin = vec3(46.90, 0.0, -21.90);
+  const vec3 roomMax = vec3(54.70, 4.3, -8.30);
+  vec3 ray = reflect(normalize(surface - cameraPosition), vec3(1., 0., 0.));
+  vec3 dir = mix(vec3(-1.), vec3(1.), step(vec3(0.), ray));
+  vec3 t = (mix(roomMin, roomMax, step(vec3(0.), ray)) - surface) / (dir * max(abs(ray), vec3(1e-5)));
+  vec3 sampleRay = surface + ray * min(t.x, min(t.y, t.z)) - probe;
+  // The source camera looks along +X. Its right vector is +Z, vertical FOV 115 degrees, aspect 1.6.
+  vec2 uv = 0.5 + 0.5 * vec2(sampleRay.z / 1.6, sampleRay.y) / (max(sampleRay.x, 1e-4) * 1.5696856);
+  uv = clamp(uv, vec2(0.003), vec2(0.997));
+  vec3 noon = texture2D(uMirrorProbe, vec2(uv.x, 0.5 + 0.5 * uv.y)).rgb;
+  vec3 night = texture2D(uMirrorProbe, vec2(uv.x, 0.5 * uv.y)).rgb;
+  return mix(noon, night, uNight) * vec3(0.91, 0.94, 0.93);
+}`;
+
 /** A MeshBasicMaterial lit by the room's model (see above): vertex colours, optionally a map, double-sided. */
-export function cafeMaterial(key: string, map: Texture | null = null): MeshBasicMaterial {
+export function cafeMaterial(key: string, map: Texture | null = null, mirror: Texture | null = null): MeshBasicMaterial {
   const m = new MeshBasicMaterial({ vertexColors: true, side: DoubleSide, map });
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, cafeUniforms);
     shader.vertexShader = shader.vertexShader.replace("#include <common>", `#include <common>\n${VERT_PARS}`).replace("#include <begin_vertex>", VERT_WORLD);
     shader.fragmentShader = shader.fragmentShader.replace("#include <common>", `#include <common>\n${FRAG_PARS}`).replace("#include <opaque_fragment>", FRAG_LIGHT);
+    if (mirror) {
+      shader.uniforms.uMirrorProbe = { value: mirror };
+      shader.fragmentShader = shader.fragmentShader
+        .replace("void main() {", MIRROR + "\nvoid main() {")
+        .replace("#include <opaque_fragment>", "if (vCM.y > 0.99) outgoingLight = roomReflection(vCP);\n#include <opaque_fragment>");
+    }
   };
-  m.customProgramCacheKey = () => `cafe-room-${key}-${LAMP_COUNT}`;
+  m.customProgramCacheKey = () => `cafe-room-${key}-${LAMP_COUNT}-${mirror ? "probe" : "plain"}`;
   return m;
 }
 

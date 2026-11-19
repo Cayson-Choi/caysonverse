@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { InstancedMesh, Mesh, type Group, type Material, type Matrix4, type BufferGeometry, type MeshBasicMaterial } from "three";
+import { InstancedMesh, Mesh, SRGBColorSpace, TextureLoader, type Group, type Material, type Matrix4, type BufferGeometry, type MeshBasicMaterial } from "three";
 import { compileSafely } from "../../game/compileSafely";
 import { dayNight } from "../dayNightDriver";
+import { versionedUrl } from "../modelUrl";
 import { buildCafe, type CafeParts } from "./cafeBuild";
 import { blobMaterial, cafeMaterial, cafeUniforms, poolMaterial } from "./cafeMaterials";
 import { artAtlas, softDisc } from "./cafeTextures";
@@ -56,7 +57,9 @@ function build(): Built {
   const atlas = artAtlas();
   const disc = softDisc();
   const solid = cafeMaterial("solid");
-  const art = cafeMaterial("art", atlas);
+  const mirror = new TextureLoader().load(versionedUrl("/models/village/cafe_mirror.webp"));
+  mirror.colorSpace = SRGBColorSpace;
+  const art = cafeMaterial("art", atlas, mirror);
   const blob = blobMaterial(disc);
   const pool = poolMaterial(disc);
   const meshes = [
@@ -78,6 +81,7 @@ function build(): Built {
       for (const g of [parts.fixed, parts.art, parts.chair, parts.table, parts.blobs, parts.pools]) g.dispose();
       for (const m of [solid, art, blob, pool]) m.dispose();
       atlas.dispose();
+      mirror.dispose();
       disc.dispose();
     },
   };
