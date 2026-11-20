@@ -28,11 +28,11 @@ import {
   type Material,
   type Object3D,
 } from "three";
-import { gardenWindow } from "../src/village/lots/gardenWindow";
+import { WINDOW_VIEWS, gardenWindow } from "../src/village/lots/gardenWindow";
 import { DRACOLoader, GLTFLoader } from "three-stdlib";
 import { DAY_LOOK, NIGHT_LOOK, NIGHT_MOON, directionFrom } from "../src/village/dayNightBlend";
 import { createPbrMaterial, getPbrKtx2Loader, getPbrSet, type PbrTier } from "../src/village/pbr/pbrLibrary";
-import { lotLocalToWorld, villageLot, LOT_INTERIORS, type LotId } from "@caysonverse/shared/village/villageLots";
+import { lotLocalToWorld, villageLot, LOT_INTERIORS, LOT_ROOMS, type LotId } from "@caysonverse/shared/village/villageLots";
 
 type View = [x: number, y: number, z: number, tx: number, ty: number, tz: number, fov: number];
 
@@ -129,7 +129,8 @@ export async function runLookdev(defaultModel: string): Promise<void> {
       const tex = await getPbrKtx2Loader(renderer).loadAsync(`/models/village/lots/${dir}/${m.maps.albedo}`);
       tex.colorSpace = SRGBColorSpace;
       tex.flipY = false;
-      const window = gardenWindow(tex);
+      // (the lookdev has the day panorama only: the window as an infinitely far view from the room's eye)
+      const window = gardenWindow([tex], WINDOW_VIEWS[model], LOT_ROOMS.find((r) => r.unit.id === model)?.unit.interior.origin ?? { x: 0, z: 0 });
       if (night) window.color.setRGB(0.018, 0.032, 0.071);
       mats.set(name, window);
       continue;

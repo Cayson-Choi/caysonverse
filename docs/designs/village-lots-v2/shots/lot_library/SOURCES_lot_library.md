@@ -35,15 +35,15 @@
 | pd_corot | [Souvenir de Mortefontaine (Camille Corot).jpg](https://commons.wikimedia.org/wiki/File:Souvenir_de_Mortefontaine_(Camille_Corot).jpg) | Jean-Baptiste Camille Corot | Public domain (PD-Art) | 문 벽 위 작은 풍경화 |
 | pd_ruisdael | [De molen bij Wijk bij Duurstede Rijksmuseum SK-C-211.jpeg](https://commons.wikimedia.org/wiki/File:De_molen_bij_Wijk_bij_Duurstede_Rijksmuseum_SK-C-211.jpeg) | Jacob Isaacksz. van Ruisdael | Public domain (PD-Art) | 문 벽 위 작은 풍경화 |
 
-## 교실과 열람실의 창밖 정원
+## 교실과 열람실의 창밖 (실제 케이슨 마을)
 
-두 방의 창은 Greg Zaal의 CC0 전방위 사진 *Ninomaru Teien*을 공유한다. 배포자가 톤 매핑한 8192×4096 JPEG에서 수평선 근처(아래 13°~위 23°)를 180°씩 두 장으로 나누어 뽑았다. 시선을 한 바퀴 돌리면 이 구간에는 가로 2032텍셀이 쓰인다. 천정과 바닥 방향은 나머지 두 구역에 담고 경계 3°를 겹쳤다. 돌출창의 꺾인 유리면에서도 같은 시선은 같은 방향의 사진을 읽는다. 네 구역은 1024×512, 밉맵 11단계의 sRGB ETC1S KTX2 한 장으로 배포한다. [작품과 라이선스](https://polyhaven.com/a/ninomaru_teien) · [8K 원본](https://dl.polyhaven.org/file/ph-assets/HDRIs/extra/Tonemapped%20JPG/ninomaru_teien.jpg)
+2026-11-20부터 두 방의 창에는 외부 사진이 아니라 **게임 속 실제 케이슨 마을**이 보인다(소유자: "교실에서 창문으로 내다보면 실제 케이슨마을의 외부와 똑같이 보여야"). 실행 중인 마을에서 각 방이 실제로 있는 자리(학교·도서관 1층 한가운데, 눈높이 1.6 m)에 카메라를 세우고, 건물 자신의 벽과 지붕만 잘라 낸 채 큐브 6면을 노출·톤 매핑 전의 선형 빛으로 굽는다. 낮(12:30), 저녁 황금 시간(해가 약 3° 높이), 밤(22:30) 세 장을 굽고 게임 시계의 낮·황금빛·밤 가중치로 섞는다(아침 황금 시간은 낮과 밤만). 각 장은 창 차트(눈높이 아래 22°~위 24° 띠를 180°씩 두 장, 나머지는 극지 두 구역) 3072×1536, sRGB ETC1S KTX2(밉맵 12단계)다. 창의 셰이더는 유리에서 나가는 시선을 땅(반경 22 m까지)과 그 바깥 원기둥에 맞힌 뒤, 그 점을 굽기 눈 위치에서 본 방향으로 읽어 창 앞 마당의 시차도 맞춘다. 외부 자료는 쓰지 않는다.
 
-저장소 루트에서 다음 명령으로 게임용 KTX2를 생성한다. Blender에서 창의 배경을 굽는 경우에는 전체 원본을 등거리 원통도법 PNG로 변환해 `ninomaru_garden.png`로 넣는다.
+마을이 바뀌면 저장소 루트에서 다시 굽는다(개발 서버·클라이언트를 띄운 뒤):
 
 ```sh
-node docs/designs/village-lots-v2/tools/b1_garden_atlas.mjs ninomaru_teien.jpg garden_atlas.png
-node docs/designs/village-lots-v2/tools/png2ktx2.mjs --png garden_atlas.png --out client/public/models/village/lots/garden/ninomaru_garden.ktx2
+CV_CLIENT_URL=http://localhost:5495 node e2e/window-view-bake.mjs --out=<임시 폴더>
+node docs/designs/village-lots-v2/tools/window_view_atlas.mjs --in=<임시 폴더> [--preview=<폴더>]
 ```
 
 ## 열람실 지구본 지도

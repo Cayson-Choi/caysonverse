@@ -52,7 +52,7 @@ MATS = {
     "LM_school_iron": {"set": "cast_iron", "metal": True},
     "LM_school_green": {"set": "grass", "normal": 0.5},
     "M_glass": {"glass": True},
-    "M_garden": R.GARDEN_MAP,
+    "M_garden": R.garden_map("lot_school_class"),
 }
 
 X, Z, H = 15.4, 7.4, 3.7

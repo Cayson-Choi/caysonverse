@@ -93,7 +93,7 @@
     "M_garden": {
       "kind": "garden",
       "maps": {
-        "albedo": "../garden/ninomaru_garden.ktx2"
+        "albedo": "../windowview/lot_school_class_day.ktx2"
       }
     }
   },

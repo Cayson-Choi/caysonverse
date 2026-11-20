@@ -1,5 +1,8 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import gardenLayout from "../../../client/src/village/lots/gardenChart.json";
+import windowViews from "../../../client/src/village/lots/windowViews.json";
+import { windowViewFrame } from "../../../client/src/village/lots/windowView";
+import { LOT_ROOMS, lotDoorPoint, lotFootprint } from "@caysonverse/shared/village/villageLots";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { Triangle, Vector3 } from "three";
@@ -9,28 +12,60 @@ import { parseGlb } from "../../../scripts/lib/schoolGlb";
 const lots = path.resolve(__dirname, "../../../client/public/models/village/lots");
 const requireDraco = createRequire(__filename);
 
-it("ships one mipmapped garden panorama for both rooms and a separate equirectangular globe chart", () => {
-  function chart(dir: string, room: string, material: string, kind: string) {
-    const manifest = JSON.parse(readFileSync(path.join(lots, dir, `lot_${room}_textures.json`), "utf8"));
-    const spec = manifest.materials[material];
-    expect(spec.kind).toBe(kind);
-    const file = path.resolve(lots, dir, spec.maps.albedo);
-    const ktx = readFileSync(file);
-    expect(ktx.subarray(0, 12).toString("hex")).toBe("ab4b5458203230bb0d0a1a0a");
-    const width = ktx.readUInt32LE(20), height = ktx.readUInt32LE(24);
-    expect(width).toBe(2 * height);
-    expect(ktx.readUInt32LE(40)).toBe(1 + Math.floor(Math.log2(width)));
-    return file;
+it("shows each room the real village from where the room stands, baked for day, the evening's golden hour and night", () => {
+  function ktx(file: string) {
+    const bytes = readFileSync(file);
+    expect(bytes.subarray(0, 12).toString("hex")).toBe("ab4b5458203230bb0d0a1a0a");
+    const width = bytes.readUInt32LE(20), height = bytes.readUInt32LE(24);
+    expect(width).toBe(gardenLayout.width);
+    expect(height).toBe(gardenLayout.height);
+    expect(bytes.readUInt32LE(40)).toBe(1 + Math.floor(Math.log2(width)));
+    // one ETC1S texture a key (about 1 MB), at least 6,000 distinct samples around the eye-level horizon
+    expect(bytes.length).toBeLessThanOrEqual(1_500_000);
+    return bytes.length;
   }
-  const garden = chart("school", "school_class", "M_garden", "garden");
-  const chartBytes = readFileSync(garden);
-  expect(chartBytes.readUInt32LE(20)).toBe(gardenLayout.width);
-  expect(chartBytes.readUInt32LE(24)).toBe(gardenLayout.height);
-  // One mobile RGB texture, with at least 2,000 distinct samples around the eye-level horizon.
-  expect(gardenLayout.width * gardenLayout.height).toBeLessThanOrEqual(1024 * 512);
-  expect(2 * (gardenLayout.width - 2 * gardenLayout.gutter)).toBeGreaterThanOrEqual(2000);
-  expect(chart("library", "library_reading", "M_garden", "garden")).toBe(garden);
-  expect(chart("library", "library_reading", "M_globe", "own")).not.toBe(garden);
+  expect(gardenLayout.width * gardenLayout.height).toBeLessThanOrEqual(3072 * 1536);
+  expect(2 * (gardenLayout.width - 2 * gardenLayout.gutter)).toBeGreaterThanOrEqual(6000);
+  // the old photograph of a Japanese garden is gone
+  expect(existsSync(path.join(lots, "garden", "ninomaru_garden.ktx2"))).toBe(false);
+  const rooms = (windowViews as { rooms: Record<string, { m: number[]; t: number[]; eyeRoom: number[]; eyeVillage: number[]; keys: { id: string; file: string; night: number; golden: number; k: number }[] }> }).rooms;
+  for (const [dir, unit] of [["school", "lot_school_class"], ["library", "lot_library_reading"]] as const) {
+    const manifest = JSON.parse(readFileSync(path.join(lots, dir, `${unit}_textures.json`), "utf8"));
+    expect(manifest.materials.M_garden.kind).toBe("garden");
+    expect(manifest.materials.M_garden.maps.albedo).toBe(`../windowview/${unit}_day.ktx2`);
+    const view = rooms[unit]!;
+    expect(view.keys.map((k) => k.id)).toEqual(["day", "dusk", "night"]);
+    for (const k of view.keys) {
+      expect(k.file).toBe(`lots/windowview/${unit}_${k.id}.ktx2`);
+      ktx(path.join(lots, "..", k.file));
+      expect(k.k).toBeGreaterThan(0);
+    }
+    const [day, dusk, night] = view.keys as [(typeof view.keys)[0], (typeof view.keys)[0], (typeof view.keys)[0]];
+    expect(day.night).toBeLessThan(0.01);
+    expect(day.golden).toBeLessThan(0.01);
+    expect(dusk.golden).toBeGreaterThan(0.9);
+    expect(night.night).toBeGreaterThan(0.99);
+    // baked where the room really is: the frame (a rotation, no mirror) and eye are today's windowViewFrame
+    const room = LOT_ROOMS.find((r) => r.unit.id === unit)!;
+    const frame = windowViewFrame(room);
+    for (let i = 0; i < 4; i++) expect(view.m[i]).toBeCloseTo(frame.m[i]!, 6);
+    for (let i = 0; i < 3; i++) expect(view.eyeVillage[i]).toBeCloseTo(frame.eyeVillage[i]!, 6);
+    const [a, b, c, d] = frame.m as [number, number, number, number];
+    expect(a * d - b * c).toBeCloseTo(1, 9);
+    expect(a * a + c * c).toBeCloseTo(1, 9);
+    // the room's door (its frame's z = 0 wall) is the building's front door, and the eye is inside the building
+    const door = lotDoorPoint(room.lot, room.door).centre;
+    const x = room.spec.doorX;
+    expect(a * x + frame.t[0]).toBeCloseTo(door.x, 1);
+    expect(c * x + frame.t[1]).toBeCloseTo(door.z, 1);
+    const body = lotFootprint(room.lot);
+    expect(frame.eyeVillage[0]).toBeGreaterThan(body.minX);
+    expect(frame.eyeVillage[0]).toBeLessThan(body.maxX);
+    expect(frame.eyeVillage[2]).toBeGreaterThan(body.minZ);
+    expect(frame.eyeVillage[2]).toBeLessThan(body.maxZ);
+  }
+  const globe = JSON.parse(readFileSync(path.join(lots, "library", "lot_library_reading_textures.json"), "utf8")).materials.M_globe;
+  expect(globe.kind).toBe("own");
 });
 
 /** Read one shipped primitive with the same Draco library used by the village clearance tests. */
