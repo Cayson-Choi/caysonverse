@@ -106,7 +106,9 @@ function instanced(geo: BufferGeometry, mat: MeshStandardMaterial | MeshStandard
   m.instanceMatrix.needsUpdate = true;
   m.computeBoundingSphere();
   m.computeBoundingBox();
-  m.castShadow = shadows;
+  // the wall receives the sun's shadows (the park's trees and rides on it) but casts none: drawn into the shadow maps the whole ring's
+  // instances came to +300 .. 600 k triangles a frame on the PC (measured 2026-11-20), for a shadow nobody sees beyond the edge's grass
+  m.castShadow = false;
   m.receiveShadow = shadows;
   return m;
 }
