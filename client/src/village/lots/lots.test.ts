@@ -57,7 +57,8 @@ describe("lot LOD (one pool, nearest first)", () => {
 });
 
 describe("the v2 models and their manifests", () => {
-  const models = [...VILLAGE_LOTS.map((l) => l.id as string), ...LOT_INTERIORS.map((i) => i.unit)];
+  // (the café's room has no GLB: it is built at run time, cafe/CafeRoom.tsx)
+  const models = [...VILLAGE_LOTS.map((l) => l.id as string), ...LOT_INTERIORS.filter((i) => i.unit !== "lot_cafe_room").map((i) => i.unit)];
   it("every model names its texture manifest, and every material it has is in it (a library set that exists, or a kind)", () => {
     for (const m of models) {
       const j = glbJson(join(LOTS_DIR, `${m}.glb`));
@@ -81,7 +82,7 @@ describe("the v2 models and their manifests", () => {
   });
   it("the rooms' sacred pieces resolve to files that exist (both builders' extras shapes), phone files where the phone draws them", () => {
     let n = 0;
-    for (const i of LOT_INTERIORS) {
+    for (const i of LOT_INTERIORS.filter((q) => q.unit !== "lot_cafe_room")) {
       const sacred = (glbJson(join(LOTS_DIR, `${i.unit}.glb`)).asset.extras?.sacred ?? []) as Array<{ node: string; file: string; phone?: boolean | string; phoneFile?: string }>;
       for (const s of sacred) {
         for (const phone of [false, true]) {
@@ -153,9 +154,9 @@ describe("swing doors turn on their inner hinge corner (the door check's finding
 });
 
 describe("lot doors, the rooms' ways out, the slots", () => {
-  it("five room doors (들어가기) and the gate (곧 문을 열어요)", () => {
+  it("five room doors (들어가기), the café's and the gate (곧 문을 열어요)", () => {
     expect(LOT_DOOR_PADS.map((p) => `${p.door}:${p.kind}`).sort()).toEqual(
-      ["lot_chapel_main:enter", "lot_church_main:enter", "lot_gate_main:soon", "lot_library_main:enter", "lot_school_main:enter", "lot_temple_main:enter"].sort(),
+      ["lot_cafe_main:enter", "lot_chapel_main:enter", "lot_church_main:enter", "lot_gate_main:soon", "lot_library_main:enter", "lot_school_main:enter", "lot_temple_main:enter"].sort(),
     );
     const church = LOT_DOOR_PADS.find((p) => p.door === "lot_church_main")!;
     expect(lotDoorTarget(church.x, church.z)).toMatchObject({ kind: "door", id: "lotenter:lot_church_main", label: "교회 들어가기", short: "들어가기" });
