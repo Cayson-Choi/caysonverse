@@ -386,10 +386,15 @@ def hair_floor(a):
 
 def hair_pos(a,z):
     w,d,cy=profile(HAIR,z)
-    # The low occiput is broad behind the ear and tapers into the existing
-    # cranium at the temple. Both profiles constrain its posterior depth.
+    # The back view shows the greatest width difference just behind the
+    # helix. Round out the posterior half while keeping the temple and the
+    # measured fore-aft profile in place. Taper into the last row at the nape.
     rear=max(0.,min(1.,-cos(a)/.44))
-    w+=.014*rear*rear*(3-2*rear)*exp(-((z-1.550)/.065)**2)
+    rear=rear*rear*(3-2*rear)
+    w+=.014*rear*exp(-((z-1.550)/.065)**2)
+    taper=max(0.,min(1.,(z-1.535)/.095))
+    fullness=.080+.076*exp(-((z-1.690)/.092)**2)
+    w*=1.+fullness*rear*taper*taper*(3-2*taper)
     return Vector((w*sin(a),cy-d*cos(a),z))
 
 

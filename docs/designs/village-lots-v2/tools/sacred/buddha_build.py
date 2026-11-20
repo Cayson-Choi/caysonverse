@@ -184,15 +184,21 @@ def dress(mesh, output, lod):
                     crest = np.exp(-((x+.11)/.44)**2-((y-.34)/.32)**2)
                     for c,value in enumerate(color):
                         linear = value*(.12+2.95*dome-groove)+(.080,.084,.090)[c]*crest
-                        # The phone room omits the desktop spots. Keep the
-                        # lacquer returns legible on its lower-resolution beads.
+                        # The phone has no overhead spot. Lift the shoulders
+                        # and the top of each bead while retaining black seams.
                         if lod == "phone":
-                            linear = .0025+3.70*linear
+                            shoulder = 4*dome*(1-dome)
+                            linear = .0025+3.70*linear+.021*shoulder*(1-crest)+.060*dome**3
                         patch[:,:,c] = np.where(linear<=.0031308,12.92*linear,1.055*linear**(1/2.4)-.055)
                 else:
                     patch[:,:,0] = .54+.44*dome
                     patch[:,:,1] = rough+.15*(1-dome)
                     patch[:,:,2] = .83-.73*dome
+                    if lod == "pc":
+                        # The warm altar spot is reflected at grazing angles.
+                        # Dark lacquer on the raised beads gives a softer return.
+                        patch[:,:,1] += .13*dome
+                        patch[:,:,2] += .30*dome
         x = ((np.arange(w//2)+.5)/(w//2)*2 - 1)*face_limit
         z = chin + (np.arange(h)+.5)/h*(crown-chin)
         jaw_width = np.array([profile(FACE, height)[0] for height in z])
