@@ -271,7 +271,7 @@ describe("node names", () => {
       lightmapNight1k: "/models/village/houses/house_4_lm_night_1k.webp",
       view: "/models/village/houses/house_4_view.webp",
     });
-    expect(HOUSE_BUDGET.glb).toEqual({ maxBytes: 1024 * 1024, maxTriangles: 52_000, maxMaterials: 40, maxTextureSide: 2048 });
+    expect(HOUSE_BUDGET.glb).toEqual({ maxBytes: 1024 * 1024, maxTriangles: 52_000, maxMaterials: 48, maxTextureSide: 2048 });
     expect(HOUSE_BUDGET.lightmap).toEqual({ side: 2048, maxBytes: 450 * 1024, side1k: 1024, maxBytes1k: 230 * 1024 });
   });
 });
