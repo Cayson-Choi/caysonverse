@@ -19,6 +19,7 @@ import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { copyToDocument, prune, unpartition } from "@gltf-transform/functions";
 import { NodeBasisEncoder } from "ktx2-encoder";
 import sharp from "sharp";
+import { portraitLeaf } from "./buddha_leaf.mjs";
 
 const [original, faceDir, work, destination, tier, ...extra] = process.argv.slice(2);
 if (!destination || extra.length || (tier && !["pc","phone"].includes(tier))) {
@@ -30,7 +31,7 @@ const basis = await new NodeBasisEncoder().init();
 const clamp = x => Math.max(0, Math.min(1, x));
 const smooth = (a, b, x) => { const t = clamp((x-a)/(b-a)); return t*t*(3-2*t); };
 const mix = (a, b, t) => a+(b-a)*t;
-const srgb = x => Math.round(255*(1.055*Math.max(.0031308,x)**(1/2.4)-.055));
+const srgb = x => Math.round(255*(x<=.0031308 ? 12.92*x : 1.055*x**(1/2.4)-.055));
 const gilt = [.94,.529,.074]; // Same linear leaf colour as the pass-14 facial oval.
 
 async function readPixels(texture, size) {
@@ -53,43 +54,124 @@ async function setPixels(texture, pixels, size) {
   texture.setImage(image).setMimeType("image/png");
 }
 
-function garmentMasks(primitive, cut, size) {
+function altarLight(x, height, normal, color, phone) {
+  const px=x+.047, faceX=px/.83;
+  const lift=.0046*(1-Math.exp(-((faceX/.029)**2)))*Math.exp(-(((height-1.835)/.022)**2));
+  return portraitLeaf(normal,faceX,1.680+(height-1.937+.014*px-lift)/.80,color,phone);
+}
+
+function cutBorder(primitive, cut) {
+  const indices=primitive.getIndices().getArray(), pos=primitive.getAttribute("POSITION");
+  const edges=new Map();
+  for (const t of cut) {
+    const tri=Array.from(indices.subarray(t*3,t*3+3), i=>pos.getElement(i,[]));
+    for (let side=0; side<3; side++) {
+      const a=tri[side], b=tri[(side+1)%3], key=[a.join(","),b.join(",")].sort().join("/");
+      if (edges.has(key)) edges.delete(key);
+      else edges.set(key,[a,b]);
+    }
+  }
+  assert(edges.size>=8, "Missing perimeter of the original face");
+  const segments=[...edges.values()].map(([a,b])=>{
+    const dx=b[0]-a[0], dy=b[1]-a[1], dz=b[2]-a[2];
+    return [...a,dx,dy,dz,1/(dx*dx+dy*dy+dz*dz)];
+  });
+  return (x,y,z)=>{
+    let best=Infinity;
+    for (const [ax,ay,az,dx,dy,dz,inv] of segments) {
+      const t=clamp(((x-ax)*dx+(y-ay)*dy+(z-az)*dz)*inv);
+      best=Math.min(best,(x-ax-t*dx)**2+(y-ay-t*dy)**2+(z-az-t*dz)**2);
+    }
+    return Math.sqrt(best);
+  };
+}
+
+const rimLight = .62;
+
+async function lightPortrait(model, part, lod, rimDistance) {
+  // Bake the same broad altar reflection as the seated Buddha on the actual
+  // attendant normals. Carry the same light across the perimeter to the scan,
+  // then let the varnish and the pigment absorb it where the metal is painted.
+  const phone = lod === "phone", size = phone ? 256 : 384;
+  const material = part.getMaterial(), buffer = Buffer.alloc(size*size*4);
+  const maps = [material.getBaseColorTexture(), material.getMetallicRoughnessTexture()];
+  const [albedo,orm] = await Promise.all(maps.map(texture =>
+    sharp(texture.getImage()).resize(size,size).ensureAlpha().raw().toBuffer()));
+  const uv = part.getAttribute("TEXCOORD_0"), pos = part.getAttribute("POSITION");
+  const norm = part.getAttribute("NORMAL"), indices = part.getIndices().getArray();
+  const base = phone ? [.92,.80,.64] : [.77,.79,.64];
+  const linear = x => x<=.04045 ? x/12.92 : ((x+.055)/1.055)**2.4;
+  const distance = Array.from({length:pos.getCount()},(_,i)=>rimDistance(...pos.getElement(i,[])));
+  for (let t=0; t<indices.length; t+=3) {
+    const ids = indices.subarray(t,t+3);
+    const [a,b,c] = Array.from(ids,i => uv.getElement(i,[]).map(v => size*v-.5));
+    const points = Array.from(ids,i => pos.getElement(i,[]));
+    const normals = Array.from(ids,i => norm.getElement(i,[]));
+    const dx=b[0]-a[0], dy=b[1]-a[1], ex=c[0]-a[0], ey=c[1]-a[1], det=dx*ey-dy*ex;
+    if (Math.abs(det)<1e-8) continue;
+    const x0=Math.max(0,Math.ceil(Math.min(a[0],b[0],c[0]))), x1=Math.min(size-1,Math.floor(Math.max(a[0],b[0],c[0])));
+    const y0=Math.max(0,Math.ceil(Math.min(a[1],b[1],c[1]))), y1=Math.min(size-1,Math.floor(Math.max(a[1],b[1],c[1])));
+    for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++) {
+      const fx=x-a[0], fy=y-a[1], u=(fx*ey-fy*ex)/det, v=(dx*fy-dy*fx)/det, w=1-u-v;
+      if (Math.min(u,v,w)<0) continue;
+      const at=4*(y*size+x), bare=smooth(.34,.59,orm[at+2]/255);
+      buffer[at+3]=255;
+      if (!bare) continue;
+      const interpolate=(corners,k) => w*corners[0][k]+u*corners[1][k]+v*corners[2][k];
+      const n=[0,1,2].map(k => interpolate(normals,k));
+      const inside=smooth(0,.060,w*distance[ids[0]]+u*distance[ids[1]]+v*distance[ids[2]]);
+      const rgb=[0,1,2].map(k=>mix(gilt[k],linear(albedo[at+k]/255)/base[k],inside));
+      const light=altarLight(interpolate(points,0),interpolate(points,1),n,rgb,phone);
+      for (let k=0; k<3; k++) buffer[at+k]=srgb(Math.min(1,light[k]*bare*mix(rimLight,1,inside)));
+    }
+  }
+  // The face UV stops at the join. Pad its colour beyond that edge so an
+  // oblique mip sample sees the same light as the neighbouring scan island.
+  for (let pass=0;pass<4;pass++) {
+    const previous=Buffer.from(buffer);
+    for (let y=1;y<size-1;y++) for (let x=1;x<size-1;x++) {
+      const at=4*(y*size+x);
+      if (previous[at+3]) continue;
+      const adjacent=[at-4,at+4,at-4*size,at+4*size].find(i=>previous[i+3]);
+      if (adjacent!==undefined) previous.copy(buffer,at,adjacent,adjacent+4);
+    }
+  }
+  for (let i=3;i<buffer.length;i+=4) buffer[i]=255;
+  const fill=model.createTexture(lod+"-face-altar");
+  await setPixels(fill,buffer,size);
+  material.setEmissiveTexture(fill).setEmissiveFactor([1,1,1]);
+}
+
+function garmentMasks(primitive, cut, size, rimDistance) {
   const indices = primitive.getIndices().getArray();
   const pos = primitive.getAttribute("POSITION").getArray();
   const uv = primitive.getAttribute("TEXCOORD_0").getArray();
-  const cutPositions = new Map();
-  for (const t of cut) for (const index of indices.subarray(t*3,t*3+3)) {
-    const p = pos.subarray(3*index,3*index+3);
-    cutPositions.set(p.join(","),p);
-  }
-  const seamPositions = new Map();
-  for (let i=0; i<indices.length; i++) {
-    if (cut.has(Math.floor(i/3))) continue;
-    const p = pos.subarray(3*indices[i],3*indices[i]+3);
-    const key = p.join(",");
-    if (cutPositions.has(key)) seamPositions.set(key,p);
-  }
-  assert(seamPositions.size >= 8, "The face cut does not meet the surrounding scan");
-  const border = [...seamPositions.values()];
   const weights = new Float32Array(pos.length);
+  const bounce = new Float32Array(pos.length), normals=primitive.getAttribute("NORMAL");
   for (let i=0; i<pos.length/3; i++) {
     const [x,y,z] = pos.subarray(i*3,i*3+3);
     // The old scan wears a tied garment from the waist to the ankles.
     // Keep exposed arms and feet closer to the finish of the face.
     weights[3*i] = smooth(.05,.18,y)*(1-smooth(1.13,1.28,y))*(1-smooth(.29,.37,Math.abs(x+.04)));
-    if (y<1.66) continue;
-    let d2 = Infinity;
-    for (const p of border) d2 = Math.min(d2,(x-p[0])**2+(y-p[1])**2+(z-p[2])**2);
-    weights[3*i+1] = 1-smooth(.002,.020,Math.sqrt(d2));
+    if (y<1.58) continue;
+    const distance=rimDistance(x,y,z);
+    weights[3*i+1] = 1-smooth(.002,.020,distance);
     const lateral=Math.abs(x+.047), hairline=2.052-.065*clamp((lateral/.138)**3);
     const ear=smooth(.099,.131,lateral)*(1-smooth(-.035,.009,z))*smooth(1.728,1.76,y);
     weights[3*i+2] = Math.max(ear,smooth(hairline-.006,hairline+.008,y));
+    const gain=rimLight*(1-smooth(0,.14,distance));
+    if (gain>0) {
+      const light=altarLight(x,y,normals.getElement(i,[]),gilt,size===512);
+      for (let k=0;k<3;k++) bounce[3*i+k]=light[k]*gain;
+    }
   }
 
   // Paint the labels into the original UV unwrap, including a four-texel
   // gutter on its numerous small scan islands, for stable oblique mip levels.
   const cloth = new Float32Array(size*size), seam = new Float32Array(size*size), crown = new Float32Array(size*size);
   const distance = new Float32Array(size*size).fill(5);
+  const headFill = Buffer.alloc(size*size*4);
+  for (let i=3;i<headFill.length;i+=4) headFill[i]=255;
   for (let i=0; i<indices.length; i+=3) {
     if (cut.has(i/3)) continue;
     const ids = indices.subarray(i,i+3);
@@ -110,16 +192,19 @@ function garmentMasks(primitive, cut, size) {
       cloth[pixel]=w0*weights[3*ids[0]]+w1*weights[3*ids[1]]+w2*weights[3*ids[2]];
       seam[pixel]=w0*weights[3*ids[0]+1]+w1*weights[3*ids[1]+1]+w2*weights[3*ids[2]+1];
       crown[pixel]=w0*weights[3*ids[0]+2]+w1*weights[3*ids[1]+2]+w2*weights[3*ids[2]+2];
+      for (let k=0;k<3;k++) {
+        headFill[4*pixel+k]=srgb(w0*bounce[3*ids[0]+k]+w1*bounce[3*ids[1]+k]+w2*bounce[3*ids[2]+k]);
+      }
     }
   }
-  return {cloth,seam,crown};
+  return {cloth,seam,crown,headFill};
 }
 
-async function dressScan(primitive, cut, size) {
+async function dressScan(model, primitive, cut, size, rimDistance) {
   const material=primitive.getMaterial(), colorMap=material.getBaseColorTexture();
   const ormMap=material.getMetallicRoughnessTexture(), normalMap=material.getNormalTexture();
   const color=await readPixels(colorMap,size), orm=await readPixels(ormMap,size);
-  const {cloth,seam,crown}=garmentMasks(primitive,cut,size);
+  const {cloth,seam,crown,headFill}=garmentMasks(primitive,cut,size,rimDistance);
   for (let p=0;p<size*size;p++) {
     const i=4*p, cavity=clamp((1-orm[i]/255)/.75), silk=cloth[p], edge=seam[p];
     // The high-resolution scan contributes its occlusion, fine patina and
@@ -137,6 +222,9 @@ async function dressScan(primitive, cut, size) {
     orm[i+3]=255;
   }
   material.setName("Attendant satin gilt");
+  const fill=model.createTexture((size===512?"phone":"pc")+"-head-altar");
+  await setPixels(fill,headFill,size);
+  material.setEmissiveTexture(fill).setEmissiveFactor([1,1,1]);
   const normalBytes=normalMap.getImage(), normalSize=size===1024?2048:512;
   await Promise.all([[colorMap,color],[ormMap,orm]].map(([t,p])=>setPixels(t,p,size)));
   // The original high-resolution normal carries the engraved hair, diadem
@@ -158,13 +246,17 @@ for (const lod of tier?[tier]:["pc","phone"]) {
   assert.equal(indices.length/3,phone?4500:13000,"Expected the original cast");
   const cut=new Set(JSON.parse(readFileSync(path.join(faceDir,lod+"-cut.json"),"utf8")));
   assert(cut.size>0 && [...cut].every(t=>Number.isInteger(t) && t>=0 && 3*t<indices.length));
-  const {normalMap,normalBytes}=await dressScan(scan,cut,phone?512:1024);
+  const rimDistance=cutBorder(scan,cut);
+  const {normalMap,normalBytes}=await dressScan(model,scan,cut,phone?512:1024,rimDistance);
   model.getRoot().listExtensionsUsed().find(ext=>ext.extensionName==="KHR_texture_basisu").dispose();
   scan.getIndices().setArray(indices.filter((_,i)=>!cut.has(Math.floor(i/3))));
 
   // The hall looks up mesh nodes by their original name, so keep all
   // primitives together under the shipped node, including the forehead jewel.
   const parts=donor.getRoot().listMeshes().flatMap(m=>m.listPrimitives());
+  const face=parts.find(part=>part.getMaterial().getName()==="bodhisattva_face_gilt");
+  assert(face, "Missing painted face");
+  await lightPortrait(donor,face,lod,rimDistance);
   for (const node of donor.getRoot().listNodes().filter(n=>n.getMesh())) {
     const identity=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
     assert(node.getWorldMatrix().every((n,i)=>Math.abs(n-identity[i])<1e-6),"Apply face transforms before packing");

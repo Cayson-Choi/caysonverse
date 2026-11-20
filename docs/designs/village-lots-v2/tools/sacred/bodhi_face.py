@@ -5,7 +5,7 @@ The cut lists index the original glTF triangles, before Blender splits UV seams.
 """
 from collections import Counter
 from functools import lru_cache
-from math import ceil, pi, sin
+from math import ceil, exp, pi, sin, sqrt
 from pathlib import Path
 import json
 import struct
@@ -21,7 +21,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from buddha_head import FACE, bead, fy, profile
 from buddha_pigment import (BROW_INNER, BROW_SPAN, EYE_INNER, EYE_SPAN, FACE_AXIS,
-                            GILT_SKIN, LIP_RADIUS, brow_height, eyelid_height, lip_height, smooth)
+                            GILT_SKIN, LIP_RADIUS, bare_leaf_planes, brow_height, eyelid_height,
+                            lip_height, smooth)
 
 
 # Keep the scan's cant, high cheekbones, pierced ears and small chin. The two
@@ -40,12 +41,58 @@ def registered(x, z):
     return u, v
 
 
+# Registered height, cheek bed, bridge projection, bridge radius and alar
+# cushion (metres). The root and upper lip end on the seated Buddha's cast.
+# The dorsum inclines evenly, then rolls over a short tip into the philtrum.
+NOSE = [
+    (1.566, .040, .040, .019, .0000), (1.573, .040, .043, .018, .0004),
+    (1.580, .039, .050, .018, .0021), (1.588, .038, .059, .021, .0070),
+    (1.596, .038, .064, .024, .0100), (1.602, .038, .065, .025, .0110),
+    (1.609, .037, .064, .025, .0094), (1.619, .036, .061, .025, .0050),
+    (1.637, .034, .056, .024, .0014), (1.659, .032, .050, .023, .0000),
+    (1.680, .032, .045, .022, .0000), (1.696, .034, .046, .024, .0000),
+    (1.706, .035, .047, .026, .0000)]
+
+
 @lru_cache(maxsize=65536)
 def relief_depth(x, z):
     u, v = registered(x, z)
-    # The standing figure is shallower than the seated Buddha. Tip, alae,
-    # orbital folds and lip seam retain the curvature of its analytical cast.
-    return .041 - .74*fy(u+FACE_AXIS, v)-.045*(x-AXIS)
+    a = abs(u)
+    cast = -.74*fy(u+FACE_AXIS, v)
+    if NOSE[0][0] < v < NOSE[-1][0] and a < .076:
+        # The alar rims turn up from the septum toward the cheeks. Match their
+        # bed to the existing curved cheek section before the shoulder ends.
+        rise = .006*smooth(.010,.041,a)*exp(-((v-1.590)/.030)**2)
+        bed, ridge, radius, wing = profile(NOSE, v-rise)
+        bridge = (ridge-bed)*exp(-(u/radius)**2)
+        ala = wing*exp(-((a-.031)/.016)**2)
+        cheek_u = .5*(a+.055+sqrt((a-.055)**2+.008**2))
+        cheek_bed = -.74*fy((cheek_u if u>=0 else -cheek_u)+FACE_AXIS, v)
+        bed += smooth(.029,.062,a)*(cheek_bed-bed)
+        # End the wing on a narrow, rounded foot at either side of the septum.
+        sill = .0019*exp(-((a-.023)/.010)**2-((v-1.586)/.006)**2)
+        blend = (1-smooth(.043,.076,a))*smooth(1.566,1.582,v)*(1-smooth(1.679,1.706,v))
+        cast += blend*(bed+bridge+ala-sill-cast)
+
+    # An oblique malar plane runs into the much softer pad over the mandible.
+    # Its hollow is lateral to the mouth and dies away ahead of the ear.
+    cheek = .0085*exp(-((a-.088)/.036)**2-((v-1.625-.19*(a-.088))/.039)**2)
+    hollow = .0030*exp(-((a-.082)/.029)**2-((v-1.572-.30*(a-.082))/.036)**2)
+    jaw = .0055*exp(-((a-.073)/.041)**2-((v-1.526-.36*(a-.073))/.035)**2)
+    chin = .0048*exp(-(u/.049)**2-((v-1.502)/.028)**2)
+    cast += cheek-hollow+jaw+chin
+
+    # Philtral columns fan into the peaks of the existing vermilion. Shape
+    # both lip rolls around its painted seam without moving the mouth outline.
+    column_x = .009+.005*(1-smooth(1.559,1.577,v))
+    philtrum = (.0023*exp(-((a-column_x)/.0065)**2)-.0011*exp(-(u/.006)**2))
+    cast += philtrum*exp(-((v-1.568)/.010)**2)
+    t = min(1.,a/LIP_RADIUS)
+    seam = lip_height(t)
+    lip = (1-t*t)**2
+    cast += lip*(.0032*exp(-((v-seam-.0055)/.0047)**2)
+                 + .0056*exp(-((v-seam+.0064)/.0058)**2))
+    return .041+cast-.045*(x-AXIS)
 
 
 def original(path):
@@ -115,8 +162,9 @@ def sampling_sites(phone):
         t = abs(u)/LIP_RADIUS
         for delta in (-.012*(1-t*t), 0., .0065*(1-t*t)):
             points.append(source(u, lip_height(t)+delta))
-    for v in (1.585,1.592,1.599,1.606,1.616,1.633,1.657,1.680):
-        for u in np.linspace(-.057,.057,9 if phone else 15):
+    for v in (1.558,1.568,1.577,1.583,1.589,1.596,1.602,1.609,1.619,1.635,1.656,1.680):
+        for u in ([-.050,-.033,-.020,-.009,0,.009,.020,.033,.050] if phone else
+                  np.linspace(-.054,.054,17)):
             points.append(source(u,v))
     return np.array(points)
 
@@ -230,9 +278,27 @@ def sculpt(path, phone):
     normals = []
     for i,(a,b) in enumerate(zip(x,z)):
         source = Vector((norms[i][0],-norms[i][2],norms[i][1])).normalized()
-        epsilon = .0019
+        nasal = exp(-(u[i]/.048)**4-((v[i]-1.601)/.036)**4)
+        lip = exp(-(u[i]/.055)**4-((v[i]-1.550)/.028)**4)
+        epsilon = .0019+.0018*nasal+.0035*lip
         dx = (relief_depth(a+epsilon,b)-relief_depth(a-epsilon,b))/(2*epsilon)
         dz = (relief_depth(a,b+epsilon)-relief_depth(a,b-epsilon))/(2*epsilon)
+        # Filter across as well as along the lip rolls. The mobile mesh also
+        # receives the rounded highlight of the cast at the mouth corners.
+        if lip>.001:
+            q = .0040
+            nw,ne = relief_depth(a-q,b+q),relief_depth(a+q,b+q)
+            sw,se = relief_depth(a-q,b-q),relief_depth(a+q,b-q)
+            dx += .62*lip*((ne+se-nw-sw)/(4*q)-dx)
+            dz += .62*lip*((ne+nw-se-sw)/(4*q)-dz)
+            dx *= 1-.27*lip
+            dz *= 1-.40*lip
+        cheek_wall = exp(-((abs(u[i])-.061)/.032)**4-((v[i]-1.634)/.048)**4)
+        dx *= 1-.43*cheek_wall
+        dz *= 1-.36*cheek_wall
+        # Gilding rounds the underside over the septum. Preserve the downward
+        # turn without reflecting one dark band across the entire nasal base.
+        dz -= .38*max(0.,dz)*nasal*exp(-((v[i]-1.586)/.015)**2)
         analytic = Vector((-dx,-1,-dz)).normalized()
         cast = mesh.vertices[i].normal.copy()
         cast = source.lerp(cast, float(smooth(0,.012,rim[i])))
@@ -246,7 +312,7 @@ def sculpt(path, phone):
     return obj, [int(i) for i in cut], segments
 
 
-def painted_leaf(size, segments):
+def painted_leaf(size, segments, phone):
     """Mineral colours on satin leaf, registered to the sculpt in metres."""
     x = X_RANGE[0]+(np.arange(size)[None,:]+.5)/size*(X_RANGE[1]-X_RANGE[0])
     z = Z_RANGE[0]+(np.arange(size)[:,None]+.5)/size*(Z_RANGE[1]-Z_RANGE[0])
@@ -270,10 +336,17 @@ def painted_leaf(size, segments):
 
     # The cheek high points, the lids and the brow root are gilt. Restrict
     # patination to turns that remain occluded in both altar lighting states.
-    glaze(.96, (.94,.54,.105), (.96,.56,.66))
-    glaze(.28*spot(.097,1.626,.070,.065), (.98,.63,.19), (.99,.51,.69))
-    glaze(.30*spot(0.,1.510,.052,.030), (1.,.64,.18), (.97,.52,.67))
-    glaze(.48*spot(0.,1.532,.042,.010), (.55,.229,.034), (.82,.60,.59))
+    glaze(1., leaf, (1.,.58,GILT_SKIN[2]))
+    bare_leaf_planes(u, v, spot, glaze)
+    satin = np.maximum(spot(.0,1.687,.045,.075),spot(.08,1.695,.072,.094))
+    lamp = np.maximum(spot(.0,1.747,.094,.048),spot(.0,1.653,.029,.059))
+    orm[...,1] += fade*(.12*satin+.08*lamp)
+    orm[...,2] += fade*(.94-orm[...,2])*.67*lamp
+    # The seated cast's calibrated base factor applies to bare leaf, easing
+    # back to the scan at the perimeter and leaving the mineral paints intact.
+    base = np.array((.92,.80,.64) if phone else (.77,.79,.64))
+    color *= 1.+fade[...,None]*(base-1.)
+    glaze(.30*spot(.0,1.532,.042,.008), (.52,.218,.023), (.96,.64,.81))
     t = np.clip((a-EYE_INNER)/EYE_SPAN,0.,1.)
     arc = np.sin(pi*t).clip(0,1)
     lid = eyelid_height(t,arc)
@@ -305,12 +378,10 @@ def painted_leaf(size, segments):
     glaze(.76*brush*smooth(brow-.30*width-.0001,brow+.26*width+.0001,v),
           (.065,.21,.101), (.94,.68,.17))
 
-    glaze(.28*spot(.028,1.653,.011,.047), (.61,.28,.046), (.85,.60,.63))
-    glaze(.47*spot(.002,1.649,.018,.052), (.99,.69,.25), (.98,.53,.68))
-    glaze(.56*spot(.0,1.607,.017,.014), (1.,.69,.23), (.99,.50,.67))
-    glaze(.26*spot(.043,1.607,.010,.020), (.52,.23,.037), (.84,.60,.61))
-    aperture = np.exp(-((a-.024)/.0115)**2-((v-1.5885-.0028*smooth(.016,.036,a))/.0048)**2)
-    glaze(.90*aperture, (.175,.068,.012), (.64,.65,.40))
+    glaze(.20*spot(.025,1.656,.010,.046), base*(.69,.32,.030), (.99,.66,.85))
+    glaze(.38*spot(.0,1.659,.012,.052), base*(.99,.62,.14), (1.,.70,.86))
+    aperture = np.exp(-((a-.022)/.007)**2-((v-1.591-.002*smooth(.016,.030,a))/.0030)**2)
+    glaze(.40*aperture, base*(.51,.23,.021), (.95,.67,.79))
 
     t = np.clip(a/LIP_RADIUS,0,1)
     seam = lip_height(t)
@@ -336,7 +407,7 @@ def finish(obj, output, tier, segments):
     tree = material.node_tree
     shader = next(n for n in tree.nodes if n.type=='BSDF_PRINCIPLED')
     size = 512 if tier=='phone' else 768
-    color,orm = painted_leaf(size,segments)
+    color,orm = painted_leaf(size,segments,tier=='phone')
     color = np.where(color<=.0031308,12.92*color,1.055*color**(1/2.4)-.055)
     for kind,rgb in [('color',color),('orm',orm)]:
         if kind=='orm':

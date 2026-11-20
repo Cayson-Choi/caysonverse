@@ -30,6 +30,18 @@ def lip_height(t):
     return 1.5494 + .0025*(4.*t*(1.-t))**2 - .0005*t**8
 
 
+def bare_leaf_planes(x, z, spot, lay):
+    """Lay the altar portrait's satin gold on the brow, cheeks, bridge and chin."""
+    mask = (1.-smooth(.130,.161,np.abs(x)))*smooth(1.445,1.481,z)
+    lay(mask, (.935,.431,.020), (1.,.59,.87))
+    polish = np.maximum.reduce((spot(.0,1.755,.100,.051), spot(.072,1.646,.063,.048),
+                                spot(.0,1.658,.022,.060), spot(.0,1.612,.021,.015),
+                                spot(.033,1.608,.015,.015),spot(.0,1.512,.050,.032)))
+    lay(polish, (.980,.520,.054), (1.,.58,.87))
+    lay(.56*spot(.0,1.505,.061,.027), (.800,.393,.040), (1.,.66,.85))
+    return mask
+
+
 def paint_hairline(result, kind, x, z):
     # Continue the last row of cast curls onto the forehead pigment island.
     # The charcoal edge dips at the centre and rejoins the casting at each temple.
@@ -91,14 +103,7 @@ def face_patch(kind, x, z, phone=False, half_width=None):
     ink = (1., .71, .68)
     vermilion = (1., .66, .91)
     result[...] = leaf if color else skin
-    mask = (1.-smooth(.130,.161,a))*smooth(1.445,1.481,z)
-    lay(mask, (.935,.431,.020), (1.,.59,.87))
-    polish = np.maximum.reduce((spot(.0,1.755,.100,.051), spot(.072,1.646,.063,.048),
-                                spot(.0,1.658,.022,.060), spot(.0,1.612,.021,.015),
-                                spot(.033,1.608,.015,.015),spot(.0,1.512,.050,.032)))
-    lay(polish, (.980,.520,.054), (1.,.58,.87))
-    # Beneath the mouth the burnished plane rolls into a warmer satin leaf.
-    lay(.56*spot(.0,1.505,.061,.027), (.800,.393,.040), (1.,.66,.85))
+    mask = bare_leaf_planes(x, z, spot, lay)
 
     eye_t = np.clip((a-EYE_INNER)/EYE_SPAN, 0., 1.)
     arc = np.sin(np.pi*eye_t).clip(0., 1.)
