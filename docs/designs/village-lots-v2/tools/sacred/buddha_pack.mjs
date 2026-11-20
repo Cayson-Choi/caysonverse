@@ -8,6 +8,7 @@
  * For pass 17 use: node buddha_pack.mjs <work> <output> --nose-only-from <2d9bb4ef GLB directory>.
  * This operation sculpts the two shipped LODs directly and needs no Blender rebuild.
  * For pass 18 use --nose-front-from with the two d310359b GLBs.
+ * For pass 19 use --lower-nose-from with the two 9aafa326 GLBs.
  * For a hairline revision, --face-and-scalp-from also replaces the cast curls over the facial oval.
  * For a portrait revision, --portrait-from replaces the facial oval, urna, ears and curls together.
  * For a curl-only revision, --scalp-only-from retains the shipped facial oval and all KTX2 atlases.
@@ -27,6 +28,7 @@ import { dressBuddhaLeaf } from "./node/buddha_leaf.mjs";
 import { preserveSurroundingStatue } from "./buddha_preserve.mjs";
 import { sculptNasalLobule } from "./node/buddha_nose17.mjs";
 import { refineNasalFront } from "./node/buddha_nose18.mjs";
+import { sculptLowerNose } from "./node/buddha_nose19.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const [work, destination, flag, seedDirectory, ...extra] = process.argv.slice(2);
@@ -36,7 +38,8 @@ const regions = new Map([["--preserve-from", "face"], ["--face-oval-only-from", 
 const texturesOnly = flag === "--textures-only-from";
 const noseOnly = flag === "--nose-only-from";
 const noseFront = flag === "--nose-front-from";
-if (!work || !destination || (flag && ((!texturesOnly && !noseOnly && !noseFront && !regions.has(flag)) || !seedDirectory)) || extra.length) {
+const lowerNose = flag === "--lower-nose-from";
+if (!work || !destination || (flag && ((!texturesOnly && !noseOnly && !noseFront && !lowerNose && !regions.has(flag)) || !seedDirectory)) || extra.length) {
   throw new Error("Expected build directory, sacred GLB directory and an optional preservation flag and source directory");
 }
 const align = (n) => Math.ceil(n / 4) * 4;
@@ -141,9 +144,10 @@ function writeSpans({doc, binary}, replacements) {
 const packed = new Map();
 for (const lod of ["pc", "phone"]) {
   const name = "lotstatue__lot_temple_hall_buddha" + (lod === "phone" ? "_phone" : "");
-  if (noseOnly || noseFront) {
+  if (noseOnly || noseFront || lowerNose) {
     const statue = readGlb(path.join(seedDirectory, name + ".glb"));
-    const spans = noseFront ? refineNasalFront(statue, lod) : await sculptNasalLobule(statue, lod);
+    const spans = lowerNose ? sculptLowerNose(statue, lod)
+      : noseFront ? refineNasalFront(statue, lod) : await sculptNasalLobule(statue, lod);
     packed.set(path.join(destination, name + ".glb"), writeSpans(statue, spans));
     continue;
   }
