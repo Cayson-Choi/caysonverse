@@ -44,7 +44,7 @@ export const FIGHT = {
   /** Stage lengths at the base (ms), scaled by `fightPace` and a seeded +-10 %; never shorter than the minimum. */
   pullBaseMs: 2300,
   runBaseMs: 1900,
-  firstPullMs: 2000,
+  firstPullMs: 2800,
   pullMinMs: 1200,
   runMinMs: 1300,
   /** A big fish needs `floor(cm / 15)` cycles, 1..6 (a 35 cm carp: 2; 60 cm: 4; 90 cm: 6). */

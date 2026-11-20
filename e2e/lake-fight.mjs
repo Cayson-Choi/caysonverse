@@ -14,7 +14,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { DESKTOP, PHONE, REPO, createRun, launchBrowser, openPlayer, pos, press, sleep, touchDown, touchUp, visibleButtons, walkAndWait, layoutReport } from "./lib/common.mjs";
 import { joinVillage } from "./lib/village.mjs";
 import { bigButton, waitButton } from "./lib/lakeMock.mjs";
-import { startFightAngler } from "./lib/lakeFight.mjs";
+import { installPhaseLog, phaseMark, startFightAngler, startFightAnglerInPage, waitSeen } from "./lib/lakeFight.mjs";
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => (args.find((a) => a.startsWith(`--${name}=`)) ?? `--${name}=${fallback}`).slice(name.length + 3);
@@ -53,8 +53,9 @@ const press3 = async (label, ms = 15000) => {
 /** My schema fields as the server set them (Player.rod, fishSpot, fishPhase, ...) and the phase's name. */
 const view = () =>
   p.page.evaluate(async () => {
-    const net = await window.__imp("/src/lake/lakeNet.ts");
-    const proto = await window.__imp("/src/lake/lakeProtocol.ts");
+    // the modules once (window.__imp scans the resource timings on every call: slow on a throttled page)
+    const m = (window.__cvMods ??= { net: await window.__imp("/src/lake/lakeNet.ts"), proto: await window.__imp("/src/lake/lakeProtocol.ts") });
+    const { net, proto } = m;
     const v = proto.emptyFishView();
     net.readFishView(net.selfId(), v);
     return { ...v, name: proto.phaseName(v.phase) };
@@ -69,9 +70,11 @@ const buttonSoon = async (ok, ms = 700) => {
   }
   return b;
 };
+/** CV_E2E_CPU=4 (a throttled page): every wait is that many times longer */
+const K = Math.max(1, Number(process.env.CV_E2E_CPU) || 1);
 const waitPhase = async (names, ms) => {
   const t0 = Date.now();
-  while (Date.now() - t0 < ms) {
+  while (Date.now() - t0 < ms * K) {
     const v = await view();
     if (names.includes(v.name)) return v;
     await sleep(80);
@@ -81,6 +84,7 @@ const waitPhase = async (names, ms) => {
 
 await run.step("join and walk to the pad", async () => {
   await joinVillage(p, "낚", time);
+  await installPhaseLog(p);
   for (const [x, z] of [[40, 0], [80, -9], [100, -12]]) await walkAndWait(p, x, z, 40000, 2);
   await walkAndWait(p, 102, -14.6, 20000, 1);
   await sleep(800);
@@ -149,6 +153,8 @@ await run.step(`fight (${MODE}): the whole fight, scripted`, async () => {
     const bite = await waitPhase(["bite"], 40000);
     run.check(`cast ${n}: a bite comes`, !!bite, bite);
     if (!bite) continue;
+    // the in-page angler is set up before the strike (its setup eats the first stage's grace on a slow page)
+    const pageAngler = MODE !== "through" && ["page", "button"].includes(opt("angler", "pointer")) ? await startFightAnglerInPage(p, { mode: MODE, via: opt("angler", "pointer") === "button" ? "button" : "net" }) : null;
     if (MODE === "through" && INPUT === "key") {
       await p.page.keyboard.down("Space"); // the strike by key, and the key stays down
     } else {
@@ -161,7 +167,8 @@ await run.step(`fight (${MODE}): the whole fight, scripted`, async () => {
       if (MODE === "through") await p.page.keyboard.up("Space");
       continue;
     }
-    const angler = MODE === "through" ? null : startFightAngler(p, { touch, mode: MODE, input: INPUT });
+    const fightMark = await phaseMark(p);
+    const angler = MODE === "through" ? null : pageAngler ? pageAngler : startFightAngler(p, { touch, mode: MODE, input: INPUT });
     const seen = { panel: false, cmds: [], maxTension: 0, maxProgress: 0, shots: new Set(), first: null, minProgress: 100 };
     let end = null;
     let note = "";
@@ -169,7 +176,8 @@ await run.step(`fight (${MODE}): the whole fight, scripted`, async () => {
     while (Date.now() - t0 < 60000) {
       const v = await view();
       if (v.name !== "fighting") {
-        end = v.name;
+        // the phase that ended the fight can be gone between two polls (missed lasts a moment): the phase log has it
+        end = (await waitSeen(p, ["lifting", "landed", "missed"], 500, fightMark))?.name ?? v.name;
         if (v.name === "missed") await sleep(250); // the personal message with the reason follows the phase by a moment
         note = await noticeText();
         break;
@@ -189,8 +197,10 @@ await run.step(`fight (${MODE}): the whole fight, scripted`, async () => {
       }
       await sleep(80);
     }
+    if (typeof angler?.log === "function") console.log("LAGS", JSON.stringify(await angler.log()));
     if (angler) await angler.stop();
     else await p.page.keyboard.up("Space");
+    console.log("END", end, JSON.stringify(note));
     end = end ?? (await view()).name;
     const landed = end === "lifting" || end === "landed";
     run.check(`cast ${n}: the big BUTTON is the prompt (it carries the command, big and in view) (${INPUT})`, !!seen.first && seen.first.box.w >= (touch ? 70 : 150) && seen.first.box.x >= 0 && seen.first.box.x + seen.first.box.w <= seen.first.vw && seen.first.box.y >= 0 && seen.first.box.y + seen.first.box.h <= seen.first.vh && /당기세요|놓아주세요/.test(seen.first.text), seen.first);
