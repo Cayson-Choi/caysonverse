@@ -5,6 +5,8 @@
  * --face-and-ears-from replaces the facial oval and both ears on the existing statue.
  * --nose-and-ears-from reshapes the seed's nose and grafts both ears and the curls at their roots.
  * To reproduce pass 16, build with buddha_build.py, then use this flag with the Buddha pair from 123f5db5.
+ * For pass 17 use: node buddha_pack.mjs <work> <output> --nose-only-from <2d9bb4ef GLB directory>.
+ * This operation sculpts the two shipped LODs directly and needs no Blender rebuild.
  * For a hairline revision, --face-and-scalp-from also replaces the cast curls over the facial oval.
  * For a portrait revision, --portrait-from replaces the facial oval, urna, ears and curls together.
  * For a curl-only revision, --scalp-only-from retains the shipped facial oval and all KTX2 atlases.
@@ -22,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { MeshoptEncoder, MeshoptDecoder } from "meshoptimizer";
 import { dressBuddhaLeaf } from "./node/buddha_leaf.mjs";
 import { preserveSurroundingStatue } from "./buddha_preserve.mjs";
+import { sculptNasalLobule } from "./node/buddha_nose17.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const [work, destination, flag, seedDirectory, ...extra] = process.argv.slice(2);
@@ -29,7 +32,8 @@ const regions = new Map([["--preserve-from", "face"], ["--face-oval-only-from", 
   ["--scalp-only-from", "scalp"], ["--preserve-ears-from", "ears"], ["--preserve-head-from", "head"],
   ["--portrait-from", "portrait"], ["--face-and-ears-from", "oval-and-ears"], ["--nose-and-ears-from", "nose-and-ears"]]);
 const texturesOnly = flag === "--textures-only-from";
-if (!work || !destination || (flag && ((!texturesOnly && !regions.has(flag)) || !seedDirectory)) || extra.length) {
+const noseOnly = flag === "--nose-only-from";
+if (!work || !destination || (flag && ((!texturesOnly && !noseOnly && !regions.has(flag)) || !seedDirectory)) || extra.length) {
   throw new Error("Expected build directory, sacred GLB directory and an optional preservation flag and source directory");
 }
 const align = (n) => Math.ceil(n / 4) * 4;
@@ -134,6 +138,12 @@ function writeSpans({doc, binary}, replacements) {
 const packed = new Map();
 for (const lod of ["pc", "phone"]) {
   const name = "lotstatue__lot_temple_hall_buddha" + (lod === "phone" ? "_phone" : "");
+  if (noseOnly) {
+    const statue = readGlb(path.join(seedDirectory, name + ".glb"));
+    const spans = await sculptNasalLobule(statue, lod);
+    packed.set(path.join(destination, name + ".glb"), writeSpans(statue, spans));
+    continue;
+  }
   let model = path.resolve(work, lod + ".glb");
   if (regions.has(flag)) {
     const region = regions.get(flag);
