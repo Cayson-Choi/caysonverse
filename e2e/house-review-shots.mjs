@@ -24,7 +24,7 @@ run.evidence = arg("out", run.evidence);
 mkdirSync(run.evidence, { recursive: true });
 const device = phone ? PHONE : DESKTOP;
 const browser = await launchBrowser();
-const URL = `${CLIENT_URL}/?time=${encodeURIComponent("2026-11-03T12:30")}`;
+const URL = `${CLIENT_URL}/?time=${encodeURIComponent(process.argv.includes("--night") ? "2026-11-03T22:30" : "2026-11-03T12:30")}`;
 const p = await openPlayer(browser, run, { tag: "stay", device });
 const page = p.page;
 

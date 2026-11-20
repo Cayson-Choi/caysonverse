@@ -29,15 +29,22 @@ const TEXEL_FROM = "vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );";
 const TEXEL_TO = /* glsl */ `vec4 lightMapTexel = vec4( texture2D( lightMap, vLightMapUv ).rgb * ( 1.0 - uHouseNight ) + texture2D( uHouseNightMap, vLightMapUv ).rgb * uHouseNight, 1.0 );`;
 
 /** Let a light-mapped material blend the night map in (idempotent). */
+/**
+ * Curtains (`LM_drape` / `E_H_drape`) read as thin cloth with the day behind them: by day the light map's texel is lifted a little
+ * (daylight comes through the weave), at night not. A cheap stand-in for translucency in an unlit-under-light-map house.
+ */
+const DRAPE_TEXEL_TO = TEXEL_TO.replace("* uHouseNight, 1.0 );", "* uHouseNight, 1.0 ) * vec4( vec3( 1.0 + 0.3 * ( 1.0 - uHouseNight ) ), 1.0 );");
+
 export function patchHouseLightmapMaterial(material: Material): void {
   if (patched.has(material)) return;
   patched.add(material);
+  const drape = material.name === "LM_drape" || material.name === "E_H_drape";
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uHouseNight = houseNightUniform;
     shader.uniforms.uHouseNightMap = houseNightMapUniform;
-    shader.fragmentShader = shader.fragmentShader.replace("void main() {", PARS).replace(TEXEL_FROM, TEXEL_TO);
+    shader.fragmentShader = shader.fragmentShader.replace("void main() {", PARS).replace(TEXEL_FROM, drape ? DRAPE_TEXEL_TO : TEXEL_TO);
   };
-  material.customProgramCacheKey = () => "house-lightmap-night";
+  material.customProgramCacheKey = () => (drape ? "house-lightmap-night-drape" : "house-lightmap-night");
   material.needsUpdate = true;
 }
 

@@ -89,6 +89,7 @@ MATS = {
     "H_fabric": dict(tex="T_h_fabric.png", rough=1.0, tint=True),
     "H_leather": dict(tex="T_h_leather.png", rough=0.45, coat=0.15, tint=True),
     "H_rattan": dict(tex="T_h_rattan.png", rough=0.8, tint=True),
+    "H_drape": dict(tex="T_h_linen.png", rough=0.95, tint=True),     # curtains: fine-weave linen in the house's curtain colour (owner 2026-11-20)
     "H_paper": dict(tex="T_h_paper.png", rough=0.9, glow=0.18),
     "H_bamboo": dict(tex="T_h_bamboo.png", rough=0.7),
     "H_rug": dict(tex="T_h_rug.png", rough=1.0, tint=True),

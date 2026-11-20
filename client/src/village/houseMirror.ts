@@ -19,15 +19,15 @@ varying vec3 vMirrorWorld;
 vec3 mirrorRoom(vec3 r) {
   float up = r.y;
   vec3 ceil = vec3(0.98, 0.93, 0.84);
-  vec3 wall = vec3(0.86, 0.76, 0.62);
-  vec3 floorC = vec3(0.43, 0.30, 0.19);
-  vec3 c = mix(wall, ceil, smoothstep(0.05, 0.55, up));
-  c = mix(c, floorC, smoothstep(-0.05, -0.45, up));
+  vec3 wall = vec3(0.70, 0.60, 0.47);
+  vec3 floorC = vec3(0.30, 0.20, 0.12);
+  vec3 c = mix(wall, ceil, smoothstep(0.12, 0.6, up));
+  c = mix(c, floorC, smoothstep(0.0, -0.3, up));
   float az = atan(r.x, r.z);
   // two tall windows and a glazed door round the room (bright, a little blue), only at wall height
-  float band = smoothstep(-0.22, -0.1, up) * (1.0 - smoothstep(0.32, 0.5, up));
-  float w1 = smoothstep(0.30, 0.22, abs(az - 0.9));
-  float w2 = smoothstep(0.30, 0.22, abs(az + 1.1));
+  float band = smoothstep(-0.3, -0.12, up) * (1.0 - smoothstep(0.35, 0.55, up));
+  float w1 = smoothstep(0.42, 0.3, abs(az - 0.9));
+  float w2 = smoothstep(0.42, 0.3, abs(az + 1.1));
   float w3 = smoothstep(0.42, 0.34, abs(abs(az) - 2.6));
   c = mix(c, vec3(0.93, 0.97, 1.0), clamp(w1 + w2, 0.0, 1.0) * band);
   c = mix(c, vec3(1.0, 0.97, 0.9), w3 * band * 0.9);
