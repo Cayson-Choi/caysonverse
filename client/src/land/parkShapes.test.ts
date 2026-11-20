@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { GeoBuilder } from "./geoBuilder";
 import { addBellRoof, addHedge, addLathe, valueNoise } from "./parkShapes";
+import { parkFountainWater } from "./parkFountain";
+import { addGateArch } from "./parkGateStone";
+import { Mesh, Raycaster, Vector3 } from "three";
 
 /** Share of triangles whose face normal points away from `centreOf(centroid)` (the solid's own inside). */
 function outwardShare(b: GeoBuilder, centreOf: (x: number, y: number, z: number) => [number, number, number]): number {
@@ -24,6 +27,38 @@ function outwardShare(b: GeoBuilder, centreOf: (x: number, y: number, z: number)
 }
 
 describe("parkShapes", () => {
+  it("leaves recessed solid mortar between the park gate's wedge stones", () => {
+    const b = new GeoBuilder();
+    addGateArch(b, 0);
+    const mesh = new Mesh(b.build()), ray = new Raycaster();
+    const span = Math.asin(7 / 13.25);
+    for (let i = 1; i < 17; i++) {
+      for (const [offset, depth] of [[0, 1.49], [0.25, 1.61]] as const) {
+        const a = ((i + offset) * 2 / 17 - 1) * span;
+        ray.set(new Vector3(40 + 13.7 * Math.sin(a), 7.2 - 13.25 + 13.7 * Math.cos(a), 5), new Vector3(0, 0, -1));
+        const z = ray.intersectObject(mesh)[0]!.point.z;
+        if (offset === 0) expect(z).toBeCloseTo(depth);
+        else expect(z).toBeGreaterThan(depth);
+      }
+    }
+    mesh.geometry.dispose();
+  });
+
+  it("carries each fountain stream above the stone lip and back into the lower basin", () => {
+    const g = parkFountainWater(), p = g.getAttribute("position");
+    const high = new Array(8).fill(false), low = new Array(8).fill(false), crest = new Array(8).fill(false);
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), z = p.getZ(i), y = p.getY(i), r = Math.hypot(x, z);
+      const jet = (Math.round(Math.atan2(z, x) * 4 / Math.PI) + 8) % 8;
+      if (r > 1.37 && r < 1.47 && y < 2.77 && y > 2.70) high[jet] = true;
+      if (r > 1.75 && r < 2.05 && y > 2.88) crest[jet] = true;
+      if (r > 3.25 && r < 3.39 && y < 0.94) low[jet] = true;
+    }
+    expect([...high, ...crest, ...low].every(Boolean)).toBe(true);
+    expect(g.index!.count / 3).toBeLessThan(2000);
+    g.dispose();
+  });
+
   it("value noise is deterministic and in 0..1", () => {
     for (let i = 0; i < 50; i++) {
       const n = valueNoise(i * 0.37, i * 1.1, 0.5, 4);

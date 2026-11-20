@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import gardenLayout from "../../../client/src/village/lots/gardenChart.json";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { Triangle, Vector3 } from "three";
@@ -22,6 +23,12 @@ it("ships one mipmapped garden panorama for both rooms and a separate equirectan
     return file;
   }
   const garden = chart("school", "school_class", "M_garden", "garden");
+  const chartBytes = readFileSync(garden);
+  expect(chartBytes.readUInt32LE(20)).toBe(gardenLayout.width);
+  expect(chartBytes.readUInt32LE(24)).toBe(gardenLayout.height);
+  // One mobile RGB texture, with at least 2,000 distinct samples around the eye-level horizon.
+  expect(gardenLayout.width * gardenLayout.height).toBeLessThanOrEqual(1024 * 512);
+  expect(2 * (gardenLayout.width - 2 * gardenLayout.gutter)).toBeGreaterThanOrEqual(2000);
   expect(chart("library", "library_reading", "M_garden", "garden")).toBe(garden);
   expect(chart("library", "library_reading", "M_globe", "own")).not.toBe(garden);
 });

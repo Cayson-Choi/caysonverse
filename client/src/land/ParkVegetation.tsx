@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Group } from "three";
 import { coasterTrack } from "@caysonverse/shared/land/coaster";
-import { PARK_BOUNDS, PARK_PLANTERS, PARK_TREES, PARK_TROUGHS } from "@caysonverse/shared/village/parkArea";
+import { PARK_BOUNDS, PARK_TREES } from "@caysonverse/shared/village/parkArea";
 import { PARK_PONDS } from "./ParkScenery";
 import type { Bed } from "../village/veg/flowerPlacement";
 import type { Card } from "../village/veg/vegCards";
@@ -14,7 +14,7 @@ import { createVegetation, type VillageVegetation } from "../village/veg/village
 import type { Bush } from "../village/veg/shrubs";
 import type { TreeSpec } from "../village/veg/treeSkeleton";
 import { circuitGround, taken } from "./ParkScenery";
-import { parkBorders, parkFlowerCrowns } from "./parkBorders";
+import { parkBorders, parkFlowerCrowns, raisedParkBeds } from "./parkBorders";
 import { SHOP_WINDOW_BEDS } from "./parkShopWindows";
 import { applyVegetationDayNight } from "../village/villageModelPrep";
 import { dayNight } from "../village/dayNightDriver";
@@ -35,10 +35,8 @@ const rngOf = (seed: number) => () => ((seed = (seed * 16807) % 2147483647) / 21
  */
 /** The flower beds: the plaza's troughs, the planters at the promenade's end, and borders along the circuit's path and round the ponds (planted by the village's flower system). */
 export function parkBeds(): { beds: Bed[]; cards: Card[] } {
-  const beds: Bed[] = [];
+  const beds: Bed[] = [...raisedParkBeds];
   const rnd = rngOf(515);
-  for (const t of PARK_TROUGHS) beds.push({ kind: "box", x0: t.x0 + 0.1, x1: t.x1 - 0.1, z0: t.z0 + 0.1, z1: t.z1 - 0.1, y: t.y, out: null, plant: "pot" });
-  for (const p of PARK_PLANTERS) beds.push({ kind: "box", x0: p.x - p.w / 2 + 0.1, x1: p.x + p.w / 2 - 0.1, z0: p.z - p.d / 2 + 0.1, z1: p.z + p.d / 2 - 0.1, y: 0.84, out: null, plant: "pot" });
   const ground = circuitGround();
   ground.forEach((g, i) => {
     if (i % 4 !== 2 || (g.z < 10 && g.x > -84 && g.x < 35)) return;

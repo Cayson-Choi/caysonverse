@@ -296,11 +296,29 @@ export async function layoutOf(p, scope) {
   return { els, report: layoutReport(els, p.page.viewportSize()) };
 }
 
-/** Walk to 1.3 m south of the plaza guide (5, 12), going round it from the south (its collider keeps the player out), and face it. */
+/** Walk into speaking range of the plaza guide (5, 12), using a free side if another visitor blocks the approach. */
 export async function standAtPlazaGuide(p) {
-  for (const [x, z, tol] of [[0, 17, 1.5], [5, 17, 1.2], [5, 15.5, 0.8], [5, 13.7, 0.4]]) await walkAndWait(p, x, z, 30000, tol);
-  await turnCameraTo(p, 5, 12);
-  await sleep(600);
+  for (const stand of [[5, 13.35], [3.65, 12], [6.35, 12]]) {
+    await p.page.evaluate(async ([x, z]) => {
+      const { getActiveMap, activeBounds } = await window.__imp("/src/game/activeMap.ts");
+      const { collectObstacles } = await window.__imp("/src/game/playerObstacles.ts");
+      const { planClickMove } = await window.__imp("/src/game/clickPlan.ts");
+      const { clearClickTarget, setClickTarget } = await window.__imp("/src/game/clickMove.ts");
+      clearClickTarget();
+      const at = window.__cv.getPos();
+      const plan = planClickMove(at.x, at.z, { x, y: 0, z, ny: 1 }, collectObstacles(at.x, at.z), activeBounds(), false, { furniture: getActiveMap().furniture });
+      if (plan.ok) setClickTarget(plan.x, plan.z, plan.y, plan.via);
+    }, stand);
+    await waitIdle(p, 30000);
+    const at = await pos(p);
+    if (Math.hypot(at.x - 5, at.z - 12) <= 2) {
+      await turnCameraTo(p, 5, 12);
+      await sleep(600);
+      return;
+    }
+  }
+  const at = await pos(p);
+  throw new Error(`Could not reach the plaza guide on foot. Stopped at (${at.x}, ${at.z}).`);
 }
 
 const r3 = (n) => Math.round(n * 1000) / 1000;
@@ -419,14 +437,22 @@ export async function runVillageScenario({ name, device }) {
       for (const [x, z] of DOOR_ROUTE) await walkAndWait(A, x, z, 40000, 1.2);
       const ts = await A.page.evaluate(async () => (await window.__imp("/src/game/interactTargets.ts")).getTargets(window.__cv.getPos()).map((t) => ({ id: t.id, label: t.label })));
       run.check("추모관 들어가기 is offered at the door", ts.some((t) => t.id === "memorial_door" && t.label === "추모관 들어가기"), ts);
-      await act(A);
       // the door's curtain (DoorFade.tsx, .cv-door-fade only: T11 review I2) closes while the hall loads, then opens
       const curtain = () => {
         const e = document.querySelector(".cv-door-fade");
         return e ? parseFloat(getComputedStyle(e).opacity) : -1;
       };
-      const veil = await A.page.waitForFunction(() => { const e = document.querySelector(".cv-door-fade"); return !!e && parseFloat(getComputedStyle(e).opacity) > 0.05; }, null, { timeout: 8000 }).then(() => true, () => false);
-      run.check("the door curtain (.cv-door-fade) showed", veil);
+      // The short transition can finish before keyboard.press or tap returns. Arm the frame poll inside the page first.
+      const watch = await A.page.evaluateHandle(() => ({ armed: false }));
+      const curtainShown = A.page.waitForFunction((watch) => {
+        watch.armed = true;
+        const e = document.querySelector(".cv-door-fade");
+        return !!e && parseFloat(getComputedStyle(e).opacity) > 0.05;
+      }, watch, { timeout: 8000 }).then(() => true, () => false);
+      await A.page.waitForFunction((watch) => watch.armed, watch, { timeout: 8000 });
+      await act(A);
+      run.check("the door curtain (.cv-door-fade) showed", await curtainShown);
+      await watch.dispose();
       await A.page.waitForFunction(async () => (await window.__imp("/src/village/villageArea.ts")).localArea() === "hall", null, { timeout: 15000 });
       await A.page.waitForFunction(() => !!window.__cvHall, null, { timeout: 60000 });
       // the curtain must open again: a timeout is a failure, not swallowed (T11 review I1)

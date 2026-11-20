@@ -1,0 +1,9 @@
+{
+  "width": 1024,
+  "height": 512,
+  "horizonTileHeight": 192,
+  "gutter": 4,
+  "bottomLatitude": -13,
+  "topLatitude": 23,
+  "blendDegrees": 3
+}

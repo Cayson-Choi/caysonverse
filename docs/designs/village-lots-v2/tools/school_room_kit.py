@@ -148,8 +148,9 @@ def lockers(kit, sol):
             for v in (1.55, 1.6, 1.65):
                 D.box(a + 0.12, b - 0.12, v, v + 0.018, 0.5, 0.505, s.t(G.mul(s.col, 0.7)))
             Gd.box(a + w / 2 - 0.06, a + w / 2 + 0.06, 1.38, 1.44, 0.5, 0.505, BRASS)
-            Gd.lathe([(0.0, 0.0), (0.022, 0.0), (0.022, 0.025), (0.0, 0.03)], 6, BRASS, b - 0.06, 0.0, 0.0)
-            Gd.member((b - 0.06, 1.05, 0.49), (b - 0.06, 1.05, 0.509), G.prof_round(0.018, 6), BRASS)
+            for y in (1.0, 1.10):
+                Gd.member((b - 0.06, y, 0.5), (b - 0.06, y, 0.535), G.prof_round(0.009, 6), BRASS)
+            Gd.member((b - 0.06, 0.99, 0.535), (b - 0.06, 1.11, 0.535), G.prof_round(0.011, 6), BRASS, caps=True)
         D.box(x0, x1, 1.82, 1.9, 0.04, 0.5, PAINT)
         for k in range(3):
             px = x0 + 0.6 + k * (x1 - x0 - 1.2) / 2
@@ -292,18 +293,27 @@ def back_shelf(kit, sol):
     D, Gd = kit.D, kit.G
     r = sol["shelf_back"]["rect"]
     x0, x1, z0, z1 = r["x0"], r["x1"], r["z0"], r["z1"]
-    D.box(x0, x1, 0.0, 0.86, z0 + 0.02, z1 - 0.06, PAINT, skip=("-y",))
+    # The plywood back, shelf decks and ends leave the cubbies open to the classroom (-z).
+    D.box(x0, x1, 0.0, 0.86, z1 - 0.085, z1 - 0.06, PAINT.t(G.hexc("BAAA93")), skip=("-y", "+z", "+y"))
+    D.box(x0, x1, 0.0, 0.12, z0 + 0.035, z1 - 0.085, PAINT, skip=("-y", "+z"))
+    D.box(x0, x1, 0.43, 0.46, z0 + 0.015, z1 - 0.085, PAINT, skip=("+z",))
     D.cbox(x0, x1, 0.86, 0.9, z0, z1 - 0.06, OAK, c=0.01)
     n = int((x1 - x0) / 0.6)
     w = (x1 - x0) / n
     cols = [BLUE, MINT, BUTTER, PINK, RED, NAVY]
     rg = G.rng(9)
+    for k in range(n + 1):
+        x = x0 + k * w
+        for lo, hi in ((0.12, 0.43), (0.46, 0.86)):
+            D.box(max(x0, x - 0.014), min(x1, x + 0.014), lo, hi, z0 + 0.015, z1 - 0.085, PAINT, skip=("-y", "+y", "+z"))
     for k in range(n):
         a = x0 + k * w
-        D.box(a + 0.02, a + w - 0.02, 0.1, 0.8, z0 + 0.0, z0 + 0.02, PAINT.t(G.hexc("EFE9DE")))
         if k % 3 != 1:
-            Gd.cbox(a + 0.06, a + w - 0.06, 0.12, 0.36, z0 + 0.03, z0 + 0.3, cols[(k * 7) % 6], c=0.02)
-            Gd.cbox(a + 0.06, a + w - 0.06, 0.46, 0.7, z0 + 0.03, z0 + 0.3, cols[(k * 5 + 2) % 6], c=0.02)
+            for bottom, col in ((0.12, cols[(k * 7) % 6]), (0.46, cols[(k * 5 + 2) % 6])):
+                top = bottom + 0.22
+                Gd.cbox(a + 0.06, a + w - 0.06, bottom, top, z0 + 0.05, z0 + 0.3, col, c=0.014, skip=("-y",))
+                Gd.box(a + 0.052, a + w - 0.052, top, top + 0.018, z0 + 0.042, z0 + 0.308, col)
+                Gd.box(a + w * 0.35, a + w * 0.65, top - 0.075, top - 0.045, z0 + 0.046, z0 + 0.05, PAPER)
         else:
             u = a + 0.06
             while u < a + w - 0.08:
@@ -477,15 +487,23 @@ def reading_corner(kit, sol):
     D, Gd = kit.D, kit.G
     r = sol["reading_shelf"]["rect"]
     x0, x1, z0, z1 = r["x0"], r["x1"], r["z0"], r["z1"]
-    D.box(x0, x1, 0.0, 0.82, z0, z1, PAINT.t(G.hexc("F7EBD3")), skip=("-y",))
+    case = PAINT.t(G.hexc("F7EBD3"))
+    D.box(x1 - 0.035, x1, 0.0, 0.82, z0, z1, PAINT.t(G.hexc("BAAA93")), skip=("-y", "+x", "+y"))
+    D.box(x0 + 0.02, x1 - 0.035, 0.0, 0.08, z0, z1, case, skip=("-y", "+x"))
+    D.box(x0, x1 - 0.035, 0.41, 0.44, z0, z1, case, skip=("+x",))
+    for z in (z0, z1 - 0.032):
+        for lo, hi in ((0.08, 0.41), (0.44, 0.82)):
+            D.box(x0, x1 - 0.035, lo, hi, z, z + 0.032, case, skip=("-y", "+y", "+x"))
     D.cbox(x0 - 0.0, x1, 0.82, 0.86, z0, z1, OAK, c=0.01)
     for y in (0.08, 0.44):
         z = z0 + 0.05
         rg = G.rng(int(y * 100))
         while z < z1 - 0.12:
-            w = rg.uniform(0.02, 0.04)
-            Gd.box(x0 + 0.02, x0 + 0.02 + 0.006, y, y + rg.uniform(0.22, 0.3), z, z + w, (RED, YEL, BLUE, MINT, PINK, NAVY, BUTTER)[rg.randrange(7)])
-            # picture books face out on the top shelf
+            w = rg.uniform(0.022, 0.048)
+            h = rg.uniform(0.22, 0.30)
+            spine = x0 + rg.uniform(0.022, 0.065)
+            cover = (RED, YEL, BLUE, MINT, PINK, NAVY, BUTTER)[rg.randrange(7)]
+            Gd.box(spine, spine + 0.2, y, y + h, z, z + w, cover, skip=("-y", "+x"), top=PAINT.t(G.hexc("EEE2BA")))
             z += w + 0.003
     for k, zc in enumerate((z0 + 0.5, z0 + 1.5, z0 + 2.6)):
         Gd.box(x0 - 0.0, x0 + 0.02, 0.86, 1.14, zc - 0.13, zc + 0.13, (YEL, BLUE, PINK)[k])
@@ -511,13 +529,14 @@ def reading_corner(kit, sol):
     Gd.member((gx - 0.04, 0.8, gz), (gx + 0.04, 1.22, gz), G.prof_round(0.006, 4), BRASS)
     r = sol["plant_tall"]["rect"]
     px, pz = (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2
-    D.lathe([(0.15, 0.0), (0.19, 0.35), (0.2, 0.38), (0.0, 0.38)], 12, POT, px, pz, 0.0)
+    D.lathe([(0.15, 0.0), (0.19, 0.33), (0.20, 0.35), (0.20, 0.38), (0.181, 0.38), (0.179, 0.35)], 12, POT, px, pz)
+    D.lathe([(0.179, 0.35), (0, 0.35)], 12, OAK_DK.t(G.hexc("483629")), px, pz)
+    D.member((px, 0.35, pz), (px, 1.60, pz), G.prof_round(0.018, 5), OAK_DK)
     for k in range(18):
-        a = k * 2.4
-        y = 0.6 + k * 0.06
-        L = 0.24
-        Gd.sphere(px + L * 0.5 * math.cos(a), y, pz + L * 0.5 * math.sin(a), 0.11, LEAF if k % 2 else LEAF_DK, n=6, rings=4, sy=0.5)
-    D.member((px, 0.38, pz), (px, 1.6, pz), G.prof_round(0.02, 5), OAK_DK)
+        t = k / 17
+        length = 0.235 - 0.05 * t + 0.012 * math.sin(k * 1.8)
+        R.fiddle_leaf(Gd, (px, 0.57 + t * 1.02, pz), k * 2.40, length, length * 0.30,
+                      -0.07 + 0.15 * t, LEAF if k % 2 else LEAF_DK)
 
 
 def curtains(kit):

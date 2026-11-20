@@ -50,7 +50,7 @@ import {
   patchHouseViewMaterial,
   resetHouseNight,
 } from "./houseNight";
-import { houseFireTime, setHouseHearth } from "./houseFire";
+import { hearthFlames, houseFireTime, setHouseHearth } from "./houseFire";
 import { clearHouseCaches, holdHouseFiles, loadHouseTexture, noteHouseRequested } from "./houseRelease";
 
 /**
@@ -200,7 +200,15 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
     if (houseNightUniform.value !== night) houseNightUniform.value = night;
   });
 
-  return <primitive object={nodes.root} dispose={null} />;
+  const flames = useMemo(() => floor === 1 ? hearthFlames(n) : null, [n, floor]);
+  useEffect(() => () => {
+    flames?.geometry.dispose();
+    flames?.material.dispose();
+  }, [flames]);
+  return <>
+    <primitive object={nodes.root} dispose={null} />
+    {flames && <primitive object={flames} dispose={null} />}
+  </>;
 }
 
 declare global {
