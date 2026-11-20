@@ -27,6 +27,7 @@ const browser = await launchBrowser();
 const URL = `${CLIENT_URL}/?time=${encodeURIComponent(process.argv.includes("--night") ? "2026-11-03T22:30" : "2026-11-03T12:30")}`;
 const p = await openPlayer(browser, run, { tag: "stay", device });
 const page = p.page;
+if (process.env.LAMPOLD) await page.addInitScript(() => (window.__cvLampOld = true));
 
 const areaOf = () => page.evaluate(async () => (await window.__imp("/src/village/villageArea.ts")).localArea());
 const act = async () => {

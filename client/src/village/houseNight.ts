@@ -93,7 +93,7 @@ const GLOW_COLOR = /* glsl */ `#include <color_fragment>
  */
 const BULB_COLOR = /* glsl */ `#include <color_fragment>
 	diffuseColor.rgb *= mix( ${GLOW_DAY.toFixed(3)}, 1.0, uHouseNight );
-	diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 2.2, 1.65, 0.95 ), uHouseNight );${FLAME_GLSL}`;
+	diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 1.5, 1.15, 0.7 ), uHouseNight );${FLAME_GLSL}`;
 /**
  * A lamp shade at night (owner 2026-11-21: the house-5 floor lamp read as flat cream paint, not switched on): lit fabric — a warm
  * glow, brightest at the bottom rim where the bulb shines down through (vGlowT 0 at the rim .. 1 at the top, a vertex attribute
@@ -102,15 +102,16 @@ const BULB_COLOR = /* glsl */ `#include <color_fragment>
 const SHADE_COLOR = /* glsl */ `#include <color_fragment>
 	vec3 shadeDay = diffuseColor.rgb * ${GLOW_DAY.toFixed(3)};
 	float shadeWeave = 1.0 + 0.035 * sin( ( vHouseWorld.x + vHouseWorld.z ) * 310.0 ) * sin( vHouseWorld.y * 290.0 );
-	vec3 shadeNight = diffuseColor.rgb * vec3( 1.9, 1.3, 0.62 ) * mix( 2.3, 1.35, smoothstep( 0.0, 1.0, vGlowT ) ) * shadeWeave;
+	vec3 shadeNight = diffuseColor.rgb * mix( vec3( 1.85, 1.45, 0.95 ), vec3( 0.98, 0.66, 0.34 ), smoothstep( 0.0, 0.85, vGlowT ) ) * shadeWeave;
 	diffuseColor.rgb = mix( shadeDay, shadeNight, uHouseNight );${FLAME_GLSL}`;
 
 /** Let a bulb / lamp-shade material glow at night and calm down by day (idempotent). */
 export function patchHouseGlowMaterial(material: Material): void {
   if (patched.has(material)) return;
   patched.add(material);
-  const shade = material.name.endsWith("shade");
-  const bulb = !shade && material.name.endsWith("lamp");
+  const legacy = import.meta.env.DEV && (globalThis as { __cvLampOld?: boolean }).__cvLampOld; // dev: the old flat lamp look (before shots)
+  const shade = !legacy && material.name.endsWith("shade");
+  const bulb = !legacy && !shade && material.name.endsWith("lamp");
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uHouseNight = houseNightUniform;
     shader.uniforms.uHearthMin = houseHearthMin;

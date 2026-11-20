@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
-import { AdditiveBlending, CanvasTexture, Mesh as ThreeMesh, PlaneGeometry, MeshBasicMaterial, RepeatWrapping, type PerspectiveCamera, SRGBColorSpace, type Material, type Mesh, type Texture } from "three";
+import { AdditiveBlending, CanvasTexture, CircleGeometry, Color, Mesh as ThreeMesh, PlaneGeometry, MeshBasicMaterial, RepeatWrapping, type PerspectiveCamera, SRGBColorSpace, type Material, type Mesh, type Texture } from "three";
 import {
   houseFloorBounds,
   parseHouseFloorArea,
@@ -87,8 +87,9 @@ function HouseRoom({ n, floor }: { n: HouseNumber; floor: HouseFloor }) {
  * The warm pool of light a lit floor lamp throws on the boards at night: one flat additive disc per floor lamp (a soft radial gradient,
  * fading with the house's night weight) — no light, no shadow, one draw call each, nothing by day.
  */
-function LampPools({ lamps, n, floor }: { lamps: HouseLamp[]; n: HouseNumber; floor: HouseFloor }) {
+function LampPools({ lamps, n, floor, low }: { lamps: HouseLamp[]; n: HouseNumber; floor: HouseFloor; low: boolean }) {
   const mine = useMemo(() => {
+    if (import.meta.env.DEV && (globalThis as { __cvLampOld?: boolean }).__cvLampOld) return [];
     const b = houseFloorBounds(n, floor);
     return lamps.filter((l) => l.floor && l.x > b.minX && l.x < b.maxX && l.z > b.minZ && l.z < b.maxZ);
   }, [lamps, n, floor]);
@@ -98,30 +99,42 @@ function LampPools({ lamps, n, floor }: { lamps: HouseLamp[]; n: HouseNumber; fl
     c.width = c.height = 128;
     const g = c.getContext("2d")!;
     const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-    grad.addColorStop(0, "rgba(255,196,110,0.9)");
-    grad.addColorStop(0.35, "rgba(255,170,80,0.45)");
+    grad.addColorStop(0, "rgba(255,190,100,0.95)");
+    grad.addColorStop(0.35, "rgba(255,165,70,0.55)");
     grad.addColorStop(1, "rgba(255,150,60,0)");
     g.fillStyle = grad;
     g.fillRect(0, 0, 128, 128);
     const texture = new CanvasTexture(c);
     const material = new MeshBasicMaterial({ map: texture, transparent: true, blending: AdditiveBlending, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-    const geometry = new PlaneGeometry(2.4, 2.4).rotateX(-Math.PI / 2);
-    const meshes = mine.map((l) => {
+    const geometry = new PlaneGeometry(low ? 3.0 : 2.4, low ? 3.0 : 2.4).rotateX(-Math.PI / 2);
+    const meshes: ThreeMesh[] = mine.map((l) => {
       const m = new ThreeMesh(geometry, material);
       m.position.set(l.x, 0.035, l.z);
       m.renderOrder = 2;
       m.frustumCulled = true;
       return m;
     });
-    return { texture, material, geometry, meshes };
-  }, [mine]);
+    // the bulb seen from below: a small bright warm disc closing the shade's rim (unlit, so the phone shows it too)
+    const bulbMaterial = new MeshBasicMaterial({ color: new Color(2.2, 1.6, 0.9), transparent: true, opacity: 0, toneMapped: false });
+    const bulbGeometry = new CircleGeometry(1, 20).rotateX(Math.PI / 2);
+    for (const l of mine) {
+      const d = new ThreeMesh(bulbGeometry, bulbMaterial);
+      d.position.set(l.x, l.y0 + 0.004, l.z);
+      d.scale.setScalar(l.w * 0.4);
+      meshes.push(d);
+    }
+    return { texture, material, geometry, meshes, bulbMaterial, bulbGeometry };
+  }, [mine, low]);
   useEffect(() => () => {
     res?.texture.dispose();
     res?.material.dispose();
     res?.geometry.dispose();
+    res?.bulbMaterial.dispose();
+    res?.bulbGeometry.dispose();
   }, [res]);
   useFrame(() => {
-    if (res) res.material.opacity = 0.55 * houseNightUniform.value;
+    if (res) res.material.opacity = (low ? 0.85 : 0.75) * houseNightUniform.value;
+    if (res) res.bulbMaterial.opacity = houseNightUniform.value;
     if (res) for (const m of res.meshes) m.visible = houseNightUniform.value > 0.01;
   });
   if (!res) return null;
@@ -271,7 +284,7 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
   }, [flames]);
   return <>
     <primitive object={nodes.root} dispose={null} />
-    <LampPools lamps={(gltf.scene.userData.houseLamps as HouseLamp[] | undefined) ?? []} n={n} floor={floor} />
+    <LampPools lamps={(gltf.scene.userData.houseLamps as HouseLamp[] | undefined) ?? []} n={n} floor={floor} low={tier === "low"} />
     {flames && <primitive object={flames} dispose={null} />}
   </>;
 }
