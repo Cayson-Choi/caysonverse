@@ -1,11 +1,27 @@
 import { PARK_LAMPS, PARK_PLAZA } from "@caysonverse/shared/village/parkArea";
 import { describe, expect, it } from "vitest";
-import { parkBorders, parkFlowerCrowns } from "./parkBorders";
+import { Mesh, Raycaster, Vector3 } from "three";
+import { parkBorders, parkFlowerCrowns, parkTroughStone, raisedParkBeds } from "./parkBorders";
 import { placeFlowers } from "../village/veg/flowerPlacement";
 import { buildSoil } from "../village/veg/vegSoil";
 import { flowerMassGeometry } from "../village/houses/houseFlowerMass";
 
 describe("the planted borders beside the station and plaza", () => {
+  it("exposes a continuous soil bed below a solid rim in each raised planter", () => {
+    const stone = new Mesh(parkTroughStone());
+    const soil = new Mesh(parkBorders().soil);
+    const ray = new Raycaster();
+    for (const bed of raisedParkBeds) {
+      const x = (bed.x0 + bed.x1) / 2, z = (bed.z0 + bed.z1) / 2;
+      ray.set(new Vector3(x, 2, z), new Vector3(0, -1, 0));
+      expect(ray.intersectObject(stone)).toHaveLength(0);
+      expect(ray.intersectObject(soil)[0]!.point.y).toBeCloseTo(bed.y);
+      ray.ray.origin.x = bed.x0 - 0.075;
+      expect(ray.intersectObject(stone)[0]!.point.y).toBeCloseTo(bed.y + 0.07);
+    }
+    stone.geometry.dispose();
+  });
+
   it.each([[3, 1.4], [1.4, 3]])("keeps visible ivory and rose petal trusses within a %s by %s trough", (w, d) => {
     const box = { kind: "box", plant: "pot", x0: 0, x1: w, z0: 0, z1: d, y: 0.84 } as const;
     const crowns = parkFlowerCrowns([box]);

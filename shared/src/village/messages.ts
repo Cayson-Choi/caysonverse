@@ -144,10 +144,17 @@ export type VillageServerMsg = (typeof VillageServerMsg)[keyof typeof VillageSer
 /** Server → client: the server's `Date.now()` at the moment of sending (Unix epoch milliseconds, UTC). */
 export interface ServerTimePayload {
   serverTimeMs: number;
+  /** The server's ride timetable fingerprint (land/rides.ts `rideScheduleKey`); absent from an older server. */
+  rideSchedule?: string;
 }
 
-/** How often the server re-sends its clock to everyone in a village room (5 minutes). */
-export const SERVER_TIME_INTERVAL_MS = 5 * 60 * 1000;
+/**
+ * How often the server re-sends its clock to everyone in a village room (30 s; it was 5 minutes). The rides run on this clock to the
+ * hundredth of a second, and a reading that waited in a busy page (the park's scene being built) arrives seconds late: the rides audit
+ * (2026-11-20) measured a client 15 s behind the server, its seat taken away "mid-ride" on its own screen. A fresh reading every 30 s puts
+ * that right within half a minute (client/src/village/villageClock.ts keeps the best of them). One small message per visitor per 30 s.
+ */
+export const SERVER_TIME_INTERVAL_MS = 30 * 1000;
 
 /** Server → hall clients: the cubby whose candle was lit, who lit it (their nickname) and how long ago (ms; 0 for a new one). */
 export interface CandleLitPayload {
@@ -262,4 +269,6 @@ export interface RideNoticePayload {
 /** Client → server: get on the ride `ride` ("coaster" | "carousel" | "wheel" | "moonboat" | "droptower"; absent = the coaster, an older client). */
 export interface RideBoardPayload {
   ride?: string;
+  /** the rider's seat choice where the ride has one (the moon boat: "end" = 맨 끝 자리, the default; "middle" = 가운데 자리) */
+  pref?: string;
 }

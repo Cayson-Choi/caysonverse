@@ -40,6 +40,8 @@ import {
 import { BUS_DRIVER, BusDriver, busDriveTrip } from "@caysonverse/shared/village/busDrive";
 import { busDismountSpot } from "@caysonverse/shared/village/busSeats";
 import { VillageCoaster } from "./villageCoaster";
+import { rideScheduleKey } from "@caysonverse/shared/land/rides";
+
 import { parkGeometry, useParkDoor } from "@caysonverse/shared/village/parkArea";
 import {
   BUS_CAPACITY,
@@ -248,7 +250,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
   /** The server's clock for one visitor (on join; queued until their join completes) or for everyone. */
   private serverTime(): ServerTimePayload {
-    return { serverTimeMs: this.wallClock() };
+    return { serverTimeMs: this.wallClock(), rideSchedule: rideScheduleKey() };
   }
 
   onDispose(): void {
@@ -313,7 +315,11 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const track = this.tracking.get(client.sessionId);
     const tripId = track?.busTripId ?? snapshot.tripId;
     client.send(MessageType.BusRideState, { boarded: track?.busBoarded === true, tripId } satisfies BusRideStatePayload);
-    this.fishing.resend(client);
+    // the lake's state only where the lake is: a visitor back in 케이슨랜드 (a ride's seat kept through the drop) has no lake on screen, and its
+    // client has no handler for these (the SDK warned "onMessage() not registered for type 'FishingState'"; a player in the park holds no rod, so
+    // nothing is lost); the lake's card asks for its board itself
+    // when it is opened
+    if (this.state.players.get(client.sessionId)?.area !== "park") this.fishing.resend(client);
     if (this.state.players.get(client.sessionId)?.area === "hall") this.sendCandles(client);
   }
 

@@ -154,10 +154,15 @@ if (!process.argv.includes("--seat-only")) {
       };
       requestAnimationFrame(tick);
     });
+    // the seat choice on the panel: 맨 끝 자리 (picked by default) and 가운데 자리
+    const prefs = await R.page.evaluate(() => ["end", "middle"].map((k) => { const e = document.querySelector(`[data-testid=moon-pref-${k}]`); return e ? { text: e.textContent?.trim(), on: e.getAttribute("aria-pressed") } : null; }));
+    run.check("the panel offers 맨 끝 자리 (picked) and 가운데 자리", prefs[0]?.text === "맨 끝 자리" && prefs[0]?.on === "true" && prefs[1]?.text === "가운데 자리" && prefs[1]?.on === "false", prefs);
     await act(R);
     const seated = await until(async () => (await probe(R)).slot >= 0, 8000);
     const me = await probe(R);
-    run.check("R boards: a moon boat seat, ride 4, a first-row seat (0..3)", seated && me.ride === 4 && me.slot >= 0 && me.slot < 4, { slot: me.slot, ride: me.ride });
+    const row = await R.page.evaluate(async (s) => (await window.__imp("/land/moonBoat.ts")).moonSeatCell(s).row, me.slot);
+    // owner 2026-11-20 "맨 끝에가 제일 무섭게 보인단 말이야": the first rider is seated in an end row (the bow, row 0, by default)
+    run.check("R boards: a moon boat seat, ride 4, in an end row (the bow)", seated && me.ride === 4 && me.slot >= 0 && row === 0, { slot: me.slot, ride: me.ride, row });
     await sleep(1500);
     run.check("the ride panel is up", (await R.page.locator("[data-testid=coaster-ride-hud]").count()) === 1);
     await run.shot(R, "m05-seated-at-the-platform.png");
@@ -200,7 +205,7 @@ if (!process.argv.includes("--seat-only")) {
           ["m06-first-swings", st.rideT > 8 && Math.abs(st.angle) > 0.12],
           ["m07-top-of-the-swing-bow-up", big && up],
           ["m08-top-of-the-swing-bow-down", big && !up],
-          ["m09-bottom-fast", st.rideT > 62 && Math.abs(st.angle) < 0.12 && Math.abs(st.omega) > 0.7],
+          ["m09-bottom-fast", st.rideT > 75 && Math.abs(st.angle) < 0.12 && Math.abs(st.omega) > 0.6],
         ])
           if (!shot.has(name) && test) {
             shot.add(name);
@@ -248,10 +253,11 @@ if (!phone && !process.argv.includes("--look")) {
     await act(G);
     const seated = await until(async () => (await probe(G)).slot >= 0, 8000);
     const gs = await probe(G);
-    run.check("G boards: seat 0, ride 4", seated && gs.slot === 0 && gs.ride === 4, { slot: gs.slot, ride: gs.ride });
+    const first = await G.page.evaluate(async () => (await window.__imp("/land/moonBoat.ts")).MOON_END_FIRST[0]);
+    run.check("G boards: the first end seat, ride 4", seated && gs.slot === first && gs.ride === 4, { slot: gs.slot, ride: gs.ride, first });
     await sleep(2000);
     const seen = (await remotes(O)).find((r) => r.nickname === G.nick);
-    run.check("O sees G on the moon boat (rideId 4, rideSeat 0)", !!seen && seen.rideId === 4 && seen.rideSeat === 0, { rideId: seen?.rideId, rideSeat: seen?.rideSeat });
+    run.check("O sees G on the moon boat (rideId 4, G's seat)", !!seen && seen.rideId === 4 && seen.rideSeat === gs.slot, { rideId: seen?.rideId, rideSeat: seen?.rideSeat });
     await shotFrom(O, "m12-remote-rider-seen-from-outside.png", -86, 5.4, -128, SITE.x + 0.2, 3.3, SITE.z + 4.4, 40);
     await O.page.evaluate(() => { window.__cvShot = null; });
     await G.page.close();

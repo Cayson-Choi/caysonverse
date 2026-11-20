@@ -44,7 +44,7 @@ describe("VillageMsg", () => {
       ...Object.values(VillageMsg),
     ]);
     for (const v of Object.values(VillageServerMsg)) expect(others.has(v), v).toBe(false);
-    expect(SERVER_TIME_INTERVAL_MS).toBe(300_000);
+    expect(SERVER_TIME_INTERVAL_MS).toBe(30_000);
   });
 
   it("candles: from anywhere in the hall (the close-up), one per 5 seconds, burning an hour (owner 2026-11-13)", () => {

@@ -10,6 +10,7 @@ import bmesh
 import math
 import os
 import random
+from pathlib import Path
 from mathutils import Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -75,9 +76,10 @@ TEXDIR = os.environ.get("LAKE_TEX") or os.path.join(HERE, "..", "work", "tex")
 MAT_SPEC = {
     "matte": dict(rough=0.85, metal=0.0),
     "wood": dict(rough=0.75, metal=0.0, tex="grain", tile=(0.7, 0.7), jitter=True),
+    "deck": dict(rough=0.78, metal=0.0, public="textures/houses/lo/T_h_wood_oak.webp"),  # Poly Haven oak_veneer_01 (CC0).
     "paint": dict(rough=0.45, metal=0.0, tex="paint", tile=(1.2, 1.2), jitter=True),
     "metal": dict(rough=0.4, metal=0.85, tex="metal", tile=(0.8, 0.8), jitter=True),
-    "log": dict(rough=0.9, metal=0.0, tex="log_wall", tile=(1.0, 0.68)),
+    "log": dict(rough=0.9, metal=0.0, public="textures/houses/lo/T_h_wood_oak.webp", tile=(1.6, 1.6)),
     "siding": dict(rough=0.75, metal=0.0, tex="siding", tile=(1.1, 1.1)),
     "tile": dict(rough=0.8, metal=0.0, tex="tile", tile=(1.4, 1.4), jitter=True),
     "concrete": dict(rough=0.9, metal=0.0, tex="concrete", tile=(1.5, 1.5), jitter=True),
@@ -118,9 +120,16 @@ def material(key):
     else:
         ca = nt.nodes.new("ShaderNodeVertexColor")
         ca.layer_name = "Col"
-        if "tex" in sp:
+        if "tex" in sp or "public" in sp:
             tx = nt.nodes.new("ShaderNodeTexImage")
-            tx.image = bpy.data.images.load(os.path.abspath(os.path.join(TEXDIR, sp["tex"] + ".png")), check_existing=True)
+            if "public" in sp:
+                paths = (p / "client" / "public" / sp["public"] for p in Path(HERE).parents)
+                image_path = next((p for p in paths if p.is_file()), None)
+                if image_path is None:
+                    raise FileNotFoundError(sp["public"])
+            else:
+                image_path = os.path.join(TEXDIR, sp["tex"] + ".png")
+            tx.image = bpy.data.images.load(os.path.abspath(image_path), check_existing=True)
             tx.image.colorspace_settings.name = "sRGB"
             mix = nt.nodes.new("ShaderNodeMix")
             mix.data_type = "RGBA"

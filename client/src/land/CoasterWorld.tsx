@@ -74,7 +74,7 @@ function Train({ env, ao }: { env: Texture; ao: Texture }) {
   return (
     <group>
       {parts.map((p, i) => (
-        <instancedMesh key={i} ref={(r) => { refs.current[i] = r; }} args={[p.geometry, p.material, COASTER_CARS]} frustumCulled={false} castShadow receiveShadow />
+        <instancedMesh key={i} name={p.material.name === "car_paint" ? "ride-coaster-car" : undefined} ref={(r) => { refs.current[i] = r; }} args={[p.geometry, p.material, COASTER_CARS]} frustumCulled={false} castShadow receiveShadow />
       ))}
     </group>
   );

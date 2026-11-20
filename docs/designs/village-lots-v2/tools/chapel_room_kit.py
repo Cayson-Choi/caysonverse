@@ -457,10 +457,29 @@ def apse_pts():
 APSE_TOP = 7.35
 
 
+def apse_arch_lining(m):
+    """Stone infill between the pointed chancel arch and the narrower elliptical mouth of the half-dome."""
+    cx, cz = APSE_C
+    outer = Q.pointed(cx, ARCH_SPRING, ARCH_X1 - ARCH_X0, 8, ARCH_K)
+    sections = []
+    for i, (x, y) in enumerate(outer):
+        angle = math.pi * i / 16
+        inner = (cx - APSE_R * math.cos(angle), YS + (APSE_TOP - YS) * math.sin(angle), cz)
+        # The backing laps behind the moulded soffit and meets the dome's eight existing courses on either side.
+        extra_x = -0.05 * math.cos(angle)
+        sections.append((inner, (x + extra_x, y + 0.06 * math.sin(angle), cz + 0.012)))
+    for (a, b), (c, d) in zip(sections, sections[1:]):
+        q = [a, b, d, c]
+        if G.poly_normal(q)[2] > 0:
+            q.reverse()
+        m.poly(q, STONE)
+
+
 def apse(kit):
     S_, D, Gd = kit.S, kit.D, kit.G
     pts = apse_pts()
     cx, cz = APSE_C
+    apse_arch_lining(D)
     for i in range(APSE_N):
         a, b = pts[i], pts[i + 1]
         U = G.norm((b[0] - a[0], 0.0, b[1] - a[1]))

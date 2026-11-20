@@ -16,6 +16,7 @@ import {
   PMREMGenerator,
   RGBAFormat,
   ShaderMaterial,
+  Vector2,
   Vector3,
   Vector4,
   DataUtils,
@@ -66,13 +67,37 @@ import { LotTextureBank, capMips, fetchLotManifest, loadLotOwnMap, manifestPaths
  * With the baked light (L6) the painted plaster is albedo-only on a PC too: the lightmap carries the walls' shading, and
  * its two 1K maps (2.8 MB) fit the same budgets.
  */
-export const ROOM_TEXTURES: Readonly<Record<string, { pcAlbedoOnly: readonly string[]; phoneFull: readonly string[] }>> = {
+export const ROOM_TEXTURES: Readonly<Record<string, { pcAlbedoOnly: readonly string[]; phoneFull: readonly string[]; pc2k?: readonly string[] }>> = {
   lot_school_class: { pcAlbedoOnly: ["grass", "cast_iron", "plaster_painted"], phoneFull: ["floor_wood"] },
-  lot_library_reading: { pcAlbedoOnly: ["aluminium_brushed", "wood_painted", "plaster_painted"], phoneFull: ["floor_wood"] },
+  // the reading room (owner 2026-11-20 "고해상도로 선명하게, 흐릿하게 보이는건 없어야 해"): on a PC the oak (bookcases, panelling,
+  // tables), the floor and the fireplace's limestone read at eye level from a metre: their 2048 albedo (1100 px/m on the oak's 1.83 m
+  // tile, was 560), the rest 1K; the painted wood (book spines before 2026-11-20) is now only frames: albedo only
+  lot_library_reading: { pcAlbedoOnly: ["aluminium_brushed", "wood_painted", "plaster_painted"], phoneFull: ["floor_wood"], pc2k: ["wood_oak", "floor_wood", "stone_ashlar"] },
   lot_chapel_nave: { pcAlbedoOnly: ["aluminium_brushed", "plaster_painted"], phoneFull: [] }, // (the phone's chapel: its statues' own maps take the rest of the 8 MB)
   lot_church_nave: { pcAlbedoOnly: ["plaster_painted"], phoneFull: [] }, // (the phone's church: its lightmap carries the floor)
   lot_temple_hall: { pcAlbedoOnly: [], phoneFull: ["wood_pine_natural"] },
 };
+
+/** The tier a room set's near maps are read at: 2K for a PC room's close-up sets (`pc2k`), else 1K. */
+export function roomSetTier(unit: string, set: string, phone: boolean): "2k" | "1k" {
+  return !phone && ROOM_TEXTURES[unit]?.pc2k?.includes(set) ? "2k" : "1k";
+}
+
+/** Anisotropic filtering of a room's library sets (PC: 16, the most a desktop GPU offers; phone: 4 — its GPU's bandwidth). */
+export const ROOM_ANISOTROPY = { desktop: 16, mobile: 4 } as const;
+
+/** A room's own atlases on a phone (the reading room's 2048 books and rugs): colour 1024, normal / ORM 512 (top mips dropped). */
+export const ROOM_OWN_PHONE_MAX = { color: 1024, detail: 512 } as const;
+
+/** A room's lightmaps on a phone: their top mips dropped to this size (the 2048 bakes; 1024 is still 2 cm a texel). */
+export const ROOM_LIGHTMAP_PHONE_MAX = 1024;
+
+/**
+ * Rooms drawn at a higher pixel ratio on a phone than the light tier's 1 (the village keeps 1: 100 players, no stutter): the
+ * reading room's spines, gilt and wood grain at dpr 1 on a 3x phone were a third of the screen's pixels — soft. A room is a small
+ * scene (no village behind it), so 1.5 costs little.
+ */
+export const ROOM_PHONE_DPR: Readonly<Record<string, number>> = { lot_library_reading: 1.5 };
 
 function roomSetFull(unit: string, set: string, phone: boolean): boolean {
   const plan = ROOM_TEXTURES[unit];
@@ -559,12 +584,25 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
   // (no staging: the room uploads everything under its entry cover, below)
   // the 1K tier in every room (a room is seen from a few metres: 1K over a set's 1.5–2 m tile is the 512 px/m the surfaces need), and the
   // room's texture plan for which sets come in full (albedo, normal, ORM) or as their albedo only (ROOM_TEXTURES)
-  const bank = new LotTextureBank(gl, "1k", false);
+  const bank = new LotTextureBank(gl, "1k", false, { tierOf: (set) => roomSetTier(unit, set, phone), anisotropy: phone ? ROOM_ANISOTROPY.mobile : ROOM_ANISOTROPY.desktop });
   try {
     const gltf = await loader.loadAsync(versionedUrl(`/models/village/lots/${file}.glb`));
     const extras = (gltf.parser.json as { asset?: { extras?: { textures?: unknown; sacred?: SacredEntry[]; lightmap?: RoomLightmapSpec } } }).asset?.extras ?? {};
     const manifests = await Promise.all(manifestPaths(extras.textures).map((p) => fetchLotManifest(p)));
-    const { specs, own, textures } = await loadManifestMaps(manifests, gl, bank, (set) => roomSetFull(unit, set, phone));
+    const { specs, own, ownExtra, textures } = await loadManifestMaps(manifests, gl, bank, (set) => roomSetFull(unit, set, phone));
+    if (phone) {
+      // a phone: the room's own atlases at most 1024 (their normal / ORM 512), 4x anisotropy
+      for (const t of Object.values(own)) {
+        t.anisotropy = Math.min(t.anisotropy, ROOM_ANISOTROPY.mobile);
+        capMips(t, ROOM_OWN_PHONE_MAX.color);
+      }
+      for (const x of Object.values(ownExtra))
+        for (const t of [x.normal, x.orm]) {
+          if (!t) continue;
+          t.anisotropy = Math.min(t.anisotropy, ROOM_ANISOTROPY.mobile);
+          capMips(t, ROOM_OWN_PHONE_MAX.detail);
+        }
+    }
     const scene = gltf.scene;
     scene.updateMatrixWorld(true);
     stripRoomGoods(scene, unit, (extras as { origin?: { x: number; z: number } }).origin ?? { x: 0, z: 0 });
@@ -578,6 +616,7 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
         for (const t of [day, night]) {
           t.channel = spec.channel ?? 1;
           t.anisotropy = 1;
+          if (phone) capMips(t, ROOM_LIGHTMAP_PHONE_MAX);
           textures.push(t);
         }
         lm = { day, night, scale: spec.scale, mix: { value: 0 } };
@@ -661,7 +700,21 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
         });
         m = fire;
       } else if (spec?.kind === "own" && own[src.name]) {
-        m = new MeshStandardMaterial({ name: src.name, map: own[src.name]!, roughness: 0.55, vertexColors: false, side: s.side });
+        // an atlas of the room's own (paintings, the globe; the reading room's books and rugs): with its normal map and ORM when
+        // it has them (the books' raised bands and tooling, the gilt's metal), COLOR_0 tinting when the manifest says so
+        const extra = ownExtra[src.name] ?? {};
+        const om = new MeshStandardMaterial({ name: src.name, map: own[src.name]!, roughness: 0.55, vertexColors: !!spec.vertexColor && colours, side: s.side });
+        if (extra.normal) {
+          om.normalMap = extra.normal;
+          om.normalScale = new Vector2(1, -1); // glTF tangent space without tangents
+        }
+        if (extra.orm) {
+          om.roughnessMap = extra.orm;
+          om.metalnessMap = extra.orm;
+          om.roughness = 1;
+          om.metalness = 1;
+        }
+        m = om;
       } else {
         m = s.clone();
       }
@@ -948,7 +1001,17 @@ export function LotRoomArea({ area, pose }: { area: string; pose: Pose }) {
   const camera = useThree((s) => s.camera);
   const tier = useQualityTier();
   const phone = tier !== "high";
+  const setDpr = useThree((s) => s.setDpr);
   const [loaded, setLoaded] = useState<LoadedRoom | null>(null);
+
+  // a sharper picture in the rooms that ask for it on a phone (ROOM_PHONE_DPR), back to the tier's when the room goes
+  useEffect(() => {
+    const want = room && phone ? ROOM_PHONE_DPR[room.unit.id] : undefined;
+    if (!want || !loaded) return;
+    const before = gl.getPixelRatio();
+    setDpr(Math.max(before, Math.min(want, window.devicePixelRatio || 1)));
+    return () => setDpr(before);
+  }, [room, phone, loaded, gl, setDpr]);
 
   useEffect(() => {
     if (!room) return;

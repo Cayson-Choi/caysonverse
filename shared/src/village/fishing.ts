@@ -57,7 +57,7 @@ export const FISHING = {
   /** A strike is honoured this long after the window's end, at most (design 9.2: min(250 ms, RTT / 2)). */
   strikeGraceMs: 250,
   /** One Hold message counts for at most this long (a lost "up" is taken as released after it; the client repeats it every 0.5 s). */
-  holdGapMs: 1500,
+  holdGapMs: 2500,
   /** The big fish's fight is a pull / release rhythm (fishFight.ts); a fight nobody touches for this long, and the whole fight, are capped. */
   fightIdleMs: 8000,
   fightMaxMs: 45000,

@@ -3,6 +3,7 @@ import { Box3, Vector3, type InstancedMesh, type Material, type Mesh, type MeshB
 import { COLLIDER_PREFIX, LIGHTMAP_MATERIAL_PREFIX, configureLightmap, isMesh, lightmapMaterial, materialsOf } from "../game/hub/hubModelPrep";
 import { HALL_CUBBY_MATERIAL, isSkylight, patchHallCubbyMaterial, patchHallGardenMaterial, patchHallLightmapMaterial, patchSkylightMaterial } from "./hallNight";
 import { isHallGlass, patchHallGlassMaterial } from "./hallGlass";
+import { hallBenchJoinery } from "./hallBenchJoinery";
 
 /**
  * The memorial hall's interior (`memorial.glb`, 케이슨 마을 Task 8) dressed for the game (Task 9) — the pure part.
@@ -41,6 +42,7 @@ export interface MemorialNodes {
   doorLeaves: { left: Object3D; right: Object3D } | null;
   /** The skylight diffuser's material (it goes dark at night), when the model has one. */
   skylight: MeshBasicMaterial | null;
+  joinery: ReturnType<typeof hallBenchJoinery>;
 }
 
 /** Dress a clone of the loaded hall: light map on every `LM_*` material, collision boxes hidden. */
@@ -95,11 +97,16 @@ export function prepareMemorial(source: Object3D, lightmap: Texture): MemorialNo
   }
   const left = root.getObjectByName("door__leaf_l");
   const right = root.getObjectByName("door__leaf_r");
-  return { root, lightmapped, doorLeaves: left && right ? { left, right } : null, skylight };
+  const oak = lightmapped.find((m) => m.name === "LM_oak") as MeshBasicMaterial | undefined;
+  const joinery = oak ? hallBenchJoinery(root, oak.map) : null;
+  if (joinery) root.add(joinery);
+  return { root, lightmapped, doorLeaves: left && right ? { left, right } : null, skylight, joinery };
 }
 
 /** Free what the clone owns: its InstancedMeshes' instance buffers (the geometry and materials are the loader's). */
 export function disposeMemorial(nodes: MemorialNodes): void {
+  nodes.joinery?.geometry.dispose();
+  nodes.joinery?.material.dispose();
   nodes.root.traverse((o) => {
     if ((o as InstancedMesh).isInstancedMesh) (o as InstancedMesh).dispose();
   });

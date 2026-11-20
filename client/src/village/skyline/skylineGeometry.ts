@@ -28,7 +28,8 @@ import { coasterSupports } from "@caysonverse/shared/land/coasterSupports";
 import { GONDOLA_BOXES, frameCapsules, RIM_Z } from "@caysonverse/shared/land/wheelGeometry";
 import { WHEEL_HUB_Y, WHEEL_N, WHEEL_R, WHEEL_SITE } from "@caysonverse/shared/land/wheel";
 import { CAROUSEL_CANOPY_Y, CAROUSEL_CENTER, CAROUSEL_DECK_Y, CAROUSEL_RADIUS } from "@caysonverse/shared/land/carousel";
-import { PARK_PLAZA, COASTER_PAD, DROP_SITE_AT } from "@caysonverse/shared/village/parkArea";
+import { PARK_PLAZA, COASTER_PAD, DROP_SITE_AT, MOON_BOAT_SITE_AT } from "@caysonverse/shared/village/parkArea";
+import { MOON_FRAME, MOON_HULL, MOON_PIVOT_Y, moonKeelY } from "@caysonverse/shared/land/moonBoat";
 import { DROP_BEAM_YS, DROP_CROWN_Y, DROP_FRAME, dropFrameD } from "@caysonverse/shared/land/dropTowerGeometry";
 import { GeoBuilder, cross, norm, type V3 } from "../../land/geoBuilder";
 
@@ -287,6 +288,31 @@ export function buildSkyline(tier: SkylineTier, ground: GroundLocal = () => 0, o
     s.cylinder([gx, g0 + CY + 6.5 * S, gz], [gx, g0 + CY + 10.2 * S, gz], 0.15, 0.09, 4, C.gold);
     addBlob(s, gx, g0 + CY + 11.5 * S, gz, 1.5 * S, 1.5 * S, C.gold, high ? 8 : 6, 4); // the moon orb
     for (const a of [0, 1, 2, 3, 4, 5]) s.box([gx + Math.cos((a / 6) * Math.PI * 2) * 3.1 * S, g0 + CY + (9.4 + (a % 2) * 0.9) * S, gz + Math.sin((a / 6) * Math.PI * 2) * 3.1 * S], X, Y, 0.45 * S, 0.45 * S, 0.2, C.gold); // the star wheel
+  }
+
+  // — the 달배 (the moon boat) at rest: two tall A-frames of steel, the axle, the arms and the crescent hull —
+  {
+    const mx = MOON_BOAT_SITE_AT.x;
+    const mz = MOON_BOAT_SITE_AT.z;
+    const g0 = ground(mx, mz);
+    for (const sx of [-1, 1])
+      for (const sz of [-1, 1])
+        for (const c of [-MOON_FRAME.chord, MOON_FRAME.chord]) s.cylinder([mx + sx * MOON_FRAME.legX + c, g0, mz + sz * MOON_FRAME.footZ], [mx + sx * MOON_FRAME.legX + c, g0 + MOON_PIVOT_Y, mz + sz * 0.5], 0.4, 0.3, 5, C.indigo);
+    for (const y of [5, 11, 17, 23]) for (const sx of [-1, 1]) {
+      const zz = MOON_FRAME.footZ * (1 - y / MOON_PIVOT_Y);
+      s.box([mx + sx * MOON_FRAME.legX, g0 + y, mz], X, Y, MOON_FRAME.chord + 0.2, 0.2, zz, C.indigoDeep);
+    }
+    s.cylinder([mx - MOON_FRAME.legX - 1, g0 + MOON_PIVOT_Y, mz], [mx + MOON_FRAME.legX + 1, g0 + MOON_PIVOT_Y, mz], 0.45, 0.45, 6, C.gold);
+    for (const sx of [-1, 1]) {
+      addBlob(s, mx + sx * MOON_FRAME.legX, g0 + MOON_PIVOT_Y + 1.4, mz, 0.9, 0.9, C.gold, high ? 8 : 6, 3);
+      s.cylinder([mx + sx * MOON_FRAME.armX, g0 + MOON_PIVOT_Y, mz], [mx + sx * MOON_FRAME.armX, g0 + MOON_PIVOT_Y + moonKeelY(0) + 1, mz], 0.2, 0.2, 4, C.steel);
+    }
+    const wood: V3 = [0.62, 0.36, 0.22];
+    for (let zz = -MOON_HULL.halfZ; zz <= MOON_HULL.halfZ + 0.01; zz += 1.0) {
+      const w = 0.2 + 2.1 * Math.sqrt(Math.max(0, 1 - Math.pow(Math.abs(zz) / MOON_HULL.halfZ, 3.5)));
+      s.box([mx, g0 + MOON_PIVOT_Y + moonKeelY(zz) + 0.5, mz + zz], X, Y, w, 0.6, 0.55, wood);
+    }
+    addBlob(s, mx, g0 + MOON_PIVOT_Y + moonKeelY(MOON_HULL.halfZ) + 1.6, mz + MOON_HULL.halfZ, 0.8, 0.8, C.gold, high ? 7 : 5, 3);
   }
 
   // (the gate castle that stood here is gone: the village's own gatehouse is the park's gate now, set in the castle wall round the park,

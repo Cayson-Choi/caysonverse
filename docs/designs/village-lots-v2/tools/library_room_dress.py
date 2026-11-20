@@ -15,6 +15,7 @@ import math
 import b1_geom as G
 import b1_parts as P
 import b1_room as R
+import library_books as LB
 from b1_geom import Mesh, S
 
 X, Z, H = 13.4, 10.4, 5.2
@@ -51,83 +52,86 @@ BOOKS = ["5A3420", "7A4A2A", "3E2A1E", "6E1E1E", "234A33", "1F2F4F", "E8DCC0", "
          "8E2F25", "2E3F5C", "C9B48A", "4A3A2A", "7B5E3A", "A0522D", "2F5D3A", "D8C7A0", "8C6A3E", "3D3D52", "C24A3A", "E0B060"]
 
 
-def book_run(seed, length=0.42, lean=False, end=None, hmin=0.2, hmax=0.33):
-    """A shelf run of real-looking books (spines +z, origin = the run's left end, base y 0): spine with raised bands and gilt
-    titles' bars on some, the page block on top, one side; varied heights and thicknesses; `lean` = the last two lean on
-    each other; `end` = a brass bookend at the right."""
-    m = Mesh("books")
+# the shelf runs: real books (library_books.py on the spine atlas b1_book_atlas.mjs), 16 kinds of 0.42 m so neighbours rarely
+# repeat; the old flat-colour boxes with painted gilt bars (owner 2026-11-20: "책들이 너무 허접해") are gone
+RUNS = [LB.run(seed) for seed in (3, 17, 29, 41, 53, 67, 71, 83, 97, 101, 113, 127, 131, 149, 151, 163)]
+
+
+# ------------------------------------------------------------------------------------------------ small props (2026-11-20) --
+
+def leafy_plant(m, x, y, z, h=0.3, seed=1, pot=None, leaf=None, leaf_dk=None):
+    """A small potted plant (owner 2026-11-20: no blobs): a glazed pot with a rim and soil, arching lance leaves (each folded
+    along its midrib, two-sided) from the crown."""
+    pot = pot or POT
+    leaf = leaf or LEAF
+    leaf_dk = leaf_dk or LEAF_DK
+    r = h * 0.28
+    m.lathe([(r * 0.75, 0.0), (r * 0.82, 0.01), (r, h * 0.36), (r * 1.08, h * 0.38), (r * 1.08, h * 0.42), (r * 0.98, h * 0.42), (r * 0.95, h * 0.39), (0.0, h * 0.39)], 18, pot, x, z, y)
     rg = G.rng(seed)
-    x = 0.0
-    stop = length - (0.14 if lean else 0.0) - (0.04 if end else 0.0)
-    while x < stop - 0.02:
-        w = min(rg.choice((rg.uniform(0.018, 0.03), rg.uniform(0.03, 0.05), rg.uniform(0.05, 0.075))), stop - x)
-        h = rg.uniform(hmin, hmax)
-        d = rg.uniform(0.15, 0.24)
-        col = G.hexc(BOOKS[rg.randrange(len(BOOKS))])
-        s = S("LM_library_paint", col)
-        m.poly([(x, 0.0, 0.0), (x + w, 0.0, 0.0), (x + w, h, 0.0), (x, h, 0.0)], s)
-        m.poly([(x, h, 0.0), (x + w, h, 0.0), (x + w, h, -d), (x, h, -d)], PAPER.t(G.hexc("F1E6CC")))
-        m.poly([(x + w, 0.0, 0.0), (x + w, 0.0, -d), (x + w, h, -d), (x + w, h, 0.0)], s.t(G.mul(s.col, 0.72)))
-        r = rg.random()
-        if r < 0.55:
-            for fy in ((0.12, 0.16, 0.78, 0.86) if rg.random() < 0.5 else (0.8, 0.85)):
-                pass
-            for (a, b) in ((0.78, 0.81), (0.84, 0.87)) if rg.random() < 0.6 else ((0.8, 0.84),):
-                m.poly([(x + 0.002, h * a, 0.003), (x + w - 0.002, h * a, 0.003), (x + w - 0.002, h * b, 0.003), (x + 0.002, h * b, 0.003)], GILT_P)
-            if w > 0.03 and rg.random() < 0.6:
-                m.poly([(x + 0.006, h * 0.55, 0.003), (x + w - 0.006, h * 0.55, 0.003), (x + w - 0.006, h * 0.7, 0.003), (x + 0.006, h * 0.7, 0.003)], S("LM_library_paint", G.mul(col, 0.55)))
-        x += w + rg.uniform(0.0, 0.002)
-    if lean:
-        # two books leaning against the run at 14 degrees
-        for k in range(2):
-            w, h, d = 0.03, rg.uniform(0.24, 0.3), 0.2
-            col = G.hexc(BOOKS[rg.randrange(len(BOOKS))])
-            s = S("LM_library_paint", col)
-            a = math.radians(14 + 4 * k)
-            x0 = x + 0.004 + k * 0.032
-            c, sn = math.cos(a), math.sin(a)
-            pts = [(x0, 0.0), (x0 + w, 0.0), (x0 + w + h * sn, h * c), (x0 + h * sn, h * c)]
-            m.poly([(px, py, 0.0) for px, py in pts], s)
-            m.poly([(pts[3][0], pts[3][1], 0.0), (pts[2][0], pts[2][1], 0.0), (pts[2][0], pts[2][1], -d), (pts[3][0], pts[3][1], -d)], PAPER.t(G.hexc("F1E6CC")))
-            m.poly([(pts[1][0], pts[1][1], 0.0), (pts[1][0], pts[1][1], -d), (pts[2][0], pts[2][1], -d), (pts[2][0], pts[2][1], 0.0)], s.t(G.mul(col, 0.7)))
-    if end:
-        ex = length - 0.035
-        m.box(ex, ex + 0.03, 0.0, 0.006, -0.16, 0.0, GILT_P)
-        m.box(ex + 0.024, ex + 0.03, 0.0, 0.16, -0.12, -0.02, GILT_P)
-        m.sphere(ex + 0.027, 0.17, -0.07, 0.022, GILT_P, n=6, rings=4)
-    return m
+    base = (x, y + h * 0.39, z)
+    for k in range(11):
+        a = k * 2.39996 + rg.uniform(-0.2, 0.2)
+        L = h * rg.uniform(0.55, 0.85)
+        up = rg.uniform(0.55, 1.1)
+        d = (math.cos(a), 0.0, math.sin(a))
+        side = (-math.sin(a), 0.0, math.cos(a))
+        wd = L * 0.16
+        pts = []
+        for t in (0.0, 0.25, 0.5, 0.75, 1.0):
+            reach = L * t
+            lift = L * (up * t - 0.75 * t * t)
+            pts.append(G.add(base, (d[0] * reach, lift, d[2] * reach)))
+        s_ = leaf if k % 2 else leaf_dk
+        for i in range(4):
+            w0 = wd * math.sin(math.pi * min(1.0, (i / 4) * 1.05 + 0.08))
+            w1 = wd * math.sin(math.pi * min(1.0, ((i + 1) / 4) * 1.05 + 0.08)) if i < 3 else 0.0
+            a0, a1 = pts[i], pts[i + 1]
+            for sg in (-1, 1):
+                e0 = G.add(a0, G.add(G.mul(side, sg * w0), (0, -0.25 * w0, 0)))
+                e1 = G.add(a1, G.add(G.mul(side, sg * w1), (0, -0.25 * w1, 0)))
+                q = [a0, a1, e1, e0] if sg > 0 else [a0, e0, e1, a1]
+                if w1 == 0.0:
+                    q = [a0, a1, e0] if sg > 0 else [a0, e0, a1]
+                m.poly(q, s_, smooth=True)
+                m.poly([G.add(pp, (0, -0.002, 0)) for pp in reversed(q)], s_, smooth=True)
 
 
-def flat_stack(seed):
-    """Books lying flat in a stack (spines out), the top one slightly turned; origin = left end, base y 0."""
-    m = Mesh("flat")
-    rg = G.rng(seed)
-    y = 0.0
-    for k in range(rg.randint(3, 6)):
-        w, d, t = rg.uniform(0.2, 0.28), rg.uniform(0.15, 0.2), rg.uniform(0.025, 0.05)
-        col = G.hexc(BOOKS[rg.randrange(len(BOOKS))])
-        s = S("LM_library_paint", col)
-        x0 = 0.04 + rg.uniform(-0.015, 0.015)
-        m.box(x0, x0 + w, y, y + t, -d, 0.0, s, skip=("-y",))
-        m.poly([(x0, y + t * 0.15, 0.001), (x0 + w, y + t * 0.15, 0.001), (x0 + w, y + t * 0.85, 0.001), (x0, y + t * 0.85, 0.001)], s.t(G.mul(col, 0.8)))
-        m.poly([(x0 + 0.02, y + t * 0.4, 0.002), (x0 + w - 0.02, y + t * 0.4, 0.002), (x0 + w - 0.02, y + t * 0.6, 0.002), (x0 + 0.02, y + t * 0.6, 0.002)], GILT_P)
-        y += t
-    # a little treasure on top: a brass hourglass or a small plant pot or an apple-sized globe
-    kind = seed % 3
-    if kind == 0:
-        m.lathe([(0.04, 0.0), (0.04, 0.012), (0.012, 0.015), (0.03, 0.06), (0.006, 0.08), (0.03, 0.1), (0.012, 0.145), (0.04, 0.148), (0.04, 0.16), (0.0, 0.16)], 8, GILT_P, 0.17, -0.09, y)
-    elif kind == 1:
-        m.lathe([(0.04, 0.0), (0.05, 0.07), (0.0, 0.07)], 8, S("LM_library_paint", G.hexc("D98E62")), 0.17, -0.09, y)
-        for a in range(5):
-            m.sphere(0.17 + 0.03 * math.cos(a * 1.26), y + 0.1, -0.09 + 0.03 * math.sin(a * 1.26), 0.03, S("LM_library_paint", G.hexc("6E9E4A")), n=5, rings=3)
-    else:
-        m.lathe([(0.03, 0.0), (0.006, 0.03), (0.006, 0.06)], 6, GILT_P, 0.17, -0.09, y)
-        m.sphere(0.17, y + 0.11, -0.09, 0.055, S("LM_library_paint", G.hexc("D8C9A0")), n=10, rings=6)
-    return m
+def mini_globe(m, x, y, z, r=0.085):
+    """A desk globe on a brass stand: the room's own chart (M_globe, the floor globe's map) on a tilted sphere, a meridian ring."""
+    m.lathe([(0.0, 0.0), (0.055, 0.0), (0.06, 0.012), (0.045, 0.022), (0.012, 0.03), (0.009, 0.06), (0.0, 0.06)], 20, BRASS, x, z, y)
+    cy = y + 0.06 + r + 0.01
+    tilt = math.radians(23)
+    chart = S("M_globe")
 
-
-RUNS = [book_run(3), book_run(17, lean=True), book_run(29, end=True), book_run(41), book_run(53, hmin=0.26, hmax=0.38)]
-FLATS = [flat_stack(60), flat_stack(61), flat_stack(62)]
+    def surf(u, v):
+        lon = (u - 0.5) * math.tau + math.radians(10)
+        lat = (v - 0.5) * math.pi
+        px = r * math.cos(lat) * math.sin(lon)
+        py = r * math.sin(lat)
+        pz = r * math.cos(lat) * math.cos(lon)
+        return (x + px * math.cos(tilt) - py * math.sin(tilt), cy + px * math.sin(tilt) + py * math.cos(tilt), z + pz)
+    nu, nv = 24, 12
+    for j in range(nv):
+        v0, v1 = j / nv, (j + 1) / nv
+        for i in range(nu):
+            u0, u1 = i / nu, (i + 1) / nu
+            if j == 0:
+                uv = [((u0 + u1) / 2, v0), (u1, v1), (u0, v1)]
+            elif j == nv - 1:
+                uv = [(u0, v0), (u1, v0), ((u0 + u1) / 2, v1)]
+            else:
+                uv = [(u0, v0), (u1, v0), (u1, v1), (u0, v1)]
+            m.poly([surf(u, v) for u, v in uv], chart, uv=uv, smooth=True)
+    ring = []
+    for k in range(25):
+        a = -math.pi / 2 + math.pi * k / 24
+        q = ((r + 0.008) * math.cos(a), (r + 0.008) * math.sin(a))  # in the axis frame: (out along -x, up the axis)
+        ax = (-math.sin(tilt), math.cos(tilt))  # the axis direction in x-y
+        nx = (math.cos(tilt), math.sin(tilt))   # perpendicular in x-y
+        ring.append((x - nx[0] * q[0] + ax[0] * q[1], cy - nx[1] * q[0] + ax[1] * q[1], z))
+    for a_, b_ in zip(ring, ring[1:]):
+        m.member(a_, b_, G.prof_box(0.006, 0.01), BRASS)
+    m.member((x, y + 0.055, z), ring[0], G.prof_round(0.005, 6), BRASS)
 
 
 # ------------------------------------------------------------------------------------------------ walls & ceiling --
@@ -198,6 +202,7 @@ def bookcases(kit, sol):
     crest over every other bay; the shelves full of books (instanced runs), flat stacks, bookends and treasures."""
     D, Gd = kit.D, kit.G
     rg = G.rng(77)
+    last = [-1]
     shelves = [0.14 + k * 0.385 for k in range(8)]
     top = 3.3
     for name, wall in (("stacks_w", "w"), ("stacks_e", "e"), ("stacks_b", "b")):
@@ -251,15 +256,13 @@ def bookcases(kit, sol):
                         continue
                     t = a0 + 0.01
                     while t < a1 - 0.43:
-                        roll = rg.random()
-                        if roll < 0.08:
-                            kind, mesh = "flat_%d" % (rg.randrange(3)), None
-                            idx = int(kind[-1])
-                            place_on(kit, wall, kind, FLATS[idx], t, y)
-                        elif roll < 0.13:
+                        if rg.random() < 0.06:
                             treasure(Gd, wall, t + 0.21, y, rg)
                         else:
                             idx = rg.randrange(len(RUNS))
+                            if idx == last[0]:
+                                idx = (idx + 1 + rg.randrange(len(RUNS) - 1)) % len(RUNS)
+                            last[0] = idx
                             place_on(kit, wall, "books_%d" % idx, RUNS[idx], t, y)
                         t += 0.43
     # the brass ladder rail along the east stacks (the rolling ladder's hooks hang on it)
@@ -288,19 +291,17 @@ def treasure(m, wall, t, y, rg):
         x, z = t, Z - 0.24
     k = rg.randrange(4)
     if k == 0:
-        m.lathe([(0.0, 0.0), (0.05, 0.0), (0.075, 0.08), (0.05, 0.18), (0.03, 0.22), (0.04, 0.25), (0.0, 0.25)], 10, S("LM_library_paint", G.hexc(("9FC2B0", "D9B98E", "7E9BB8")[rg.randrange(3)])), x, z, y)
+        m.lathe([(0.0, 0.0), (0.05, 0.0), (0.075, 0.08), (0.05, 0.18), (0.03, 0.22), (0.04, 0.25), (0.0, 0.25)], 18, S("LM_library_paint", G.hexc(("9FC2B0", "D9B98E", "7E9BB8")[rg.randrange(3)])), x, z, y)
     elif k == 1:
-        m.lathe([(0.05, 0.0), (0.045, 0.02), (0.012, 0.05), (0.015, 0.18), (0.03, 0.2), (0.0, 0.2)], 8, BRASS, x, z, y)
-        m.lathe([(0.012, 0.0), (0.012, 0.09), (0.0, 0.09)], 6, PAPER, x, z, y + 0.2)
+        m.lathe([(0.05, 0.0), (0.045, 0.02), (0.012, 0.05), (0.015, 0.18), (0.03, 0.2), (0.0, 0.2)], 16, BRASS, x, z, y)
+        m.lathe([(0.012, 0.0), (0.012, 0.09), (0.0, 0.09)], 12, PAPER, x, z, y + 0.2)
     elif k == 2:
-        m.lathe([(0.06, 0.0), (0.07, 0.09), (0.0, 0.09)], 8, POT, x, z, y)
+        m.lathe([(0.06, 0.0), (0.07, 0.09), (0.0, 0.09)], 16, POT, x, z, y)
         for a in range(7):
             ang = a * 0.9
             m.member((x, y + 0.08, z), (x + 0.12 * math.cos(ang), y + 0.16, z + 0.12 * math.sin(ang)), G.prof_box(0.03, 0.006), LEAF)
     else:
-        m.lathe([(0.0, 0.0), (0.04, 0.0), (0.05, 0.03), (0.0, 0.03)], 8, BRASS, x, z, y)
-        m.sphere(x, y + 0.13, z, 0.09, S("LM_library_plaster", G.hexc("D6C49A")), n=12, rings=7)
-        m.member((x, y + 0.03, z), (x, y + 0.24, z), G.prof_round(0.006, 4), BRASS)
+        mini_globe(m, x, y, z)
 
 
 # ------------------------------------------------------------------------------------------------ fireplace --
@@ -377,12 +378,12 @@ def fireplace(kit):
     kit.lights.append(("spot", cx, 4.1, zf - 0.4, (1.0, 0.86, 0.66), 60.0))
     # on the mantel
     for x in (x0 + 0.1, x1 - 0.1):
-        Gd.lathe([(0.07, 0.0), (0.06, 0.02), (0.018, 0.06), (0.025, 0.2), (0.012, 0.32), (0.04, 0.34), (0.0, 0.35)], 10, BRASS, x, zf - 0.08, 1.72)
-        Gd.lathe([(0.014, 0.0), (0.014, 0.16), (0.0, 0.16)], 6, PAPER, x, zf - 0.08, 2.07)
+        Gd.lathe([(0.07, 0.0), (0.06, 0.02), (0.018, 0.06), (0.025, 0.2), (0.012, 0.32), (0.04, 0.34), (0.0, 0.35)], 18, BRASS, x, zf - 0.08, 1.72)
+        Gd.lathe([(0.014, 0.0), (0.014, 0.16), (0.0, 0.16)], 12, PAPER, x, zf - 0.08, 2.07)
     Gd.cbox(cx - 0.17, cx + 0.17, 1.72, 2.0, zf - 0.14, zf + 0.02, BRASS, c=0.012)
     Gd.sphere(cx, 1.86, zf - 0.142, 0.09, PAPER, n=12, rings=5, sy=0.12)
     for (x, c) in ((cx - 0.75, "9FC2B0"), (cx + 0.75, "E0C49A")):
-        Gd.lathe([(0.0, 0.0), (0.06, 0.0), (0.08, 0.1), (0.045, 0.2), (0.05, 0.24), (0.0, 0.24)], 10, S("LM_library_paint", G.hexc(c)), x, zf - 0.08, 1.72)
+        Gd.lathe([(0.0, 0.0), (0.06, 0.0), (0.08, 0.1), (0.045, 0.2), (0.05, 0.24), (0.0, 0.24)], 18, S("LM_library_paint", G.hexc(c)), x, zf - 0.08, 1.72)
         for j in range(6):
             a = j * 1.05
             Gd.sphere(x + 0.06 * math.cos(a), 2.05 + 0.04 * (j % 2), zf - 0.08 + 0.06 * math.sin(a), 0.045, S("LM_library_plaster", G.hexc(("F7B9C8", "FFFFFF", "F5D06A")[j % 3])), n=6, rings=4)
@@ -451,21 +452,21 @@ def chesterfield(m, cx, cz, yaw):
     a.member((-w, 0.98, -d + 0.1), (w, 0.98, -d + 0.1), G.prof_round(0.1, 12), LEATHER, caps=True)
     for sx in (-1, 1):
         for sz in (-1, 1):
-            a.lathe([(0.04, 0.0), (0.05, 0.05), (0.035, 0.1), (0.045, 0.12)], 8, OAK_DK, sx * (w - 0.08), sz * (d - 0.08), 0.0)
+            a.lathe([(0.04, 0.0), (0.05, 0.05), (0.035, 0.1), (0.045, 0.12)], 16, OAK_DK, sx * (w - 0.08), sz * (d - 0.08), 0.0)
     m.extend(G.moved(a, cx, 0.0, cz, yaw))
 
 
 def side_table(m, glow, lights, cx, cz):
     """A round oak side table on a turned pedestal with a brass table lamp (pleated shade), a book and a teacup."""
     m.lathe([(0.26, 0.0), (0.26, 0.03), (0.24, 0.035), (0.0, 0.035)], 16, OAK_RICH, cx, cz, 0.6)
-    m.lathe([(0.2, 0.0), (0.18, 0.04), (0.05, 0.08), (0.04, 0.2), (0.06, 0.3), (0.035, 0.45), (0.05, 0.6)], 10, OAK, cx, cz, 0.0)
+    m.lathe([(0.2, 0.0), (0.18, 0.04), (0.05, 0.08), (0.04, 0.2), (0.06, 0.3), (0.035, 0.45), (0.05, 0.6)], 18, OAK, cx, cz, 0.0)
     lx, lz = cx - 0.07, cz - 0.05
-    m.lathe([(0.07, 0.0), (0.06, 0.02), (0.05, 0.08), (0.02, 0.12), (0.012, 0.32)], 10, BRASS, lx, lz, 0.635)
+    m.lathe([(0.07, 0.0), (0.06, 0.02), (0.05, 0.08), (0.02, 0.12), (0.012, 0.32)], 18, BRASS, lx, lz, 0.635)
     m.lathe([(0.17, 0.0), (0.11, 0.2), (0.0, 0.205)], 16, S("LM_library_fabric", G.hexc("F2DFB8")), lx, lz, 0.88)
-    glow.lathe([(0.0, 0.0), (0.14, 0.02), (0.1, 0.17), (0.0, 0.18)], 8, P.GLASS.t(P.LAMP), lx, lz, 0.885)
+    glow.lathe([(0.0, 0.0), (0.14, 0.02), (0.1, 0.17), (0.0, 0.18)], 16, P.GLASS.t(P.LAMP), lx, lz, 0.885)
     lights.append(("point", lx, 0.98, lz, (1.0, 0.8, 0.55), 35.0))
     m.box(cx + 0.02, cx + 0.2, 0.635, 0.66, cz - 0.02, cz + 0.12, S("LM_library_paint", G.hexc("6E1E1E")))
-    m.lathe([(0.0, 0.0), (0.03, 0.0), (0.045, 0.05), (0.0, 0.05)], 10, PAPER, cx + 0.12, cz + 0.17, 0.635)
+    m.lathe([(0.0, 0.0), (0.03, 0.0), (0.045, 0.05), (0.0, 0.05)], 18, PAPER, cx + 0.12, cz + 0.17, 0.635)
     m.lathe([(0.065, 0.0), (0.065, 0.006), (0.0, 0.006)], 12, PAPER, cx + 0.12, cz + 0.17, 0.632)
 
 
@@ -551,22 +552,17 @@ def rug(m, cx, cz, w, d, field, border, accent, yaw=0.0):
 
 def tall_plant(m, cx, cz, h=1.7):
     """A fiddle-leaf fig in a glazed pot: a slim trunk, big leathery leaves (two-sided, slightly cupped)."""
-    m.lathe([(0.16, 0.0), (0.2, 0.32), (0.21, 0.36), (0.19, 0.38), (0.0, 0.38)], 14, S("LM_library_paint", G.hexc("2F5D5A")), cx, cz, 0.0)
-    m.member((cx, 0.36, cz), (cx + 0.03, h * 0.9, cz - 0.02), G.prof_round(0.022, 6), OAK_DK)
+    m.lathe([(0.16, 0.0), (0.2, 0.32), (0.21, 0.36), (0.20, 0.38), (0.182, 0.38), (0.178, 0.345)], 14, S("LM_library_paint", G.hexc("2F5D5A")), cx, cz, 0.0)
+    m.lathe([(0.178, 0.345), (0, 0.345)], 14, S("LM_library_plaster", G.hexc("493A2C")), cx, cz)
+    root, crown = (cx, 0.345, cz), (cx + 0.035, h - 0.04, cz - 0.022)
+    m.member(root, crown, G.prof_round(0.018, 6), OAK_DK)
     rg = G.rng(int(cx * 100 + cz))
     for k in range(16):
-        y = 0.7 + (h - 0.7) * k / 15
-        a = k * 2.4
-        L = rg.uniform(0.22, 0.3)
-        base = (cx + 0.02 * k / 15, y, cz)
-        tip = (base[0] + L * math.cos(a), y + 0.1, base[2] + L * math.sin(a))
-        side = G.mul(G.norm((-math.sin(a), 0.0, math.cos(a))), 0.09)
-        mid = G.lerp(base, tip, 0.5)
-        q = [base, G.add(mid, side), tip, G.sub(mid, side)]
-        q = [q[0], q[1], (q[2][0], q[2][1] - 0.02, q[2][2]), q[3]]
-        s = LEAF if k % 2 else LEAF_DK
-        m.poly(q, s)
-        m.poly([G.add(p, (0, -0.004, 0)) for p in reversed(q)], s)
+        t = k / 15
+        stem = G.lerp(root, crown, 0.26 + 0.74 * t)
+        length = rg.uniform(0.21, 0.28) * (1.0 - 0.25 * t)
+        R.fiddle_leaf(m, stem, k * 2.40 + rg.uniform(-0.12, 0.12), length, length * 0.33,
+                      -0.09 + 0.19 * t, LEAF if k % 2 else LEAF_DK)
 
 
 def chandelier(kit, m, cx, cz, y):
@@ -575,7 +571,7 @@ def chandelier(kit, m, cx, cz, y):
     m.lathe([(0.12, 0.0), (0.1, -0.04), (0.0, -0.05)], 12, BRASS, cx, cz, H - 0.2)
     for k in range(10):
         yy = H - 0.25 - k * 0.09
-        m.lathe([(0.018, 0.0), (0.018, 0.07), (0.0, 0.07)], 6, BRASS, cx, cz, yy - 0.07)
+        m.lathe([(0.018, 0.0), (0.018, 0.07), (0.0, 0.07)], 12, BRASS, cx, cz, yy - 0.07)
     m.lathe([(0.0, 0.0), (0.05, 0.03), (0.09, 0.12), (0.05, 0.22), (0.035, 0.32), (0.07, 0.4), (0.04, 0.48), (0.03, 0.62)], 12, BRASS, cx, cz, y - 0.25)
     for k in range(8):
         a = 2 * math.pi * k / 8
@@ -583,8 +579,8 @@ def chandelier(kit, m, cx, cz, y):
         pts = [(cx + 0.06 * c, y + 0.05, cz + 0.06 * s), (cx + 0.3 * c, y - 0.04, cz + 0.3 * s), (cx + 0.48 * c, y + 0.08, cz + 0.48 * s), (cx + 0.52 * c, y + 0.2, cz + 0.52 * s)]
         m.tube(pts, 0.016, 6, BRASS)
         tx, tz = cx + 0.52 * c, cz + 0.52 * s
-        m.lathe([(0.06, 0.0), (0.06, 0.012), (0.03, 0.03), (0.03, 0.07), (0.0, 0.07)], 10, BRASS, tx, tz, y + 0.2)
-        m.lathe([(0.016, 0.0), (0.016, 0.12), (0.0, 0.12)], 6, PAPER, tx, tz, y + 0.27)
+        m.lathe([(0.06, 0.0), (0.06, 0.012), (0.03, 0.03), (0.03, 0.07), (0.0, 0.07)], 18, BRASS, tx, tz, y + 0.2)
+        m.lathe([(0.016, 0.0), (0.016, 0.12), (0.0, 0.12)], 12, PAPER, tx, tz, y + 0.27)
         kit.glow("chandeliers").sphere(tx, y + 0.43, tz, 0.028, P.GLASS.t(P.LAMP), n=6, rings=4, sy=1.5)
         m.sphere(tx, y + 0.43, tz, 0.03, GLASS, n=6, rings=4, sy=1.5)
     kit.lights.append(("point", cx, y + 0.35, cz, (1.0, 0.82, 0.56), 380.0))

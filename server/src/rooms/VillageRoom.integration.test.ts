@@ -1,3 +1,4 @@
+import { rideScheduleKey } from "@caysonverse/shared/land/rides";
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import config from "@colyseus/tools";
@@ -261,6 +262,7 @@ describe("VillageRoom server time (integration, Task 7A)", () => {
     expect(typeof got.serverTimeMs).toBe("number");
     expect(got.serverTimeMs).toBeGreaterThanOrEqual(before);
     expect(got.serverTimeMs).toBeLessThanOrEqual(after);
+    expect(got.rideSchedule).toBe(rideScheduleKey()); // the ride timetable fingerprint a page checks its own against
   });
 
   it("the clock is the server's own: a room whose wall clock reads 3 h ahead sends that, and re-sends it to everyone", async () => {
@@ -277,7 +279,7 @@ describe("VillageRoom server time (integration, Task 7A)", () => {
     const toBob = waitForMessage<ServerTimePayload>(bob, VillageServerMsg.ServerTime, () => true);
     room.broadcastServerTime();
     for (const m of await Promise.all([toAlice, toBob])) expect(Math.abs(m.serverTimeMs - (Date.now() + skew))).toBeLessThan(2000);
-    expect(SERVER_TIME_INTERVAL_MS).toBe(5 * 60 * 1000);
+    expect(SERVER_TIME_INTERVAL_MS).toBe(30 * 1000);
   });
 });
 

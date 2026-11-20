@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Client } from "colyseus";
-import { COASTER_CYCLE_MS, COASTER_DWELL_MS, COASTER_SEATS, COASTER_UNLOAD_MS } from "@caysonverse/shared/land/coaster";
+import { COASTER_CYCLE_MS, COASTER_DWELL_MS, COASTER_SEATS, COASTER_UNLOAD_MS, coasterAt, coasterTrack, emptyFrame, frameAt } from "@caysonverse/shared/land/coaster";
 import { VillageMsg, VillageServerMsg } from "@caysonverse/shared/village/messages";
 import { DROP_CYCLE_MS } from "@caysonverse/shared/land/dropTower";
 import { CAROUSEL_CYCLE_MS, CAROUSEL_SEATS } from "@caysonverse/shared/land/carousel";
 import { WHEEL_BOARD_HALF_MS, WHEEL_REV_MS, WHEEL_STEP_MS, WHEEL_SEATS_PER, boardingSeatsOfWheel } from "@caysonverse/shared/land/wheel";
+import { MOON_END_FIRST, moonSeatCell } from "@caysonverse/shared/land/moonBoat";
 import { VillageCoaster, type CoasterHost } from "./villageCoaster";
 
 const WHEEL_T0 = 1_900_000_000_000 - (1_900_000_000_000 % WHEEL_REV_MS);
@@ -113,6 +114,67 @@ describe("VillageCoaster (server rules)", () => {
     r.coaster.tick();
     expect(r.players.get("stay")!.rideSeat).toBeGreaterThanOrEqual(0);
     expect(r.players.get("gone")!.rideSeat).toBe(-1);
+  });
+  it("riders fill the coaster front to back, and a freed front seat is taken before any seat behind it", () => {
+    const r = rig();
+    const seats: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      r.add(`p${i}`);
+      r.send(`p${i}`, VillageMsg.RideBoard);
+      seats.push(r.players.get(`p${i}`)!.rideSeat);
+    }
+    expect(seats).toEqual([0, 1, 2, 3, 4]); // front car (0, 1), then car 2 (2, 3), then car 3
+    r.send("p0", VillageMsg.RideLeave); // the front-left seat frees up
+    r.add("late");
+    r.send("late", VillageMsg.RideBoard);
+    expect(r.players.get("late")!.rideSeat).toBe(0);
+  });
+  it("an early press never seats the rider before the train has stopped in the station: only the first loading tick after the unload seats", () => {
+    const track = coasterTrack();
+    const station = frameAt(track, 0, emptyFrame());
+    const r = rig();
+    r.add("early");
+    // pressed while the train is still out, and again while it rolls into the station (the last seconds of its lap): reserved each time
+    const stop = T0 + COASTER_DWELL_MS + track.duration * 1000;
+    for (const t of [T0 + COASTER_DWELL_MS + 60_000, stop - 8000, stop - 2000, stop - 500]) {
+      r.setNow(t);
+      r.send("early", VillageMsg.RideBoard);
+      r.coaster.tick();
+      expect(r.players.get("early")!.rideSeat).toBe(-1);
+    }
+    // the cycle turns (the unload) and 5 s of unloading: still no seat; then the loading begins and the same tick seats the rider
+    for (let t = T0 + COASTER_CYCLE_MS; t < T0 + COASTER_CYCLE_MS + COASTER_UNLOAD_MS; t += 500) {
+      r.setNow(t);
+      r.coaster.tick();
+      expect(r.players.get("early")!.rideSeat).toBe(-1);
+    }
+    r.setNow(T0 + COASTER_CYCLE_MS + COASTER_UNLOAD_MS);
+    r.coaster.tick();
+    expect(r.players.get("early")!.rideSeat).toBe(0);
+    const f = frameAt(track, coasterAt(T0 + COASTER_CYCLE_MS + COASTER_UNLOAD_MS).s, emptyFrame());
+    expect(Math.hypot(f.x - station.x, f.y - station.y, f.z - station.z)).toBeLessThan(0.5);
+  });
+  it("a rider stays seated through the whole ride and is put off only when the train has stopped back at the station", () => {
+    const track = coasterTrack();
+    const r = rig();
+    r.add("a");
+    r.setNow(T0 + COASTER_UNLOAD_MS + 1000);
+    r.send("a", VillageMsg.RideBoard);
+    expect(r.players.get("a")!.rideSeat).toBe(0);
+    const stop = T0 + COASTER_DWELL_MS + track.duration * 1000;
+    const end = T0 + COASTER_CYCLE_MS;
+    for (let t = T0 + COASTER_UNLOAD_MS + 1000; t < end; t += 500) {
+      r.setNow(t);
+      r.coaster.tick();
+      expect(r.players.get("a")!.rideSeat).toBe(0); // seated until the cycle is over, the stop included
+    }
+    r.setNow(stop + 1);
+    r.coaster.tick();
+    expect(r.players.get("a")!.rideSeat).toBe(0); // stopped, the doors not yet: the unload is the cycle's turn
+    expect(end).toBeGreaterThan(stop);
+    r.setNow(end);
+    r.coaster.tick();
+    expect(r.players.get("a")!.rideSeat).toBe(-1);
   });
   it("refuses a seated, bus or fishing player (busy) and a full train (full)", () => {
     const r = rig();
@@ -262,9 +324,37 @@ describe("VillageCoaster (server rules)", () => {
     expect(pa.rideSeat).toBe(-1);
     void a;
   });
-  it("the moon boat: 32 seats filled front row first, a rider is put off when the cycle ends", () => {
+  it("the moon boat: the end rows fill first (bow and stern in turn), 가운데 자리 picks the middle, a reservation keeps the choice", () => {
     const r = rig();
     const MB_T0 = 20 * 130_000 + 8000; // 8 s into a cycle: boarding
+    r.setNow(MB_T0);
+    const rowOf = (seat: number) => moonSeatCell(seat).row;
+    for (const sid of ["e0", "e1", "e2", "mid", "late"]) {
+      r.add(sid);
+      const p = r.players.get(sid)!;
+      p.x = -82.1;
+      p.z = -140;
+    }
+    r.send("e0", VillageMsg.RideBoard, { ride: "moonboat" });
+    r.send("e1", VillageMsg.RideBoard, { ride: "moonboat", pref: "end" });
+    r.send("e2", VillageMsg.RideBoard, { ride: "moonboat", pref: "bogus" });
+    r.send("mid", VillageMsg.RideBoard, { ride: "moonboat", pref: "middle" });
+    expect(rowOf(r.players.get("e0")!.rideSeat)).toBe(0); // the bow row
+    expect(rowOf(r.players.get("e1")!.rideSeat)).toBe(7); // then the stern row
+    expect(rowOf(r.players.get("e2")!.rideSeat)).toBe(0); // an unknown choice is the default
+    expect([3, 4]).toContain(rowOf(r.players.get("mid")!.rideSeat));
+    // pressed while the boat swings: the reservation is seated with the same choice when it next loads
+    r.setNow(20 * 130_000 + 60_000);
+    r.send("late", VillageMsg.RideBoard, { ride: "moonboat", pref: "middle" });
+    expect(r.players.get("late")!.rideSeat).toBe(-1);
+    r.setNow(21 * 130_000 + 8000);
+    r.coaster.tick(); // puts the last cycle's riders off
+    r.coaster.tick();
+    expect([3, 4]).toContain(rowOf(r.players.get("late")!.rideSeat));
+  });
+  it("the moon boat: 32 seats, all handed out once, a rider is put off when the cycle ends", () => {
+    const r = rig();
+    const MB_T0 = 20 * 150_000 + 8000; // 8 s into a cycle: boarding
     r.setNow(MB_T0);
     for (let i = 0; i < 33; i++) {
       r.add(`m${i}`);
@@ -275,11 +365,10 @@ describe("VillageCoaster (server rules)", () => {
     }
     const p0 = r.players.get("m0")!;
     expect(p0.rideId).toBe(4);
-    expect(p0.rideSeat).toBe(0);
-    expect(r.players.get("m3")!.rideSeat).toBe(3);
-    expect(r.players.get("m31")!.rideSeat).toBe(31);
+    expect(p0.rideSeat).toBe(MOON_END_FIRST[0]);
+    expect(new Set(Array.from({ length: 32 }, (_, i) => r.players.get(`m${i}`)!.rideSeat)).size).toBe(32);
     expect(r.players.get("m32")!.rideSeat).toBe(-1); // full
-    r.setNow(20 * 130_000 + 130_000 + 300);
+    r.setNow(20 * 150_000 + 150_000 + 300);
     r.coaster.tick();
     expect(p0.rideSeat).toBe(-1);
     expect(p0.rideId).toBe(0);

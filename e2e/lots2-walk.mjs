@@ -39,6 +39,9 @@ async function join_(p, time, extra = "", frameLabel = null) {
   await p.page.waitForFunction(() => window.__cv?.getScreen?.() === "village", null, { timeout: 90000 });
   if (frameLabel) await startFrames(p); // the walk-in: from the village showing until the lots are in
   await p.page.waitForFunction(() => !!window.__cv?.getPos, null, { timeout: 30000 });
+  await p.page.evaluate(async () => {
+    window.__l2Area = (await window.__imp("/src/village/villageArea.ts")).localArea;
+  });
   if (!extra.includes("lots=off")) await p.page.waitForFunction(() => !!window.__cvLots, null, { timeout: 180000 });
   await sleep(2500);
   if (frameLabel) await stopFrames(p, frameLabel);
@@ -277,7 +280,7 @@ async function roomTrip(p, unit, tag) {
   // 2. in
   await startFrames(p);
   await act(p);
-  const inside = await p.page.waitForFunction((a) => window.__imp("/src/village/villageArea.ts").then((m) => m.localArea() === a), info.area, { timeout: 20000 }).then(() => true, () => false);
+  const inside = await p.page.waitForFunction((area) => window.__l2Area() === area, info.area, { timeout: 20000 }).then(() => true, () => false);
   run.check(`${tag} ${unit}: in through the door (area ${info.area})`, inside, await areaOf(p));
   const drawn = await p.page.waitForFunction(() => !!window.__cvLotRoom, null, { timeout: 60000 }).then(() => true, () => false);
   await p.page.waitForFunction(() => document.querySelector(".cv-house-cover")?.getAttribute("data-phase") !== "loading", null, { timeout: 30000 }).catch(() => {});
@@ -424,7 +427,7 @@ async function roomTrip(p, unit, tag) {
   const tt = await targets(p);
   run.check(`${tag} ${unit}: "밖으로 나가기" is offered at the door`, tt.some((x) => x.label === "밖으로 나가기"), tt);
   await act(p);
-  const outside = await p.page.waitForFunction(() => window.__imp("/src/village/villageArea.ts").then((m) => m.localArea() === "village"), null, { timeout: 20000 }).then(() => true, () => false);
+  const outside = await p.page.waitForFunction(() => window.__l2Area() === "village", null, { timeout: 20000 }).then(() => true, () => false);
   await sleep(2500);
   const back = await pos(p);
   run.check(`${tag} ${unit}: out in front of the door`, outside && Math.hypot(back.x - info.arrival.x, back.z - info.arrival.z) < 1.2, back);

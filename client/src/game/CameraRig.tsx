@@ -1,3 +1,4 @@
+import { altitudeFogFar, altitudeFogNear, parkAltitude } from "../land/parkAltitude";
 import { useEffect, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
@@ -6,7 +7,7 @@ import type { Fog } from "three";
 import { CAMERA, CAMERA_FAR, FP_EYE_HEIGHT, HEAD_HEIGHT } from "./constants";
 import type { MoveControl } from "./constants";
 import { normalizeAngle, stepYaw } from "./yaw";
-import { RIDE_PITCH_MAX, clampFpPitch, easeBlend } from "./viewMode";
+import { RIDE_PITCH_MAX, clampFpPitch, clampRideYaw, easeBlend } from "./viewMode";
 import {
   viewState,
   applyZoom,
@@ -838,7 +839,9 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
       } else if (viewState.mode === "fp") {
         cancelOrbitGoal();
         const gain = dragSpeed() * viewState.skyZoom; // zoomed in, a drag turns the view less
-        viewState.fpYaw = normalizeAngle(viewState.fpYaw - DRAG_SIGN * dx * gain);
+        const yaw = normalizeAngle(viewState.fpYaw - DRAG_SIGN * dx * gain);
+        // on a ride the look stops where the ride's camera stops (no dead travel, no wrap to the other side)
+        viewState.fpYaw = selfRide.slot >= 0 ? clampRideYaw(viewState.fpYaw - DRAG_SIGN * dx * gain) : yaw;
         const pitch = clampFpPitch(viewState.fpPitch + DRAG_SIGN * dy * gain, viewState.skyLook);
         // on a ride (coaster, carousel, wheel) the ride's own camera stops at RIDE_PITCH_MAX: the drag stops there too (no dead travel)
         viewState.fpPitch = selfRide.slot >= 0 ? Math.min(pitch, RIDE_PITCH_MAX) : pitch;
@@ -1094,7 +1097,8 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
       if (keys.camLeft || keys.camRight) {
         const turnDt = Math.min(delta, MAX_KEY_TURN_DT);
         if (viewState.mode === "fp") {
-          viewState.fpYaw = stepKeyYaw(viewState.fpYaw, keys.camLeft, keys.camRight, turnDt);
+          const yaw = stepKeyYaw(viewState.fpYaw, keys.camLeft, keys.camRight, turnDt);
+          viewState.fpYaw = selfRide.slot >= 0 ? clampRideYaw(yaw) : yaw;
         } else {
           cancelOrbitGoal();
           orbit.yaw = stepKeyYaw(orbit.yaw, keys.camLeft, keys.camRight, turnDt);
@@ -1395,6 +1399,11 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
       const fogFar = fogRange[1];
       fog.near = lerp(fogNear, Math.max(fogNear, h * 0.6), ovT);
       fog.far = lerp(fogFar, Math.max(fogFar, h * 2.2), ovT);
+      // the park's aerial perspective with height (land/parkAltitude.ts): the far ground hazes sooner, so the haze line falls below the eye
+      if (parkAltitude.a > 0) {
+        fog.near = altitudeFogNear(fog.near, parkAltitude.a);
+        fog.far = altitudeFogFar(fog.far, parkAltitude.a);
+      }
     }
 
     // The far plane rides with the overview too: the whole-map fit height is width-limited

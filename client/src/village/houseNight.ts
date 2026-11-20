@@ -1,5 +1,5 @@
 import type { Material, Texture } from "three";
-import { FLAME_GLSL, houseFireTime, houseHearthMax, houseHearthMin } from "./houseFire";
+import { FLAME_GLSL, houseEmberY, houseFireTime, houseHearthMax, houseHearthMin } from "./houseFire";
 
 /**
  * A house at night (집 실내 G): the baked light of a house changes with the village's clock, like the memorial hall's (hallNight.ts).
@@ -74,6 +74,7 @@ export const GLOW_DAY = 0.72;
 const GLOW_PARS = /* glsl */ `uniform float uHouseNight;
 uniform vec3 uHearthMin;
 uniform vec3 uHearthMax;
+uniform float uEmberY;
 uniform float uHouseFireTime;
 varying vec3 vHouseWorld;
 void main() {`;
@@ -88,8 +89,9 @@ export function patchHouseGlowMaterial(material: Material): void {
     shader.uniforms.uHouseNight = houseNightUniform;
     shader.uniforms.uHearthMin = houseHearthMin;
     shader.uniforms.uHearthMax = houseHearthMax;
+    shader.uniforms.uEmberY = houseEmberY;
     shader.uniforms.uHouseFireTime = houseFireTime;
-    // the world position of the fragment: the fireplace's flame cones are coloured as a fire (houseFire.ts)
+    // Locate the model's ember bed and old flame cards inside the exported hearth.
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nvarying vec3 vHouseWorld;")
       .replace("#include <project_vertex>", "#include <project_vertex>\nvHouseWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");

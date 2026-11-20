@@ -3,7 +3,7 @@
  *
  * The owner: "실제 한국 시간과 같게 해야지". The time of day comes from the SERVER, not from the device: a phone whose
  * clock is an hour (or a day) off would otherwise show the village at the wrong time of day. The server sends its
- * `Date.now()` when a visitor joins and every 5 minutes (shared/village/messages.ts `ServerTime`); the client keeps
+ * `Date.now()` when a visitor joins and every 30 seconds (shared/village/messages.ts `ServerTime`); the client keeps
  * the offset `serverTimeMs - Date.now()` at that moment and reads the time as `Date.now() + offset` from then on.
  * A device clock that is 3 h wrong therefore changes nothing; a device clock that jumps between two messages is
  * corrected by the next one. Before the first message (the connection is still arriving) the offset is 0.
@@ -14,6 +14,7 @@
 
 import { VillageServerMsg, type ServerTimePayload } from "@caysonverse/shared/village/messages";
 import { parseKstTime } from "@caysonverse/shared/village/sunClock";
+import { noteServerRideSchedule } from "../land/rideSchedule";
 
 /** The slice of a Colyseus room this binding uses. */
 export interface ClockRoom {
@@ -44,6 +45,8 @@ export interface VillageClock {
 export function createVillageClock(now: Now = Date.now): VillageClock {
   let offset = 0;
   let isSynced = false;
+  /** a reading that would move the clock BACK, held until a second one agrees (see sync) */
+  let lowerSeen: number | null = null;
   let jumpCount = 0;
   let pinned: number | null = null;
   return {
@@ -51,7 +54,18 @@ export function createVillageClock(now: Now = Date.now): VillageClock {
     liveMs: () => now() + offset,
     sync(serverTimeMs, deviceNowMs = now()) {
       if (!Number.isFinite(serverTimeMs)) return;
-      const next = serverTimeMs - deviceNowMs;
+      let next = serverTimeMs - deviceNowMs;
+      // A reading that waited (a busy main thread building a scene, a slow network) is LOW by its wait: the server's time is older than the
+      // moment it is read. One reading that would move the clock back is not believed (rides audit 2026-11-20: one arrived 15 s late);
+      // a second in a row that agrees with it within a second is (the device's clock really moved forward, or drifted).
+      if (isSynced && next < offset) {
+        if (lowerSeen === null || Math.abs(next - lowerSeen) > 1000) {
+          lowerSeen = next;
+          return;
+        }
+        next = Math.max(next, lowerSeen);
+      }
+      lowerSeen = null;
       if (Math.abs(next - offset) > 1000) jumpCount++;
       offset = next;
       isSynced = true;
@@ -86,6 +100,9 @@ if (import.meta.env.DEV && typeof location !== "undefined") {
  */
 export function bindVillageClock(room: ClockRoom, clock: VillageClock = villageClock): () => void {
   return room.onMessage<ServerTimePayload>(VillageServerMsg.ServerTime, (m) => {
-    if (m && typeof m.serverTimeMs === "number") clock.sync(m.serverTimeMs);
+    if (m && typeof m.serverTimeMs === "number") {
+      clock.sync(m.serverTimeMs);
+      noteServerRideSchedule(m.rideSchedule);
+    }
   });
 }

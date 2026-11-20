@@ -59,6 +59,22 @@ const rideState = () =>
   });
 const ctarget = () => A.page.evaluate(() => window.__cvClickTarget?.() ?? null);
 
+async function gateState() {
+  return A.page.evaluate(async () => {
+    const { getRoom } = await window.__imp("/src/net/connection.ts");
+    const { useParkDoor } = await window.__imp("/village/parkArea.ts");
+    const room = getRoom(), self = room?.state?.players?.get(room.sessionId);
+    const { x, z } = window.__cv.getPos();
+    const button = document.querySelector(".cv-action-btn");
+    const action = button?.getClientRects().length ? button.getAttribute("aria-label") : null;
+    return {
+      action, local: { x, z }, server: self ? { x: self.x, z: self.z, area: self.area } : null,
+      inReach: !!self && useParkDoor(self.area, self.x, self.z)?.area === "park",
+      focus: document.activeElement?.tagName,
+    };
+  });
+}
+
 /** Project a world point to the page (CSS px), or null when it is off the screen. */
 const project = (x, y, z) =>
   A.page.evaluate(
@@ -137,6 +153,7 @@ await run.step("join", async () => {
   // the gate: the village's own way (a first-time player is shown it; this e2e is about the park)
   const g = await A.page.evaluate(async () => (await window.__imp("/village/parkArea.ts")).parkGateDoor().pad);
   let enter = false;
+  let state;
   for (let attempt = 0; attempt < 4 && !enter; attempt++) {
     await A.page.evaluate(
       async ([x, z]) => {
@@ -150,14 +167,19 @@ await run.step("join", async () => {
       [g.x, g.z - 0.5],
     );
     await sleep(500);
-    await until(async () => (await ctarget()) === null, 90000);
-    await sleep(600);
-    enter = await until(async () => (await A.page.locator(".cv-action-btn").count()) > 0, 4000);
+    if (!(await until(async () => (await ctarget()) === null, 90000 * SLOW))) continue;
+    // A seat or guide can offer the same button en route. The server decides a door press from its last accepted pose.
+    enter = await until(async () => {
+      state = await gateState();
+      return state.action === "케이슨랜드 들어가기" && state.inReach;
+    }, 4000 * SLOW);
   }
-  run.check("the gate offers an action button", enter);
+  if (!enter) state = await gateState();
+  run.check("the gate offers an action button", enter, { pad: g, ...state });
+  if (!enter) throw new Error("The walk did not reach the active park entrance: " + JSON.stringify({ pad: g, ...state }));
   await act(A);
   const inPark = await until(async () => (await areaOf()) === "park", 15000);
-  run.check("pressing it goes into the park", inPark, { area: await areaOf() });
+  run.check("pressing it goes into the park", inPark, inPark ? { area: "park" } : { area: await areaOf(), afterPress: await gateState() });
   // the loading veil (the park shows no void while it loads) and its end
   const veilSeen = await until(async () => (await A.page.locator("[data-testid=park-loading]").count()) > 0, 4000, 100);
   const veilGone = await until(async () => (await A.page.locator("[data-testid=park-loading]").count()) === 0, 120000, 250);

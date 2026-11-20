@@ -7,8 +7,8 @@
  * Boat frame: origin at the axle, y up, z toward the bow (south at rest), x across. The hull's two horns rise out of the keel; 32 seats stand on
  * eight flat terraces in the hull's bowl (seat = row * 4 + column, row 0 at the bow), all facing the bow.
  *
- * Ride: 5 s unloading, 29 s boarding, 6 s gate, then 90 s of swinging: the amplitude builds to 82 degrees over 58 s, holds, and is braked in the last
- * 20 s; the swing has a fixed period (a real pendulum's), so angle(t) = amplitude(t) * sin(2 pi t / period). One cycle is 130 s.
+ * Ride: 5 s unloading, 29 s boarding, 6 s gate, then 110 s of swinging: the amplitude builds to 82 degrees over 70 s, holds, and is braked in the last
+ * 25 s; the swing has a fixed period (a real pendulum's), so angle(t) = amplitude(t) * sin(2 pi t / period). One cycle is 150 s. The axle stands 30 m up on a steel A-frame (arm 28.4 m), the period is 11 s.
  */
 
 export const MOON_BOAT_SITE = Object.freeze({ x: -95, z: -140 });
@@ -17,25 +17,25 @@ export const MOON_BOAT_COLS = 4;
 export const MOON_BOAT_ROWS = 8;
 
 /** The axle's height over the ground and the arm length down to the keel (m). */
-export const MOON_PIVOT_Y = 12.9;
-export const MOON_ARM_L = 11.3;
+export const MOON_PIVOT_Y = 30;
+export const MOON_ARM_L = 28.4;
 /** The hull: half length to the horn tips (z), half width (x), the keel's thickness at the middle and the horns' height over the keel. */
 export const MOON_HULL = Object.freeze({ halfZ: 7.2, halfX: 2.2, keelT: 0.55, horn: 2.2 });
 /** The seats: column spacing (x), row spacing (z), the front row's z, the cushion's height over the terrace. */
 export const MOON_SEAT = Object.freeze({ dx: 0.85, dz: 1.0, z0: 3.6, cushion: 0.5, eye: 0.9 });
 /** The frame's feet and legs. */
-export const MOON_FRAME = Object.freeze({ legX: 3.9, footZ: 9.5, armX: 2.45 });
+export const MOON_FRAME = Object.freeze({ legX: 4.7, footZ: 15, armX: 2.45, chord: 0.55, chordR: 0.2 });
 
 export const MOON_MAX_ANGLE = (82 * Math.PI) / 180;
-export const MOON_PERIOD_S = 7.8;
+export const MOON_PERIOD_S = 11;
 export const MOON_OMEGA = (2 * Math.PI) / MOON_PERIOD_S;
-const BUILD_S = 58;
-const BRAKE_S = 20;
+const BUILD_S = 70;
+const BRAKE_S = 25;
 
 export const MOON_UNLOAD_MS = 5000;
 export const MOON_DWELL_MS = 40_000;
 export const MOON_GATE_MS = 6000;
-export const MOON_RIDE_MS = 90_000;
+export const MOON_RIDE_MS = 110_000;
 export const MOON_CYCLE_MS = MOON_DWELL_MS + MOON_RIDE_MS;
 const RIDE_S = MOON_RIDE_MS / 1000;
 
@@ -118,10 +118,38 @@ export function moonKeelY(z: number): number {
 }
 
 /**
- * The order the rows fill: from the middle of the boat outward (row 0 is at the bow). A rider in the middle looks over the backs of the rows ahead
- * (a seat in front of you, the deck a small part of the view) and feels the swing most; the bow row, with only the bowl in front, fills late.
+ * Which row each block of four seat numbers is on (row 0 at the bow): seats 0..3 are row 3, seats 4..7 row 4, and so on. This is only the numbering;
+ * the order riders are GIVEN seats is MOON_END_FIRST / MOON_MIDDLE_FIRST below.
  */
 export const MOON_ROW_ORDER: readonly number[] = Object.freeze([3, 4, 2, 5, 1, 6, 0, 7]);
+
+/** The seat number of `row` (0 = bow) and `col`. */
+export function moonSeatOf(row: number, col: number): number {
+  return MOON_ROW_ORDER.indexOf(row) * MOON_BOAT_COLS + col;
+}
+
+/** The two seat preferences a rider can pick on the boarding panel. */
+export type MoonSeatPref = "end" | "middle";
+
+/** Within a row the middle two places fill first, then the two sides. */
+const COL_ORDER = [1, 2, 0, 3] as const;
+function pairedOrder(pairs: readonly (readonly [number, number])[]): readonly number[] {
+  const out: number[] = [];
+  for (const [a, b] of pairs) for (const c of COL_ORDER) out.push(moonSeatOf(a, c), moonSeatOf(b, c));
+  return Object.freeze(out);
+}
+/**
+ * The order seats are handed out (the server gives the first free one). By default the END rows fill first (owner 2026-11-20: "맨 끝에가 제일
+ * 무섭게 보인단 말이야": the bow and stern rows swing highest), alternating bow and stern, then inward row by row.
+ */
+export const MOON_END_FIRST: readonly number[] = pairedOrder([[0, 7], [1, 6], [2, 5], [3, 4]]);
+/** "가운데 자리": the middle rows first (the gentlest seats), then outward. */
+export const MOON_MIDDLE_FIRST: readonly number[] = pairedOrder([[3, 4], [2, 5], [1, 6], [0, 7]]);
+
+/** The seats in the order a boarding rider with `pref` is given them (RideDef.boardingSeats). Anything but "middle" is the default, the ends. */
+export function moonBoardingSeats(pref?: unknown): readonly number[] {
+  return pref === "middle" ? MOON_MIDDLE_FIRST : MOON_END_FIRST;
+}
 
 /** Which row and column a seat is on (row 0 at the bow). */
 export function moonSeatCell(seat: number): { row: number; col: number } {
@@ -150,8 +178,8 @@ export function moonToWorld(lx: number, ly: number, lz: number, angle: number, o
 }
 
 /**
- * The g-load on a rider in this swing (multiples of g, along the arm): cos(angle) + L * omega^2 / g. About 0.57 at the 55 degree turning points
- * (nearly weightless: the seat barely presses) and about 2 g through the bottom.
+ * The g-load on a rider in this swing (multiples of g, along the arm): cos(angle) + L * omega^2 / g. About 0.15 at the 82 degree turning points
+ * (nearly weightless: the seat barely presses) and about 2.5 g through the bottom.
  */
 export function moonGLoad(st: MoonBoatState): number {
   return Math.cos(st.angle) + (MOON_ARM_L * st.omega * st.omega) / 9.81;

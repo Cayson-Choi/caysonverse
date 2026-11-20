@@ -1,13 +1,13 @@
 /**
  * The own rider of the 구름 낙하탑: first-person camera on the seat, facing OUT over the park. The eye sits 0.8 m over the hips; free look is the first-person
  * drag, relative to the seat. What the ride feels like comes from the clock's motion (shared/src/land/dropTower.ts): the slow lift just rises over the park
- * (a little car sway), the hold at 42 m is a still pause with a light wobble, the free fall is weightless (the view lifts a hair off the seat, the field of
+ * (a little car sway), the hold at 85 m is a still pause with a light wobble, the free fall is weightless (the view lifts a hair off the seat, the field of
  * view opens with the speed, a fine wind tremble), the magnetic brakes press you into the seat (the eye sinks, the view dips) and ease off. Comfort scales
  * every effect (low: none but the motion itself). Nothing is allocated per frame.
  */
 import { PerspectiveCamera } from "three";
 import { DROP_FALL_V, dropAt, dropGLoad, dropSeatPose, type DropSeatPose, type DropState } from "@caysonverse/shared/land/dropTower";
-import { villageClock } from "../village/villageClock";
+import { rideMs } from "./rideClock";
 import { rideComfort, selfRide } from "./coasterRide";
 
 const P: DropSeatPose = { x: 0, y: 0, z: 0, fx: 1, fz: 0, face: 0, vy: 0, gload: 1, stage: "idle" };
@@ -21,7 +21,7 @@ export function resetDropCamera(): void {
 }
 
 export function stepDropCamera(camera: PerspectiveCamera, _dt: number, lookYaw: number, lookPitch: number, baseFov: number): void {
-  const wall = villageClock.liveMs();
+  const wall = rideMs();
   const st = dropAt(wall, ST);
   dropSeatPose(Math.max(0, selfRide.slot), wall, P);
   const k = rideComfort() === 0 ? 0 : rideComfort() === 1 ? 0.5 : 1;
