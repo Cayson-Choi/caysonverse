@@ -79,7 +79,7 @@ MAT_SPEC = {
     "deck": dict(rough=0.78, metal=0.0, public="textures/houses/lo/T_h_wood_oak.webp"),  # Poly Haven oak_veneer_01 (CC0).
     "paint": dict(rough=0.45, metal=0.0, tex="paint", tile=(1.2, 1.2), jitter=True),
     "metal": dict(rough=0.4, metal=0.85, tex="metal", tile=(0.8, 0.8), jitter=True),
-    "log": dict(rough=0.9, metal=0.0, tex="log_wall", tile=(1.0, 0.68)),
+    "log": dict(rough=0.9, metal=0.0, public="textures/houses/lo/T_h_wood_oak.webp", tile=(1.6, 1.6)),
     "siding": dict(rough=0.75, metal=0.0, tex="siding", tile=(1.1, 1.1)),
     "tile": dict(rough=0.8, metal=0.0, tex="tile", tile=(1.4, 1.4), jitter=True),
     "concrete": dict(rough=0.9, metal=0.0, tex="concrete", tile=(1.5, 1.5), jitter=True),

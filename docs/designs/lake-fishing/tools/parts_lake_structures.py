@@ -456,6 +456,56 @@ def corrugated(mb, P0, across, down, period, amp, col, mat):
     L.surface(mb, fn, nu, 1, col, mat, up=True, smooth=True)
 
 
+def hew_hut_logs(mb, x0, x1, z0, z1, pitch):
+    """Dress the outside of the existing walls and gables, including the narrow strips beside their openings."""
+    # Fraction of a log course and inset from the outermost wood. The narrow joint is 37 mm behind the crown.
+    profile = [(0, 0.037), (0.27, 0.005), (0.62, 0), (1, 0.037)]
+
+    def clip(points, height, above):
+        out = []
+        for a, b in zip(points[-1:] + points[:-1], points):
+            if (a.z < height < b.z) or (b.z < height < a.z):
+                out.append(a.lerp(b, (height - a.z) / (b.z - a.z)))
+            if (above and b.z >= height) or (not above and b.z <= height):
+                out.append(b)
+        return out
+
+    panels = list(mb.faces)
+    mb.faces.clear()
+    for face in panels:
+        indices, mat, _, _ = face
+        if mat != "log":
+            mb.faces.append(face)
+            continue
+        pts = [Vector(mb.v[i]) for i in indices]
+        normal = (pts[1] - pts[0]).cross(pts[2] - pts[0]).normalized()
+        axis = 0 if abs(normal.x) > abs(normal.y) else 1
+        lo, hi = (x0, x1) if axis == 0 else (-z1, -z0)
+        plane = hi if normal[axis] > 0 else lo
+        if abs(normal[axis]) < 0.99 or any(abs(p[axis] - plane) > 0.001 for p in pts):
+            mb.faces.append(face)
+            continue
+        mb.tris -= len(indices) - 2
+        bottom, top = min(p.z for p in pts), max(p.z for p in pts)
+        for row in range(math.floor(bottom / pitch), math.ceil(top / pitch)):
+            for (t0, d0), (t1, d1) in zip(profile, profile[1:]):
+                low, high = (row + t0) * pitch, (row + t1) * pitch
+                if high <= bottom or low >= top:
+                    continue
+                band = clip(clip(pts, low, True), high, False)
+                if len(band) < 3:
+                    continue
+                uv, vertices = [], []
+                for p in band:
+                    inset = d0 + (d1 - d0) * (p.z - low) / (high - low)
+                    shade = 1 - 0.25 * inset / 0.037
+                    r, g, b, a = mb.col[indices[0]]
+                    along = -p.y - z0 if axis == 0 else p.x - x0
+                    uv.append((along / 1.6 + (row * 0.37) % 1, 1 - ((p.z - row * pitch) / 1.6 + (row * 0.23) % 1)))
+                    vertices += mb.verts([p - normal * inset], (1.18 * r * shade, 2.3 * g * shade, 3.7 * b * shade, a))
+                mb.face(vertices, "log", uv=uv)
+
+
 def hut(rng, key):
     h = next(x for x in LAYOUT["huts"] if x["id"] == "hut_" + key[-1])
     mb = MB("lake_hut_" + key[-1])
@@ -482,7 +532,7 @@ def hut(rng, key):
     ridge_y = ey + math.tan(pitch_ang) * ((z1 - z0) / 2 + over)
     # At the wall (inside the overhang) the soffit sits higher than the outer eave.
     plate_y = ey + math.tan(pitch_ang) * over - 0.04
-    # the log walls are flat panels carrying the log-wall texture; only the corner log ends stick out as geometry
+    # Build the wall cores and openings first; the outer faces and gables are hewn to match the corner ends below.
     logc = P["log"]
     def wall(frame, a0, a1, holes):
         for (r0, r1, b0, b1) in L.rects_minus((a0, a1, 0.0, plate_y), holes):
@@ -517,6 +567,7 @@ def hut(rng, key):
             mb.tri(b, a, c, logc, "log")
         else:
             mb.tri(a, b, c, logc, "log")
+    hew_hut_logs(mb, x0, x1, z0, z1, pitch)
     # door + window on the door wall: a frame facing outward (local +z = outward, local x = east on B, west on A)
     fr = F(0, 0, door_wall_z, 0 if not A else math.pi)
 
