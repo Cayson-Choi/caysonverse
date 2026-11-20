@@ -12,8 +12,12 @@ import {
   LOT_DOOR_INSIDE_HALF_WIDTH_M,
   VILLAGE_LOTS,
   lotDoorPoint,
+  LOT_STAIR_OFFER_MARGIN,
+  LOT_STAIR_REACH_M,
   lotRoomDoor,
   lotRoomOf,
+  lotRoomStair,
+  lotStairPadReach,
   lotRoomOfDoor,
   LOT_ROOMS,
   lotSlots,
@@ -23,6 +27,14 @@ import {
   type LotId,
 } from "@caysonverse/shared/village/villageLots";
 import type { InteractTarget } from "../../game/interact";
+import {
+  HOUSE_STAIR_DOWN_LABEL,
+  HOUSE_STAIR_DOWN_SHORT,
+  HOUSE_STAIR_DOWN_TARGET_ID,
+  HOUSE_STAIR_UP_LABEL,
+  HOUSE_STAIR_UP_SHORT,
+  HOUSE_STAIR_UP_TARGET_ID,
+} from "@caysonverse/shared/village/houseTargets";
 
 export const LOT_DOOR_TARGET_PREFIX = "lotdoor:";
 /** A room's way out (`lotexit:<unit>`) and a room's door from outside (`lotenter:<door>`): door targets (the curtain, UseDoor). */
@@ -115,12 +127,27 @@ export function lotWalkInTarget(x: number, z: number): InteractTarget | null {
 /** Inside a room: its way out when (x, z) is within reach (past the pad only straight in front of the door, the server's rule). */
 export function lotExitTarget(area: string, x: number, z: number): InteractTarget | null {
   const r = lotRoomOf(area);
-  if (!r || !Number.isFinite(x) || !Number.isFinite(z)) return null;
+  if (!r || r.spec.noExit || !Number.isFinite(x) || !Number.isFinite(z)) return null;
   const pad = lotRoomDoor(r).exitPad;
   const dist = Math.hypot(x - pad.x, z - pad.z);
   const inFront = dist <= pad.radius || (Math.abs(x - pad.x) <= LOT_DOOR_INSIDE_HALF_WIDTH_M - 0.1 && z >= pad.z);
   if (!inFront || dist > pad.radius + LOT_DOOR_OFFER_REACH_M) return null;
   return { kind: "door", id: `${LOT_EXIT_TARGET_PREFIX}${r.unit.id}`, dist, icon: "🚪", label: "밖으로 나가기", short: "나가기" };
+}
+
+/**
+ * Inside a room with a stair (the café's, 2026-11-21): "2층으로 올라가기" at the café's stair pad, "1층으로 내려가기" at the salon's — the
+ * houses' stair targets (their ids, so the village scene sends UseStair), offered a little nearer than the server's reach (`useLotStair`).
+ */
+export function lotStairTarget(area: string, x: number, z: number): InteractTarget | null {
+  const r = lotRoomOf(area);
+  if (!r || !Number.isFinite(x) || !Number.isFinite(z)) return null;
+  const st = lotRoomStair(r);
+  if (!st || !lotStairPadReach(st.pad, x, z, LOT_STAIR_REACH_M - LOT_STAIR_OFFER_MARGIN)) return null;
+  const dist = Math.hypot(x - st.pad.x, z - st.pad.z);
+  return st.dir === "up"
+    ? { kind: "door", id: HOUSE_STAIR_UP_TARGET_ID, dist, icon: "🪜", label: HOUSE_STAIR_UP_LABEL, short: HOUSE_STAIR_UP_SHORT }
+    : { kind: "door", id: HOUSE_STAIR_DOWN_TARGET_ID, dist, icon: "🪜", label: HOUSE_STAIR_DOWN_LABEL, short: HOUSE_STAIR_DOWN_SHORT };
 }
 
 export function lotDoorPadById(targetId: string): LotDoorPad | null {

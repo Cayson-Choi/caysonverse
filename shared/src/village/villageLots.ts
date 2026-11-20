@@ -25,7 +25,7 @@
 
 import type { AABB, CameraBox } from "../collision";
 import type { PlotId, Point2, Side } from "./villageLayout";
-import { CAFE_CENTRE_XZ, CAFE_IN, CAFE_ROOM_SIZE } from "./cafeRoom";
+import { CAFE_CENTRE_XZ, CAFE_IN, CAFE_ROOM_SIZE, CAFE_UP, CAFE_UP_CEIL, CAFE_UP_SIZE } from "./cafeRoom";
 
 /** v2 ids (2026-11-17). v1's market/shops/hall/post/mart ids were never released (cancelled), so they are not kept. */
 export type LotId = "lot_school" | "lot_chapel" | "lot_library" | "lot_temple" | "lot_church" | "lot_gate" | "lot_cafe";
@@ -682,6 +682,11 @@ export const CAFE_LOT: VillageLot = {
       id: "lot_cafe_room", name: "카페 홀", sign: "카페", x0: -7.1, x1: 7.1, door: "lot_cafe_main",
       interior: interior("lot_cafe_room", { x: 560, z: 40 }, { x: CAFE_ROOM_SIZE.x, z: CAFE_ROOM_SIZE.z }, 4.3, 1),
     },
+    {
+      // the upstairs salon (owner 2026-11-21): reached by the café's stair only (its spec has no way out; the door is the café's)
+      id: "lot_cafe_upstairs", name: "카페 2층", sign: "카페", x0: -7.1, x1: 7.1, door: "lot_cafe_main",
+      interior: interior("lot_cafe_upstairs", { x: 590, z: 40 }, { x: CAFE_UP_SIZE.x, z: CAFE_UP_SIZE.z }, CAFE_UP_CEIL, 1),
+    },
   ],
   colliders: [],
   seats: [],
@@ -1169,6 +1174,14 @@ export interface LotInteriorSpec {
   budget: { pc: { triangles: number; textureMB: number; draws: number }; phone: { triangles: number; textureMB: number; draws: number } };
   /** What must be there (design 11): the review checks every item. */
   program: readonly string[];
+  /** A room with no way out of its own (the café's upstairs salon: its stair is the only way): no exit pad, no "밖으로 나가기". */
+  noExit?: boolean;
+  /**
+   * A stair to another room of the same building (the café's, owner 2026-11-21), used as a house's stair is: its pad (interior frame; `faces`:
+   * the way a user at the pad faces, toward the stair), the room it leads to (`to`: a unit id), and where one arrives in THIS room coming from
+   * that one (`arrival`, the side it faces). `useLotStair` (the server's rule) and the client's 2층 / 1층 button read it.
+   */
+  stair?: { pad: { x: number; z: number; radius: number }; faces: "in" | "out" | "left" | "right"; to: string; arrival: { x: number; z: number; faces: "in" | "out" | "left" | "right" } };
 }
 
 /** Minimum clear floor in front of a seat's front edge (owner rule P6: sit and stand from the front). */
@@ -1302,7 +1315,7 @@ const TEMPLE_IN: LotInteriorSpec = {
 };
 
 /** Every walk-in interior, in fixed order (interior seat ids follow it; never reorder). */
-export const LOT_INTERIORS: readonly LotInteriorSpec[] = deepFreeze([SCHOOL_IN, LIBRARY_IN, CHAPEL_IN, CHURCH_IN, TEMPLE_IN, CAFE_IN]);
+export const LOT_INTERIORS: readonly LotInteriorSpec[] = deepFreeze([SCHOOL_IN, LIBRARY_IN, CHAPEL_IN, CHURCH_IN, TEMPLE_IN, CAFE_IN, CAFE_UP]);
 
 /** Every interior seat id in its one fixed order (append-only: a new seat goes at the end). Game ids `lotin:<id>…`. */
 export const LOT_INTERIOR_SEAT_ORDER: readonly string[] = Object.freeze(LOT_INTERIORS.flatMap((i) => i.seats.map((s) => s.id)));
@@ -1390,9 +1403,14 @@ export function lotRoomOf(area: string): LotRoom | null {
   return LOT_ROOMS.find((r) => r.area === area) ?? null;
 }
 
-/** The room a lot door opens into (null: 케이슨랜드's gate, which stays shut). */
+/** The room a lot door opens into (null: 케이슨랜드's gate, which stays shut). A room with no way out (an upstairs) is never a door's. */
 export function lotRoomOfDoor(doorId: string): LotRoom | null {
-  return LOT_ROOMS.find((r) => r.door.id === doorId) ?? null;
+  return LOT_ROOMS.find((r) => r.door.id === doorId && !r.spec.noExit) ?? null;
+}
+
+/** Whether a room has a way out of its own (every room but the café's upstairs salon). */
+export function lotRoomHasExit(r: LotRoom): boolean {
+  return !r.spec.noExit;
 }
 
 /** A room-frame point in the world. */
@@ -1514,6 +1532,7 @@ export function useLotDoor(area: string, x: number, z: number): { area: "village
   if (area === "village") {
     let best: { r: LotRoom; d: number } | null = null;
     for (const r of LOT_ROOMS) {
+      if (r.spec.noExit) continue;
       const p = lotDoorPoint(r.lot, r.door).pad;
       const d = Math.hypot(x - p.x, z - p.z);
       if (d <= p.radius + LOT_DOOR_REACH_M && (!best || d < best.d)) best = { r, d };
@@ -1523,11 +1542,68 @@ export function useLotDoor(area: string, x: number, z: number): { area: "village
     return { area: best.r.area, x: a.x, z: a.z, yaw: a.yaw };
   }
   const r = lotRoomOf(area);
-  if (!r) return null;
+  if (!r || r.spec.noExit) return null;
   const pad = lotRoomDoor(r).exitPad;
   const d = Math.hypot(x - pad.x, z - pad.z);
   if (d > pad.radius + LOT_DOOR_REACH_M) return null;
   if (d > pad.radius && (Math.abs(x - pad.x) > LOT_DOOR_INSIDE_HALF_WIDTH_M || z < pad.z)) return null;
   const out = lotDoorPoint(r.lot, r.door).arrival;
   return { area: "village", x: out.x, z: out.z, yaw: out.yaw };
+}
+
+// ─────────────────────────────── a building's own stair (the café's, 2026-11-21) ───────────────────────────────
+
+/** How far past a stair pad's edge (m) it is still used, from the side away from the stair (the houses' HOUSE_PAD_REACH). */
+export const LOT_STAIR_REACH_M = 1.3;
+/** How much nearer (m) the client offers the button than the server accepts (the houses' OFFER_REACH_MARGIN). */
+export const LOT_STAIR_OFFER_MARGIN = 0.1;
+const FACE_DIR: Readonly<Record<"in" | "out" | "left" | "right", Point2>> = { in: { x: 0, z: 1 }, out: { x: 0, z: -1 }, left: { x: -1, z: 0 }, right: { x: 1, z: 0 } };
+/** The game's yaw (atan2(dirX, dirZ)) of a room-frame facing. */
+export function lotFacingYaw(faces: "in" | "out" | "left" | "right"): number {
+  const d = FACE_DIR[faces];
+  return Math.atan2(d.x, d.z);
+}
+
+/** A room's stair (world): its pad, the room it leads to and where one lands there; null for a room without one. */
+export function lotRoomStair(r: LotRoom): { pad: { x: number; z: number; radius: number; facing: number }; to: LotRoom; dir: "up" | "down"; footprint: { minX: number; maxX: number; minZ: number; maxZ: number } } | null {
+  const st = r.spec.stair;
+  if (!st) return null;
+  const to = LOT_ROOMS.find((q) => q.unit.id === st.to);
+  if (!to || !to.spec.stair) return null;
+  const p = lotRoomPoint(r, st.pad.x, st.pad.z);
+  const stairSolid = r.spec.solids.find((s) => s.name === "stair" || s.name === "stairwell");
+  const a = stairSolid ? lotRoomPoint(r, stairSolid.rect.x0, stairSolid.rect.z0) : p;
+  const b = stairSolid ? lotRoomPoint(r, stairSolid.rect.x1, stairSolid.rect.z1) : p;
+  return {
+    pad: { x: p.x, z: p.z, radius: st.pad.radius, facing: lotFacingYaw(st.faces) },
+    to,
+    dir: r.spec.noExit ? "down" : "up",
+    footprint: { minX: a.x, maxX: b.x, minZ: a.z, maxZ: b.z },
+  };
+}
+
+/** Whether (x, z) (world) is within `reach` past a stair pad's edge, on the side away from the stair (never past it). */
+export function lotStairPadReach(pad: { x: number; z: number; radius: number; facing: number }, x: number, z: number, reach = LOT_STAIR_REACH_M): boolean {
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return false;
+  const dx = x - pad.x;
+  const dz = z - pad.z;
+  const d = Math.hypot(dx, dz);
+  if (d <= pad.radius) return true;
+  if (d > pad.radius + reach) return false;
+  // past the edge: only from in front of the stair (the user faces it: the stair is ahead, the user behind the pad)
+  return dx * Math.sin(pad.facing) + dz * Math.cos(pad.facing) <= 0;
+}
+
+/**
+ * Using a building's stair (pure, the server's rule, as `useStair` for a house): in a room with a stair, within reach of its pad → the other
+ * room's arrival spot (world, its facing). Null for anything else.
+ */
+export function useLotStair(area: string, x: number, z: number): { area: LotAreaId; x: number; z: number; yaw: number } | null {
+  const r = lotRoomOf(area);
+  if (!r) return null;
+  const st = lotRoomStair(r);
+  if (!st || !lotStairPadReach(st.pad, x, z)) return null;
+  const arr = st.to.spec.stair!.arrival;
+  const p = lotRoomPoint(st.to, arr.x, arr.z);
+  return { area: st.to.area, x: p.x, z: p.z, yaw: lotFacingYaw(arr.faces) };
 }

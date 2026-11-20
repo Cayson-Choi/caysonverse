@@ -79,10 +79,13 @@ export const CAFE_TABLES: readonly CafeTableSpot[] = Object.freeze([
   { x: -1.0, z: 0.0, chairs: [-PI / 2, PI / 2], lamp: "globe" },
 ]);
 
-/** The bake's own two tables (their chairs and tops are baked into the village model; the room rebuilds them). */
+/**
+ * The two tables on the stair's side of the room (the bake's two by the left window until 2026-11-21; owner "2층까지 만들어서 계단도
+ * 만들어": the staircase took their corner, so they stand one behind the other between the stair and the door, room x 4.0).
+ */
 export const CAFE_BAKED_TABLES: readonly CafeTableSpot[] = Object.freeze([
-  { x: 2.9, z: 0.3, chairs: [-PI / 2, PI / 2], lamp: "dome" },
-  { x: 5.3, z: 0.3, chairs: [-PI / 2, PI / 2], lamp: "globe" },
+  { x: 2.8, z: 0.7, chairs: [-PI / 2, PI / 2], lamp: "dome" },
+  { x: 2.8, z: -1.7, chairs: [-PI / 2, PI / 2], lamp: "globe" },
 ]);
 
 /** Every table of the room (the new ones, then the bake's two). */
@@ -91,8 +94,25 @@ export const CAFE_ALL_TABLES: readonly CafeTableSpot[] = Object.freeze([...CAFE_
 /** The counter (white panelled, oak top 1.07 m) and the back bar under the shelves, as the bake has them. */
 export const CAFE_COUNTER: CafeRect = Object.freeze({ x0: -5.24, x1: -0.16, z0: -2.42, z1: -1.7 });
 export const CAFE_BACK_BAR: CafeRect = Object.freeze({ x0: -5.63, x1: 0.83, z0: -4.1, z1: -3.46 });
-/** The open shelf unit right of the kitchen door. */
-export const CAFE_SHELF_UNIT = Object.freeze({ x0: 5.45, x1: 6.7, z0: -4.1, z1: -3.8, height: 2.3 });
+/**
+ * The staircase to the upstairs salon (owner 2026-11-21: "2층까지 있는데 왜 계단이 없어? 2층까지 만들어서 계단도 만들어"), ROOM frame: a
+ * half-turn (U) oak stair in the back corner by the kitchen wall — flight A up along the side wall (x 0.05..1.15, from z 3.9 to the landing),
+ * the landing across the back (z 6.6..7.75), flight B back toward the front (x 1.25..2.35) to the upstairs floor at z 3.9. 20 risers of
+ * 0.23 m (the 4.6 m storey), treads 0.3 m. It is used as a house's stair is (its pad and the 2층 button; a tap on it walks there).
+ */
+export const CAFE_STAIR = Object.freeze({
+  rect: Object.freeze({ x0: 0, x1: 2.45, z0: 3.85, z1: 7.8 }),
+  flightA: Object.freeze({ x0: 0.05, x1: 1.15 }),
+  flightB: Object.freeze({ x0: 1.25, x1: 2.35 }),
+  foot: 3.9,
+  landing: 6.6,
+  risers: 20,
+  riser: 0.23,
+  tread: 0.3,
+  storey: 4.6,
+});
+/** The upstairs salon's floor is this far above the café's (m). */
+export const CAFE_STOREY = 4.6;
 /** The banquette along the left wall (Kelsch-check seat and back, an oak base): depth 0.55 m from the wall. */
 export const CAFE_BANQUETTE = Object.freeze({ x0: -6.8, x1: -6.25, z0: 0.25, z1: 2.95, depth: 0.55 });
 /** The counter stools (facing the counter, backless, sat on from either side). */
@@ -158,12 +178,79 @@ export const CAFE_IN: LotInteriorSpec = {
   solids: [
     solid("counter", CAFE_COUNTER, 1.07),
     solid("back_bar", CAFE_BACK_BAR, 2.5),
-    solid("shelf_unit", { x0: CAFE_SHELF_UNIT.x0, x1: CAFE_SHELF_UNIT.x1, z0: CAFE_SHELF_UNIT.z0, z1: CAFE_SHELF_UNIT.z1 }, CAFE_SHELF_UNIT.height),
+    { name: "stair", rect: { ...CAFE_STAIR.rect }, height: 4.3 },
     solid("seatfurn_banquette", { x0: BQ.x0, x1: BQ.x1, z0: BQ.z0, z1: BQ.z1 }, 0.88),
     ...tableSolids,
     ...plantSolids,
   ],
   seats: [...chairSeats, ...stoolSeats, banquetteSeat],
-  budget: { pc: { triangles: 90_000, textureMB: 40, draws: 20 }, phone: { triangles: 40_000, textureMB: 14, draws: 16 } },
-  program: ["참나무 바닥·회벽·징두리 판벽", "노출 참나무 들보·펜던트 등", "카운터(에스프레소 머신·케이크)와 뒤 선반", "원형 비스트로 테이블·벤트우드 의자 10(앉기)", "카운터 스툴 3(앉기)", "켈쉬 체크 벤치 3자리(앉기)", "창밖은 실제 마을(낮·저녁·밤)", "칠판 메뉴·액자·화분"],
+  stair: { pad: { x: 0.6, z: 3.3, radius: 0.5 }, faces: "in", to: "lot_cafe_upstairs", arrival: { x: 0.65, z: 2.6, faces: "right" } },
+  budget: { pc: { triangles: 120_000, textureMB: 48, draws: 40 }, phone: { triangles: 48_000, textureMB: 14, draws: 30 } },
+  program: ["참나무 바닥·회벽·징두리 판벽", "노출 참나무 들보·펜던트 등", "카운터(에스프레소 머신·그라인더·유리 진열장의 크루아상·타르트·케이크)와 뒤 선반", "대리석 비스트로 테이블·벤트우드 의자 10(앉기)", "카운터 스툴 3(앉기)", "켈쉬 체크 벤치 3자리(앉기)", "2층으로 가는 참나무 계단(올라가기)", "창밖은 실제 마을(낮·저녁·밤)", "칠판 메뉴·법랑 간판·액자·화분"],
+};
+
+// ─────────────────────────────── upstairs: the salon (ROOM frame) ───────────────────────────────
+
+/**
+ * 케이슨 카페 2층: a pâtisserie salon over the whole upper floor (owner 2026-11-21: "2층까지 만들어서 계단도 만들어"), its four front
+ * windows the facade's four upper ones, four on each side, four at the back. Room frame as the café's (the same half turn: the front wall
+ * on z = 0, room x = 6.8 - local x, room z = 3.7 - local z), 13.6 x 13.0 (local z 3.7..-9.3), 3.5 m to the ceiling. Reached by the stair
+ * only: no way out (its "door" fields name the stairwell's top).
+ */
+export const CAFE_UP_SIZE = Object.freeze({ x: 13.6, z: 13.0 });
+export const CAFE_UP_CEIL = 3.5;
+/** The upstairs tables (room frame): round marble, `chairs` where a chair stands (angle from +x toward +z, as the café's). */
+export const CAFE_UP_TABLES: readonly { x: number; z: number; chairs: readonly number[] }[] = Object.freeze([
+  { x: 4.6, z: 1.35, chairs: [0, PI] }, // by the front windows: a chair either side along the wall
+  { x: 8.6, z: 1.35, chairs: [0, PI] },
+  { x: 6.4, z: 5.0, chairs: [-PI / 2, PI / 2] },
+  { x: 8.8, z: 7.6, chairs: [-PI / 2, PI / 2] },
+  { x: 5.6, z: 9.4, chairs: [-PI / 2, PI / 2] },
+  { x: 11.95, z: 3.9, chairs: [PI] }, // the sofa's two tables: a chair on the room side, the sofa on the wall side
+  { x: 11.95, z: 6.0, chairs: [PI] },
+]);
+/** The velvet sofa along the right wall (room x 13.0..13.6), facing into the room (-x): three places. */
+export const CAFE_UP_SOFA = Object.freeze({ x0: 13.0, x1: 13.6, z0: 3.0, z1: 6.9 });
+/** Two wing armchairs by the back windows round a low table (facing each other across it). */
+export const CAFE_UP_ARMCHAIRS: readonly { x: number; z: number; faces: LotInteriorSeat["faces"] }[] = Object.freeze([
+  { x: 9.55, z: 11.2, faces: "right" },
+  { x: 12.05, z: 11.2, faces: "left" },
+]);
+const UP_TABLE_BOX = 0.35;
+
+const upChairSeats: LotInteriorSeat[] = CAFE_UP_TABLES.flatMap((t) =>
+  t.chairs.map((a) => {
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    // (room frame, x right / z in: a chair at angle a from the table faces back toward it)
+    const faces: LotInteriorSeat["faces"] = Math.abs(c) > 0.5 ? (c > 0 ? "left" : "right") : s > 0 ? "out" : "in";
+    return { x: R4(t.x + c * CAFE_CHAIR_DIST), z: R4(t.z + s * CAFE_CHAIR_DIST), faces };
+  }),
+).map((c, i): LotInteriorSeat => ({ id: `lot_cafe_up_chair_${i + 1}`, x: c.x, z: c.z, faces: c.faces, kind: "backed", seatTop: 0.46, length: 0.42, frontEdge: 0.21, backDepth: 0.26, places: 1, tableFront: true }));
+const SO = CAFE_UP_SOFA;
+const upSofa: LotInteriorSeat = { id: "lot_cafe_up_sofa", x: R4((SO.x0 + SO.x1) / 2), z: R4((SO.z0 + SO.z1) / 2), faces: "left", kind: "backed", seatTop: 0.45, length: R4(SO.z1 - SO.z0), frontEdge: 0.3, backDepth: 0.3, places: 3 };
+const upArm: LotInteriorSeat[] = CAFE_UP_ARMCHAIRS.map((a, i): LotInteriorSeat => ({ id: `lot_cafe_up_armchair_${i + 1}`, x: a.x, z: a.z, faces: a.faces, kind: "backed", seatTop: 0.44, length: 0.78, frontEdge: 0.3, backDepth: 0.42, places: 1 }));
+
+/** 케이슨 카페 2층 살롱: windows on four sides, marble tables, a velvet sofa, wing chairs, the pâtisserie sideboard, the stairwell. */
+export const CAFE_UP: LotInteriorSpec = {
+  unit: "lot_cafe_upstairs",
+  lot: "lot_cafe",
+  doorX: 1.8,
+  doorWidth: 1.1,
+  noExit: true,
+  solids: [
+    { name: "stairwell", rect: { ...CAFE_STAIR.rect }, height: 1.0 },
+    { name: "sideboard", rect: { x0: 4.2, x1: 8.4, z0: 12.45, z1: 13.0 }, height: 1.0 },
+    { name: "bookcase", rect: { x0: 0.0, x1: 0.42, z0: 9.6, z1: 12.4 }, height: 2.4 },
+    { name: "lowtable", rect: { x0: 10.45, x1: 11.15, z0: 10.85, z1: 11.55 }, height: 0.48 },
+    { name: "seatfurn_sofa", rect: { x0: SO.x0, x1: SO.x1, z0: SO.z0, z1: SO.z1 }, height: 0.85 },
+    ...CAFE_UP_TABLES.map((t, i) => ({ name: `uptable_${i + 1}`, rect: { x0: R4(t.x - UP_TABLE_BOX), x1: R4(t.x + UP_TABLE_BOX), z0: R4(t.z - UP_TABLE_BOX), z1: R4(t.z + UP_TABLE_BOX) }, height: 0.78 })),
+    { name: "plant_up_1", rect: { x0: 0.15, x1: 0.75, z0: 0.15, z1: 0.75 }, height: 1.9 },
+    { name: "plant_up_2", rect: { x0: 12.95, x1: 13.45, z0: 0.15, z1: 0.65 }, height: 1.9 },
+    { name: "plant_up_3", rect: { x0: 12.95, x1: 13.45, z0: 12.35, z1: 12.85 }, height: 2.1 },
+  ],
+  seats: [...upChairSeats, upSofa, ...upArm],
+  stair: { pad: { x: 1.8, z: 3.35, radius: 0.5 }, faces: "in", to: "lot_cafe_room", arrival: { x: 1.8, z: 2.65, faces: "right" } },
+  budget: { pc: { triangles: 110_000, textureMB: 48, draws: 40 }, phone: { triangles: 45_000, textureMB: 14, draws: 30 } },
+  program: ["2층 살롱: 사방의 창(앞 4·옆 4+4·뒤 4), 리넨 커튼", "계단참과 난간(1층으로 내려가기)", "대리석 원형 테이블 7·벤트우드 의자(앉기)", "벨벳 소파 3자리(앉기)", "윙체어 2와 낮은 탁자(앉기)", "케이크 돔을 올린 사이드보드", "책장·액자·거울·화분", "황동 샹들리에·벽등"],
 };

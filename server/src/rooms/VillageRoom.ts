@@ -24,7 +24,7 @@ import { PlayerRoom, baseTracking, spawnInDisk, type Tracking } from "./PlayerRo
 import { validateJoinOptions } from "./joinValidation";
 import { RateWindow } from "./rateLimit";
 import { DOOR_RATE, HOUSE_ENTRY_RESCUE_M, useDoor, useHouseExit, useStair } from "./villageDoor";
-import { useLotDoor } from "@caysonverse/shared/village/villageLots";
+import { useLotDoor, useLotStair } from "@caysonverse/shared/village/villageLots";
 import { CAFE_ROOM_AREA } from "@caysonverse/shared/village/cafeRoom";
 import { candleCubby } from "./villageCandle";
 import { memorial } from "../memorial/service";
@@ -895,7 +895,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const track = this.tracking.get(client.sessionId);
     if (!player || !track) return;
     if (player.seatIndex >= 0) return; // sitting: stand up first
-    const arrival = useStair(player.area, player.x, player.z);
+    const arrival = useStair(player.area, player.x, player.z) ?? useLotStair(player.area, player.x, player.z);
     if (arrival === null) return;
     const now = this.now();
     if (!track.doorRate.tryAccept(now)) return;
