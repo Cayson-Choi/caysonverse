@@ -78,6 +78,7 @@ const click = async (x, z) => {
   await waitIdle(A, 20000);
 };
 await hold(["KeyW"], 2500); await hold(["KeyS"], 2500); // warm-up: shaders, first frames
+await scenario("idle", () => sleep(10000)); // standing still 10 s (owner 2026-11-21: no bobbing at rest)
 if (!phone) {
   await scenario("walk", () => hold(["KeyW"], 5000));
   await scenario("run", () => hold(["ShiftLeft", "KeyS"], 4000));
