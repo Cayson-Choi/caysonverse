@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   BLEND_SEC,
+  RIDE_YAW_MAX,
+  clampRideYaw,
   OV_BLEND_SEC,
   FP_PITCH_MIN,
   FP_PITCH_MAX,
@@ -145,5 +147,17 @@ describe("viewMode — clampFpPitch in sky-look (star finder open)", () => {
     expect(m.SKY_PITCH_MIN).toBeLessThan(-1.55);
     expect(m.clampFpPitch(-1.56)).toBe(m.FP_PITCH_MIN);
     expect(m.clampFpPitch(3, true)).toBe(m.FP_PITCH_MAX);
+  });
+});
+
+describe("clampRideYaw (a rider's look)", () => {
+  it("stops at the rides' own limit both ways and never wraps to the other side", () => {
+    expect(clampRideYaw(0.5)).toBe(0.5);
+    expect(clampRideYaw(2.5)).toBe(RIDE_YAW_MAX);
+    expect(clampRideYaw(-3.1)).toBe(-RIDE_YAW_MAX);
+    // a drag that keeps going left from the limit stays at the limit (it used to run on past 180 degrees and wrap to the right)
+    let y = 0;
+    for (let i = 0; i < 100; i++) y = clampRideYaw(y + 0.1);
+    expect(y).toBe(RIDE_YAW_MAX);
   });
 });
