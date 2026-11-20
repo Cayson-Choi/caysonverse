@@ -226,8 +226,6 @@ export function dressLoadedHouse(scene: Object3D, n: HouseNumber): void {
     const m = o.material as MeshBasicMaterial;
     if (isHouseMirrorMaterial(m.name)) {
       o.material = houseMirrorMaterial(); // mirror glass: silvered, reflecting a room (houseMirror.ts)
-      // the unlit export carries no normals, a reflecting material needs them (flat per face: the mirror is a flat disc)
-      if (!o.geometry.getAttribute("normal")) o.geometry.computeVertexNormals();
       return;
     }
     if (m.name === HOUSE_VIEW_MATERIAL) {
