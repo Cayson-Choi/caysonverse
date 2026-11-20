@@ -1,12 +1,10 @@
 import { groundOld } from "../village/ground/groundMode";
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame, useLoader, useThree } from "@react-three/fiber";
-import { useTexture } from "@react-three/drei";
 import {
   BackSide,
   CircleGeometry,
   Color,
-  CylinderGeometry,
   DoubleSide,
   ExtrudeGeometry,
   Float32BufferAttribute,
@@ -18,10 +16,8 @@ import {
   MeshStandardMaterial,
   PMREMGenerator,
   Scene,
-  RepeatWrapping,
   Shape,
   SphereGeometry,
-  SRGBColorSpace,
   Texture,
   TextureLoader,
   Vector2,
@@ -57,10 +53,12 @@ import { parkBorders, parkTroughStone } from "./parkBorders";
 import { grassTuft } from "../village/veg/vegGeometry";
 import { soilTextures } from "../village/veg/vegSoil";
 import { CLICK_PICK_KEY } from "../game/clickPick";
-import { PARK_MARBLE_URL_HI, PARK_MARBLE_URL_LO, PARK_PINE_URL_HI, PARK_PINE_URL_LO, useParkAssets } from "./parkAssets";
+import { PARK_PINE_URL_HI, PARK_PINE_URL_LO, useParkAssets } from "./parkAssets";
 import { dayNight } from "../village/dayNightDriver";
-import { makeRippleTexture } from "../village/villageWater";
-import { parkFountainWater } from "./parkFountain";
+import { buildFountainStone, createStoneFountainWater } from "../village/fountain/stoneFountain";
+import { STAR_FOUNTAIN, STAR_SPOUTS } from "../village/fountain/fountainDesigns";
+import { LAMP_GLOBE, flagstoneRing, victorianLampGeometry } from "../village/lots/gateDress";
+import { getPbrSet, pbrTextures } from "../village/pbr/pbrLibrary";
 import { addGateArch, addGateStar } from "./parkGateStone";
 import { BulbHalos, LampPools } from "./nightGlow";
 import { CastleWall, PARK_WALL_LOOK } from "./CastleWall";
@@ -70,7 +68,6 @@ import { wallMode } from "../village/skyline/skylinePlacement";
 import { parkAltitude } from "./parkAltitude";
 import { ParkAltitudeProbe, ParkHighClouds } from "./ParkAltitudeFx";
 
-const MARBLE_URL = isTouchDevice ? PARK_MARBLE_URL_LO : PARK_MARBLE_URL_HI;
 const PINE_URL = isTouchDevice ? PARK_PINE_URL_LO : PARK_PINE_URL_HI;
 
 /** Built once per page (a suspended or re-mounted park must not paint the sky or grow the terrain again: ~100-300 ms each on a phone). */
@@ -270,12 +267,9 @@ function Ground({ all }: { all: Texture[] }) {
 
 // ───────────────────────────────────────── the gate arch, the fountain ─────────────────────────────────────────
 
-/** The gate's tiles and stone come from the houses' scanned sets (Poly Haven clay_roof_tiles_03, mossy_sandstone; see models/village/LICENSE.md). */
+/** The gate's tiles come from the houses' scanned set (Poly Haven clay_roof_tiles_03; see models/village/LICENSE.md); its stone is the library's granite. */
 const GATE_TEX_DIR = "/models/village/houses/";
 const GATE_TEX_URLS = [
-  `${GATE_TEX_DIR}house_sandstone_albedo.webp`,
-  `${GATE_TEX_DIR}house_sandstone_normal${isTouchDevice ? "_512" : ""}.webp`,
-  `${GATE_TEX_DIR}house_sandstone_rough.webp`,
   `${GATE_TEX_DIR}house_tile_albedo.webp`,
   `${GATE_TEX_DIR}house_tile_normal${isTouchDevice ? "_512" : ""}.webp`,
   `${GATE_TEX_DIR}house_tile_rough.webp`,
@@ -302,13 +296,23 @@ function GateArch({ all }: { all: Texture[] }) {
   const tex = once("tex", () => GATE_TEX_URLS.map((u) => new TextureLoader().load(u)));
   const sign = once("sign", () => gateSignTexture());
   const signMat = once("signMat", () => new MeshStandardMaterial({ map: sign, roughness: 0.5, emissive: new Color("#ffffff"), emissiveMap: sign, emissiveIntensity: 0.15 }));
+  // fix/gate-fountain-park: the mossy sandstone scan smeared dark olive under the arch and stretched along the voussoirs (the
+  // owner wants everything brand-new, no weathering): the library's flamed granite, warmed to a clean sandstone, at cut-stone grain
+  const gl = useThree((st) => st.gl);
   const stone = once("stone", () => {
-    const m = parkMaterial({ c: tex[0]!, n: tex[1]!, r: tex[2]! }, 1, { ownedMaps: true, vertexColors: true, color: new Color("#fff2e6"), normalScale: 1.1 });
-    m.name = "gate_stone";
+    const m = new MeshStandardMaterial({ name: "gate_stone", vertexColors: true, color: new Color("#f6e2c6"), roughness: 0.9, metalness: 0, emissive: new Color("#3b2d1e"), emissiveIntensity: 0.4 }); // (the emissive: sky bounce under the arch, which the lawn's green hemisphere light turned olive)
+    getPbrSet("granite_flamed", isTouchDevice ? "1k" : "2k", gl).then((set) => {
+      const t = pbrTextures(set, { repeat: [3, 3] });
+      m.map = t.map;
+      m.normalMap = t.normalMap;
+      m.normalScale.set(0.8, -0.8);
+      m.roughnessMap = t.orm;
+      m.needsUpdate = true;
+    });
     return m;
   });
   const roof = once("roof", () => {
-    const m = parkMaterial({ c: tex[3]!, n: tex[4]!, r: tex[5]! }, 1, { ownedMaps: true, normalScale: 1.4 });
+    const m = parkMaterial({ c: tex[0]!, n: tex[1]!, r: tex[2]! }, 1, { ownedMaps: true, normalScale: 1.4 });
     m.onBeforeCompile = (shader) => {
       shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>", GLAZE_FRAGMENT);
     };
@@ -429,128 +433,176 @@ function GateArch({ all }: { all: Texture[] }) {
   );
 }
 
-/** The plaza's star fountain: a stepped, moulded marble basin, a baluster and a scalloped upper bowl turned on the lathe, a slender
- * column carrying a turning gilt star, eight arching jets, gilt star finials on the rim. Marble from the village's CC0 set. */
-function Fountain({ env }: { env: Texture }) {
-  const marbleTex = useTexture(MARBLE_URL) as Texture;
-  const marble = useMemo(() => {
-    const t = marbleTex.clone();
-    t.wrapS = t.wrapT = RepeatWrapping;
-    t.colorSpace = SRGBColorSpace;
-    t.anisotropy = 8;
-    t.needsUpdate = true;
-    return new MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.26, metalness: 0.02, envMap: env, envMapIntensity: 0.55 });
-  }, [marbleTex, env]);
-  const waterGeo = useMemo(parkFountainWater, []);
-  const ripples = useMemo(makeRippleTexture, []);
-  const water = useMemo(() => new MeshStandardMaterial({
-    vertexColors: true, normalMap: ripples, normalScale: new Vector2(0.28, 0.28),
-    envMap: env, roughness: 0.14, metalness: 0.11, transparent: true, opacity: 0.75, depthWrite: false,
-  }), [env, ripples]);
-  useEffect(() => () => ripples.dispose(), [ripples]);
-  const gold = useMemo(() => new MeshStandardMaterial({ color: "#f2c14e", emissive: new Color("#6b4a08"), emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.6 }), []);
-  const starGeo = useMemo(() => {
+/**
+ * The plaza's star fountain (fix/gate-fountain-park; the owner: "여기도 너무 허접하다"): STAR_FOUNTAIN turned in pale flamed
+ * granite (the library set at its real scale; the wet faces darker and glossier) on a ring of flagstones, eight carved spout
+ * piers on the rim throwing arcing jets inward, both bowls overflowing in sheets, the pools rippling with foam where the water
+ * lands (stoneFountain.ts), and a bevelled, gilded star turning slowly on the top.
+ */
+function Fountain({ env, tier }: { env: Texture; tier: VillageTier }) {
+  const gl = useThree((st) => st.gl);
+  const low = isTouchDevice || tier !== "high";
+  const made = useMemo(() => {
+    const stoneGeo = buildFountainStone(STAR_FOUNTAIN, low);
+    const flagGeo = flagstoneRing(4.72, 5.6, 28, low);
+    const dry = new MeshStandardMaterial({ name: "park_fountain_stone", vertexColors: true, roughness: 0.9, metalness: 0, color: new Color(1, 0.99, 0.97) });
+    const wet = new MeshStandardMaterial({ name: "park_fountain_wet", vertexColors: true, roughness: 0.32, metalness: 0, color: new Color(0.6, 0.6, 0.6) });
+    const water = createStoneFountainWater(STAR_FOUNTAIN, low);
+    // the star: bevelled all round (four bevel steps), its points a touch rounded
     const sh = new Shape();
     for (let i = 0; i < 10; i++) {
-      const r = i % 2 === 0 ? 1.3 : 0.55;
+      const r = i % 2 === 0 ? 0.6 : 0.27;
       const a = -Math.PI / 2 + (i * Math.PI) / 5;
       if (i === 0) sh.moveTo(Math.cos(a) * r, -Math.sin(a) * r);
       else sh.lineTo(Math.cos(a) * r, -Math.sin(a) * r);
     }
-    return new ExtrudeGeometry(sh, { depth: 0.3, bevelEnabled: true, bevelSize: 0.06, bevelThickness: 0.06, bevelSegments: 2 });
-  }, []);
-  const smallStar = useMemo(() => {
-    const sh = new Shape();
-    for (let i = 0; i < 10; i++) {
-      const r = i % 2 === 0 ? 0.3 : 0.13;
-      const a = -Math.PI / 2 + (i * Math.PI) / 5;
-      if (i === 0) sh.moveTo(Math.cos(a) * r, -Math.sin(a) * r);
-      else sh.lineTo(Math.cos(a) * r, -Math.sin(a) * r);
-    }
-    return new ExtrudeGeometry(sh, { depth: 0.08, bevelEnabled: true, bevelSize: 0.02, bevelThickness: 0.02, bevelSegments: 1 });
-  }, []);
-  const marbleGeo = useMemo(() => {
+    const starGeo = new ExtrudeGeometry(sh, { depth: 0.12, bevelEnabled: true, bevelSize: 0.06, bevelThickness: 0.07, bevelSegments: low ? 3 : 6, curveSegments: 4 });
+    starGeo.translate(0, 0, -0.06);
+    starGeo.computeVertexNormals();
+    const gold = new MeshStandardMaterial({ name: "park_fountain_gilt", color: "#ffd46a", metalness: 0.65, roughness: 0.3, envMap: env, envMapIntensity: 1.4, emissive: new Color("#8a5c0c"), emissiveIntensity: 0.5 });
+    // the spouts: a short bronze nozzle out of each pier's inner face, along its jet
     const b = new GeoBuilder();
-    const W: V3 = [1, 1, 1];
-    // the paving apron and the moulded basin (outer foot, ogee lip, inner wall, floor just under the water)
-    addLathe(b, 0, 0, [[5.35, 0], [5.35, 0.06], [5.31, 0.09], [4.54, 0.09]], [0.96, 0.95, 0.92], 2, 64);
-    // Project the paving from above so its stone courses retain their width across the apron.
-    for (let i = 0; i < b.vertices; i++) {
-      if (b.nor[i * 3 + 1]! < 0.6) continue;
-      b.uv[i * 2] = b.pos[i * 3]! / 2;
-      b.uv[i * 2 + 1] = -b.pos[i * 3 + 2]! / 2;
+    for (let k = 0; k < STAR_SPOUTS.count; k++) {
+      const a = STAR_SPOUTS.angle0 + (2 * Math.PI * k) / STAR_SPOUTS.count;
+      const c = Math.cos(a);
+      const s = Math.sin(a);
+      const jet = STAR_FOUNTAIN.jets[0]!;
+      const len = Math.hypot(jet.out, jet.up);
+      const p1: V3 = [c * jet.r, jet.y, s * jet.r];
+      const p0: V3 = [p1[0] - ((c * jet.out) / len) * -0.0 - c * 0.14, jet.y - (jet.up / len) * 0.05, p1[2] - s * 0.14];
+      b.cylinder(p0, p1, 0.028, 0.022, 12, [1, 1, 1], true);
     }
-    addLathe(b, 0, 0, [[0.01, 0.0], [4.6, 0.0], [4.6, 0.2], [4.5, 0.28], [4.5, 0.55], [4.62, 0.62], [4.62, 0.8], [4.5, 0.95], [4.25, 1.0], [4.05, 0.95], [4.0, 0.86], [3.96, 0.40], [0.01, 0.40]], W, 2, 72);
-    // the baluster: a plinth, a swelling urn, a collar, the upper bowl with a rolled lip, a column to the star
-    addLathe(b, 0, 0, [[1.05, 0.40], [1.05, 1.0], [0.85, 1.08], [0.6, 1.14], [0.5, 1.4], [0.68, 1.72], [0.62, 1.95], [0.5, 2.1], [0.58, 2.3], [1.2, 2.4], [1.75, 2.62], [1.82, 2.78], [1.7, 2.82], [1.52, 2.74], [1.45, 2.68], [0.01, 2.68]], W, 2, 56);
-    addLathe(b, 0, 0, [[0.01, 2.68], [0.46, 2.68], [0.38, 2.88], [0.24, 3.1], [0.2, 3.5], [0.22, 4.2], [0.33, 4.36], [0.3, 4.52], [0.16, 4.64], [0.01, 4.66]], W, 2, 28);
-    // eight low piers round the rim, each carrying a small gilt star (the gold is its own mesh below)
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
-      addLathe(b, Math.cos(a) * 4.33, Math.sin(a) * 4.33, [[0.2, 0.92], [0.2, 1.25], [0.26, 1.32], [0.2, 1.4], [0.01, 1.42]], W, 1, 12);
-    }
-    return b.build();
-  }, []);
-  const finials = useRef<InstancedMesh>(null);
-  useLayoutEffect(() => {
-    const mesh = finials.current!, m = new Matrix4();
-    for (let i = 0; i < 8; i++) {
-      const a = (i + 0.5) * Math.PI / 4;
-      mesh.setMatrixAt(i, m.makeRotationY(Math.PI / 2 - a).setPosition(4.33 * Math.cos(a), 1.55, 4.33 * Math.sin(a)));
-    }
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-  }, []);
+    const nozzleGeo = b.build();
+    const bronze = new MeshStandardMaterial({ name: "park_fountain_bronze", color: "#9a7444", metalness: 0.85, roughness: 0.38, envMap: env, envMapIntensity: 0.9 });
+    return { stoneGeo, flagGeo, dry, wet, water, starGeo, gold, nozzleGeo, bronze };
+  }, [low, env]);
+  // the stone's maps: the library's flamed granite (metre UVs: one tile a metre)
+  useEffect(() => {
+    let alive = true;
+    getPbrSet("granite_flamed", low ? "1k" : "2k", gl).then((set) => {
+      if (!alive) return;
+      for (const [m, ns] of [[made.dry, 0.75], [made.wet, 0.5]] as const) {
+        const t = pbrTextures(set);
+        m.map = t.map;
+        m.normalMap = t.normalMap;
+        m.normalScale.set(ns, -ns);
+        m.roughnessMap = t.orm;
+        m.aoMap = t.orm;
+        m.needsUpdate = true;
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [made, gl, low]);
+  useEffect(
+    () => () => {
+      for (const x of [made.stoneGeo, made.flagGeo, made.dry, made.wet, made.starGeo, made.gold, made.nozzleGeo, made.bronze]) x.dispose();
+      for (const x of made.water.own) x.dispose();
+    },
+    [made],
+  );
   const ref = useRef<Mesh>(null);
   useFrame(({ clock }) => {
-    if (ref.current) ref.current.rotation.y = clock.elapsedTime * 0.4;
-    ripples.offset.set((clock.elapsedTime * 0.045) % 1, (clock.elapsedTime * 0.095) % 1);
-    water.envMapIntensity = 0.8 - 0.65 * dayNight.applied.night;
+    if (ref.current) ref.current.rotation.y = clock.elapsedTime * 0.35;
+    made.water.update(performance.now() / 1000, dayNight.applied);
   });
   const { x, z } = PARK_PLAZA;
   return (
     <group position={[x, 0, z]}>
-      <mesh geometry={marbleGeo} material={marble} castShadow receiveShadow />
-      <mesh geometry={waterGeo} material={water} />
-      <mesh position={[0, 4.78, 0]} material={gold}><sphereGeometry args={[0.2, 14, 10]} /></mesh>
-      <mesh ref={ref} position={[0, 5.45, 0]} geometry={starGeo} material={gold} />
-      <instancedMesh ref={finials} args={[smallStar, gold, 8]} castShadow />
+      <mesh geometry={made.stoneGeo} material={[made.dry, made.wet]} castShadow receiveShadow />
+      {/* the flags sit on the plaza's paving (y 0.04, drawn with a polygon offset), not in it */}
+      <mesh geometry={made.flagGeo} material={made.dry} position-y={0.035} receiveShadow />
+      <mesh geometry={made.nozzleGeo} material={made.bronze} />
+      <primitive object={made.water.group} />
+      <mesh position={[0, 3.77, 0]} material={made.gold}><sphereGeometry args={[0.075, 20, 14]} /></mesh>
+      <mesh ref={ref} position={[0, 4.48, 0]} geometry={made.starGeo} material={made.gold} castShadow />
     </group>
   );
 }
 
 // ───────────────────────────────────────── trees, lamps, flowers, benches ─────────────────────────────────────────
 
-function Lamps() {
+/**
+ * The park's lamps (fix/gate-fountain-park): the gate lot's Victorian cast-iron twin lamp (gateDress.ts) in place of the plain
+ * stick and ball, its arms along the path they light (round the plaza: along the ring). One instanced draw for the iron, one for
+ * the opal globes, one for the bulbs; the halos and the pools of light at night as before (nightGlow.tsx), at the globes.
+ */
+function lampYaw(l: { x: number; z: number }): number {
+  if (Math.hypot(l.x - PARK_PLAZA.x, l.z - PARK_PLAZA.z) < PARK_PLAZA.radius) return Math.atan2(l.z - PARK_PLAZA.z, l.x - PARK_PLAZA.x) + Math.PI / 2;
+  // the promenade's and the queue approach's lamps stand beside paths running north-south; the avenue's run east-west
+  return Math.abs(l.z + 119) < 0.5 || Math.abs(l.z + 105) < 0.5 ? 0 : Math.PI / 2;
+}
+
+function Lamps({ tier }: { tier: VillageTier }) {
+  const gl = useThree((st) => st.gl);
+  const low = isTouchDevice || tier !== "high";
   const lampSpots = useMemo(() => PARK_LAMPS.map((l) => ({ x: l.x, z: l.z })), []);
-  const halos = useMemo(() => PARK_LAMPS.map((l) => [l.x, 4.45, l.z] as const), []);
-  const post = useRef<InstancedMesh>(null);
-  const bulb = useRef<InstancedMesh>(null);
-  const postGeo = useMemo(() => new CylinderGeometry(0.07, 0.11, 4.2, 8), []);
-  const bulbGeo = useMemo(() => new SphereGeometry(0.28, 10, 8), []);
-  const postMat = useMemo(() => new MeshStandardMaterial({ color: "#2a2d4a", roughness: 0.4, metalness: 0.4 }), []);
-  const bulbMat = useMemo(() => new MeshStandardMaterial({ color: "#fff2c6", emissive: new Color("#ffd98a"), emissiveIntensity: 1.2, roughness: 0.3 }), []);
+  const globesAt = useMemo(
+    () =>
+      PARK_LAMPS.flatMap((l) => {
+        const yaw = lampYaw(l);
+        return [-1, 1].map((s) => [l.x + Math.cos(yaw) * s * LAMP_GLOBE.offset, LAMP_GLOBE.y, l.z - Math.sin(yaw) * s * LAMP_GLOBE.offset] as const);
+      }),
+    [],
+  );
+  const made = useMemo(() => {
+    const iron = victorianLampGeometry(low);
+    const ironMat = new MeshStandardMaterial({ name: "park_lamp_iron", vertexColors: true, roughness: 0.55, metalness: 0 });
+    const globe = new SphereGeometry(LAMP_GLOBE.r, low ? 14 : 22, low ? 10 : 16);
+    const bulb = new SphereGeometry(0.045, 8, 6);
+    const globeMat = new MeshStandardMaterial({ name: "park_lamp_globe", color: "#f7f2e8", emissive: new Color("#ffe2b8"), emissiveIntensity: 0.25, roughness: 0.18, transparent: true, opacity: 0.62, depthWrite: false });
+    const bulbMat = new MeshStandardMaterial({ name: "park_lamp_bulb", color: "#fff6e0", emissive: new Color("#ffd28a"), emissiveIntensity: 0.4, roughness: 0.4 });
+    return { iron, ironMat, globe, bulb, globeMat, bulbMat };
+  }, [low]);
   useEffect(() => {
+    let alive = true;
+    getPbrSet("cast_iron", low ? "1k" : "2k", gl).then((set) => {
+      if (!alive) return;
+      const t = pbrTextures(set);
+      made.ironMat.map = t.map;
+      made.ironMat.normalMap = t.normalMap;
+      made.ironMat.normalScale.set(0.6, -0.6);
+      made.ironMat.roughnessMap = t.orm;
+      made.ironMat.needsUpdate = true;
+    });
+    return () => {
+      alive = false;
+    };
+  }, [made, gl, low]);
+  useEffect(() => () => Object.values(made).forEach((x) => x.dispose()), [made]);
+  const post = useRef<InstancedMesh>(null);
+  const globes = useRef<InstancedMesh>(null);
+  const bulbs = useRef<InstancedMesh>(null);
+  useLayoutEffect(() => {
     const m = new Matrix4();
     PARK_LAMPS.forEach((l, i) => {
-      m.makeTranslation(l.x, 2.1, l.z);
-      post.current?.setMatrixAt(i, m);
-      m.makeTranslation(l.x, 4.45, l.z);
-      bulb.current?.setMatrixAt(i, m);
+      post.current?.setMatrixAt(i, m.makeRotationY(lampYaw(l)).setPosition(l.x, 0, l.z));
     });
-    if (post.current) post.current.instanceMatrix.needsUpdate = true;
-    if (bulb.current) bulb.current.instanceMatrix.needsUpdate = true;
-  }, []);
-  // the bulbs burn brighter at night (the halos and the pools on the paving come from nightGlow.tsx)
+    globesAt.forEach((p, i) => {
+      m.makeTranslation(p[0], p[1], p[2]);
+      globes.current?.setMatrixAt(i, m);
+      bulbs.current?.setMatrixAt(i, m);
+    });
+    for (const r of [post, globes, bulbs]) {
+      if (!r.current) continue;
+      r.current.instanceMatrix.needsUpdate = true;
+      r.current.computeBoundingSphere();
+    }
+  }, [globesAt]);
+  // the globes and bulbs burn brighter at night (the halos and the pools on the paving come from nightGlow.tsx)
   useFrame(() => {
-    bulbMat.emissiveIntensity = 1.2 + 2.2 * dayNight.applied.lights;
+    const k = dayNight.applied.lights;
+    made.globeMat.emissiveIntensity = 0.25 + 1.9 * k;
+    made.bulbMat.emissiveIntensity = 0.4 + 3.2 * k;
   });
   return (
     <group>
       <LampPools places={lampSpots} radius={5.2} strength={0.4} />
-      <BulbHalos places={halos} size={2.6} />
-      <instancedMesh frustumCulled={false} ref={post} args={[postGeo, postMat, PARK_LAMPS.length]} castShadow />
-      <instancedMesh frustumCulled={false} ref={bulb} args={[bulbGeo, bulbMat, PARK_LAMPS.length]} />
+      <BulbHalos places={globesAt} size={1.7} />
+      <instancedMesh ref={post} args={[made.iron, made.ironMat, PARK_LAMPS.length]} castShadow />
+      <instancedMesh ref={bulbs} args={[made.bulb, made.bulbMat, globesAt.length]} />
+      <instancedMesh ref={globes} args={[made.globe, made.globeMat, globesAt.length]} renderOrder={3} />
     </group>
   );
 }
@@ -708,9 +760,9 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       <Shops all={all} />
       <GateArch all={all} />
       {wallMode() === "on" && <CastleWall id="park" plan={PARK_WALL_PLAN} heightAt={parkGroundHeight} tier={tier === "high" ? "high" : "low"} look={PARK_WALL_LOOK} lampsOn="inner" shadows={!isTouchDevice} />}
-      <Fountain env={env} />
+      <Fountain env={env} tier={tier} />
       <ParkVegetation />
-      <Lamps />
+      <Lamps tier={tier} />
       <Beds all={all} />
       <ParkBenches pine={pine} />
       <ParkProps all={all} />

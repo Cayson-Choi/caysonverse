@@ -89,6 +89,9 @@ function tintFlower(geometry: BufferGeometry, tint: Color): BufferGeometry {
   return geometry;
 }
 
+/** The plant atlas's pieces (vegPlants) re-pointed at the forecourt atlas and tinted (the gate's topiary uses it too). */
+export const tintForecourt = tintFlower;
+
 const soilY = 0.133;
 
 /** Train a cane from each post up and along its half of the existing iron arch. */
@@ -320,8 +323,8 @@ export function plantClippedBorders(lot: VillageLot, low: boolean, plants: MeshS
   return mesh;
 }
 
-export function installEntranceGardens(nodes: LotNodes, low: boolean): void {
-  if (!nodes.goods.size) return;
+export function installEntranceGardens(nodes: LotNodes, low: boolean): { plants: MeshStandardMaterial; soil: MeshStandardMaterial } | null {
+  if (!nodes.goods.size) return null;
   const loader = new TextureLoader();
   const texture = (name: string, srgb: boolean, tile: boolean): Texture => {
     const map = loader.load(versionedUrl(`/models/village/veg/${name}`));
@@ -372,4 +375,5 @@ export function installEntranceGardens(nodes: LotNodes, low: boolean): void {
     box.goodsTris = nodes.stats.goodsTriangles[id] = measured.triangles;
     nodes.stats.goodsDraws[id] = measured.draws;
   }
+  return { plants, soil };
 }
