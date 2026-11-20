@@ -53,9 +53,9 @@ export interface WallLook {
 }
 
 /** The village gatehouse: honey stone, green domes with gold, red-and-gold banners with a blue star disc. */
-export const VILLAGE_WALL_LOOK: WallLook = { stone: [1.5, 1.55, 1.6], roof: [0.35, 1.3, 0.6], banner: { field: "#e2b23a", border: "#c2352b", disc: "#24409a", star: "#ffffff" } };
+export const VILLAGE_WALL_LOOK: WallLook = { stone: [1.62, 1.5, 1.36], roof: [0.35, 1.3, 0.6], banner: { field: "#e2b23a", border: "#c2352b", disc: "#24409a", star: "#ffffff" } };
 /** The park's gate arch: sandstone, indigo-glazed spires, indigo banners with a gold star. */
-export const PARK_WALL_LOOK: WallLook = { stone: [1.5, 1.52, 1.55], roof: [0.55, 0.65, 3.0], banner: { field: "#2c3190", border: "#f2c14e", disc: "#f6f0e0", star: "#e8b030" } };
+export const PARK_WALL_LOOK: WallLook = { stone: [1.6, 1.5, 1.38], roof: [0.55, 0.65, 3.0], banner: { field: "#2c3190", border: "#f2c14e", disc: "#f6f0e0", star: "#e8b030" } };
 
 function bannerTexture(b: WallLook["banner"]): CanvasTexture {
   const c = document.createElement("canvas");

@@ -106,11 +106,11 @@ float cwMortar = 1.0 - smoothstep( 0.005 - cwPx, 0.005 + cwPx, cwEdge );
 float cwGroove = 1.0 - smoothstep( 0.0, 0.04 + cwPx, cwEdge );
 // each block its own tone: lightness and a warm / cool shift; quarry-bed mottling over ~15 m
 float cwTone = 0.84 + 0.26 * cwId;
-float cwWarm = ( cwHash( vec4( cwId * 31.0, 3.0, 5.0, 11.0 ) ) - 0.5 ) * 0.14;
+float cwWarm = ( cwHash( vec4( cwId * 31.0, 3.0, 5.0, 11.0 ) ) - 0.35 ) * 0.14;
 float cwMacro = cwNoise( vec2( cwWorld.x + cwWorld.z, cwWorld.y * 1.6 ) / 15.0 ) * 0.7 + cwNoise( vec2( cwWorld.x - cwWorld.z, cwWorld.y ) / 5.0 ) * 0.3;
 vec3 cwStone = diffuseColor.rgb * cwTone * vec3( 1.0 + cwWarm, 1.0, 1.0 - cwWarm * 1.2 ) * ( 0.9 + 0.2 * cwMacro );
 vec3 cwLime = vec3( dot( diffuseColor.rgb, vec3( 0.333 ) ) ) * vec3( 1.06, 1.03, 0.96 ) * 0.92;
-diffuseColor.rgb = mix( cwStone * ( 1.0 - 0.38 * cwGroove ), cwLime * 0.62, cwMortar );
+diffuseColor.rgb = mix( cwStone * ( 1.0 - 0.3 * cwGroove ), cwLime * 0.8, cwMortar );
 // the footing course a shade darker, and the ground's occlusion at the wall's foot
 diffuseColor.rgb *= ( cwLocalY < 0.9 ? 0.86 : 1.0 ) * mix( 0.62, 1.0, smoothstep( -0.1, 1.4, cwLocalY ) );
 // bevelled arrises: the normal leans toward the nearest joint over the last 3 cm (faded once a pixel is wider than the bevel)

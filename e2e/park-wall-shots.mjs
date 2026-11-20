@@ -114,7 +114,7 @@ await run.step("village: the gate and the wall", async () => {
   stats.skyline = await A.page.evaluate(() => window.__cvSkyline?.() ?? null);
   if (real) {
     await view(A, "c1-village-wall-close", { x: -58, y: 1.7, z: 92.9, tx: -60.5, ty: 4.2, tz: 96, fov: 62 }, 3000);
-    await view(A, "c2-village-tower-close", { x: -63.5, y: 1.8, z: 92.6, tx: -68, ty: 7, tz: 98.9, fov: 66 });
+    await view(A, "c2-village-tower", { x: -61, y: 2.2, z: 86, tx: -68, ty: 11, tz: 99, fov: 52 });
     await view(A, "c3-village-merlons", { x: -50, y: 2, z: 91.5, tx: -54, ty: 10.5, tz: 96, fov: 55 });
   }
   await view(A, "v1-gate-approach", { x: -24, y: 2.4, z: 73, tx: -24, ty: 7, tz: 96, fov: 62 }, 3000);
@@ -146,8 +146,10 @@ await run.step("park: the wall round the edge", async () => {
     return [t.pos[3 * t.liftTo], t.pos[3 * t.liftTo + 1], t.pos[3 * t.liftTo + 2]];
   });
   if (real) {
+    await view(A, "c5-park-tower-close", { x: -164.5, y: 1.7, z: -128.5, tx: -171.5, ty: 6.5, tz: -133.9, fov: 66 });
     await view(A, "c4-park-wall-close", { x: -167.4, y: 1.7, z: -121, tx: -171, ty: 4, tz: -117.5, fov: 66 }, 2500);
     await view(A, "p7-wall-close", { x: -150, y: 1.7, z: -160, tx: -171, ty: 8, tz: -186, fov: 70 });
+    await view(A, "p6-air", { x: 105, y: 260, z: -330, tx: 105, ty: 0, tz: -55, fov: 55 }, 2500);
     await A.page.evaluate(() => { window.__cvShot = null; });
     stats.walls = await A.page.evaluate(() => window.__cvWall ?? null);
     return;
