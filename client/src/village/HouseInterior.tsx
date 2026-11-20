@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { MeshBasicMaterial, RepeatWrapping, SRGBColorSpace, type Material, type Mesh, type Texture } from "three";
@@ -50,6 +50,7 @@ import {
   patchHouseViewMaterial,
   resetHouseNight,
 } from "./houseNight";
+import { HouseMirrorRig } from "./houseMirror";
 import { hearthFlames, houseFireTime, setHouseHearth } from "./houseFire";
 import { clearHouseCaches, holdHouseFiles, loadHouseTexture, noteHouseRequested } from "./houseRelease";
 
@@ -145,6 +146,19 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
     return prepareHouse(gltf.scene, n, floor, day);
   }, [gltf, n, floor, day]);
   useEffect(() => () => disposeHouse(nodes), [nodes]);
+  // The mirrors draw the real room live while they are on screen and near (houseMirror.ts HouseMirrorRig).
+  const mirrorRig = useRef<HouseMirrorRig | null>(null);
+  useEffect(() => {
+    const rig = new HouseMirrorRig({ low: tier === "low" });
+    rig.attach(nodes.root);
+    mirrorRig.current = rig;
+    if (import.meta.env.DEV) window.__cvMirror = () => ({ mirrors: rig.count, redraws: rig.redraws, lastFrameRedraws: rig.lastFrameRedraws, size: rig.size, low: tier === "low", planes: rig.planes });
+    return () => {
+      mirrorRig.current = null;
+      rig.dispose();
+      if (import.meta.env.DEV) delete window.__cvMirror;
+    };
+  }, [nodes, tier]);
   useEffect(() => {
     for (const m of nodes.lightmapped) patchHouseLightmapMaterial(m);
     for (const m of nodes.glows) patchHouseGlowMaterial(m);
@@ -194,6 +208,7 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
     viewState.orbitGoal = { yaw: cam.yaw, pitch: cam.pitch };
   }, [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useFrame(() => mirrorRig.current?.beginFrame(), -1000);
   useFrame(() => {
     houseFireTime.value = performance.now() / 1000;
     const night = wantsLightmap || nodes.views.length > 0 || nodes.glows.length > 0 ? hallNightWeight(dayNight.outdoor.night, houseNightMapUniform.value !== null) : 0;
@@ -214,6 +229,8 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
 declare global {
   interface Window {
     /** Dev-only: the drawn floor of the house (house, floor, meshes drawn) for the e2e checks. */
+    /** Dev-only: the house mirrors' live-reflection counters (mirrors on the floor, redraws so far / in the last frame, picture size). */
+    __cvMirror?: () => { mirrors: number; redraws: number; lastFrameRedraws: number; size: number; low: boolean; planes: { c: number[]; n: number[]; a: number; b: number; windingAgrees: boolean }[] };
     __cvHouse?: () => { n: number; floor: number; meshes: number; lightmapped: boolean; viewMaterial: boolean };
   }
 }
