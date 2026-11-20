@@ -13,7 +13,6 @@ import { useLocalArea } from "../village/villageArea";
 import { RIDES, msUntilBoarding, rideById, type RideDef } from "@caysonverse/shared/land/rides";
 import { villageClock } from "../village/villageClock";
 import { boardRide } from "./rideBoardWalk";
-import { useParkReady } from "./parkReady";
 import { wheelSeatPose } from "@caysonverse/shared/land/wheel";
 import "./ridePanel.css";
 
@@ -262,37 +261,5 @@ export function CoasterHud() {
         {aloft ? "높이 떠 있어요" : isWheel ? "내리기" : now.status === "riding" ? "비상 내리기" : "내리기"}
       </button>
     </section>
-  );
-}
-
-/** Until the park's world has loaded: a veil with a short line (so the void is not mistaken for a broken park). */
-export function ParkLoadingVeil() {
-  const area = useLocalArea();
-  const ready = useParkReady();
-  if (area !== "park" || ready) return null;
-  return (
-    <div
-      data-testid="park-loading"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 5,
-        display: "grid",
-        placeItems: "center",
-        background: "linear-gradient(#b8c8e8, #e9eef8)",
-        color: "#26305e",
-        fontSize: 18,
-        fontWeight: 600,
-        pointerEvents: "none",
-        userSelect: "none",
-        WebkitUserSelect: "none",
-      }}
-    >
-      <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 38 }}>🎡</div>
-        <div>케이슨랜드를 불러오는 중이에요…</div>
-        <div style={{ fontSize: 13, fontWeight: 400, opacity: 0.75, marginTop: 6 }}>놀이기구와 꽃밭을 준비하고 있어요</div>
-      </div>
-    </div>
   );
 }

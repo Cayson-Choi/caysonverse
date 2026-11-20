@@ -50,6 +50,7 @@ import {
   BUS_RIDE_TARGET_LEAVE,
   BUS_STAND_TARGET_ID,
   RIDE_BOARD_PREFIX,
+  PARK_DOOR_ID,
   CUBBY_TARGET_PREFIX,
   GUIDE_TARGET_PREFIX,
   KEYPAD_TARGET_PREFIX,
@@ -83,7 +84,9 @@ import { houseOpen } from "./keypadText";
 import { liveSunEnabled } from "./sunShadows";
 import { MapPlaces } from "./MapPlaces";
 import { ParkWorld } from "../land/ParkWorld";
-import { CoasterHud, ParkLoadingVeil } from "../land/CoasterHud";
+import { CoasterHud } from "../land/CoasterHud";
+import { AreaLoadingOverlay } from "../land/AreaLoadingOverlay";
+import { beginAreaLoading } from "../land/areaLoading";
 import { sendRideBoard } from "../net/connection";
 import { landPose } from "../land/coasterRide";
 import { startRideAudio } from "../land/coasterAudio";
@@ -335,6 +338,8 @@ function VillageDoors({ pose }: { pose: Pose }) {
         else sendUseDoor();
         return true;
       });
+      // the park's door: the loading screen stands from this press until the other side is drawn (areaLoading.ts)
+      if (target.id === PARK_DOOR_ID && doorFade.covered()) beginAreaLoading(localArea() === "park" ? "village" : "park");
     });
     return () => {
       setTargetSource(null);
@@ -564,7 +569,6 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <VillageMusic />
           <TransitRideHud />
           <CoasterHud />
-          <ParkLoadingVeil />
           <StarFinderButton />
         </>
       }
@@ -573,6 +577,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <VegVeil active={area === "village"} />
           <DoorFade />
           <HouseEntryCover />
+          <AreaLoadingOverlay />
           <CubbyView />
           <MemorialOverlays />
           <GuideDialog pose={pose} seat={seat} />

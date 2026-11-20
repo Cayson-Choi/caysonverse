@@ -36,7 +36,7 @@ import {
 import { isTouchDevice } from "../device";
 import { CoasterWorld } from "./CoasterWorld";
 import { CarouselWorld } from "./CarouselWorld";
-import { parkReady, setParkReady } from "./parkReady";
+import { parkReady, setParkReady, setParkStage } from "./parkReady";
 import { WheelWorld } from "./WheelWorld";
 import { MoonBoatWorld } from "./MoonBoatWorld";
 import { DropTowerWorld } from "./DropTowerWorld";
@@ -668,9 +668,16 @@ function ParkReadyProbe() {
     if (parkReady()) return;
     if (gl.info.render.calls > 30) frames.current++;
     else frames.current = 0;
+    if (frames.current > 0) setParkStage(2);
     if (frames.current >= 3 || performance.now() - born.current > 30_000) setParkReady(true);
   });
-  useEffect(() => () => setParkReady(false), []);
+  useEffect(() => {
+    setParkStage(1); // the files are in and the park is mounted: the loading screen's next line
+    return () => {
+      setParkReady(false);
+      setParkStage(0);
+    };
+  }, []);
   return null;
 }
 
