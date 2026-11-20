@@ -1,0 +1,381 @@
+/**
+ * The castle wall's stones (2026-11-20, shared/src/village/parkWall.ts holds the plan): a few small geometries drawn as INSTANCES along a
+ * plan's runs and at its towers, so the whole ring (600 m in the village, 1.6 km in the park) is a handful of draw calls.
+ *
+ *   module   6 m of curtain wall: a buried footing, the body, arrow slits, a corbel table under an overhanging outer parapet with
+ *            merlons (crenellations), the wall-walk, a low inner parapet and a pilaster on the inner face (stone)
+ *   tower    a round tower: footing, shaft, a corbelled flare, a crenellated parapet ring, slit windows, a stone bracket for the lamp (stone)
+ *   roof     the tower's bell-kicked cone (tiles)
+ *   trim     the gilt eave band, the finial and its spike, the banner's rod (gold)
+ *   banner   a swallow-tailed banner on the tower's face (cloth, a canvas texture)
+ *   lantern  an iron lantern (group 0: the iron, group 1: the glass that glows at night)
+ *
+ * Local frame of a module: x along the wall (-3 .. 3), y up from the ground, z OUT of the enclosure. A tower's +z looks at the plan's
+ * `facing` point. UVs are in metres (u along the face, v DOWN, the PBR library's glTF convention), so the stone texture keeps its real
+ * size whatever the part. Pure geometry: unit-tested in node.
+ */
+import { BufferGeometry, Float32BufferAttribute, Matrix4, Quaternion, Vector3 } from "three";
+import { WALL, type WallPlan } from "@caysonverse/shared/village/parkWall";
+
+type V3 = [number, number, number];
+
+class Kit {
+  pos: number[] = [];
+  nor: number[] = [];
+  uv: number[] = [];
+  col: number[] = [];
+  idx: number[] = [];
+  groups: { start: number; count: number; mat: number }[] = [];
+  get vertices(): number {
+    return this.pos.length / 3;
+  }
+  v(p: V3, n: V3, u: number, w: number, c: number | V3): number {
+    this.pos.push(p[0], p[1], p[2]);
+    this.nor.push(n[0], n[1], n[2]);
+    this.uv.push(u, w);
+    const cc = typeof c === "number" ? [c, c, c] : c;
+    this.col.push(cc[0]!, cc[1]!, cc[2]!);
+    return this.vertices - 1;
+  }
+  quad(a: number, b: number, c: number, d: number): void {
+    this.idx.push(a, b, c, a, c, d);
+  }
+  /**
+   * An axis-aligned box (x0..x1, y0..y1, z0..z1) with metre UVs. `skip` names faces left out ("-y" the underside that sits on
+   * something, "-x"/"+x" the ends where the next module continues).
+   */
+  box(x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, c: number | V3, skip: string[] = ["-y"]): void {
+    const F: [string, V3, V3, V3, V3, V3][] = [
+      // name, normal, then the four corners counter-clockwise seen from outside
+      ["+z", [0, 0, 1], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]],
+      ["-z", [0, 0, -1], [x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0]],
+      ["+x", [1, 0, 0], [x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]],
+      ["-x", [-1, 0, 0], [x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]],
+      ["+y", [0, 1, 0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]],
+      ["-y", [0, -1, 0], [x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]],
+    ];
+    for (const [name, n, ...corners] of F) {
+      if (skip.includes(name)) continue;
+      const ids = corners.map((p) => {
+        // u along the face (metres), v down the face (or across a top)
+        const u = n[0] !== 0 ? p[2] * -n[0] : p[0] * (n[2] !== 0 ? n[2] : 1);
+        const w = n[1] !== 0 ? p[2] : -p[1];
+        return this.v(p, n, u, w, c);
+      });
+      this.quad(ids[0]!, ids[1]!, ids[2]!, ids[3]!);
+    }
+  }
+  /** A ring surface between (r0, y0) and (r1, y1) round the y axis, `sides` facets, u = arc length (m). `inward` flips it. */
+  ring(r0: number, y0: number, r1: number, y1: number, sides: number, c: number | V3, inward = false): void {
+    const base = this.vertices;
+    const dr = r1 - r0;
+    const dy = y1 - y0;
+    const len = Math.hypot(dr, dy) || 1;
+    const ny = -dr / len;
+    const nr = dy / len;
+    for (let i = 0; i <= sides; i++) {
+      const a = (i / sides) * Math.PI * 2 + Math.PI / 2;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const s = inward ? -1 : 1;
+      const n: V3 = [ca * nr * s, ny * s, sa * nr * s];
+      const u = (i / sides) * Math.PI * 2 * Math.max(r0, r1);
+      this.v([ca * r0, y0, sa * r0], n, u, -y0, c);
+      this.v([ca * r1, y1, sa * r1], n, u, -y1, c);
+    }
+    for (let i = 0; i < sides; i++) {
+      const a = base + i * 2;
+      if (inward) this.quad(a, a + 2, a + 3, a + 1);
+      else this.quad(a, a + 1, a + 3, a + 2);
+    }
+  }
+  /** A flat annulus at height y between radii rIn and rOut, facing up. */
+  annulus(rIn: number, rOut: number, y: number, sides: number, c: number | V3): void {
+    const base = this.vertices;
+    for (let i = 0; i <= sides; i++) {
+      const a = (i / sides) * Math.PI * 2 + Math.PI / 2;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      this.v([ca * rIn, y, sa * rIn], [0, 1, 0], ca * rIn, sa * rIn, c);
+      this.v([ca * rOut, y, sa * rOut], [0, 1, 0], ca * rOut, sa * rOut, c);
+    }
+    for (let i = 0; i < sides; i++) {
+      const a = base + i * 2;
+      this.quad(a, a + 2, a + 3, a + 1);
+    }
+  }
+  /** A box turned about y by `yaw` (its local x along the tangent), centred at (cx, cz). */
+  turnedBox(cx: number, cz: number, yaw: number, hx: number, y0: number, y1: number, hz: number, c: number | V3): void {
+    const from = this.vertices;
+    this.box(-hx, hx, y0, y1, -hz, hz, c);
+    const co = Math.cos(yaw);
+    const si = Math.sin(yaw);
+    for (let i = from; i < this.vertices; i++) {
+      const x = this.pos[3 * i]!;
+      const z = this.pos[3 * i + 2]!;
+      this.pos[3 * i] = cx + x * co + z * si;
+      this.pos[3 * i + 2] = cz - x * si + z * co;
+      const nx = this.nor[3 * i]!;
+      const nz = this.nor[3 * i + 2]!;
+      this.nor[3 * i] = nx * co + nz * si;
+      this.nor[3 * i + 2] = -nx * si + nz * co;
+    }
+  }
+  startGroup(mat: number): void {
+    this.groups.push({ start: this.idx.length, count: 0, mat });
+  }
+  build(): BufferGeometry {
+    const g = new BufferGeometry();
+    g.setAttribute("position", new Float32BufferAttribute(this.pos, 3));
+    g.setAttribute("normal", new Float32BufferAttribute(this.nor, 3));
+    g.setAttribute("uv", new Float32BufferAttribute(this.uv, 2));
+    g.setAttribute("color", new Float32BufferAttribute(this.col, 3));
+    g.setIndex(this.idx);
+    for (let i = 0; i < this.groups.length; i++) {
+      const gr = this.groups[i]!;
+      const end = i + 1 < this.groups.length ? this.groups[i + 1]!.start : this.idx.length;
+      g.addGroup(gr.start, end - gr.start, gr.mat);
+    }
+    g.computeBoundingBox();
+    g.computeBoundingSphere();
+    return g;
+  }
+}
+
+export type WallTier = "high" | "low";
+
+const DARK = 0.13; // the slits' shadowed depth
+const FOOT = -3.6; // how far the footings reach under the ground (the wall steps down slopes)
+
+/** 6 m of curtain wall (see the file's head). */
+export function wallModuleGeometry(tier: WallTier): BufferGeometry {
+  const k = new Kit();
+  const H = WALL.halfThickness;
+  const L = WALL.module / 2;
+  const P = WALL.parapetOut;
+  // the footing (a battered plinth, a little wider) and the body
+  k.box(-L, L, FOOT, 0.9, -H - 0.25, H + 0.25, 0.84, ["-y", "-x", "+x"]);
+  k.box(-L, L, 0.9, 8.6, -H, H, 1, ["-y", "-x", "+x"]);
+  // a weathered offset where the body meets the plinth
+  k.box(-L, L, 0.9, 1.12, H, H + 0.13, 0.9, ["-y", "-x", "+x"]);
+  // the arrow slit on the outer face, a sill under it
+  k.box(-0.13, 0.13, 4.6, 6.4, H, H + 0.03, DARK);
+  k.box(-0.3, 0.3, 4.48, 4.6, H, H + 0.12, 0.9);
+  // the corbel table under the overhanging parapet
+  const corbels = tier === "high" ? 6 : 3;
+  for (let i = 0; i < corbels; i++) {
+    const x = -L + (WALL.module / corbels) * (i + 0.5);
+    k.box(x - 0.18, x + 0.18, 7.95, 8.6, H, H + P, 0.92);
+  }
+  // the wall-walk's slab (its edge a projecting string course), the outer parapet and the merlons
+  // (their undersides are kept: the slab and the parapet overhang the face, seen from below between the corbels)
+  k.box(-L, L, 8.6, 8.85, -H - 0.12, H + P, 0.9, ["-x", "+x"]);
+  k.box(-L, L, 8.85, 9.95, H - 0.32, H + P, 1, ["-x", "+x"]);
+  for (const x of [-2, 0, 2]) k.box(x - 0.6, x + 0.6, 9.95, WALL.top, H - 0.32, H + P, 0.97);
+  // the low inner parapet and a pilaster on the inner face
+  k.box(-L, L, 8.85, 9.75, -H - 0.12, -H + 0.3, 0.95, ["-y", "-x", "+x"]);
+  k.box(-0.45, 0.45, 0.9, 6.2, -H - 0.5, -H, 0.93);
+  k.box(-0.5, 0.5, 6.2, 6.45, -H - 0.6, -H, 0.88);
+  return k.build();
+}
+
+const TOWER_SIDES = { high: 20, low: 14 } as const;
+
+/** A round tower's stone (see the file's head): its +z looks at the viewer. */
+export function towerGeometry(tier: WallTier): BufferGeometry {
+  const k = new Kit();
+  const S = TOWER_SIDES[tier];
+  const R = WALL.towerR;
+  const RP = WALL.towerParapetR;
+  k.ring(R + 0.3, FOOT, R + 0.3, 1.0, S, 0.84);
+  k.annulus(R, R + 0.3, 1.0, S, 0.86);
+  k.ring(R, 1.0, R, 11.4, S, 1);
+  // the corbelled flare and the parapet ring (outer and inner faces, its top)
+  k.ring(R, 11.4, RP, 12.1, S, 0.9);
+  k.ring(RP, 12.1, RP, 12.95, S, 1);
+  k.ring(RP - 0.4, 12.1, RP - 0.4, 12.95, S, 0.9, true);
+  k.annulus(RP - 0.4, RP, 12.95, S, 0.95);
+  // merlons on the parapet ring
+  const nm = tier === "high" ? 10 : 8;
+  for (let i = 0; i < nm; i++) {
+    const a = (i / nm) * Math.PI * 2;
+    const rr = RP - 0.2;
+    k.turnedBox(Math.sin(a) * rr, Math.cos(a) * rr, a, 0.5, 12.95, WALL.towerTop, 0.2, 0.97);
+  }
+  // slit windows: one toward the viewer under the banner's rod, two either side of it, and the lamp's stone bracket
+  for (const a of [0, 1.15, -1.15]) {
+    const r = R + 0.02;
+    k.turnedBox(Math.sin(a) * r, Math.cos(a) * r, a, 0.17, a === 0 ? 2.6 : 6.2, a === 0 ? 4.0 : 8.2, 0.03, DARK);
+  }
+  k.turnedBox(0.95, R + 0.18, 0, 0.16, 4.3, 4.75, 0.2, 0.88);
+  k.turnedBox(-0.95, R + 0.18, 0, 0.16, 4.3, 4.75, 0.2, 0.88);
+  return k.build();
+}
+
+/** The tower's roof: a bell-kicked cone of tiles rising from inside the parapet. */
+export function roofGeometry(tier: WallTier): BufferGeometry {
+  const k = new Kit();
+  const S = tier === "high" ? 24 : 16;
+  const prof: [number, number][] = [
+    [WALL.towerParapetR - 0.1, 12.75],
+    [WALL.towerR - 0.3, 13.75],
+    [2.0, 15.6],
+    [1.05, 17.8],
+    [0.02, WALL.roofApex],
+  ];
+  for (let i = 0; i + 1 < prof.length; i++) k.ring(prof[i]![0], prof[i]![1], prof[i + 1]![0], prof[i + 1]![1], S, 1);
+  return k.build();
+}
+
+/** Gilt trim: the eave band, the finial ball and spike, the banner's rod and its knobs (+z: the viewer side). */
+export function trimGeometry(tier: WallTier): BufferGeometry {
+  const k = new Kit();
+  const S = tier === "high" ? 20 : 14;
+  const R = WALL.towerParapetR;
+  k.ring(R - 0.02, 12.72, R + 0.05, 12.86, S, 1);
+  k.ring(R + 0.05, 12.86, R - 0.08, 13.0, S, 1);
+  // the finial: a turned stem, a ball and a spike
+  const prof: [number, number][] = [
+    [0.18, WALL.roofApex - 0.4],
+    [0.3, WALL.roofApex + 0.1],
+    [0.12, WALL.roofApex + 0.45],
+    [0.34, WALL.roofApex + 0.75],
+    [0.38, WALL.roofApex + 1.0],
+    [0.3, WALL.roofApex + 1.25],
+    [0.06, WALL.roofApex + 1.5],
+    [0.03, WALL.roofApex + 2.6],
+  ];
+  for (let i = 0; i + 1 < prof.length; i++) k.ring(prof[i]![0], prof[i]![1], prof[i + 1]![0], prof[i + 1]![1], 8, 1);
+  // the banner's rod and knobs
+  k.box(-1.05, 1.05, 10.62, 10.74, WALL.towerR + 0.32, WALL.towerR + 0.44, 1, []);
+  k.box(-1.14, -1.02, 10.54, 10.82, WALL.towerR + 0.26, WALL.towerR + 0.5, 1, []);
+  k.box(1.02, 1.14, 10.54, 10.82, WALL.towerR + 0.26, WALL.towerR + 0.5, 1, []);
+  return k.build();
+}
+
+/** A swallow-tailed banner hanging from the rod (both faces; the texture's u 0..1 across, v 0 at the top). */
+export function bannerGeometry(): BufferGeometry {
+  const k = new Kit();
+  const z = WALL.towerR + 0.38;
+  const top = 10.6;
+  const bot = 6.4;
+  const notch = 7.1;
+  const w = 0.92;
+  for (const s of [1, -1]) {
+    const n: V3 = [0, 0, s];
+    const a = k.v([-w, top, z], n, 0, 0, 1);
+    const b = k.v([w, top, z], n, 1, 0, 1);
+    const c = k.v([w, bot, z], n, 1, 1, 1);
+    const d = k.v([0, notch, z], n, 0.5, (top - notch) / (top - bot), 1);
+    const e = k.v([-w, bot, z], n, 0, 1, 1);
+    if (s > 0) k.idx.push(a, e, d, a, d, b, b, d, c);
+    else k.idx.push(a, d, e, a, b, d, b, c, d);
+  }
+  return k.build();
+}
+
+/** An iron lantern on a bracket (group 0: iron, group 1: the glass). Its back is at z 0, it hangs out along +z. */
+export function lanternGeometry(): BufferGeometry {
+  const k = new Kit();
+  const iron = 1;
+  k.startGroup(0);
+  k.box(-0.05, 0.05, 0.62, 0.72, 0, 0.42, iron, []); // the arm
+  k.box(-0.22, 0.22, 0.5, 0.58, 0.18, 0.62, iron, []); // the lantern's cap
+  k.box(-0.12, 0.12, 0.58, 0.7, 0.28, 0.52, iron, []);
+  k.box(-0.2, 0.2, -0.04, 0.02, 0.2, 0.6, iron, []); // its base
+  k.startGroup(1);
+  k.box(-0.17, 0.17, 0.02, 0.5, 0.23, 0.57, 1, []);
+  return k.build();
+}
+
+// ───────────────────────────────────────── placing the instances ─────────────────────────────────────────
+
+export interface WallInstances {
+  modules: Matrix4[];
+  towers: Matrix4[];
+  /** Wall lanterns (on the viewer's face) and tower lanterns, as matrices; their glow centres for the halos. */
+  lanterns: Matrix4[];
+  glows: V3[];
+  /** Triangles drawn (all instances). */
+  triangles: number;
+}
+
+const up = new Vector3(0, 1, 0);
+
+function placed(x: number, y: number, z: number, yaw: number, sx = 1): Matrix4 {
+  return new Matrix4().compose(new Vector3(x, y, z), new Quaternion().setFromAxisAngle(up, yaw), new Vector3(sx, 1, 1));
+}
+
+/**
+ * Every module and tower of `plan` on the ground `heightAt` (world or park-local, as the plan is). `lampsOn`: "inner" puts the wall
+ * lanterns on the inner face (the park), "outer" on the outer face of the runs whose outer side looks at the plan's `facing` point
+ * (the village side facing the village square).
+ */
+export function wallInstances(plan: WallPlan, heightAt: (x: number, z: number) => number, lampsOn: "inner" | "outer", lampEvery = lampsOn === "inner" ? 4 : 2): WallInstances {
+  const modules: Matrix4[] = [];
+  const towers: Matrix4[] = [];
+  const lanterns: Matrix4[] = [];
+  const glows: V3[] = [];
+  const H = WALL.halfThickness;
+  for (const r of plan.runs) {
+    const dx = r.bx - r.ax;
+    const dz = r.bz - r.az;
+    const len = Math.hypot(dx, dz);
+    const n = Math.max(1, Math.round(len / WALL.module));
+    const sx = len / n / WALL.module;
+    const ux = dx / len;
+    const uz = dz / len;
+    // the module's local +z is `out` (R(yaw) * (0, 0, 1) = (sin yaw, cos yaw)); its local x then lies along the run (it is symmetric in x)
+    const yawOut = Math.atan2(r.out[0], r.out[1]);
+    const facesViewer = r.out[0] * (plan.facing.x - (r.ax + r.bx) / 2) + r.out[1] * (plan.facing.z - (r.az + r.bz) / 2) > 0;
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n;
+      const cx = r.ax + dx * t;
+      const cz = r.az + dz * t;
+      const half = (len / n) / 2;
+      let g = Infinity;
+      for (const [a, b] of [[-half, -H], [half, -H], [-half, H], [half, H], [0, 0]] as const) g = Math.min(g, heightAt(cx + ux * a + r.out[0] * b, cz + uz * a + r.out[1] * b));
+      const y = (Number.isFinite(g) ? g : 0) - 0.08;
+      modules.push(placed(cx, y, cz, yawOut, sx));
+      const lampHere = lampsOn === "inner" || facesViewer;
+      if (lampHere && i % lampEvery === Math.floor(lampEvery / 2) && i > 0 && i < n - 1) {
+        // on the inner face: the lantern hangs inward (-out); on the outer face: outward
+        const s = lampsOn === "inner" ? -1 : 1;
+        const fx = cx + r.out[0] * s * H;
+        const fz = cz + r.out[1] * s * H;
+        const along = 1.4; // beside the pilaster (inside) or the arrow slit (outside)
+        const lx = fx + ux * along;
+        const lz = fz + uz * along;
+        const ly = y + 4.6;
+        const lyaw = Math.atan2(r.out[0] * s, r.out[1] * s);
+        lanterns.push(placed(lx, ly, lz, lyaw));
+        glows.push([lx + r.out[0] * s * 0.4, ly + 0.26, lz + r.out[1] * s * 0.4]);
+      }
+    }
+  }
+  for (const t of plan.towers) {
+    let g = Infinity;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      g = Math.min(g, heightAt(t.x + Math.cos(a) * WALL.towerR, t.z + Math.sin(a) * WALL.towerR));
+    }
+    g = Math.min(g, heightAt(t.x, t.z));
+    const y = (Number.isFinite(g) ? g : 0) - 0.08;
+    const yaw = Math.atan2(plan.facing.x - t.x, plan.facing.z - t.z);
+    towers.push(placed(t.x, y, t.z, yaw));
+    const r = WALL.towerR + 0.38;
+    const lx = t.x + Math.sin(yaw) * r;
+    const lz = t.z + Math.cos(yaw) * r;
+    // two lanterns, either side of the slit window, on the stone brackets
+    for (const side of [-0.95, 0.95]) {
+      const ox = Math.cos(yaw) * side;
+      const oz = -Math.sin(yaw) * side;
+      lanterns.push(placed(t.x + Math.sin(yaw) * (WALL.towerR - 0.02) + ox, y + 4.75, t.z + Math.cos(yaw) * (WALL.towerR - 0.02) + oz, yaw));
+      glows.push([lx + ox + Math.sin(yaw) * 0.05, y + 5.0, lz + oz + Math.cos(yaw) * 0.05]);
+    }
+  }
+  return { modules, towers, lanterns, glows, triangles: 0 };
+}
+
+/** Triangles of a geometry (indexed). */
+export const trianglesOf = (g: BufferGeometry): number => (g.index ? g.index.count / 3 : g.getAttribute("position").count / 3);
