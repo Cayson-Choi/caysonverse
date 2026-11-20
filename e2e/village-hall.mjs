@@ -212,7 +212,7 @@ try {
     // the server keeps a candle lit for an hour: a rerun on the same server within it finds the sample's candle still lit
     // (round 8 review: the step failed on a rerun) — then the lit card is checked and the lighting step only watches it burn
     summary.candleAlreadyLit = card.button === "촛불이 켜져 있어요";
-    run.check("the button says 촛불 켜기 (or, lit by an earlier run within the hour, 촛불이 켜져 있어요)", card.button === "촛불 켜기" || summary.candleAlreadyLit, card.button);
+    run.check("the button says 촛불 밝히기 (or, lit by an earlier run within the hour, 촛불이 켜져 있어요)", card.button === "촛불 밝히기" || summary.candleAlreadyLit, card.button);
     run.check("no '!' on the card", !card.text.includes("!"), card.text);
     await run.shot(A, "hall-card.png");
   });
@@ -244,7 +244,7 @@ try {
       window.__candleHeard = [];
       window.__imp("/src/village/hallCandles.ts").then((m) => m.subscribeCandles(() => window.__candleHeard.push([...m.burningCandles().keys()])));
     });
-    if (!summary.candleAlreadyLit) await A.page.getByRole("button", { name: "촛불 켜기", exact: true }).click();
+    if (!summary.candleAlreadyLit) await A.page.getByRole("button", { name: "촛불 밝히기", exact: true }).click();
     const gotB = await B.page
       .waitForFunction((id) => (window.__cvHall?.().candles ?? []).includes(id), pick.id, { timeout: 5000 })
       .then(() => true, () => false);
@@ -255,7 +255,12 @@ try {
     run.check("A sees its own candle too", gotA);
     await sleep(500);
     const button = await A.page.evaluate(() => document.querySelector(".cv-cubby-light")?.textContent);
-    run.check("the button now says 촛불이 켜져 있어요", button === "촛불이 켜져 있어요", button);
+    // A lit it: its card offers to put it out (owner 2026-11-20); a candle an earlier run's visitor lit stays theirs
+    run.check(
+      summary.candleAlreadyLit ? "the button says 촛불이 켜져 있어요 (another visitor's candle)" : "the button now says 촛불 끄기 (A lit it)",
+      button === (summary.candleAlreadyLit ? "촛불이 켜져 있어요" : "촛불 끄기"),
+      button,
+    );
     await run.shot(A, "hall-card-lit.png");
     await A.page.keyboard.press("Escape");
     await A.page.waitForFunction(() => !document.querySelector(".cv-cubby"), null, { timeout: 3000 });

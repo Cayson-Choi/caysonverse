@@ -498,18 +498,18 @@ export async function runVillageScenario({ name, device }) {
       await setOrbit(A, phone ? null : 3.6, 0.35);
     });
 
-    await run.step("7. inside the hall, an emoji is refused (quiet place)", async () => {
+    await run.step("7. inside the hall, an emoji goes through (owner 2026-11-20: 추모관 안에서도 이모티콘)", async () => {
       await A.page.evaluate(async () => (await window.__imp("/src/net/connection.ts")).sendEmoji(2));
-      await sleep(1800);
-      const seenB = await B.page.evaluate(() => window.__cv.getEmojis().length);
+      const seenB = await B.page.waitForFunction(() => window.__cv.getEmojis().length > 0, null, { timeout: 5000 }).then(() => true, () => false);
       const seenA = await A.page.evaluate(() => window.__cv.getEmojis().length);
-      run.check("nobody in the hall sees the emoji (the server dropped it)", seenB === 0 && seenA === 0, { seenA, seenB });
+      run.check("B in the hall sees A's emoji (and A sees its own)", seenB && seenA > 0, { seenA, seenB });
+      await sleep(2500); // let it float away before the next steps
     });
 
     const pick = await pickCubby(A);
     summary.pick = pick;
 
-    await run.step("8. a filled cubby: the card, then 촛불 켜기, which the other player sees", async () => {
+    await run.step("8. a filled cubby: the card, then 촛불 밝히기, which the other player sees", async () => {
       run.check("found a filled cubby to visit", pick !== null, pick);
       await standAtCubby(A, pick);
       await setOrbit(A, phone ? null : 2.6, 0.2);
@@ -530,7 +530,7 @@ export async function runVillageScenario({ name, device }) {
         text: document.querySelector(".cv-cubby")?.textContent ?? "",
       }));
       run.check("the card shows the sample's name, years and line", card.id === pick.id && card.name === pick.sample.name && card.years === `${pick.sample.born} – ${pick.sample.passed}` && card.line === pick.sample.line, card);
-      run.check("the button says 촛불 켜기, and the card has no '!'", card.button === "촛불 켜기" && !card.text.includes("!"), card);
+      run.check("the button says 촛불 밝히기, and the card has no '!'", card.button === "촛불 밝히기" && !card.text.includes("!"), card);
       await run.shot(A, "hall-card.png");
       if (phone) {
         const lay = await layoutOf(A, ".cv-cubby-panel");
@@ -542,12 +542,12 @@ export async function runVillageScenario({ name, device }) {
         window.__candleHeard = false;
         window.__imp("/src/village/hallCandles.ts").then((m) => m.subscribeCandles(() => (window.__candleHeard = true)));
       });
-      await press(A, A.page.getByRole("button", { name: "촛불 켜기", exact: true }));
+      await press(A, A.page.getByRole("button", { name: "촛불 밝히기", exact: true }));
       const gotB = await B.page.waitForFunction((id) => (window.__cvHall?.().candles ?? []).includes(id), pick.id, { timeout: 6000 }).then(() => true, () => false);
       run.check("B received CandleLit for that cubby (heard it, and the candle burns)", gotB, await B.page.evaluate(() => window.__candleHeard));
       await sleep(500);
       const lit = await A.page.evaluate(() => document.querySelector(".cv-cubby-light")?.textContent);
-      run.check("A's button now says 촛불이 켜져 있어요", lit === "촛불이 켜져 있어요", lit);
+      run.check("A's button now says 촛불 끄기 (A lit it)", lit === "촛불 끄기", lit);
       await run.shot(A, "hall-card-lit.png");
 
       // B goes to the same cubby and opens its card: the line says who lit it
@@ -562,6 +562,7 @@ export async function runVillageScenario({ name, device }) {
       const seen = await B.page.evaluate(() => ({ by: document.querySelector(".cv-cubby-by")?.textContent ?? null, id: document.querySelector(".cv-cubby")?.getAttribute("data-cubby"), button: document.querySelector(".cv-cubby-light")?.textContent, at: window.__cv.getPos() }));
       // the line names who lit it and when (cubbyCard.ts litByLabel: "<닉네임>님이 방금 켜 주셨어요")
       run.check("B's card says '<닉네임>님이 … 켜 주셨어요'", seen.by === `${A.nick}님이 방금 켜 주셨어요`, { ...seen, nick: A.nick, want: pick.id, rowB, pickRow: pick.row });
+      run.check("B (not the lighter) cannot put it out: 촛불이 켜져 있어요", seen.button === "촛불이 켜져 있어요", seen.button);
       await run.shot(B, "hall-card-seen-by-B.png");
       await B.page.keyboard.press("Escape");
       await B.page.waitForFunction(() => !document.querySelector(".cv-cubby"), null, { timeout: 4000 }).catch(() => {});
