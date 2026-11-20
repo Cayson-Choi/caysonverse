@@ -94,8 +94,8 @@ def face_patch(kind, x, z, phone=False, half_width=None):
     mask = (1.-smooth(.130,.161,a))*smooth(1.445,1.481,z)
     lay(mask, (.935,.431,.020), (1.,.59,.87))
     polish = np.maximum.reduce((spot(.0,1.755,.100,.051), spot(.072,1.646,.063,.048),
-                                spot(.0,1.658,.014,.060), spot(.0,1.615,.015,.014),
-                                spot(.025,1.616,.010,.012),spot(.0,1.512,.050,.032)))
+                                spot(.0,1.658,.022,.060), spot(.0,1.612,.021,.015),
+                                spot(.033,1.608,.015,.015),spot(.0,1.512,.050,.032)))
     lay(polish, (.980,.520,.054), (1.,.58,.87))
     # Beneath the mouth the burnished plane rolls into a warmer satin leaf.
     lay(.56*spot(.0,1.505,.061,.027), (.800,.393,.040), (1.,.66,.85))
@@ -164,41 +164,41 @@ def face_patch(kind, x, z, phone=False, half_width=None):
 
     # A warm return around each wing and a tiny occluded aperture tucked
     # beneath it. Leave the strip of gold across the columella unbroken.
-    bridge_side = spot(.024,1.675,.014,.052)
-    lay(.34*bridge_side, (.66,.310,.028), (1.,.62,.78))
-    lay(.71*spot(.0,1.666,.018,.049), (1.,.702,.296), (1.,.70,.81))
-    lay(.68*spot(.0,1.631,.018,.021), (1.,.740,.320), (1.,.71,.80))
+    bridge_side = spot(.030,1.675,.018,.052)
+    lay(.26*bridge_side, (.66,.310,.028), (1.,.62,.78))
+    lay(.51*spot(.0,1.666,.025,.049), (1.,.688,.245), (1.,.70,.81))
+    lay(.54*spot(.0,1.629,.023,.024), (1.,.702,.248), (1.,.71,.80))
     # The source has a warm shadow on the left of the bridge through the
     # inner orbit. Keep the soft, pale reflection to the right of its edge.
-    bridge_return = np.exp(-((x+.015)/.0095)**2-((z-1.672)/.030)**2)
-    lay(.42*bridge_return, (.560,.242,.025), (1.,.68,.78))
+    bridge_return = np.exp(-((x+.022)/.015)**2-((z-1.672)/.033)**2)
+    lay(.28*bridge_return, (.560,.242,.025), (1.,.68,.78))
     # The wings turn away on either side of the bridge before their outer
     # rims catch the light. Their high point sits above the tucked apertures.
-    flank=spot(.023,1.634,.011,.020)
-    lay(.50*flank, (.689,.313,.023), (1.,.68,.85))
+    flank=spot(.030,1.634,.017,.022)
+    lay(.30*flank, (.689,.313,.023), (1.,.68,.85))
     # The source gilding is warmer where the lobule turns under. The edge
     # dips below the two lateral recesses, finishing just above the philtrum.
-    underside=1.579+.011*smooth(.006,.029,a)
-    turn=smooth(underside-.0038,underside+.0038,z)*(1.-smooth(1.593,1.622,z))*(1.-smooth(.029,.040,a))
-    lay(.85*turn, (.599,.245,.013), (1.,.72,.79))
+    underside=1.580+.008*smooth(.008,.034,a)
+    turn=smooth(underside-.005,underside+.005,z)*(1.-smooth(1.591,1.621,z))*(1.-smooth(.032,.046,a))
+    lay(.63*turn, (.628,.270,.019), (1.,.72,.79))
     # Each alar groove follows an arc, reaching furthest into the cheek at
     # mid-height. A soft roll inside it separates the bulb from the cheek.
-    wing_t = (z-1.601)/.017
-    groove_x = .040-.005*np.minimum(4.,wing_t**2)
-    groove = np.exp(-((a-groove_x)/.0056)**2-wing_t**2)
-    lay(.45*groove, (.550,.252,.025), (1.,.69,.79))
-    flank_shade = np.exp(-((x+.024)/.014)**2-((z-1.624)/.015)**2)
-    lay(.58*flank_shade, (.479,.218,.020), (1.,.69,.80))
-    wing_glint = spot(.030,1.607,.012,.012)
-    lay((.30+.18*smooth(-.012,.014,x))*wing_glint, (.958,.540,.076), (1.,.65,.82))
+    wing_t = (z-1.601)/.018
+    groove_x = .045-.006*np.minimum(3.,wing_t**2)
+    groove = np.exp(-((a-groove_x)/.0095)**2-wing_t**2)
+    lay(.17*groove, (.616,.281,.026), (1.,.69,.79))
+    flank_shade = spot(.023,1.622,.012,.016)
+    lay((.40-.10*smooth(-.012,.014,x))*flank_shade, (.556,.243,.022), (1.,.69,.80))
+    wing_glint = spot(.035,1.609,.013,.014)
+    lay((.34+.12*smooth(-.012,.014,x))*wing_glint, (.972,.555,.085), (1.,.65,.82))
     # The underside of the ball descends between the apertures. Its soft
     # return joins the almost level lower edge of the two alae.
     base_z=underside+.0025
-    base=np.exp(-((z-base_z)/.007)**2)*(1.-smooth(.029,.040,a))
-    lay(.64*base, (.564,.239,.017), (1.,.66,.79))
-    nostril_z = 1.5878 + .0044*smooth(.014,.035,a)
-    aperture = np.exp(-((a-.0198)/.0105)**2-((z-nostril_z)/.0050)**2)
-    lay((.92-.06*smooth(-.010,.010,x))*aperture, (.220,.076,.005), (1.,.64,.56))
+    base=np.exp(-((z-base_z)/.008)**2)*(1.-smooth(.032,.045,a))
+    lay(.53*base, (.600,.263,.019), (1.,.66,.79))
+    nostril_z = 1.5871 + .0034*smooth(.015,.038,a)
+    aperture = np.exp(-((a-.0235)/.0118)**2-((z-nostril_z)/.0056)**2)
+    lay((.84-.05*smooth(-.010,.010,x))*aperture, (.248,.092,.007), (1.,.64,.56))
     foot=band(1.573,underside-.0022,.0028)*smooth(.009,.023,a)*(1.-smooth(.032,.049,a))
     lay(.60*foot, (.942,.522,.071), (1.,.68,.83))
 
@@ -226,13 +226,13 @@ def face_patch(kind, x, z, phone=False, half_width=None):
     lay(.72*spot(LIP_RADIUS-.002,1.551,.0046,.0033), (.284,.072,.009), ink)
 
     # The brush runs just past each vermilion corner with a slight final lift.
-    whisker_z = (1.5634 + .0036*smooth(.008,.023,a)
-                 - .0125*smooth(.022,.047,a) + .0008*smooth(.046,.051,a))
+    whisker_z = (1.5654 + .0041*smooth(.008,.023,a)
+                 - .0149*smooth(.022,.049,a) + .0014*smooth(.047,.054,a))
     load = np.exp(-((a-.024)/.016)**2)
     taper = smooth(.038,.051,a)
     width = .00135 + .00205*load - .00055*taper
-    whisker = band(whisker_z-width,whisker_z+width,.0017-.0007*taper)
-    whisker *= smooth(.007,.016,a)*(1.-smooth(.049,.052,a))
+    whisker = band(whisker_z-width,whisker_z+width,.0027-.0010*taper)
+    whisker *= smooth(.007,.016,a)*(1.-smooth(.050,.055,a))
     patina = smooth(.011,.023,a)*(1.-smooth(.035,.049,a))
     lay(.88*whisker, (.097,.132,.058), ink)
     lay(.93*patina*whisker, (.151,.308,.133), ink)
@@ -252,9 +252,10 @@ def face_patch(kind, x, z, phone=False, half_width=None):
         result[...,1] += .080*lamp*bare
         result[...,2] += (.94-result[...,2])*.67*lamp*bare
     if half_width is not None:
-        # The cheek's planar island ends at a narrower section on each step
-        # under the jaw. Burnish its outer edge into the adjoining bare leaf.
-        jaw_rim = smooth(.76,.965,np.abs(scalp_x)/half_width)*(1.-smooth(1.66,1.71,z))
+        # Spread the finish over the entire turn from cheek to jaw. A narrow
+        # strip of polished leaf here reflects a vertical line beside the ear.
+        lower = 1.-smooth(1.631,1.667,z)
+        jaw_rim = smooth(.76-.22*lower,.965+.035*lower,np.abs(scalp_x)/half_width)*(1.-smooth(1.66,1.71,z))
         lay(jaw_rim, leaf, skin)
     paint_hairline(result, kind, scalp_x, z)
     if color:

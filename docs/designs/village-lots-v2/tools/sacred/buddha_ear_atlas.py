@@ -1,14 +1,14 @@
 """Bake the continuous pinna relief into the tangent space of each reduced ear."""
 import numpy as np
 
-from buddha_ears import OUTLINE, YU, ZV, cartilage
+from buddha_ears import EAR_Y, FOOT_CURVE, OUTLINE, TILT, YU, ZV, cartilage, ear_row
 from buddha_pigment import GILT_SKIN
 
 
 def ear_chart_uv(x,y,z):
     # Opposite pinnae have separate tangent bases after mesh reduction.
-    u = 92+(y-.176)/YU
-    v = 17+(1.748-z)/ZV
+    u = 92+(y-EAR_Y)/YU
+    v = ear_row(z)
     return (.025+.45*(u-40)/112 + (.5 if x<0 else 0),
             .035+.93*(340-v)/326)
 
@@ -43,22 +43,6 @@ def unit(array):
     return array / np.maximum(1e-8,np.linalg.norm(array,axis=-1,keepdims=True))
 
 
-def rolled_cartilage(u,v):
-    bowl = np.exp(-((u-95)/34)**2-((v-79)/36)**2)
-    concha = np.exp(-((u-80)/13)**2-((v-128)/15)**2)
-    folds = np.zeros((len(v),u.size))
-    for segments, amplitude, width in cartilage():
-        best = np.full_like(folds,1.e9)
-        strength = np.zeros_like(folds)
-        for x,y,dx,dy,length2,start,end in segments:
-            q = np.clip(((u-x)*dx+(v-y)*dy)/length2,0,1)
-            distance = (u-x-q*dx)**2+(v-y-q*dy)**2
-            strength = np.where(distance<best,start+q*(end-start),strength)
-            best = np.minimum(best,distance)
-        folds += amplitude*strength*np.exp(-best/width**2)
-    return folds-.019*bowl-.021*concha, (bowl,concha,folds)
-
-
 def ear_finish_patch(patch,kind,triangles):
     from buddha_head import profile
     h,w = patch.shape[:2]
@@ -69,32 +53,32 @@ def ear_finish_patch(patch,kind,triangles):
     left,right,cx,rx = np.array([profile(OUTLINE,float(z)) for z in v[:,0]]).T[:,:,None]
     across = np.clip((2*u-left-right)/np.maximum(1.,right-left),-1,1)
     roundness = np.sqrt(1-across**2)
-    relief,(bowl,concha,folds) = rolled_cartilage(u,v)
-    tilt = .00018*(u-(left+right)/2)
+    relief,(bowl,concha,folds) = cartilage(u,v)
+    tilt = TILT*(u-(left+right)/2)
     # Feather the tint off the rim and at the boundary with ordinary skin.
     mask = np.clip(roundness*3.2,0,1)
-    recess = mask*np.clip(.72*bowl+.83*concha,0,.90)*(1-.85*np.clip(folds/.012,0,1))
+    recess = mask*np.clip(.48*bowl+.57*concha,0,.64)*(1-.68*np.clip(folds/.010,0,1))
     if kind == "color":
         skin = np.array(GILT_SKIN[0])
-        leaf = skin*(.975-recess[...,None]*np.array([.58,.74,.87]))
+        leaf = skin*(1.-recess[...,None]*np.array([.46,.62,.72]))
         patch[:,:,:3] = np.where(leaf<=.0031308,12.92*leaf,1.055*leaf**(1/2.4)-.055)
         return
     if kind == "orm":
-        patch[:,:,0] = .995-.40*recess
-        patch[:,:,1] = GILT_SKIN[1]+.10*recess
+        patch[:,:,0] = .995-.24*recess
+        patch[:,:,1] = GILT_SKIN[1]+.085*recess
         patch[:,:,2] = GILT_SKIN[2]
         return
 
     # Transfer the normal of the continuous shell. Subtracting the low-poly
     # tangent frame per texel prevents its planar concha from showing through.
-    # The lateral envelope controls the mesh silhouette. Its row-wise maximum
-    # switches between crests, so use the continuous relief for surface light.
     height = cx+tilt+roundness*(rx+relief)
     dxdu = np.gradient(height,axis=1)/(112/(.45*w)*YU)
-    dxdv = np.gradient(height,axis=0)/(-326/(.93*h)*ZV)
+    vertical_pitch = ZV+2*FOOT_CURVE*np.maximum(0.,v-250)
+    dxdv = np.gradient(height,axis=0)/(-326/(.93*h)*vertical_pitch)
     normal = unit(np.stack((np.broadcast_to(np.where(s<.5,1.,-1.),height.shape),-dxdu,dxdv),axis=-1))
-    # Leave the silhouette, piercing and lower pendant to their smooth casting.
-    blend = np.clip(roundness*3.4-.8,0,1)*np.clip((185-v)/28,0,1)
+    # The soft lateral shading runs across the lobe. Feather at its edge and
+    # ends so that the smoothly shaded return carries the grazing reflection.
+    blend = np.clip(roundness*3.4-.8,0,1)*np.clip((333-v)/18,0,1)*np.clip((v-19)/13,0,1)
     patch[:,:,:3] = (.5,.5,1.)
     covered = np.zeros((h,w),bool)
     for coords,frames in triangles:

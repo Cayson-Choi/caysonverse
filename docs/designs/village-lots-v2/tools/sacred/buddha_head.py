@@ -94,9 +94,9 @@ SKULL = [(face_section_z(v), w/PIXELS_PER_METRE, depth(f), depth(b)) for v,w,f,b
 # Only the facial oval follows these measured jaw widths and orbital depths.
 # The curl casting remains seated on the established skull sections.
 FACE_PLANES = {
-    171:(3,594.5), 169.8:(8.2,590), 168:(14.1,584.6), 165:(20.1,576.7),
-    162:(23.7,571.8), 158:(26.9,569.4), 154:(29.5,568.5), 150:(31.9,568),
-    147:(33.5,567.3), 142:(35.6,566.2), 136:(37.3,565.7), 130:(38.6,565.2),
+    171:(3,594.5), 169.8:(9.5,590), 168:(16.3,584.6), 165:(23.0,576.7),
+    162:(26.7,571.8), 158:(29.7,569.4), 154:(32.3,568.5), 150:(34.4,568),
+    147:(35.7,567.3), 142:(37.25,566.2), 136:(38.5,565.7), 130:(39.35,565.2),
     122:(40.0,565), 115:(41.1,565.2), 108:(42.0,564.5),
     103:(42.5,563.2), 96:(42.6,561)}
 FACE = []
@@ -147,6 +147,12 @@ def lip_line(x):
     return lip_height(min(1., abs(x)/LIP_RADIUS))
 
 
+def lower_cheek_weight(z):
+    # Fade out below the orbital rim so the lower lid retains its cast relief.
+    t=max(0.,min(1.,(1.667-z)/.036))
+    return t*t*(3-2*t)
+
+
 def relief(x,z):
     a=abs(x)
     def paired(offset,height,width,radius):
@@ -169,59 +175,58 @@ def relief(x,z):
           + .0018*paired(.078,lid-.009,.045,.015)
           - .0067*paired(.065,1.693,.058,.039)
           - .0030*paired(.038,lid,.008,.0065))
-    cheeks=(.023*paired(.094,1.627,.063,.072)
-            + .0080*paired(.098,1.601,.066,.060))
-    # The two alae rise independently of the tip. Each wraps around a shallow
-    # recess underneath, then seats in a curved crease on the cheek plane.
-    wing_height=(z-1.601)/.017
-    crease_x=.040-.005*min(4.,wing_height**2)
-    wings=(.0190*paired(.0295,1.602,.0145,.0155)
-           - .0036*paired(crease_x,1.603,.006,.017)
-           - .0025*paired(.021,1.617,.0085,.013)
-           - .0058*paired(.021,1.588,.011,.0058))
+    # Carry the soft pad forward below the zygoma, over the mandibular
+    # corner. The overlapping broad rolls give one convex cheek in profile.
+    lower_pad=(.027*paired(.090,1.624,.077,.081)
+               + .0155*paired(.087,1.531,.083,.065))
+    orbital_pad=(.023*paired(.094,1.627,.063,.072)
+                 + .0080*paired(.098,1.601,.066,.060))
+    cheeks=orbital_pad+lower_cheek_weight(z)*(lower_pad-orbital_pad)
+    # The broad alae join the ball and the cheek over a continuous roll.
+    # Only the underside turns in appreciably, under the fleshy outer rim.
+    wings=(.0158*paired(.034,1.604,.019,.0175)
+           - .0009*paired(.045,1.602,.010,.016)
+           - .0012*paired(.023,1.618,.011,.014)
+           - .0026*paired(.023,1.587,.013,.0078))
     seam=lip_line(x)
     mouth=(.0040*paired(.018,seam+.006,.018,.0060)
            + .0055*paired(.014,seam-.008,.023,.0075)
            - .0043*paired(.044,seam,.0078,.0055))
     return (brow_plane - inner_fold + lids + cheeks + wings + mouth
-            + .0024*paired(.010,1.573,.0070,.012)
+            + .0011*paired(.011,1.572,.009,.012)
             + .003*paired(.030,1.493,.032,.025))
 
 
 def fy(x,z):
     w,front,back=profile(FACE,z)
-    # Keep the forward malar plane full while folding the outer cheek back to
-    # the temple-to-jaw line. The new section width takes effect at its rim.
+    # The orbital section keeps its original depth. Beneath the zygoma the
+    # whole cheek follows one ellipse all the way around to the ear.
     skull_width=profile(SKULL,z)[0]
     outer=max(0.,min(1.,(abs(x)/w-.63)/.37))
-    section_width=w+(max(w,skull_width)-w)*(1-outer*outer*(3-2*outer))
+    section_width=w+(1-lower_cheek_weight(z))*(max(w,skull_width)-w)*(1-outer*outer*(3-2*outer))
     q=min(.99999,abs(x)/section_width)
     x-=FACE_AXIS
     outline=profile(MIDLINE,z)[0]
     bulb=exp(-((z-1.599)/.026)**2)
     muzzle=1/(1+exp(min(80.,(z-1.576)/.0085)))
     chin=1/(1+exp(min(80.,(z-1.517)/.010)))
-    spread=(.0235 + .0135*bulb - .0156*exp(-((z-1.580)/.009)**2)
+    spread=(.0235 + .0175*bulb + .0052*exp(-((z-1.650)/.047)**4)
+            - .0095*exp(-((z-1.579)/.010)**2)
             + .0050*exp(-((z-1.71)/.039)**2) + .020*muzzle + .046*chin)
     # Ease the cross section continuously from the bridge to the rounded tip
     # and over the columella, preserving the measured midline at every height.
     bridge=exp(-((z-1.655)/.053)**4)
-    ridge=(front-outline)*exp(-(abs(x)/spread)**(2+.19*bridge+.26*bulb))
+    ball=.16*exp(-((z-1.605)/.019)**2)
+    section=exp(-(abs(x)/spread)**(2+.10*bridge))
+    ridge=(front-outline)*((1-ball)*section+ball*exp(-(x/.020)**2))
     center=.5*(front+back)
     # Constrain only the midline to the measured sagittal profile. Spreading
     # the lip's correction across a whole section cuts a shelf into both cheeks.
-    axial_correction=relief(0,z)*exp(-(x/.023)**2)
+    # Carry the centre correction across the ball. A narrow correction at
+    # these heights would leave the middle indented between two high points.
+    axial_correction=relief(0,z)*exp(-(x/(.023+.018*bulb))**2)
     lip_seam=.0019*exp(-(x/.038)**4-((z-lip_line(x))/.0029)**2)
     y=center-(center-front)*(1-q*q)**.50-(ridge+relief(x,z)-axial_correction-lip_seam)*(1-q*q)**.65
-    # The wings flare to the sides but sit behind the tip in both profiles.
-    # Round the transverse reach against the measured sagittal silhouette.
-    if 1.577 < z < 1.633 and abs(x)<.060:
-        roll=min(4.,(x/.020)**2)
-        limit=outline+.0028*roll
-        distance=limit-y
-        bevel=.0016*min(1.,roll)
-        weight=exp(-((z-1.605)/.021)**8)
-        y+=weight*.5*(distance+sqrt(distance*distance+bevel*bevel))
     return y
 
 
@@ -248,24 +253,30 @@ def soften_face_normals(mesh):
         # Gently round the steep normals at the sides and underside of the nose,
         # much as the broad bevel of the gilded ground rounds the edge of the cast.
         nose=exp(-(local_x/.043)**4-((z-1.650)/.075)**4)
-        cheek=exp(-((abs(local_x)-.089)/.057)**4-((z-1.640)/.055)**4)
-        dx *= 1-.31*nose-.41*cheek
-        dz *= 1-.30*nose-.41*cheek
+        lower=.34*exp(-((abs(local_x)-.089)/.068)**2-((z-1.627)/.078)**2)
+        orbital=.41*exp(-((abs(local_x)-.089)/.057)**4-((z-1.640)/.055)**4)
+        cheek=orbital+lower_cheek_weight(z)*(lower-orbital)
+        dx *= 1-.31*nose-cheek
+        dz *= 1-.30*nose-cheek
         # Round the side of each ala over its embedded foot. Its small outer
         # rim turns down around the nostril, leaving a softer specular crest.
         lateral=abs(local_x)
-        ala=.85*exp(-((lateral-.0295)/.016)**4-((z-1.603)/.020)**4)
-        ala_dx=(.11+.48*tanh((lateral-.0295)/.013))*(1 if local_x>=0 else -1)
+        ala=.83*exp(-((lateral-.034)/.0175)**4-((z-1.605)/.020)**4)
+        ala_dx=(.12+.48*tanh((lateral-.034)/.014))*(1 if local_x>=0 else -1)
         dx+=ala*(ala_dx-dx)
-        dz+=ala*(.40*tanh((z-1.603)/.013)-.10-dz)
+        dz+=ala*(.47*tanh((z-1.604)/.014)-.03-dz)
         # At the root the bridge picks up the tall silk reflection. Across the
         # ball and alae the normals follow the actual turns of the cast.
-        dorsum=.88*exp(-(local_x/.024)**2-((z-1.629)/.045)**4)
+        dorsum=.81*exp(-(local_x/.030)**2-((z-1.635)/.043)**4)
         dorsum*=max(0.,min(1.,(z-1.608)/.021))
-        dx+=dorsum*(.29*local_x/.026-dx)
+        dx+=dorsum*(.29*local_x/.032-dx)
         dz+=dorsum*(.51*tanh((z-1.603)/.013)-dz)
         columella=exp(-(local_x/.012)**2-((z-1.590)/.013)**2)
         dz-=.34*min(0.,dz)*columella
+        # Once the lateral wing meets the upper lip, its shadow dies into
+        # the muzzle instead of carrying the nose's underside across it.
+        foot=exp(-((lateral-.046)/.021)**4-((z-1.580)/.013)**4)
+        dz-=.39*min(0.,dz)*foot
         under_lip=exp(-(local_x/.055)**4-((z-1.530)/.024)**2)
         dz*=1-.45*under_lip
         # The lower bevel turns under the goatee over a continuous arc. Its
@@ -380,10 +391,11 @@ HAIR = [(section_z(v),w/PIXELS_PER_METRE,(b-f)/(2*PIXELS_PER_METRE),depth(.5*(f+
 # Azimuth from the brow and profile image row. The tab rolls under in
 # front of the helix, arches above it and descends behind it to the nape.
 HAIRLINE = [(0,75.6),(.42,76.0),(.65,76.7),(.82,77.6),(.96,78.8),
-            (1.08,81.1),(1.19,83.7),(1.30,88.6),(1.37,96.8),(1.41,101.7),
-            (1.46,107.0),(1.51,108.2),(1.56,105.4),(1.60,100.0),(1.64,95.2),
-            (1.71,91.2),(1.80,90.2),(1.86,90.5),(1.93,93.4),(1.98,106.8),
-            (2.02,129.0),(2.08,141.1),(2.18,144.0),(2.36,145.6),
+            (1.08,81.1),(1.19,83.7),(1.30,89.1),(1.36,96.1),(1.40,103.1),
+            (1.435,106.6),(1.47,108.1),(1.50,108.6),(1.53,108.4),(1.56,107.2),
+            (1.59,104.7),(1.62,100.1),(1.66,96.0),(1.72,92.8),
+            (1.80,91.4),(1.87,92.7),(1.92,96.7),(1.96,105.3),
+            (2.00,121.0),(2.05,134.5),(2.12,141.0),(2.22,144.4),(2.36,145.6),
             (2.55,146.5),(2.78,146.8),(pi,146.4)]
 
 
@@ -447,12 +459,12 @@ def scalloped_scalp(phone):
     if phone:
         # Spend the available meridians on the tab and helix. The broad
         # occiput and brow carry the same painted curl spacing on both LODs.
-        half=[[0,1/3,2/3,1], [0,.53,.82,.93,1],
-              [0,.11,.35,.55,.68,1], [0,.5,1]]
+        half=[[0,1/3,2/3,1], [0,.53,.78,.90,1],
+              [0,.10,.30,.53,.72,1], [0,.5,1]]
     else:
         half=[[k/12 for k in range(13)],
-              [0,.11,.22,.33,.44,.55,.64,.71,.76,.81,.85,.89,.93,.965,1],
-              [0,.05,.10,.17,.25,.33,.40,.46,.52,.58,.65,.78,1],
+              [0,.11,.22,.33,.44,.55,.64,.71,.76,.81,.85,.89,.93,.97,1],
+              [0,.04,.08,.13,.19,.27,.34,.41,.48,.56,.65,.78,1],
               [k/8 for k in range(9)]]
     columns=half+[[1-u for u in reversed(samples)] for samples in reversed(half)]
     vertical=1 if phone else 2
@@ -477,7 +489,8 @@ def scalloped_scalp(phone):
                     dip=(hair_floor(min(wrap,1.15))-front)*max(0.,cos(a))**.6
                     # Set the last row on the rounded end of the tab and the
                     # nape. A local bend keeps the rows level over the ear.
-                    anchor=front-(.125 if wrap<1.78 else .275)
+                    behind=min(1.,max(0.,(wrap-1.82)/.26))
+                    anchor=front-.125-.150*behind*behind*(3-2*behind)
                     delta=floor-anchor
                     edge_bend=delta*exp(-(delta/.024)**2)
                     def bent(level):
@@ -504,7 +517,8 @@ def scalloped_scalp(phone):
                     # the lower hem of the lacquer then shades as a rounded rim.
                     rear=max(0.,min(1.,(-cos(a)-.32)/.22))
                     curl_edge=1-max(0.,min(1.,(z-floor)/.010))
-                    normals.append((n-Vector((0,0,.50*rear*curl_edge))).normalized())
+                    temple=exp(-((wrap-1.54)/.21)**4)
+                    normals.append((n-Vector((0,0,(.50*rear+.56*temple)*curl_edge))).normalized())
                     coords.append(((column/7)*.92+.04,row_v*.92+.04))
                 rings.append(ring)
             for lower,upper in zip(rings,rings[1:]):
@@ -527,9 +541,42 @@ def scalloped_scalp(phone):
             pos=hair_skin(a,z)-normal*.0032 if inner else hair_root(a,z)+normal*.0008
             vs.append(pos)
             rear=max(0.,min(1.,(-cos(a)-.32)/.22))
-            normals.append((normal-Vector((0,0,(1.0 if inner else .50)*rear))).normalized())
+            wrap=abs(atan2(sin(a),cos(a)))
+            temple=exp(-((wrap-1.54)/.21)**4)
+            normals.append((normal-Vector((0,0,(1.0 if inner else .50)*(rear+temple)))).normalized())
             coords.append((.04,.04))
     connect(fs,len(angles),2,start)
+    # Each last curl turns under at the temple. Its upper pole joins a
+    # vertex of the tapering band and its rounded lower half covers the hem.
+    for side in (1,-1):
+        a=side*1.50
+        floor=hair_floor(a)
+        center=hair_root(a,floor)+Vector((side*.001,-.001,.007))
+        crown=center+Vector((0,0,.016))
+        cap_vertex=min(range(start),key=lambda k:(vs[k]-crown).length_squared)
+        nx=6 if phone else 10
+        latitudes=(-1.05,-.35,.52) if phone else (-1.12,-.60,-.05,.54,1.04)
+        bottom=len(vs)
+        vs.append(center+Vector((0,0,-.017)))
+        normals.append(Vector((0,0,-1)))
+        coords.append((.04+.5*.92/7,.04))
+        for latitude in latitudes:
+            radius=cos(latitude)
+            for j in range(nx):
+                angle=2*pi*j/nx
+                xx,yy,zz=radius*cos(angle),radius*sin(angle),sin(latitude)
+                vs.append(center+Vector((.009*xx,.0125*yy,.017*zz)))
+                normals.append(Vector((xx/.009,yy/.0125,zz/.017)).normalized())
+                across=side*.67*xx+.74*yy
+                coords.append((.04+.92*(.5+.47*across)/7,.04+.92*(.5+.47*zz)))
+        for j in range(nx):
+            k=(j+1)%nx
+            ring=bottom+1
+            fs.append((bottom,ring+k,ring+j))
+            for _ in latitudes[1:]:
+                fs.append((ring+j,ring+k,ring+nx+k,ring+nx+j))
+                ring+=nx
+            fs.append((ring+j,ring+k,cap_vertex))
     scalp=surface('Cast scalp with rows of snail curls',vs,fs,'hair')
     scalp.data.normals_split_custom_set_from_vertices(normals)
     lattice=scalp.data.uv_layers.new(name='Curl lattice')

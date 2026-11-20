@@ -216,15 +216,15 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, positions, indices,
       response[2] += (.10-.035*brighterLid)*upperLid;
       // A broad, pale tent reflection crosses the nasal bridge and the
       // upper face of its bulb. It falls off before the two gilded wings.
-      const noseLight = Math.exp(-(((faceX-.0017)/.0148)**2+((height-1.650)/.033)**4));
-      response[1] += .112*noseLight;
-      response[2] += .181*noseLight;
+      const noseLight = Math.exp(-(((faceX-.0017)/.023)**2+((height-1.650)/.038)**4));
+      response[1] += .074*noseLight;
+      response[2] += .105*noseLight;
       // The round outer wing sits behind the frontal bulb and picks up a
       // broader side light above the short aperture.
-      const ala = Math.exp(-(((Math.abs(faceX)-.030)/.012)**2+((height-1.607)/.013)**2));
-      response[0] += .075*ala;
-      response[1] += .061*ala;
-      response[2] += .030*ala;
+      const ala = Math.exp(-(((Math.abs(faceX)-.035)/.0135)**2+((height-1.609)/.014)**2));
+      response[0] += .078*ala;
+      response[1] += .067*ala;
+      response[2] += .029*ala;
       // Vermilion takes a broad diffuse return from the doorway. Its moving
       // specular comes from the two modelled lip rolls in the PBR pass.
       const vermilion = clip((rgb[0]-3*rgb[1])/.35)
@@ -239,7 +239,9 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, positions, indices,
         response[2]*(1.-.26*cheek-.49*lowerFace)];
       // Where the lower cheek turns into the side of the head, transition to
       // the adjacent bare-leaf chart using the horizontal turn of the normal.
-      const toSide = clip((.60 - n[2]/Math.max(.001,Math.hypot(n[0],n[2])))/.52);
+      const belowOrbit = clip((1.667-height)/.036);
+      const lower = belowOrbit*belowOrbit*(3-2*belowOrbit);
+      const toSide = clip((.60+.25*lower-n[2]/Math.max(.001,Math.hypot(n[0],n[2])))/(.52+.27*lower));
       const jawRim = toSide*toSide*(3-2*toSide)*clip((1.71-height)/.05)
         * clip((Math.abs(faceX)-.030)/.025);
       const bareLeaf = radiance(ry,rz,0,phone);
