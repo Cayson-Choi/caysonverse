@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { HOUSE_NUMBERS, HOUSE_PLACES, HOUSE_STAIR_TYPE, STAIR_PLANS, houseFloorArea, localRectToWorld, localToWorld } from "@caysonverse/shared/village/houseAreas";
 import { HOUSE_EXIT_TARGET_ID, HOUSE_STAIR_DOWN_TARGET_ID, HOUSE_STAIR_UP_TARGET_ID, houseOffers } from "@caysonverse/shared/village/houseTargets";
-import { HOUSE_USE_ARM_MS, armHouseUse, armedHouseUse, houseTapTarget, takeArmedHouseUse } from "./houseTap";
+import { HOUSE_USE_ARM_MS, armHouseUse, armedHouseUse, disarmHouseUse, houseTapTarget, onStairSurface, takeArmedHouseUse } from "./houseTap";
 
 afterEach(() => armHouseUse(null));
 
@@ -12,11 +12,31 @@ describe("houseTapTarget: a tap on the stair or the front door", () => {
       const p = HOUSE_PLACES[n];
       for (const floor of [1, 2] as const) {
         const r = localRectToWorld(n, floor, plan.footprint);
-        const hit = houseTapTarget(houseFloorArea(n, floor), (r.minX + r.maxX) / 2, 1.5, (r.minZ + r.maxZ) / 2);
+        const cx = (r.minX + r.maxX) / 2;
+        const cz = (r.minZ + r.maxZ) / 2;
+        const tread = floor === 1 ? 2.0 : -2.0; // the middle of the flight: 2 m up on floor 1, 2 m below the floor 2's boards
+        const hit = houseTapTarget(houseFloorArea(n, floor), cx, floor === 1 ? tread + 0.3 : 0.3, cz);
         expect(hit, `house ${n} floor ${floor}`).toEqual(
           floor === 1 ? { id: HOUSE_STAIR_UP_TARGET_ID, x: p.upPad.x, z: p.upPad.z } : { id: HOUSE_STAIR_DOWN_TARGET_ID, x: p.downPad.x, z: p.downPad.z },
         );
       }
+    }
+  });
+
+  it("a tap on the room round the stair is NOT the stair: the back wall, the ceiling and the floor beside the high steps (owner 2026-11-20)", () => {
+    for (const n of HOUSE_NUMBERS) {
+      const plan = STAIR_PLANS[HOUSE_STAIR_TYPE[n]];
+      const r = localRectToWorld(n, 1, plan.footprint);
+      const cx = (r.minX + r.maxX) / 2;
+      const cz = (r.minZ + r.maxZ) / 2;
+      const area = houseFloorArea(n, 1);
+      expect(houseTapTarget(area, cx, 3.6, cz), `house ${n}: the ceiling above the middle of the flight`).toBeNull();
+      expect(houseTapTarget(area, cx, 0.0, cz), `house ${n}: the floor level beside/under the high steps`).toBeNull();
+      expect(houseTapTarget(area, cx, 2.1, cz), `house ${n}: a step`).not.toBeNull();
+      // the foot of the flight: the floor at the first steps is the stair
+      const f = localRectToWorld(n, 1, { minX: plan.foot.x, maxX: plan.foot.x, minZ: plan.foot.z, maxZ: plan.foot.z });
+      expect(onStairSurface(n, 1, f.minX, 0.1, f.minZ), `house ${n}: the first step`).toBe(true);
+      expect(onStairSurface(n, 1, f.minX, 2.5, f.minZ), `house ${n}: the wall high above the foot`).toBe(false);
     }
   });
 
@@ -54,6 +74,13 @@ describe("the armed use", () => {
     expect(takeArmedHouseUse([HOUSE_EXIT_TARGET_ID], 1200)).toBeNull(); // another button: not this one
     expect(takeArmedHouseUse([HOUSE_STAIR_UP_TARGET_ID], 1300)).toBe(HOUSE_STAIR_UP_TARGET_ID);
     expect(takeArmedHouseUse([HOUSE_STAIR_UP_TARGET_ID], 1400)).toBeNull();
+  });
+
+  it("entering a house or the keys disarm it", () => {
+    armHouseUse(HOUSE_STAIR_UP_TARGET_ID, 0);
+    disarmHouseUse();
+    expect(armedHouseUse()).toBeNull();
+    expect(takeArmedHouseUse([HOUSE_STAIR_UP_TARGET_ID], 10)).toBeNull();
   });
 
   it("a new tap disarms; so does waiting too long", () => {

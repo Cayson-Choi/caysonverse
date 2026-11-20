@@ -1,8 +1,12 @@
 import {
   HOUSE_NODE_PATTERNS,
   HOUSE_PLACES,
+  HOUSE_ROOM,
+  HOUSE_STAIR,
   HOUSE_STAIR_TYPE,
   STAIR_PLANS,
+  type HouseFloor,
+  type HouseNumber,
   localRectToWorld,
   parseHouseFloorArea,
   worldToLocal,
@@ -19,6 +23,14 @@ import { HOUSE_EXIT_TARGET_ID, HOUSE_STAIR_DOWN_TARGET_ID, HOUSE_STAIR_UP_TARGET
 
 /** How far (m) past the stair's footprint a pick still counts as on the stair (the rail, the steps' edge). */
 export const HOUSE_TAP_STAIR_MARGIN = 0.2;
+/**
+ * How far (m) below / above the stair's own surface a picked point may be and still be "on the stair" (owner 2026-11-20: "집안에 들어갔을때
+ * 2층올라가기 버튼을 누르지도 않았는데 2층으로 올라가버린다"). The footprint is a plan view: the back wall behind a stair, the ceiling over
+ * it and the floor beside its high steps all stand over it, and a tap there (the wall one looks at on entering) used to be a tap on the
+ * stair. Below: the stringer and the soffit; above: the handrail (0.9 m) and a little more.
+ */
+export const HOUSE_TAP_STAIR_BELOW = 0.5;
+export const HOUSE_TAP_STAIR_ABOVE = 1.1;
 /** The front door (local): the glass double door on the z = 0 wall, 2.9 m tall (HOUSE_ROOM.frontDoor), a tap within this much of the wall. */
 const FRONT_DOOR = { minX: 4.4, maxX: 6.2, maxZ: 0.45, height: 3.0 } as const;
 
@@ -30,6 +42,20 @@ export interface HouseTapTarget {
   z: number;
 }
 
+/**
+ * Whether the picked point (x, y, z) is at the height of the stair's own steps and rail there: floor 1 the climb rises 4.0 m over the
+ * run (the first step at the foot, the floor above at the top); floor 2 the stairwell shows the same flight below the floor (y 0 at its top),
+ * and above the floor only the guard rail (0.9 m) stands.
+ */
+export function onStairSurface(n: HouseNumber, floor: HouseFloor, x: number, y: number, z: number): boolean {
+  const plan = STAIR_PLANS[HOUSE_STAIR_TYPE[n]];
+  const l = worldToLocal(n, floor, x, z);
+  const t = Math.min(1, Math.max(0, ((l.x - plan.foot.x) * plan.climb.x + (l.z - plan.foot.z) * plan.climb.z) / HOUSE_STAIR.run));
+  const surface = t * HOUSE_ROOM.storey - (floor === 2 ? HOUSE_ROOM.storey : 0);
+  const top = floor === 2 ? HOUSE_TAP_STAIR_ABOVE : surface + HOUSE_TAP_STAIR_ABOVE;
+  return y >= surface - HOUSE_TAP_STAIR_BELOW && y <= top;
+}
+
 /** What the picked world point (x, y, z) of house floor `area` is: its stair, its front door, or nothing. */
 export function houseTapTarget(area: string, x: number, y: number, z: number): HouseTapTarget | null {
   const hit = parseHouseFloorArea(area);
@@ -38,7 +64,7 @@ export function houseTapTarget(area: string, x: number, y: number, z: number): H
   const plan = STAIR_PLANS[HOUSE_STAIR_TYPE[hit.n]];
   const foot = localRectToWorld(hit.n, hit.floor, plan.footprint);
   const m = HOUSE_TAP_STAIR_MARGIN;
-  if (x >= foot.minX - m && x <= foot.maxX + m && z >= foot.minZ - m && z <= foot.maxZ + m) {
+  if (x >= foot.minX - m && x <= foot.maxX + m && z >= foot.minZ - m && z <= foot.maxZ + m && onStairSurface(hit.n, hit.floor, x, y, z)) {
     return hit.floor === 1
       ? { id: HOUSE_STAIR_UP_TARGET_ID, x: places.upPad.x, z: places.upPad.z }
       : { id: HOUSE_STAIR_DOWN_TARGET_ID, x: places.downPad.x, z: places.downPad.z };
@@ -65,6 +91,11 @@ let armed: { id: string; at: number } | null = null;
 /** Arm the use of target `id` for the walk now planned (null disarms: any other tap does). */
 export function armHouseUse(id: string | null, now: number = performance.now()): void {
   armed = id === null ? null : { id, at: now };
+}
+
+/** Drop the armed use (entering or leaving a house, the keys / stick taking over). Same as `armHouseUse(null)`. */
+export function disarmHouseUse(): void {
+  armed = null;
 }
 
 export function armedHouseUse(): string | null {

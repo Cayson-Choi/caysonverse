@@ -1,4 +1,5 @@
 import { armRide } from "../land/rideBoard";
+import { disarmHouseUse } from "../village/houseTap";
 import { useEffect, useMemo, useRef } from "react";
 import { MessageType, type StandRejectedPayload } from "@caysonverse/shared/messages";
 import { useClickHint } from "../stores/clickHintStore";
@@ -844,6 +845,7 @@ export function LocalPlayer({
     let remaining = Infinity; // manual input has no destination
     if (manual) {
       clearClickTarget();
+      disarmHouseUse(); // ... and a stair / door tapped inside a house is no longer used on reaching its pad
       armRide(null); // the keys / stick took over: a ride tapped before is no longer boarded on reaching its pad (owner 2026-11-19)
       setPreferredSeat(-1); // the keys / stick took over: the chair tapped before no longer outranks a nearer one
     } else if (!suspended && !busBoarded && selfRide.slot < 0 && !seated && !gliding && !isUiCaptured()) {
