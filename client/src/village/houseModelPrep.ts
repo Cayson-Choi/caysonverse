@@ -225,7 +225,7 @@ export function dressLoadedHouse(scene: Object3D, n: HouseNumber): void {
     if (!isMesh(o) || Array.isArray(o.material) || (o as InstancedMesh).isInstancedMesh) return;
     const m = o.material as MeshBasicMaterial;
     if (isHouseMirrorMaterial(m.name)) {
-      o.material = houseMirrorMaterial(); // mirror glass: silvered, reflecting a room (houseMirror.ts)
+      o.material = (scene.userData.mirrorMaterial ??= houseMirrorMaterial()); // mirror glass: silvered, reflecting a room (houseMirror.ts)
       return;
     }
     if (m.name === HOUSE_VIEW_MATERIAL) {
@@ -383,7 +383,6 @@ export function disposeLoadedHouse(scene: Object3D): void {
   const free = (r: { dispose(): void } | null | undefined): void => {
     if (!r || done.has(r)) return;
     done.add(r);
-    if ((r as { userData?: { shared?: boolean } }).userData?.shared) return; // the one mirror material is every house's (houseMirror.ts)
     if ((r as Texture).isTexture) freeTexture(r as Texture);
     else r.dispose();
   };

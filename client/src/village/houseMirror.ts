@@ -12,8 +12,6 @@ import { houseNightUniform } from "./houseNight";
  */
 export const HOUSE_MIRROR_MATERIALS: ReadonlySet<string> = new Set(["M_mirror", "E_H_mirror"]);
 
-let shared: MeshBasicMaterial | null = null;
-
 const PARS = /* glsl */ `
 uniform float uMirrorNight;
 uniform vec3 uMirrorTint;
@@ -53,12 +51,11 @@ vec3 mirrorColor() {
 `;
 
 /**
- * The one shared mirror material (every house, every mirror): a plain MeshBasicMaterial (its program path is the houses' own) whose
+ * A mirror material (one per loaded house scene: it is freed with the house like the others): a plain MeshBasicMaterial (its program path is the houses' own) whose
  * fragment colour is replaced by the reflection. (A raw ShaderMaterial drew the same picture but made the page log
  * `glGetProgramiv: Program object expected` warnings.)
  */
 export function houseMirrorMaterial(): MeshBasicMaterial {
-  if (shared) return shared;
   const m = new MeshBasicMaterial({ name: "house_mirror", color: "#ffffff" });
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uMirrorNight = houseNightUniform;
@@ -71,8 +68,6 @@ export function houseMirrorMaterial(): MeshBasicMaterial {
       .replace("#include <opaque_fragment>", "outgoingLight = mirrorColor();\n  #include <opaque_fragment>");
   };
   m.customProgramCacheKey = () => "house-mirror";
-  m.userData.shared = true;
-  shared = m;
   return m;
 }
 
