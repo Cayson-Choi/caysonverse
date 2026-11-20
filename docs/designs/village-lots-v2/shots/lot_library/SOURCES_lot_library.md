@@ -37,7 +37,14 @@
 
 ## 교실과 열람실의 창밖 정원
 
-두 방의 창밖은 Greg Zaal의 CC0 전방위 사진 [Ninomaru Teien](https://polyhaven.com/a/ninomaru_teien)을 사용한다. Blender 5.3에 포함된 1K 원본 `forest.exr`의 HDR 명암을 SDR로 변환하고, 1024×512 ETC1S KTX2 한 장에 전체 밉 체인을 넣었다. 세로로 꺾인 돌출창을 포함한 모든 유리면에서 같은 시선 방향으로 이 사진을 읽는다.
+두 방의 창은 Greg Zaal의 CC0 전방위 사진 *Ninomaru Teien*을 공유한다. 배포자가 톤 매핑한 8192×4096 JPEG에서 수평선 근처(아래 13°~위 23°)를 180°씩 두 장으로 나누어 뽑았다. 시선을 한 바퀴 돌리면 이 구간에는 가로 2032텍셀이 쓰인다. 천정과 바닥 방향은 나머지 두 구역에 담고 경계 3°를 겹쳤다. 돌출창의 꺾인 유리면에서도 같은 시선은 같은 방향의 사진을 읽는다. 네 구역은 1024×512, 밉맵 11단계의 sRGB ETC1S KTX2 한 장으로 배포한다. [작품과 라이선스](https://polyhaven.com/a/ninomaru_teien) · [8K 원본](https://dl.polyhaven.org/file/ph-assets/HDRIs/extra/Tonemapped%20JPG/ninomaru_teien.jpg)
+
+저장소 루트에서 다음 명령으로 게임용 KTX2를 생성한다. Blender에서 창의 배경을 굽는 경우에는 전체 원본을 등거리 원통도법 PNG로 변환해 `ninomaru_garden.png`로 넣는다.
+
+```sh
+node docs/designs/village-lots-v2/tools/b1_garden_atlas.mjs ninomaru_teien.jpg garden_atlas.png
+node docs/designs/village-lots-v2/tools/png2ktx2.mjs --png garden_atlas.png --out client/public/models/village/lots/garden/ninomaru_garden.ktx2
+```
 
 ## 열람실 지구본 지도
 
