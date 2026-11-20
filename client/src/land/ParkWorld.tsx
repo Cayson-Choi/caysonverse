@@ -60,6 +60,10 @@ import { CLICK_PICK_KEY } from "../game/clickPick";
 import { PARK_MARBLE_URL_HI, PARK_MARBLE_URL_LO, PARK_PINE_URL_HI, PARK_PINE_URL_LO, useParkAssets } from "./parkAssets";
 import { dayNight } from "../village/dayNightDriver";
 import { BulbHalos, LampPools } from "./nightGlow";
+import { CastleWall, PARK_WALL_LOOK } from "./CastleWall";
+import { PARK_WALL_PLAN } from "@caysonverse/shared/village/parkWall";
+import { parkGroundHeight } from "./parkTerrain";
+import { wallMode } from "../village/skyline/skylinePlacement";
 
 const MARBLE_URL = isTouchDevice ? PARK_MARBLE_URL_LO : PARK_MARBLE_URL_HI;
 const PINE_URL = isTouchDevice ? PARK_PINE_URL_LO : PARK_PINE_URL_HI;
@@ -694,6 +698,7 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       <Ground all={all} />
       <Shops all={all} />
       <GateArch all={all} />
+      {wallMode() === "on" && <CastleWall id="park" plan={PARK_WALL_PLAN} heightAt={parkGroundHeight} tier={tier === "high" ? "high" : "low"} look={PARK_WALL_LOOK} lampsOn="inner" shadows={!isTouchDevice} />}
       <Fountain all={all} env={env} />
       <ParkVegetation />
       <Lamps />

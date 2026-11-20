@@ -3,6 +3,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { Group } from "three";
 import { coasterTrack } from "@caysonverse/shared/land/coaster";
 import { PARK_BOUNDS, PARK_PLANTERS, PARK_TREES, PARK_TROUGHS } from "@caysonverse/shared/village/parkArea";
+import { PARK_WALL_PLAN, distanceToWall } from "@caysonverse/shared/village/parkWall";
 import { PARK_PONDS } from "./ParkScenery";
 import type { Bed } from "../village/veg/flowerPlacement";
 import type { Card } from "../village/veg/vegCards";
@@ -141,7 +142,9 @@ export function parkTreeSpecs(): { trees: TreeSpec[]; bushes: Bush[] } {
     const s = 0.9 + rnd() * 0.5;
     hedge.push({ x, y: 0, z: -2.7, h: 1.15 * s, r: 1.45 * s, seed: rnd(), cards: [] });
   }
-  return { trees, bushes: [...bushes, ...hedge, ...understorey, ...parkBorders().bushes] };
+  // nothing grows in the castle wall's stone (parkWall.ts): the woods by the west and east walls stop short of it
+  const clear = (x: number, z: number, r: number) => distanceToWall(PARK_WALL_PLAN, x, z) > r + 0.8;
+  return { trees: trees.filter((t) => clear(t.x, t.z, t.R)), bushes: [...bushes, ...hedge, ...understorey, ...parkBorders().bushes].filter((b) => clear(b.x, b.z, b.r)) };
 }
 
 export function ParkVegetation() {
