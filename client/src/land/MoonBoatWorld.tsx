@@ -21,6 +21,7 @@ import {
   Quaternion,
   Shape,
   SphereGeometry,
+  LatheGeometry,
   RepeatWrapping,
   SRGBColorSpace,
   Texture,
@@ -52,7 +53,7 @@ import {
 import { MOON_DECK, MOON_DECK_Y, MOON_STEPS } from "@caysonverse/shared/land/moonBoatGeometry";
 
 type V3 = [number, number, number];
-type MatKey = "brass" | "steel" | "chrome" | "hullWood" | "goldBright" | "velvet" | "hullOut" | "deck" | "metal" | "concrete" | "gold" | "indigoPaint" | "violet" | "cushion" | "white" | "earpink" | "ink" | "stone";
+type MatKey = "ivory" | "gilt" | "gilt2" | "brass" | "steel" | "chrome" | "hullWood" | "goldBright" | "velvet" | "hullOut" | "deck" | "metal" | "concrete" | "gold" | "indigoPaint" | "violet" | "cushion" | "white" | "earpink" | "ink" | "stone";
 
 /** Which keys get UVs in metres (their material tile, m) after merging; the rest keep their own UVs (cylinders' wrap, the hull's explicit ones). */
 /** Metres per texture tile. WoodFloor051 has about 24 plank rows to a tile: 3 m a tile makes a plank 12.5 cm wide (a boat deck plank is 12-15 cm). */
@@ -206,7 +207,7 @@ function loft(at: (z: number, u: number) => [number, number], nz: number, tile: 
       px = x;
       py = y;
       pos.push(x, y, z);
-      uv.push(z / tile, arc / tile);
+      uv.push(arc / tile, z / tile);
     }
   }
   for (let i = 0; i < nz; i++)
@@ -263,11 +264,11 @@ function crescentPillow(r: number): BufferGeometry {
 }
 
 /** A crescent moon standing upright (in the x-y plane), extruded `depth` thick with a soft bevel. */
-function crescentGeometry(r: number, depth: number): BufferGeometry {
+function crescentGeometry(r: number, depth: number, bevel = 0.04): BufferGeometry {
   const sh = new Shape();
   sh.absarc(0, 0, r, Math.PI * 0.2, Math.PI * 1.8, false);
   sh.absarc(r * 0.42, 0, r * 0.8, Math.PI * 1.72, Math.PI * 0.28, true);
-  const g = new ExtrudeGeometry(sh, { depth, bevelEnabled: true, bevelSize: 0.04, bevelThickness: 0.04, bevelSegments: 3, curveSegments: 24 });
+  const g = new ExtrudeGeometry(sh, { depth, bevelEnabled: true, bevelSize: bevel, bevelThickness: bevel, bevelSegments: 4, curveSegments: 28 });
   g.translate(0, 0, -depth / 2);
   return g;
 }
@@ -310,9 +311,9 @@ function leatherMaterial(): MeshStandardMaterial {
       h[y * N + x] = v;
       const shade = 0.55 + 0.45 * pillow;
       const o = (y * N + x) * 4;
-      col[o] = (92 + grain * 26) * shade;
-      col[o + 1] = (62 + grain * 18) * shade;
-      col[o + 2] = (172 + grain * 30) * shade;
+      col[o] = (150 + grain * 30) * shade;
+      col[o + 1] = (38 + grain * 14) * shade;
+      col[o + 2] = (52 + grain * 16) * shade;
       col[o + 3] = 255;
     }
   const nrm = new Uint8ClampedArray(new ArrayBuffer(N * N * 4));
@@ -344,7 +345,50 @@ function leatherMaterial(): MeshStandardMaterial {
     if (srgb) t.colorSpace = SRGBColorSpace;
     return t;
   };
-  return new MeshStandardMaterial({ map: make(col, true), normalMap: make(nrm, false), normalScale: new Vector2(1, 1), roughness: 0.5, metalness: 0.0, emissive: new Color("#2a2070"), emissiveIntensity: 0.4 });
+  return new MeshStandardMaterial({ map: make(col, true), normalMap: make(nrm, false), normalScale: new Vector2(1, 1), roughness: 0.42, metalness: 0.0, side: DoubleSide, emissive: new Color("#3a1018"), emissiveIntensity: 0.45 });
+}
+
+/** A turned brass finial (a base disc, a neck, a bead, a swell and a point), `r` the bead's radius: about 2.4 r tall. */
+function finialGeometry(r: number): BufferGeometry {
+  const pts: [number, number][] = [[0, 0], [1.1, 0], [1.1, 0.18], [0.5, 0.34], [0.42, 0.62], [0.9, 0.95], [1.0, 1.3], [0.75, 1.7], [0.32, 2.05], [0, 2.3]];
+  return new LatheGeometry(pts.map(([x, y]) => new Vector2(x * r, y * r)), 12);
+}
+
+/** A tufted cushion top: a w x d surface pillowed toward its middle and pulled down into a dimple at every button of a quincunx lattice (nx x nz cells), UVs 0..2. Faces +y. */
+function tuftedCap(w: number, d: number, nx: number, nz: number, amp: number): BufferGeometry {
+  const sx = 16;
+  const sz = 12;
+  const pos: number[] = [];
+  const uv: number[] = [];
+  const idx: number[] = [];
+  const fr = (v: number): number => v - Math.floor(v);
+  for (let j = 0; j <= sz; j++)
+    for (let i = 0; i <= sx; i++) {
+      const u = i / sx;
+      const v = j / sz;
+      const e = Math.min(u, 1 - u, v, 1 - v);
+      const bulge = Math.sin(Math.min(1, e * 3.2) * (Math.PI / 2));
+      const a = u * nx;
+      const b = v * nz;
+      const d1 = Math.hypot(fr(a) - 0.5, fr(b) - 0.5);
+      const d2 = Math.hypot(fr(a + 0.5) - 0.5, fr(b + 0.5) - 0.5);
+      const dm = Math.min(d1, d2);
+      const dimple = Math.exp(-Math.pow(dm * 3.6, 2));
+      pos.push((u - 0.5) * w, amp * bulge * (1 - 0.85 * dimple), (v - 0.5) * d);
+      uv.push(u * 2, v * 2);
+    }
+  for (let j = 0; j < sz; j++)
+    for (let i = 0; i < sx; i++) {
+      const a = j * (sx + 1) + i;
+      const b = a + sx + 1;
+      idx.push(a, a + 1, b, a + 1, b + 1, b);
+    }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
 }
 
 interface BoatBuild {
@@ -360,6 +404,7 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
   const frame = new Parts();
   const boatBulbs: V3[] = [];
   const frameBulbs: V3[] = [];
+  const fin = (r: number, x: number, y: number, z: number): void => boat.add('brass', finialGeometry(r), new Matrix4().makeTranslation(x, y, z));
 
   // ── the boat (axle at the origin, y up, z toward the bow) ──
   const hullOut = new Mesh(loft(outerAt, 56, 3.0), mats.hullWood);
@@ -431,9 +476,9 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
       // a divider (an armrest and a back post): a carved board with a gold ball on its top, a rail along its top edge
       boat.box("deck", 0.05, 0.42, 0.52, xb, fy + 0.55, z - 0.03);
       boat.rod("gold", [xb, fy + 0.77, z - 0.26], [xb, fy + 0.77, z + 0.22], 0.025, 0.025, 8);
-      boat.ball("goldBright", 0.028, xb, fy + 0.77, z + 0.25, 1, 1, 1, 10);
+      fin(0.016, xb, fy + 0.78, z + 0.25);
       boat.box("deck", 0.06, 0.82, 0.08, xb, fy + 0.7, z - 0.37); // the back post
-      boat.ball("goldBright", 0.032, xb, fy + 1.15, z - 0.37, 1, 1, 1, 12); // its finial
+      fin(0.02, xb, fy + 1.11, z - 0.37); // its turned brass finial
       boat.rod("gold", [xb, fy + 0.15, z - 0.2], [xb, fy + 0.3, z + 0.25], 0.012, 0.012, 6); // a curved-iron bracket under the seat
     }
     // the slatted back: three planks between the posts and a carved top rail with a gold cap
@@ -442,8 +487,10 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
     boat.box("gold", half * 2 - 0.02, 0.022, 0.085, 0, fy + 1.115, z - 0.37);
     for (let col = 0; col < MOON_BOAT_COLS; col++) {
       const x = (col - (MOON_BOAT_COLS - 1) / 2) * MOON_SEAT.dx;
-      boat.soft("velvet", 0.72, 0.15, 0.56, x, fy + 0.425, z - 0.02, 0.07); // the seat pad (top 0.5: the hips settle onto it)
-      boat.soft("velvet", 0.66, 0.34, 0.09, x, fy + 0.8, z - 0.33, 0.04, -0.1); // the back pad
+      boat.soft("velvet", 0.72, 0.1, 0.56, x, fy + 0.45, z - 0.02, 0.04); // the seat pad's body (top 0.5: the hips settle onto it)
+      boat.add("velvet", tuftedCap(0.7, 0.54, 4, 3, 0.045), new Matrix4().makeTranslation(x, fy + 0.5, z - 0.02)); // its tufted, buttoned top
+      boat.soft("velvet", 0.66, 0.3, 0.07, x, fy + 0.8, z - 0.34, 0.03, -0.1); // the back pad's body
+      boat.add("velvet", tuftedCap(0.64, 0.32, 4, 2, 0.04), new Matrix4().compose(new Vector3(x, fy + 0.8, z - 0.298), new Quaternion().setFromEuler(new Euler(Math.PI / 2 - 0.1, 0, 0)), new Vector3(1, 1, 1))); // its tufted face
       // gold piping round the seat pad's top edge and four tufting buttons on it, two on the back
       boat.rod("gold", [x - 0.36, fy + 0.5, z + 0.25], [x + 0.36, fy + 0.5, z + 0.25], 0.012, 0.012, 6);
       boat.rod("gold", [x - 0.36, fy + 0.5, z - 0.27], [x - 0.36, fy + 0.5, z + 0.25], 0.012, 0.012, 6);
@@ -462,7 +509,7 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
     }
     for (const s of [-1, 1]) {
       boat.rod("chrome", [s * (half - 0.18), fy + 0.04, z + 0.46], [s * (half - 0.18), by, z + 0.46], 0.03, 0.03, 10);
-      boat.ball("goldBright", 0.036, s * (half - 0.18), by + 0.02, z + 0.46, 1, 1, 1, 8);
+      fin(0.02, s * (half - 0.18), by + 0.03, z + 0.46);
     }
   }
   // the carved rail along both gunwales: turned balusters (a swelling and a ball) under a gold hand rail, a row of gilded scallops on the rim cap, gold posts at the horns
@@ -474,13 +521,13 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
       const xm = (xo + xi) / 2;
       boat.rod("deck", [xm, yo, zz], [xm, yo + 0.3, zz], 0.018, 0.018, 8);
       boat.ball("deck", 0.026, xm, yo + 0.1, zz, 1, 1.25, 1, 8);
-      boat.ball("goldBright", 0.017, xm, yo + 0.3, zz, 1, 1, 1, 8);
+      fin(0.011, xm, yo + 0.3, zz);
       rail.push(new Vector3(xm, yo + 0.31, zz));
     }
     boat.tube("gold", rail, 0.034, 6);
-    for (let zz = -HZ * 0.9; zz <= HZ * 0.9 + 0.001; zz += 0.2) {
+    for (let zz = -HZ * 0.9; zz <= HZ * 0.9 + 0.001; zz += 0.45) {
       const [xo, yo] = outerAt(zz, sg);
-      boat.ball("goldBright", 0.03, xo - sg * 0.01, yo + 0.012, zz, 1, 0.7, 0.8, 8);
+      boat.ball("brass", 0.014, xo - sg * 0.01, yo + 0.012, zz, 1, 0.6, 0.8, 6);
     }
   }
   // the swing arms (28 m long): a pair each side, splayed fore and aft from the axle collar to brackets on the rim: steel tubes with ring clamps, cross ties and X braces every 4 m
@@ -516,29 +563,36 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
   // the bow horn: a gold finial, a violet crescent pillow and, standing behind, a gold crescent moon with the sleeping moon-rabbit curled in front of it
   const tipY = moonKeelY(HZ) + 0.38;
   boat.ball("gold", 0.26, 0, tipY - 0.1, HZ - 0.02, 1, 1, 1, 18);
-  boat.add("violet", crescentPillow(0.55), new Matrix4().compose(new Vector3(0, tipY + 0.12, HZ - 0.55), new Quaternion().setFromEuler(new Euler(0, Math.PI / 2, 0)), new Vector3(1, 1, 1)));
+  boat.add("velvet", crescentPillow(0.55), new Matrix4().compose(new Vector3(0, tipY + 0.12, HZ - 0.55), new Quaternion().setFromEuler(new Euler(0, Math.PI / 2, 0)), new Vector3(1, 1, 1)));
   // the moon: a gold crescent upright in the boat's cross plane, behind the rabbit
-  boat.add("goldBright", crescentGeometry(0.62, 0.16), new Matrix4().compose(new Vector3(0, tipY + 0.82, HZ - 0.3), new Quaternion().setFromEuler(new Euler(0, 0, -0.25)), new Vector3(1, 1, 1)));
+  // the moon: a gilded crescent carved with a raised inner moulding and a row of brass studs
+  boat.add("gilt", crescentGeometry(0.62, 0.16, 0.075), new Matrix4().compose(new Vector3(0, tipY + 0.82, HZ - 0.3), new Quaternion().setFromEuler(new Euler(0, 0, -0.25)), new Vector3(1, 1, 1)));
+  boat.add("gilt2", crescentGeometry(0.5, 0.2, 0.05), new Matrix4().compose(new Vector3(0.04, tipY + 0.82, HZ - 0.3), new Quaternion().setFromEuler(new Euler(0, 0, -0.25)), new Vector3(1, 1, 1)));
+  for (let k = 0; k < 9; k++) {
+    const an = Math.PI * 0.28 + (k / 8) * Math.PI * 1.44 - 0.25;
+    boat.ball("brass", 0.018, Math.cos(an) * 0.6, tipY + 0.82 + Math.sin(an) * 0.6, HZ - 0.3 - 0.13, 1, 1, 1, 6);
+  }
+  boat.add("goldBright", crescentGeometry(0.01, 0.01), new Matrix4().compose(new Vector3(0, tipY + 0.82, HZ - 0.3), new Quaternion().setFromEuler(new Euler(0, 0, -0.25)), new Vector3(1, 1, 1)));
   const rz = HZ - 0.58;
   const ry = tipY + 0.43;
   // the rabbit curled on its side, facing the bow: body, haunch, a head resting on its paws, cheeks and muzzle, two long ears laid back over the shoulder, a puff tail
-  boat.ball("white", 0.33, 0, ry, rz, 0.95, 0.82, 1.3, 28);
-  boat.ball("white", 0.24, 0.1, ry + 0.04, rz - 0.22, 1, 0.95, 1.05, 24);
-  boat.ball("white", 0.095, 0, ry - 0.02, rz - 0.62, 1, 1, 1, 16);
-  boat.ball("white", 0.235, 0, ry - 0.03, rz + 0.5, 1, 0.95, 1.02, 28);
+  boat.ball("ivory", 0.33, 0, ry, rz, 0.95, 0.82, 1.3, 28);
+  boat.ball("ivory", 0.24, 0.1, ry + 0.04, rz - 0.22, 1, 0.95, 1.05, 24);
+  boat.ball("ivory", 0.095, 0, ry - 0.02, rz - 0.62, 1, 1, 1, 16);
+  boat.ball("ivory", 0.235, 0, ry - 0.03, rz + 0.5, 1, 0.95, 1.02, 28);
   for (const sx of [-1, 1]) {
-    boat.ball("white", 0.095, sx * 0.14, ry - 0.1, rz + 0.55, 1.05, 1, 1, 16);
-    boat.ball("white", 0.085, sx * 0.1, ry - 0.2, rz + 0.64, 1, 0.8, 1.7, 14);
+    boat.ball("ivory", 0.095, sx * 0.14, ry - 0.1, rz + 0.55, 1.05, 1, 1, 16);
+    boat.ball("ivory", 0.085, sx * 0.1, ry - 0.2, rz + 0.64, 1, 0.8, 1.7, 14);
     for (const dx of [-0.025, 0, 0.025]) boat.ball("ink", 0.007, sx * 0.1 + dx, ry - 0.2, rz + 0.78, 1, 1, 1, 5);
     boat.add("ink", new TorusGeometry(0.05, 0.01, 6, 16, Math.PI), new Matrix4().compose(new Vector3(sx * 0.105, ry + 0.01, rz + 0.69), new Quaternion().setFromEuler(new Euler(0.15, sx * 0.55, Math.PI)), new Vector3(1, 1, 1)));
-    boat.ball("white", 0.03, sx * 0.11, ry + 0.045, rz + 0.69, 1, 0.5, 1, 6);
+    boat.ball("ivory", 0.03, sx * 0.11, ry + 0.045, rz + 0.69, 1, 0.5, 1, 6);
     for (const dz of [-0.01, 0.015]) boat.ball("ink", 0.006, sx * 0.17, ry - 0.07 + dz, rz + 0.66, 1, 1, 1, 5);
     const eq = new Quaternion().setFromEuler(new Euler(Math.PI / 2 - 0.35, 0, sx * 0.22));
-    boat.add("white", new CapsuleGeometry(0.085, 0.5, 6, 16), new Matrix4().compose(new Vector3(sx * 0.13, ry + 0.25, rz + 0.22), eq, new Vector3(1, 1, 0.5)));
+    boat.add("ivory", new CapsuleGeometry(0.085, 0.5, 6, 16), new Matrix4().compose(new Vector3(sx * 0.13, ry + 0.25, rz + 0.22), eq, new Vector3(1, 1, 0.5)));
     boat.add("earpink", new CapsuleGeometry(0.065, 0.42, 4, 12), new Matrix4().compose(new Vector3(sx * 0.13, ry + 0.275, rz + 0.22), eq, new Vector3(0.7, 1, 0.3)));
   }
   boat.ball("earpink", 0.032, 0, ry - 0.1, rz + 0.73, 1.2, 0.9, 1, 10);
-  boat.ball("white", 0.09, 0, ry - 0.07, rz + 0.69, 1.2, 0.8, 1, 16);
+  boat.ball("ivory", 0.09, 0, ry - 0.07, rz + 0.69, 1.2, 0.8, 1, 16);
   const sy = moonKeelY(-HZ) + 0.38;
   boat.ball("gold", 0.26, 0, sy - 0.1, -HZ + 0.02, 1, 1, 1, 18);
   boat.rod("gold", [0, sy, -HZ + 0.3], [0, sy + 0.85, -HZ + 0.3], 0.04, 0.04, 8);
@@ -707,7 +761,10 @@ export function MoonBoatWorld({ all }: { all: Texture[] }) {
       // painted tubular steel: the paint's own normal and gloss maps, a deep indigo-blue, a glow floor for the shade
       steel: parkMaterial(metal, [2, 10], { useColor: false, color: new Color("#2d38b0"), normalScale: 0.6, metalness: 0.4, roughness: 0.8, emissive: new Color("#1a2290"), emissiveIntensity: 0.45 }),
       chrome: flat("#e4eaf4", { roughness: 0.25, metalness: 0.7, emissive: new Color("#a7b2cc"), emissiveIntensity: 0.9 }),
-      brass: flat("#e0b445", { roughness: 0.3, metalness: 0.5, emissive: new Color("#8a6410"), emissiveIntensity: 0.8 }),
+      brass: flat("#d8a73f", { roughness: 0.3, metalness: 0.35, emissive: new Color("#5c3f0b"), emissiveIntensity: 0.55, side: DoubleSide }),
+      gilt: flat("#ecc055", { roughness: 0.32, metalness: 0.25, emissive: new Color("#a07414"), emissiveIntensity: 1.0, side: DoubleSide }),
+      gilt2: flat("#f8dd88", { roughness: 0.28, metalness: 0.25, emissive: new Color("#b8861a"), emissiveIntensity: 1.1, side: DoubleSide }),
+      ivory: flat("#fff8ee", { roughness: 0.55, emissive: new Color("#a8957a"), emissiveIntensity: 1.0 }),
       deck: parkMaterial(wood, 1, { color: new Color(1.9, 1.62, 1.3), normalScale: 0.9, side: DoubleSide, emissive: new Color("#6a4524"), emissiveIntensity: 0.55 }), // the emissive floor keeps wood brown, not black, where the sun does not reach (the posts and bench backs in shade)
       metal: parkMaterial(metal, [2, 6], { useColor: false, color: new Color("#4a52dc"), normalScale: 0.5, metalness: 0.45, emissive: new Color("#2a30a0"), emissiveIntensity: 0.5 }),
       concrete: parkMaterial(conc, 1, { color: new Color("#e8e1d3"), normalScale: 0.8 }),
@@ -724,6 +781,7 @@ export function MoonBoatWorld({ all }: { all: Texture[] }) {
     };
   }, [all]);
   const built = useMemo(() => build(mats), [mats]);
+  const boatBulbGeo = useMemo(() => new SphereGeometry(0.025, 8, 6), []);
   const bulbGeo = useMemo(() => new SphereGeometry(0.06, 8, 6), []);
   const bulbMat = useMemo(() => new MeshStandardMaterial({ color: "#fff1c8", emissive: nightColor, emissiveIntensity: 1.8, roughness: 0.3 }), []);
   const boatBulbRef = useRef<InstancedMesh>(null);
@@ -789,7 +847,7 @@ export function MoonBoatWorld({ all }: { all: Texture[] }) {
           {built.boat.map((m, i) => (
             <primitive key={i} object={m} />
           ))}
-          <instancedMesh ref={boatBulbRef} args={[bulbGeo, bulbMat, built.boatBulbs.length]} frustumCulled={false} dispose={null} />
+          <instancedMesh ref={boatBulbRef} args={[boatBulbGeo, bulbMat, built.boatBulbs.length]} frustumCulled={false} dispose={null} />
           <instancedMesh ref={starRef} args={[starGeo, starMat, built.stars.length]} frustumCulled={false} dispose={null} />
           <BulbHalos places={built.boatBulbs} size={0.6} strength={0.55} />
         </group>
