@@ -262,4 +262,6 @@ export interface RideNoticePayload {
 /** Client → server: get on the ride `ride` ("coaster" | "carousel" | "wheel" | "moonboat" | "droptower"; absent = the coaster, an older client). */
 export interface RideBoardPayload {
   ride?: string;
+  /** the rider's seat choice where the ride has one (the moon boat: "end" = 맨 끝 자리, the default; "middle" = 가운데 자리) */
+  pref?: string;
 }

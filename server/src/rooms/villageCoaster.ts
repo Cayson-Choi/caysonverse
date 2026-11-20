@@ -41,7 +41,7 @@ export class VillageCoaster {
   /** the cycle each rider boarded in */
   private readonly boardedIn = new Map<string, number>();
   /** players who pressed "board" outside the window (or on a full ride): the ride they wait for, and until when (wall ms) */
-  private readonly waiting = new Map<string, { rideId: number; until: number }>();
+  private readonly waiting = new Map<string, { rideId: number; until: number; pref?: string }>();
   constructor(private readonly host: CoasterHost) {}
 
   register(): void {
@@ -59,11 +59,11 @@ export class VillageCoaster {
     client.send(VillageServerMsg.RideNotice, { reason } satisfies RideNoticePayload);
   }
 
-  /** Give `p` a seat of `ride` now (the station is boarding): "ok", or "full". */
-  private seat(sid: string, p: PlayerLike, ride: RideDef, cycle: number): "ok" | "full" {
+  /** Give `p` a seat of `ride` now (the station is boarding): "ok", or "full". `pref` is the rider's seat choice (RideDef.boardingSeats). */
+  private seat(sid: string, p: PlayerLike, ride: RideDef, cycle: number, pref?: string): "ok" | "full" {
     const taken = this.taken(ride);
     let seat = -1;
-    const candidates = ride.boardingSeats ? ride.boardingSeats(this.host.wallClock()) : null;
+    const candidates = ride.boardingSeats ? ride.boardingSeats(this.host.wallClock(), pref) : null;
     for (let n = 0; n < (candidates ? candidates.length : ride.seats); n++) {
       const i = candidates ? candidates[n]! : n;
       if (!taken.has(i)) {
@@ -83,14 +83,16 @@ export class VillageCoaster {
     const p = this.host.player(client.sessionId);
     if (!p || p.rideSeat >= 0) return;
     const key = payload !== null && typeof payload === "object" ? (payload as { ride?: unknown }).ride : undefined;
+    const rawPref = payload !== null && typeof payload === "object" ? (payload as { pref?: unknown }).pref : undefined;
+    const pref = rawPref === "end" || rawPref === "middle" ? rawPref : undefined;
     const ride = key === undefined ? RIDES[0]! : rideByKey(key);
     if (!ride || ride.seats <= 0) return this.notice(client, "closed");
     if (p.seatIndex >= 0 || p.busSeat >= 0 || p.fishSpot >= 0 || p.area !== "park") return this.notice(client, "busy");
     if (!this.canBoard(p, ride, 0)) return this.notice(client, "far");
     const now = ride.statusAt(this.host.wallClock());
-    if (now.status === "boarding" && this.seat(client.sessionId, p, ride, now.cycle) === "ok") return;
+    if (now.status === "boarding" && this.seat(client.sessionId, p, ride, now.cycle, pref) === "ok") return;
     // not loading now (or no seat in this gondola/train): the seat is reserved for the next load
-    this.waiting.set(client.sessionId, { rideId: ride.id, until: this.host.wallClock() + WAIT_MAX_MS });
+    this.waiting.set(client.sessionId, { rideId: ride.id, until: this.host.wallClock() + WAIT_MAX_MS, pref });
     this.notice(client, "reserved");
   }
 
@@ -131,7 +133,7 @@ export class VillageCoaster {
         continue;
       }
       const now = ride.statusAt(wall);
-      if (now.status === "boarding") this.seat(sid, p, ride, now.cycle);
+      if (now.status === "boarding") this.seat(sid, p, ride, now.cycle, w.pref);
     }
     if (this.boardedIn.size === 0) return;
     for (const [sid, cycle] of [...this.boardedIn]) {

@@ -14,7 +14,7 @@ import {
   moonSeatLocal,
   moonSeatPose,
 } from "./moonBoat";
-import { MOON_BOAT_SEATS } from "./moonBoat";
+import { MOON_BOAT_SEATS, MOON_END_FIRST, MOON_MIDDLE_FIRST, moonSeatCell, moonSeatOf } from "./moonBoat";
 import { MOON_DECK, MOON_DECK_Y, MOON_PLATFORM_BOXES, moonBoatPoints, moonFrameCapsules, moonPointAt, pointBoxDistance, pointSegDistance } from "./moonBoatGeometry";
 import { moonFloorY } from "./moonBoat";
 import { RIDES, rideByKey } from "./rides";
@@ -67,14 +67,28 @@ describe("moon boat timeline", () => {
     expect(hi).toBeGreaterThan(2.2);
     expect(hi).toBeLessThan(3);
   });
-  it("is in the ride table with 32 distinct seats, the middle rows first", () => {
+  it("is in the ride table with 32 distinct seats, the end rows handed out first", () => {
     const r = rideByKey("moonboat")!;
     expect(r.seats).toBe(32);
     expect(RIDES.map((x) => x.id)).toEqual([1, 2, 3, 4, 5]);
-    // the rows fill from the middle outward: the first rider has rows ahead (toward the bow) and behind
+    // owner 2026-11-20: the end rows (they swing highest) first, bow and stern in turn, then inward; "middle" is the other way round
+    const order = r.boardingSeats!(0);
+    expect(order).toBe(MOON_END_FIRST);
+    expect(order.slice(0, 8).map((s) => moonSeatCell(s).row)).toEqual([0, 7, 0, 7, 0, 7, 0, 7]);
+    expect(order.slice(8, 16).every((s) => [1, 6].includes(moonSeatCell(s).row))).toBe(true);
+    expect(order.slice(24).every((s) => [3, 4].includes(moonSeatCell(s).row))).toBe(true);
+    expect(new Set(order).size).toBe(32);
+    const mid = r.boardingSeats!(0, "middle");
+    expect(mid).toBe(MOON_MIDDLE_FIRST);
+    expect([3, 4]).toContain(moonSeatCell(mid[0]!).row);
+    expect(mid.slice(24).every((s) => [0, 7].includes(moonSeatCell(s).row))).toBe(true);
+    expect(new Set(mid).size).toBe(32);
+    expect(r.boardingSeats!(0, "x")).toBe(MOON_END_FIRST);
+    // the first rider of the default order sits at the bow end (the farthest forward), the second at the stern end
+    expect(moonSeatLocal(order[0]!)[2]).toBeCloseTo(MOON_SEAT.z0, 6);
+    expect(moonSeatLocal(order[1]!)[2]).toBeCloseTo(MOON_SEAT.z0 - 7 * MOON_SEAT.dz, 6);
+    for (let row = 0; row < 8; row++) for (let col = 0; col < 4; col++) expect(moonSeatCell(moonSeatOf(row, col))).toEqual({ row, col });
     const a = moonSeatLocal(0);
-    expect(a[2]).toBeGreaterThan(-1.2);
-    expect(a[2]).toBeLessThan(1.2);
     expect(moonSeatLocal(31)[2]).not.toBeCloseTo(a[2], 1);
     const rows = Array.from({ length: 8 }, (_, i) => moonSeatLocal(i * 4)[2]);
     expect(new Set(rows.map((r) => r.toFixed(2))).size).toBe(8);
