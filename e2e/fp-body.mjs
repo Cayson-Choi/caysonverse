@@ -405,6 +405,12 @@ if (ONLY.includes("rides")) {
       });
       await sleep(1200);
     }
+    // back to the village by the park's exit (the steps after this one, the 대웅전, walk the village streets)
+    const ex = await A.page.evaluate(async () => (await window.__imp("/village/parkArea.ts")).PARK_EXIT_PAD);
+    await walkPlanned(A, ex.x, ex.z, 1.0);
+    await act(A);
+    await until(async () => (await A.page.evaluate(async () => (await window.__imp("/src/village/villageArea.ts")).localArea())) === "village", 30000);
+    await sleep(3000);
   });
 }
 
