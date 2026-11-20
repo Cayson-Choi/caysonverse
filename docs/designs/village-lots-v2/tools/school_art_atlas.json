@@ -6,7 +6,7 @@
     },
     "print": {
       "w": 2048,
-      "h": 2048
+      "h": 2560
     }
   },
   "note": "school_kidart.mjs: pixel rects, top-left origin, per atlas (art: the drawings, M_school_art; print: everything else, M_school_print). The drawings are 8절 landscape. spines: 24 cells left to right. blank: plain paper for the book covers' tint.",
@@ -199,6 +199,13 @@
       "y": 1704,
       "w": 960,
       "h": 340
+    },
+    "covers": {
+      "atlas": "print",
+      "x": 0,
+      "y": 2048,
+      "w": 2040,
+      "h": 512
     }
   },
   "blank": {
@@ -230,5 +237,10 @@
     "w": 40,
     "h": 340,
     "count": 24
+  },
+  "cover": {
+    "w": 170,
+    "h": 256,
+    "cols": 12
   }
 }

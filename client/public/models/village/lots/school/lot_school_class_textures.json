@@ -68,6 +68,23 @@
       "normalScale": 1.0,
       "metal": true
     },
+    "LM_school_linen": {
+      "pbr": "fabric_upholstery",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 0.5,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false,
+      "albedoGain": [
+        8.6,
+        8.9,
+        11.0
+      ]
+    },
     "LM_school_oak": {
       "pbr": "wood_oak",
       "repeatMeters": [

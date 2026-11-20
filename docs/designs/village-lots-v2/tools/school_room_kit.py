@@ -53,8 +53,8 @@ PET_RED = S("LM_school_paint", G.hexc("E8473F"))
 PET_PINK = S("LM_school_paint", G.hexc("F07EB0"))
 POT = S("LM_school_floor", G.hexc("E39A70"))                 # terracotta pots (floor set, tinted)
 SOIL = S("LM_school_floor", G.hexc("4A3528"))
-LINEN = S("LM_school_fabric", G.hexc("F4DC96"))              # fabric_upholstery: butter-yellow linen curtains
-LINEN_SAGE = S("LM_school_fabric", G.hexc("B9C8AE"))
+LINEN = S("LM_school_linen", G.hexc("FFF0CC"))               # fabric_upholstery: butter-cream linen curtains
+LINEN_SAGE = S("LM_school_linen", G.hexc("F2F0CC"))
 TUB = {"sage": S("LM_school_plastic", G.hexc("9DB5A0")), "blue": S("LM_school_plastic", G.hexc("83AFC0")),
        "cream": S("LM_school_plastic", G.hexc("E9E1CC")), "mustard": S("LM_school_plastic", G.hexc("D5B65D")),
        "coral": S("LM_school_plastic", G.hexc("E39A86"))}
@@ -73,6 +73,9 @@ MATS = {
     "LM_school_plastic": {"set": "plaster_painted", "rough": 0.5, "normal": 0.3},
     "LM_school_alu": {"set": "aluminium_brushed", "metal": True, "rough": 0.6},
     "LM_school_fabric": {"set": "fabric_upholstery", "gain": (2.3, 2.3, 2.3)},
+    # the curtains' linen: the fabric set's albedo is dark and warm (its curtains read olive under a cream tint, 2026-11-20 review);
+    # this gain (measured off the rendered folds) brings it to cream with the weave kept
+    "LM_school_linen": {"set": "fabric_upholstery", "gain": (8.6, 8.9, 11.0)},
     "LM_school_green": {"set": "grass", "normal": 0.5},
     "M_glass": {"glass": True},
     "M_garden": R.garden_map("lot_school_class"),
@@ -86,9 +89,18 @@ MATS = {
 }
 
 X, Z, H = 15.4, 7.4, 3.7
+PHONE = False   # the phone LOD (lot_school_class_phone.glb): the same room and atlases, lighter geometry
 
 
-def build(spec, unit, layout):
+def build(spec, unit, layout, phone=False):
+    global PHONE, BRASS, IRON, CHROME
+    PHONE = phone
+    SD.PHONE = phone
+    if phone:
+        # the phone: brass, iron and brushed metal as tinted plastic (three materials, three draw calls fewer)
+        BRASS = S("LM_school_plastic", G.hexc("D9B86A"))
+        IRON = S("LM_school_plastic", G.hexc("3B4A44"))
+        CHROME = S("LM_school_plastic", G.hexc("E4E6E8"))
     kit = P.Kit(None)
     kit.mats = dict(MATS)
     sol = {s["name"]: s for s in spec["solids"]}
@@ -131,14 +143,17 @@ def build(spec, unit, layout):
     desks(kit, spec)
     back_shelf(kit, sol)
     art(kit)
+    seg = 10 if PHONE else 24
+    opal = None  # (the globes map the print atlas's blank paper: school_room_dress.school_pendant)
+    cord = S("LM_school_fabric", G.hexc("3A3632"))
     for x in (4.0, 8.4, 12.8):
         for z in (3.9, 6.0):
-            R.pendant(kit, D, x, z, H, 1.0, OPAL, BRASS, "globe")
+            SD.school_pendant(kit, D, x, z, H, 1.0, PAINT, cord, BRASS, opal, segs=seg)
     for x in (3.0, 12.4):
-        R.pendant(kit, D, x, 1.2, H, 0.8, OPAL, BRASS, "globe")
+        SD.school_pendant(kit, D, x, 1.2, H, 0.8, PAINT, cord, BRASS, opal, r=0.15, segs=seg)
     # a round braided welcome rug in the corridor
     for k, (r, c) in enumerate(((1.0, "E7A07A"), (0.82, "F3D9A6"), (0.62, "9CC0A8"), (0.42, "F3D9A6"), (0.22, "E7A07A"))):
-        Gd.lathe([(r, 0.0), (r, 0.006 + k * 0.002), (0.0, 0.006 + k * 0.002)], 32, S("LM_school_fabric", G.hexc(c)), 7.7, 1.3, 0.0)
+        Gd.lathe([(r, 0.0), (r, 0.006 + k * 0.002), (0.0, 0.006 + k * 0.002)], 32 if not PHONE else 16, S("LM_school_fabric", G.hexc(c)), 7.7, 1.3, 0.0)
     clock(kit)
     bunting(kit)
     reading_corner(kit, sol)
@@ -169,13 +184,19 @@ def lockers(kit, sol):
             a = x0 + k * w + 0.008
             b = a + w - 0.016
             s = cols[k % 4]
-            D.cbox(a, b, 0.1, 1.82, 0.06, 0.5, s.u((0, 1, 0)), c=0.01, skip=("-z",))
-            for v in (1.55, 1.6, 1.65):
+            if PHONE:
+                D.box(a, b, 0.1, 1.82, 0.06, 0.5, s.u((0, 1, 0)), skip=("-z",))
+            else:
+                D.cbox(a, b, 0.1, 1.82, 0.06, 0.5, s.u((0, 1, 0)), c=0.01, skip=("-z",))
+            for v in ((1.55, 1.6, 1.65) if not PHONE else (1.6,)):
                 D.box(a + 0.12, b - 0.12, v, v + 0.018, 0.5, 0.505, s.t(G.mul(s.col, 0.7)))
             Gd.box(a + w / 2 - 0.06, a + w / 2 + 0.06, 1.38, 1.44, 0.5, 0.505, BRASS)
-            for y in (1.0, 1.10):
-                Gd.member((b - 0.06, y, 0.5), (b - 0.06, y, 0.506), G.prof_round(0.0042, 6), BRASS)
-            Gd.member((b - 0.06, 0.99, 0.5055), (b - 0.06, 1.11, 0.5055), G.prof_round(0.0048, 6), BRASS, caps=True)
+            if PHONE:
+                Gd.box(b - 0.066, b - 0.054, 0.99, 1.11, 0.5, 0.509, BRASS, skip=("-z",))
+            else:
+                for y in (1.0, 1.10):
+                    Gd.member((b - 0.06, y, 0.5), (b - 0.06, y, 0.506), G.prof_round(0.0042, 6), BRASS)
+                Gd.member((b - 0.06, 0.99, 0.5055), (b - 0.06, 1.11, 0.5055), G.prof_round(0.0048, 6), BRASS, caps=True)
         D.box(x0, x1, 1.82, 1.9, 0.04, 0.5, PAINT)
         for k in range(3):
             px = x0 + 0.6 + k * (x1 - x0 - 1.2) / 2
@@ -202,20 +223,14 @@ def partition(kit):
 
 
 def bunting(kit):
-    """Cotton bunting in a gentle swag across the classroom above the board end (overhead, 2.6–3.1 m)."""
-    Gd = kit.G
-    cols = [RED, YEL, BLUE, MINT, PINK, BUTTER]
-    for (a, b) in (((0.1, 3.1, 3.0), (6.0, 3.1, 7.3)), ((0.1, 3.1, 7.3), (6.0, 3.1, 3.0))):
-        n = 14
-        pts = [G.lerp(a, b, t / n) for t in range(n + 1)]
-        pts = [(p[0], p[1] - 0.35 * math.sin(math.pi * t / n), p[2]) for t, p in enumerate(pts)]
-        for p, q in zip(pts, pts[1:]):
-            Gd.member(p, q, G.prof_round(0.004, 4), PAPER)
-        for t in range(n):
-            p, q = pts[t], pts[t + 1]
-            m = G.lerp(p, q, 0.5)
-            Gd.poly([p, q, (m[0], m[1] - 0.2, m[2])], cols[t % 6])
-            Gd.poly([G.add(q, (0.004, 0, 0.004)), G.add(p, (0.004, 0, 0.004)), (m[0] + 0.004, m[1] - 0.2, m[2] + 0.004)], cols[t % 6])
+    """Cotton bunting: two strings crossing above the board end (overhead, 2.7–3.2 m), each tied at the walls and to a hook at
+    the crossing, sagging between; cloth pennants with folded hems over the string, a little billow, white running stitches."""
+    # (on the linen material: the plain fabric set's dark warm albedo muddied the pennants' colours)
+    cols = [S("LM_school_linen", G.hexc(c)) for c in ("D8483C", "EFC23A", "5C96CC", "7CC08E", "EE90AC", "F6E2A8")]
+    rg = G.rng(13)
+    hook = (3.05, 3.2, 5.15)
+    for (a, b) in (((0.1, 3.18, 3.0), (6.0, 3.18, 7.3)), ((0.1, 3.18, 7.3), (6.0, 3.18, 3.0))):
+        SD.bunting_line(kit.G, [a, hook, b], 0.22, 6 if PHONE else 7, cols, S("LM_school_linen", G.hexc("F4EEE0")), PAPER, rg, stitches=not PHONE)
 
 
 def world_map(kit, f, u0, u1, v0, v1):
@@ -334,7 +349,7 @@ def desks(kit, spec):
     Gd = kit.G
     dk = SD.pupil_desk(BEECH, BEECH_EDGE, STEEL, PLY, BLACK)
     # the chairs' frames in four soft powder-coat colours (sage, sky, butter, coral), as in many new primary classrooms
-    chs = [SD.pupil_chair(BEECH, S("LM_school_plastic", G.hexc(c)), BLACK, S("LM_school_plastic", G.hexc("C9CCCF"))) for c in ("8FB79A", "86B4D6", "E9C55E", "E58F7A")]
+    chs = [SD.pupil_chair(BEECH, S("LM_school_plastic", G.hexc(c)), BLACK, S("LM_school_plastic", G.hexc("C9CCCF"))) for c in (("8FB79A", "86B4D6", "E9C55E", "E58F7A") if not PHONE else ("86B4D6",))]
     rg = G.rng(4)
     covers = [S("LM_school_paint", G.hexc(c)) for c in ("F2BDC0", "A8C8E0", "B8E0C8", "F3DE9A", "D6C6E8")]
     for s in spec["solids"]:
@@ -348,7 +363,8 @@ def desks(kit, spec):
         SD.exercise_book(Gd, bx, 0.72, bz, yaw, covers[rg.randrange(len(covers))], rg)
         px = cx + 0.2
         pz = bz + rg.uniform(-0.25, -0.15) if bz > cz else bz + rg.uniform(0.15, 0.25)
-        SD.pencil(Gd, (px - 0.01, 0.7255, pz - 0.08), (px + 0.005, 0.7255, pz + 0.08), S("LM_school_paint", G.hexc(("F2C230", "3FA35A", "E2453C")[rg.randrange(3)])), S("LM_school_oak", G.hexc("E8C9A0")), BLACK)
+        if not PHONE:
+            SD.pencil(Gd, (px - 0.01, 0.7255, pz - 0.08), (px + 0.005, 0.7255, pz + 0.08), S("LM_school_paint", G.hexc(("F2C230", "3FA35A", "E2453C")[rg.randrange(3)])), S("LM_school_oak", G.hexc("E8C9A0")), BLACK)
         if rg.random() < 0.45:
             ez = cz - 0.3 if bz > cz - 0.05 else cz + 0.3
             Gd.cbox(cx - 0.06, cx + 0.14, 0.72, 0.755, ez - 0.035, ez + 0.035, S("LM_school_fabric", G.hexc(("4A6FA5", "C85A7A", "5E9A6A", "E0A040")[rg.randrange(4)])), c=0.012)
@@ -356,7 +372,7 @@ def desks(kit, spec):
             Gd.cbox(cx - 0.12, cx - 0.08, 0.72, 0.732, cz - 0.3, cz - 0.27, S("LM_school_paint", G.hexc("F4F2EC")), c=0.003)
     for i, s in enumerate(spec["seats"]):
         jit = rg.uniform(-0.035, 0.035)
-        kit.place("pchair_%d" % (i % 4), chs[i % 4], s["x"], 0.0, s["z"], -math.pi / 2 + jit)
+        kit.place("pchair_%d" % (i % len(chs)), chs[i % len(chs)], s["x"], 0.0, s["z"], -math.pi / 2 + jit)
 
 
 def back_shelf(kit, sol):
@@ -519,7 +535,7 @@ def reading_corner(kit, sol):
         SD.book(Gd, x0 + 0.04, 0.86, zc - 0.11, 0.012, 0.27, 0.22, (k * 7 + 3) % 24, axis="x", lean=0.0)
     for k in range(5):
         rr = 1.1 - k * 0.2
-        Gd.lathe([(rr, 0.0), (rr, 0.006 + 0.002 * k), (0.0, 0.006 + 0.002 * k)], 40, S("LM_school_fabric", G.hexc(("E46A5A", "F2A65A", "F5D76E", "8CC08A", "7FA8D8")[k])), 13.0, 4.7, 0.0)
+        Gd.lathe([(rr, 0.0), (rr, 0.006 + 0.002 * k), (0.0, 0.006 + 0.002 * k)], 40 if not PHONE else 20, S("LM_school_fabric", G.hexc(("E46A5A", "F2A65A", "F5D76E", "8CC08A", "7FA8D8")[k])), 13.0, 4.7, 0.0)
     r = sol["easel"]["rect"]
     ex, ez = (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2
     for dx in (-0.28, 0.28):
@@ -557,7 +573,7 @@ def curtains(kit):
             for side in (-1, 1):
                 a = u + side * (w / 2 + 0.05)
                 b = a + side * 0.34
-                n = 24
+                n = 24 if not PHONE else 12
                 folds = rg.uniform(5.5, 7.0)
                 ph = rg.uniform(0, 3)
                 prev = None
@@ -572,7 +588,7 @@ def curtains(kit):
                         # the hem's underside
                         f.poly(kit.G, [(prev[0], 0.82, prev[1] + 0.003), (cur[0], 0.82, cur[1] + 0.003), (cur[0], 0.82, 0.002), (prev[0], 0.82, 0.002)], cs, out=1)
                     prev = cur
-                for k in range(7):
+                for k in range(7 if not PHONE else 0):
                     uu = a + (b - a) * k / 6
                     f.box(kit.G, uu - 0.004, uu + 0.004, 3.352, 3.41, 0.004, 0.048, BRASS)
             pole0, pole1 = u - w / 2 - 0.45, u + w / 2 + 0.45

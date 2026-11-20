@@ -9,7 +9,7 @@
  *        --png <dir for the PNG twins and the per-cell previews> [--only family,cat] [--no-ktx]
  *
  * Writes two atlases (the KTX2 encoder takes ~12 Mpix an image at most): lot_school_class_art.ktx2 (the drawings, albedo
- * 4096 x 2896, ETC1S sRGB) and lot_school_class_print.ktx2 (everything else, 2048 x 2048, UASTC sRGB), each with a _normal (half size, UASTC
+ * 4096 x 2896, ETC1S sRGB) and lot_school_class_print.ktx2 (everything else, 2048 x 2560, UASTC sRGB), each with a _normal (half size, UASTC
  * linear, from the height field: paper tooth, crinkles, crayon wax) and an _orm (half size: G roughness — wax 0.6, paper 0.9,
  * laminated print 0.35–0.5); their PNG twins in --png (Blender renders), and school_art_atlas.json beside this script (the cells,
  * pixel rects, top-left origin: school_room_dress.py maps its geometry with them).
@@ -39,7 +39,8 @@ const { chromium } = await import(pathToFileURL(join(REPO, "node_modules", "play
 
 // two atlases (the KTX2 encoder takes at most ~12 Mpix an image): `art` — the sixteen drawings, 1024 x 724 px a sheet (4096 x 2896);
 // `print` — the teacher's and the classroom's printed things (2048 x 2048)
-const ATLASES = { art: { w: 4096, h: 2896 }, print: { w: 2048, h: 2048 } };
+const ATLASES = { art: { w: 4096, h: 2896 }, print: { w: 2048, h: 2560 } };
+const COVER_W = 170, COVER_H = 256;
 const DW = 1024, DH = 724; // a drawing: landscape (8절 도화지, 39 x 27.5 cm in the room) at ~2.6 px/mm
 const DRAWINGS = ["family", "rainbow", "cat", "dog", "flowers", "fountain", "bus", "coaster", "appletree", "lake", "me", "butterfly", "night", "handprints", "dino", "spring"];
 const SPINE_W = 40, SPINE_H = 340, SPINES = 24;
@@ -56,6 +57,8 @@ const CELLS = [
   { name: "paperback", atlas: "print", x: 512, y: 1616, w: 512, h: 360 },
   { name: "tape", atlas: "print", x: 1536, y: 1648, w: 256, h: 56 },
   { name: `spines:${SPINE_W}:${SPINE_H}`, atlas: "print", x: 1024, y: 1704, w: SPINE_W * SPINES, h: SPINE_H, key: "spines" },
+  // the picture books' front covers, 12 x 2 (one per spine)
+  { name: `covers:${COVER_W}:${COVER_H}`, atlas: "print", x: 0, y: 2048, w: COVER_W * 12, h: COVER_H * 2, key: "covers" },
 ];
 // (print: 1792..2048 x 1648..1704 stays blank paper — the book covers' COLOR_0 tint goes over it)
 
@@ -152,5 +155,6 @@ writeFileSync(join(HERE, "school_art_atlas.json"), JSON.stringify({
   blank: { atlas: "print", x: 1796, y: 1652, w: 248, h: 48 },
   drawings: DRAWINGS,
   spine: { w: SPINE_W, h: SPINE_H, count: SPINES },
+  cover: { w: COVER_W, h: COVER_H, cols: 12 },
 }, null, 2) + "\n");
 console.log("done");

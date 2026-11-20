@@ -1525,6 +1525,54 @@
   const PAPERS = ["#FCFAF3", "#FBF8EF", "#FAF7F0", "#FDFBF6", "#F9F5EA"];
   window.KIDART = Object.keys(DRAW);
   window.SPINE_COUNT = SPINES.length;
+
+  /**
+   * The picture books' front covers (one per spine, the spine's colour): a printed cover — a flat colour field, a framed
+   * picture panel with a simple illustration in clean print shapes (a sun over hills, a tree, a house, a flower, a fish, a moon
+   * and stars, a cat, a bus), the title in bold, a small publisher's mark.
+   */
+  function covers(S, cw, ch) {
+    const { W, H } = S;
+    const cv = blank(W, H), c = cv.getContext("2d");
+    const cols = Math.floor(W / cw);
+    const shapes = [
+      (x, y, w, h) => { c.fillStyle = "#F6C83A"; c.beginPath(); c.arc(x + w * 0.72, y + h * 0.3, w * 0.14, 0, 7); c.fill(); c.fillStyle = "#6DB55A"; c.beginPath(); c.ellipse(x + w * 0.3, y + h, w * 0.55, h * 0.45, 0, Math.PI, 0); c.fill(); c.fillStyle = "#4C9A47"; c.beginPath(); c.ellipse(x + w * 0.85, y + h, w * 0.45, h * 0.32, 0, Math.PI, 0); c.fill(); },
+      (x, y, w, h) => { c.fillStyle = "#8A5A33"; c.fillRect(x + w * 0.46, y + h * 0.5, w * 0.08, h * 0.45); c.fillStyle = "#4FA34A"; c.beginPath(); c.arc(x + w * 0.5, y + h * 0.4, w * 0.3, 0, 7); c.fill(); c.fillStyle = "#E2453C"; for (const [a, b] of [[0.4, 0.35], [0.6, 0.45], [0.52, 0.28]]) { c.beginPath(); c.arc(x + w * a, y + h * b, w * 0.04, 0, 7); c.fill(); } },
+      (x, y, w, h) => { c.fillStyle = "#F3DE9A"; c.fillRect(x + w * 0.25, y + h * 0.45, w * 0.5, h * 0.45); c.fillStyle = "#D9574A"; c.beginPath(); c.moveTo(x + w * 0.18, y + h * 0.47); c.lineTo(x + w * 0.5, y + h * 0.15); c.lineTo(x + w * 0.82, y + h * 0.47); c.fill(); c.fillStyle = "#7A4E2E"; c.fillRect(x + w * 0.44, y + h * 0.65, w * 0.12, h * 0.25); },
+      (x, y, w, h) => { c.fillStyle = "#3FA35A"; c.fillRect(x + w * 0.48, y + h * 0.45, w * 0.04, h * 0.5); c.fillStyle = "#EC7FB0"; for (let k = 0; k < 6; k++) { const a = (k / 6) * 6.283; c.beginPath(); c.arc(x + w * 0.5 + Math.cos(a) * w * 0.13, y + h * 0.38 + Math.sin(a) * w * 0.13, w * 0.1, 0, 7); c.fill(); } c.fillStyle = "#F6C83A"; c.beginPath(); c.arc(x + w * 0.5, y + h * 0.38, w * 0.08, 0, 7); c.fill(); },
+      (x, y, w, h) => { c.fillStyle = "#F08A2F"; c.beginPath(); c.ellipse(x + w * 0.45, y + h * 0.55, w * 0.25, h * 0.16, 0, 0, 7); c.fill(); c.beginPath(); c.moveTo(x + w * 0.68, y + h * 0.55); c.lineTo(x + w * 0.88, y + h * 0.4); c.lineTo(x + w * 0.88, y + h * 0.7); c.fill(); c.fillStyle = "#222"; c.beginPath(); c.arc(x + w * 0.32, y + h * 0.52, w * 0.025, 0, 7); c.fill(); },
+      (x, y, w, h) => { c.fillStyle = "#F6DF4A"; c.beginPath(); c.arc(x + w * 0.5, y + h * 0.45, w * 0.22, 0, 7); c.fill(); c.fillStyle = c.__bg; c.beginPath(); c.arc(x + w * 0.6, y + h * 0.4, w * 0.2, 0, 7); c.fill(); c.fillStyle = "#F6DF4A"; for (const [a, b] of [[0.2, 0.2], [0.8, 0.75], [0.25, 0.8]]) { c.beginPath(); c.arc(x + w * a, y + h * b, w * 0.03, 0, 7); c.fill(); } },
+      (x, y, w, h) => { c.fillStyle = "#F08A2F"; c.beginPath(); c.arc(x + w * 0.5, y + h * 0.55, w * 0.26, 0, 7); c.fill(); for (const sg of [-1, 1]) { c.beginPath(); c.moveTo(x + w * (0.5 + sg * 0.24), y + h * 0.45); c.lineTo(x + w * (0.5 + sg * 0.22), y + h * 0.18); c.lineTo(x + w * (0.5 + sg * 0.06), y + h * 0.33); c.fill(); } c.fillStyle = "#222"; for (const sg of [-1, 1]) { c.beginPath(); c.arc(x + w * (0.5 + sg * 0.1), y + h * 0.52, w * 0.03, 0, 7); c.fill(); } },
+      (x, y, w, h) => { c.fillStyle = "#3F9A5B"; c.fillRect(x + w * 0.12, y + h * 0.35, w * 0.76, h * 0.35); c.fillStyle = "#F2E7B8"; c.fillRect(x + w * 0.12, y + h * 0.35, w * 0.76, h * 0.14); c.fillStyle = "#9CC8E8"; for (let k = 0; k < 4; k++) c.fillRect(x + w * (0.16 + k * 0.17), y + h * 0.37, w * 0.12, h * 0.1); c.fillStyle = "#222"; for (const a of [0.3, 0.72]) { c.beginPath(); c.arc(x + w * a, y + h * 0.72, w * 0.07, 0, 7); c.fill(); } },
+    ];
+    SPINES.forEach(([t, col], k) => {
+      const x = (k % cols) * cw, y = Math.floor(k / cols) * ch;
+      c.__bg = col;
+      c.fillStyle = col;
+      c.fillRect(x, y, cw, ch);
+      const words0 = t.split(" ");
+      const two = words0.length > 2 || (words0.length === 2 && t.length > 5);
+      const px = x + cw * 0.12, py = y + ch * (two ? 0.37 : 0.3), pw = cw * 0.76, ph = ch * (two ? 0.45 : 0.5);
+      c.fillStyle = "#FFFDF4";
+      c.fillRect(px - 3, py - 3, pw + 6, ph + 6);
+      c.fillStyle = "#DDEFF8";
+      c.fillRect(px, py, pw, ph);
+      c.save();
+      c.beginPath(); c.rect(px, py, pw, ph); c.clip();
+      c.__bg = "#DDEFF8";
+      shapes[k % shapes.length](px, py, pw, ph);
+      c.restore();
+      const light = parseInt(col.slice(1, 3), 16) * 0.299 + parseInt(col.slice(3, 5), 16) * 0.587 + parseInt(col.slice(5, 7), 16) * 0.114 > 160;
+      const ink = light ? "#26262C" : "#FFFDF4";
+      const words = t.split(" ");
+      const lines = words.length > 2 ? [words.slice(0, Math.ceil(words.length / 2)).join(" "), words.slice(Math.ceil(words.length / 2)).join(" ")] : words.length === 2 && t.length > 5 ? words : [t];
+      const fs = Math.min(lines.length > 1 ? cw * 0.135 : cw * 0.17, (cw * 0.9) / Math.max(...lines.map((l) => l.length)) * 1.05);
+      lines.forEach((l, i) => printText(c, l, x + cw / 2, y + ch * 0.05 + fs * (i + 1) * 1.12, fs, ink, "bold", "center"));
+      printText(c, "케이슨 그림책", x + cw / 2, y + ch * 0.94, cw * 0.075, ink, "normal", "center");
+    });
+    inkCanvas(S, cv, "over");
+    for (let i = 0; i < W * H; i++) S.rough[i] = 0.4;
+  }
   window.drawCell = (name, W, H, seed) => {
     let S;
     const t0 = performance.now();
@@ -1541,6 +1589,7 @@
     else if (name === "paperback") { S = Sheet(W, H, seed, { creases: 2, cockle: 0.04 }); paperBack(S); }
     else if (name === "tape") { S = Sheet(W, H, seed, { creases: 0, cockle: 0, grain: 0.5 }); tape(S); }
     else if (name === "pages") { S = Sheet(W, H, seed, { creases: 0, cockle: 0, grain: 0.3 }); pageEdges(S); }
+    else if (name.startsWith("covers:")) { const [, cw, ch] = name.split(":").map(Number); S = Sheet(W, H, seed, { creases: 0, cockle: 0, grain: 0.3 }); covers(S, cw, ch); }
     else if (name.startsWith("spines:")) { const [, sw, sh] = name.split(":").map(Number); S = Sheet(W, H, seed, { creases: 0, cockle: 0, grain: 0.3 }); spines(S, sw, sh); }
     else throw new Error("unknown cell " + name);
     // pack: colour RGBA (sRGB bytes), height (grey), roughness (grey)

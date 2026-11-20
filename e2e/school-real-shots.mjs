@@ -107,6 +107,10 @@ const V = {
   reading: view([11.6, 1.4, 4.6], [15.0, 0.6, 5.0], F),
   lockers: view([7.7, 1.5, 1.6], [3.0, 1.0, 0.2], F),
   ceiling: view([7.7, 1.5, 3.0], [7.7, 3.7, 6.0], F + 10),
+  pendant: view([8.4, 2.0, 4.9], [8.4, 2.65, 3.9], 50),
+  bunting: view([3.4, 2.1, 4.0], [2.2, 2.9, 5.6], 55),
+  books_close: view([13.9, 1.0, 4.4], [15.0, 0.55, 5.0], 45),
+  curtains: view([10.6, 1.7, 6.0], [12.2, 2.0, 7.4], 50),
 };
 await hideHud(p);
 for (const [name, [x, y, z, tx, ty, tz, fov]] of Object.entries(V)) {

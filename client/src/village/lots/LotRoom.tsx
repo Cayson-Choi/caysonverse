@@ -248,8 +248,9 @@ export function isSacredHero(node: string): boolean {
 
 export { capMips } from "./lotTextures";
 
-/** The rooms B2 made a phone file for (`<unit>_phone.glb`, its extras' `phone.file`). */
-export const LOT_ROOM_PHONE_FILES: ReadonlySet<string> = new Set(["lot_chapel_nave", "lot_church_nave"]);
+/** The rooms with a phone file (`<unit>_phone.glb`): B2's chapel and church, and the classroom (b1 `--phone`, 2026-11-20: the same
+ * room and atlases with lighter geometry — 33k triangles, 29 draws). */
+export const LOT_ROOM_PHONE_FILES: ReadonlySet<string> = new Set(["lot_chapel_nave", "lot_church_nave", "lot_school_class"]);
 
 /** How long (ms) a room's files stay after leaving it (a quick look outside and back in reads nothing again). */
 export const LOT_ROOM_KEEP_MS = 60_000;
