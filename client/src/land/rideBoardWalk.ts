@@ -9,10 +9,11 @@ import { findDetour } from "../game/clickPlan";
 import { getActiveMap, activeBounds } from "../game/activeMap";
 import { setClickTarget } from "../game/clickMove";
 import { RIDE_ARRIVE_M, armRide } from "./rideBoard";
+import { rideSchedule } from "./rideSchedule";
 
 export function boardRide(key: RideKey, x: number, z: number): void {
   const def = rideByKey(key);
-  if (!def) return;
+  if (!def || rideSchedule.skew) return;
   if (Math.hypot(x - def.pad.x, z - def.pad.z) <= def.pad.radius + RIDE_ARRIVE_M) {
     armRide(null);
     sendRideBoard(key);

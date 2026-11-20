@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { VillageServerMsg } from "@caysonverse/shared/village/messages";
 import { phaseAt, sunAt } from "@caysonverse/shared/village/sunClock";
+import { rideScheduleKey } from "@caysonverse/shared/land/rides";
+import { rideSchedule } from "../land/rideSchedule";
 import { bindVillageClock, createVillageClock, pinFromSearch } from "./villageClock";
 
 /**
@@ -128,6 +130,20 @@ describe("bindVillageClock: the room's ServerTime message", () => {
     expect(c.nowMs()).toBe(NOON);
     off();
     expect(room.handlers.size).toBe(0);
+  });
+
+  it("compares the server's ride timetable fingerprint with ours: the same boards, another (or none: an older server) does not", () => {
+    const room = fakeRoom();
+    bindVillageClock(room, createVillageClock(device(NOON).now));
+    const handler = room.handlers.get("ServerTime")!;
+    handler({ serverTimeMs: NOON, rideSchedule: rideScheduleKey() });
+    expect(rideSchedule.skew).toBe(false);
+    handler({ serverTimeMs: NOON, rideSchedule: "130s-cycle" });
+    expect(rideSchedule.skew).toBe(true);
+    handler({ serverTimeMs: NOON });
+    expect(rideSchedule.skew).toBe(true);
+    handler({ serverTimeMs: NOON, rideSchedule: rideScheduleKey() });
+    expect(rideSchedule.skew).toBe(false);
   });
 
   it("drops a malformed message without touching the clock", () => {
