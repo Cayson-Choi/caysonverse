@@ -23,7 +23,8 @@ afterEach(() => closeCubbyCard());
 describe("CubbyView copy (Task 9): gentle, no '!'", () => {
   it("the empty cubby says exactly the brief's line", () => {
     expect(CUBBY_COPY.empty).toBe("곧 이 자리에 우리 아이를 모실 수 있어요");
-    expect(CUBBY_COPY.light).toBe("촛불 켜기");
+    expect(CUBBY_COPY.light).toBe("촛불 밝히기"); // owner 2026-11-20: a toggle with "촛불 끄기"
+    expect(CUBBY_COPY.putOut).toBe("촛불 끄기");
   });
 
   it("no string of the card holds '!', and the sentences end in ~요", () => {
@@ -36,7 +37,17 @@ describe("CubbyView copy (Task 9): gentle, no '!'", () => {
       litByLabel(""),
     ];
     for (const t of all) expect(t, t).not.toContain("!");
-    for (const t of [CUBBY_COPY.empty, CUBBY_COPY.lighting, CUBBY_COPY.burning, CUBBY_COPY.wait, litByLabel("케이슨")]) expect(t).toMatch(/요$/);
+    for (const t of [
+      CUBBY_COPY.empty,
+      CUBBY_COPY.lighting,
+      CUBBY_COPY.puttingOut,
+      CUBBY_COPY.burning,
+      CUBBY_COPY.onlyLighter,
+      CUBBY_COPY.wait,
+      litByLabel("케이슨"),
+      litByLabel("케이슨", 0, true),
+    ])
+      expect(t).toMatch(/요$/);
   });
 
   it("the component's own Korean text has no '!' either (read from CubbyView.tsx)", () => {
@@ -54,6 +65,7 @@ describe("CubbyView copy (Task 9): gentle, no '!'", () => {
     expect(litByLabel("케이슨", 32 * 60_000 + 5000)).toBe("케이슨님이 32분 전에 켜 주셨어요");
     expect(litByLabel("케이슨", 61 * 60_000)).toBe("케이슨님이 1시간 전에 켜 주셨어요");
     expect(litByLabel("", 5 * 60_000)).toBe("5분 전에 켜진 촛불이에요");
+    expect(litByLabel("케이슨", 5 * 60_000, true)).toBe("내가 5분 전에 켜 두었어요");
   });
 
   it("the portrait is a tile of the atlas (CSS background on the 4 x 4 grid)", () => {

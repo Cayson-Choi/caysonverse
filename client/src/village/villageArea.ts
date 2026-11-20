@@ -13,7 +13,7 @@
 import { useSyncExternalStore } from "react";
 import { isIndoorArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { normalizeArea, type AreaGate } from "../game/areaFilter";
-import { setQuiet } from "../game/quiet";
+import { setEmojiQuiet, setQuiet } from "../game/quiet";
 import type { PlayersRoom } from "../game/remoteSync";
 
 let area: AreaId = "village";
@@ -30,6 +30,8 @@ export function setLocalArea(next: AreaId): void {
   area = next;
   // The memorial hall is quiet: jumping and emoji are off while the local player is inside (quiet.ts).
   setQuiet(isIndoorArea(next));
+  // …but emoji reactions work in the memorial hall (owner 2026-11-20), as the server lets them through there.
+  setEmojiQuiet(isIndoorArea(next) && next !== "hall");
   for (const l of [...listeners]) l();
 }
 

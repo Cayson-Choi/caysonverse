@@ -30,7 +30,37 @@ export function subscribeQuiet(listener: () => void): () => void {
   };
 }
 
-/** React: re-render when the quiet flag flips (the emoji bar and the jump button hide on it). */
+/** React: re-render when the quiet flag flips (the jump button hides on it). */
 export function useQuiet(): boolean {
   return useSyncExternalStore(subscribeQuiet, isQuiet, isQuiet);
+}
+
+/**
+ * Emoji reactions have their own flag since 2026-11-20 (owner: "추모관안에서도 이모티콘을 보낼 수 있게"): the memorial hall takes them
+ * (the server relays them there: VillageRoom `isEmojiQuiet`), a house floor or a lot room still does not. Jumping keeps `quiet`.
+ */
+let emojiQuiet = false;
+const emojiListeners = new Set<() => void>();
+
+/** True while emoji reactions are off (inside a house or a lot room; not in the memorial hall). */
+export function isEmojiQuiet(): boolean {
+  return emojiQuiet;
+}
+
+export function setEmojiQuiet(on: boolean): void {
+  if (emojiQuiet === on) return;
+  emojiQuiet = on;
+  for (const l of [...emojiListeners]) l();
+}
+
+export function subscribeEmojiQuiet(listener: () => void): () => void {
+  emojiListeners.add(listener);
+  return () => {
+    emojiListeners.delete(listener);
+  };
+}
+
+/** React: re-render when the emoji flag flips (the emoji bar and the touch emoji button hide on it). */
+export function useEmojiQuiet(): boolean {
+  return useSyncExternalStore(subscribeEmojiQuiet, isEmojiQuiet, isEmojiQuiet);
 }

@@ -114,6 +114,15 @@ export function sendLightCandle(cubby: string): void {
   room?.send(VillageMsg.LightCandle, { cubby });
 }
 
+/**
+ * Put out a burning candle (owner 2026-11-20). The server allows it for whoever lit it and for the cubby's family, at most
+ * `CANDLE_OUT_RATE`, and tells everyone in the hall (`CandleOut`); anything else is dropped silently.
+ */
+export function sendPutOutCandle(cubby: string): void {
+  if (!room) return;
+  room.send(VillageMsg.PutOutCandle, { cubby });
+}
+
 // ─────────────────────────── Player messages: the ACTIVE room ───────────────────────────
 
 /**

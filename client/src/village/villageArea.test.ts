@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import type { PlayersRoom } from "../game/remoteSync";
-import { isQuiet } from "../game/quiet";
+import { isEmojiQuiet, isQuiet } from "../game/quiet";
 import {
   areaGate,
   localArea,
@@ -36,9 +36,13 @@ describe("villageArea — which area the local player is in", () => {
     expect(seen).toEqual(["hall", "village"]);
   });
 
-  it("the hall is quiet (jump and emoji off), the village is not; a reset leaves it off", () => {
+  it("the hall is quiet (jump off; emoji ON since 2026-11-20), the village is not; a house floor is quiet for both; a reset leaves it off", () => {
     setLocalArea("hall");
     expect(isQuiet()).toBe(true);
+    expect(isEmojiQuiet()).toBe(false);
+    setLocalArea("house:house_3:1");
+    expect(isQuiet()).toBe(true);
+    expect(isEmojiQuiet()).toBe(true);
     setLocalArea("village");
     expect(isQuiet()).toBe(false);
     setLocalArea("hall");
