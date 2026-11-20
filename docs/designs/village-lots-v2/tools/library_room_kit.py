@@ -13,6 +13,7 @@ import math
 import b1_geom as G
 import b1_parts as P
 import b1_room as R
+import library_books as LB
 import library_room_dress as DR
 from b1_geom import Mesh, S
 
@@ -58,6 +59,10 @@ MATS = {
     "M_globe": {"own": "lot_library_globe", "note": "Natural Earth land and rivers; SOURCES_lot_library.md"},
     "M_painting": {"own": "lot_library_reading_paintings", "note": "public-domain landscapes (Constable, Hobbema, Corot, Ruisdael): SOURCES_lot_library.md"},
     "M_fire": {"fire": True},
+    # the books' spine atlas and the rugs (b1_book_atlas.mjs: procedural, no cover art, no titles), owner 2026-11-20
+    "M_books": {"own": "lot_library_reading_books", "normal": "lot_library_reading_books_normal", "orm": "lot_library_reading_books_orm",
+                "vertexColor": True, "note": "procedural spine atlas (b1_book_atlas.mjs): albedo 2048 UASTC sRGB; normal + ORM (G roughness, B metal: the gilt) 1024 UASTC linear; COLOR_0 tints the side boards"},
+    "M_rugs": {"own": "lot_library_reading_rugs", "note": "procedural Persian-style rugs (b1_book_atlas.mjs), 2048 UASTC sRGB"},
 }
 
 X, Z, H = 13.4, 10.4, 5.2
@@ -65,27 +70,6 @@ BAYS = [(1.4, 3.8), (9.6, 12.0)]
 BOOK_COLS = ["7A2E2E", "2F4B6E", "3E6B4A", "8C6A2E", "5A3A62", "B5502F", "2B5C5E", "6B2B3A", "C9A24A", "34495E", "7D5A44", "9B3D3D", "D8CBB0", "4A6B8C"]
 
 
-def book_run(seed, length=0.42, hmin=0.22, hmax=0.31):
-    """A run of real-looking books (spines +z, origin = the run's left end, base y 0): spine face, top page block, one side."""
-    m = Mesh("books")
-    rg = G.rng(seed)
-    x = 0.0
-    while x < length - 0.02:
-        w = min(rg.uniform(0.022, 0.048), length - x)
-        h = rg.uniform(hmin, hmax)
-        d = rg.uniform(0.17, 0.23)
-        col = G.hexc(BOOK_COLS[rg.randrange(len(BOOK_COLS))])
-        s = S("LM_library_paint", col)  # cloth-bound covers: the bright painted set takes the colours truly (fabric is too dark)
-        m.poly([(x, 0.0, 0.0), (x + w, 0.0, 0.0), (x + w, h, 0.0), (x, h, 0.0)], s)
-        m.poly([(x, h, 0.0), (x + w, h, 0.0), (x + w, h, -d), (x, h, -d)], PAPER.t(G.hexc("F3EAD6")))
-        m.poly([(x + w, 0.0, 0.0), (x + w, 0.0, -d), (x + w, h, -d), (x + w, h, 0.0)], s.t(G.mul(col, 0.75)))
-        if rg.random() < 0.5:
-            m.poly([(x + 0.003, h * 0.8, 0.002), (x + w - 0.003, h * 0.8, 0.002), (x + w - 0.003, h * 0.84, 0.002), (x + 0.003, h * 0.84, 0.002)], BRASS)
-        x += w + rg.uniform(0.0, 0.003)
-    return m
-
-
-RUNS = [book_run(s) for s in (3, 17, 29, 41)]
 
 
 def build(spec, unit, layout):
@@ -135,10 +119,10 @@ def build(spec, unit, layout):
     for name in ("side_table_w", "side_table_e"):
         r = sol[name]["rect"]
         DR.side_table(Gd, kit.glow("lamps"), kit.lights, (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2)
-    def WOOL(c):  # wool pile: the plaster scan's fine relief carries the dyes truly (fabric is too dark)
-        return S("LM_library_plaster", G.hexc(c))
-    DR.rug(Gd, 6.7, 8.1, 4.4, 2.3, WOOL("7E3226"), WOOL("2A3249"), WOOL("CDB48A"))
-    DR.rug(Gd, 6.7, 3.9, 1.0, 4.2, WOOL("6E2A22"), WOOL("2A3249"), WOOL("CDB48A"))
+    # Persian-style rugs from the rugs atlas (knotted pile, abrash, medallion and borders), wool fringes
+    FRINGE = S("LM_library_fabric", G.hexc("EFE6D2"))
+    LB.rug(Gd, 6.7, 8.1, 4.4, 2.3, "hearth", fringe=FRINGE)
+    LB.rug(Gd, 6.7, 3.9, 1.0, 4.2, "runner", along_z=True, fringe=FRINGE)
     r = sol["globe"]["rect"]
     DR.globe(D, (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2)
     for name in ("plant_1", "plant_2"):
@@ -229,90 +213,20 @@ def bay(kit, f, a, b):
     D.cbox(B[0] + 0.05, C[0] - 0.05, 0.42, 0.48, zb + 0.08, 0.0, CUSH_1, c=0.025)
     # bolsters at the ends, scatter cushions against the glass, a folded blanket, books, a little lamp
     for (x, s) in ((a + 0.2, CUSH_2), (b - 0.2, CUSH_2)):
-        Gd.member((x, 0.6, -0.5), (x, 0.6, 0.45), G.prof_round(0.11, 10), s, caps=True)
+        Gd.member((x, 0.6, -0.5), (x, 0.6, 0.45), G.prof_round(0.11, 18), s, caps=True)
     for k, (dx, s) in enumerate(((-0.45, CUSH_3), (0.05, VELVET_R), (0.5, CUSH_3))):
         cx = (a + b) / 2 + dx
         P.pillow(Gd, cx, 0.7, zb + 0.24, 0.46, 0.42, 0.15, s, tilt=-0.22)
     Gd.cbox(b - 0.85, b - 0.35, 0.48, 0.55, 0.15, 0.5, VELVET_G, c=0.02)
     Gd.cbox(b - 0.83, b - 0.37, 0.55, 0.58, 0.17, 0.48, VELVET_G.t(G.hexc("6E9A80")), c=0.01)
-    rg = G.rng(int(a * 10))
-    for k in range(5):
-        c = G.hexc(BOOK_COLS[rg.randrange(len(BOOK_COLS))])
-        Gd.box(a + 0.45 + 0.01 * k, a + 0.75 - 0.01 * k, 0.48 + 0.035 * k, 0.515 + 0.035 * k, 0.1, 0.33, S("LM_library_paint", c))
+    LB.pile(Gd, a + 0.62, 0.48, 0.22, 0.35, 4, int(a * 10) + 5)
     lx, lz = (B[0] + 0.25), zb + 0.35
-    Gd.lathe([(0.08, 0.0), (0.08, 0.02), (0.012, 0.04), (0.012, 0.4)], 8, BRASS, lx, lz, 0.48)
-    Gd.lathe([(0.15, 0.0), (0.08, 0.17), (0.0, 0.18)], 10, FAB.t(G.hexc("F5E9CC")), lx, lz, 0.82)
-    kit.glow("nooks").lathe([(0.0, 0.0), (0.13, 0.02), (0.07, 0.15), (0.0, 0.16)], 6, P.GLASS.t(P.LAMP), lx, lz, 0.83)
+    Gd.lathe([(0.08, 0.0), (0.08, 0.02), (0.012, 0.04), (0.012, 0.4)], 16, BRASS, lx, lz, 0.48)
+    Gd.lathe([(0.15, 0.0), (0.08, 0.17), (0.0, 0.18)], 18, FAB.t(G.hexc("F5E9CC")), lx, lz, 0.82)
+    kit.glow("nooks").lathe([(0.0, 0.0), (0.13, 0.02), (0.07, 0.15), (0.0, 0.16)], 12, P.GLASS.t(P.LAMP), lx, lz, 0.83)
     kit.lights.append(("point", lx, 0.9, lz + 0.1, (1.0, 0.82, 0.58), 30.0))
     kit.dayfill.append(((a + b) / 2, 2.8, -0.3, 1.5, 40.0))
-    P.potted_plant(Gd, (C[0] - 0.25, 0.48, zb + 0.3), POT, LEAF, 0.3)
-
-
-def stacks(kit, sol):
-    """Oak bookcases on the solids stacks_w / stacks_e / stacks_b (0.38 deep against the walls, 2.6 high): plinth, uprights
-    every ~0.9 m, seven shelves, a crown moulding with a brass rail for the ladder; full of books (instanced runs), now and then
-    a plant, a vase or bookends, so the shelves look curated, not stamped. The fireplace sits in the middle of the back run."""
-    D, Gd = kit.D, kit.G
-    rg = G.rng(77)
-    shelves = [0.12 + k * 0.355 for k in range(7)]
-    for name, wall in (("stacks_w", "w"), ("stacks_e", "e"), ("stacks_b", "b")):
-        r = sol[name]["rect"]
-        if wall == "b":
-            segs = [(r["x0"], 5.55), (7.85, r["x1"])]
-        elif wall == "w":
-            segs = [(r["z0"], r["z1"])]
-        else:
-            segs = [(r["z0"], r["z1"])]
-        for (s0, s1) in segs:
-            L = s1 - s0
-            n = max(1, int(round(L / 0.9)))
-            bw = L / n
-            # frame in (along, depth) per wall
-            def box(a0, a1, y0, y1, d0, d1, s, skip=()):
-                if wall == "w":
-                    D.box(d0, d1, y0, y1, a0, a1, s, skip=skip)
-                elif wall == "e":
-                    D.box(X - d1, X - d0, y0, y1, a0, a1, s, skip=skip)
-                else:
-                    D.box(a0, a1, y0, y1, Z - d1, Z - d0, s, skip=skip)
-            box(s0, s1, 0.0, 0.1, 0.0, 0.4, OAK_DK)
-            box(s0, s1, 2.45, 2.6, 0.0, 0.42, OAK)
-            box(s0 - 0.02, s1 + 0.02, 2.56, 2.62, 0.0, 0.46, OAK_DK)
-            box(s0, s1, 0.1, 2.45, 0.0, 0.02, OAK_DK)
-            for k in range(n + 1):
-                a = s0 + k * bw
-                box(max(s0, a - 0.022), min(s1, a + 0.022), 0.1, 2.45, 0.0, 0.38, OAK, skip=("-y",))
-            for k in range(n):
-                a0, a1 = s0 + k * bw + 0.022, s0 + (k + 1) * bw - 0.022
-                for y in shelves:
-                    box(a0, a1, y - 0.022, y, 0.02, 0.38, OAK)
-                    if y > 2.3:
-                        continue
-                    t = a0 + 0.01
-                    while t < a1 - 0.43:
-                        if rg.random() < 0.07:
-                            # a curated gap: a small plant or a vase
-                            c = (t + 0.2, y, 0.22)
-                            px, pz = ((c[2], t + 0.2) if wall == "w" else (X - c[2], t + 0.2) if wall == "e" else (t + 0.2, Z - c[2]))
-                            if rg.random() < 0.5:
-                                P.potted_plant(Gd, (px, y, pz), POT, LEAF, 0.26)
-                            else:
-                                Gd.lathe([(0.0, 0.0), (0.06, 0.0), (0.08, 0.08), (0.05, 0.18), (0.04, 0.22), (0.0, 0.22)], 8, S("LM_library_paint", G.hexc(("8FB8C9", "E8C5A0", "B9C8A6")[rg.randrange(3)])), px, pz, y)
-                            t += 0.43
-                            continue
-                        kind = rg.randrange(len(RUNS))
-                        if wall == "w":
-                            kit.place("books_%d" % kind, RUNS[kind], 0.38, y, t + 0.42, math.pi / 2)
-                        elif wall == "e":
-                            kit.place("books_%d" % kind, RUNS[kind], X - 0.38, y, t, -math.pi / 2)
-                        else:
-                            kit.place("books_%d" % kind, RUNS[kind], t + 0.42, y, Z - 0.38, math.pi)
-                        t += 0.43
-        # the brass ladder rail along the east stacks' crown
-    r = sol["stacks_e"]["rect"]
-    D.member((X - 0.46, 2.4, r["z0"] + 0.1), (X - 0.46, 2.4, r["z1"] - 0.1), G.prof_round(0.018, 8), BRASS)
-    for z in (r["z0"] + 0.1, (r["z0"] + r["z1"]) / 2, r["z1"] - 0.1):
-        D.member((X - 0.46, 2.4, z), (X - 0.38, 2.4, z), G.prof_round(0.012, 5), BRASS)
+    DR.leafy_plant(Gd, C[0] - 0.25, 0.48, zb + 0.3, 0.3, seed=int(a * 10))
 
 
 def fireplace(kit):
@@ -353,12 +267,12 @@ def fireplace(kit):
         D.member((x, 0.12, zf - 0.18), (x, 0.25, zf - 0.18), G.prof_round(0.015, 5), BRASS)
     # on the mantel
     for x in (x0 + 0.15, x1 - 0.15):
-        Gd.lathe([(0.06, 0.0), (0.05, 0.02), (0.015, 0.05), (0.02, 0.2), (0.035, 0.22), (0.0, 0.23)], 8, BRASS, x, zf + 0.15, 1.63)
-        Gd.lathe([(0.012, 0.0), (0.012, 0.15), (0.0, 0.15)], 6, PAPER, x, zf + 0.15, 1.86)
+        Gd.lathe([(0.06, 0.0), (0.05, 0.02), (0.015, 0.05), (0.02, 0.2), (0.035, 0.22), (0.0, 0.23)], 16, BRASS, x, zf + 0.15, 1.63)
+        Gd.lathe([(0.012, 0.0), (0.012, 0.15), (0.0, 0.15)], 12, PAPER, x, zf + 0.15, 1.86)
     Gd.cbox(6.55, 6.85, 1.63, 1.86, zf + 0.06, zf + 0.22, BRASS, c=0.01)
     Gd.sphere(6.7, 1.77, zf + 0.055, 0.075, PAPER, n=10, rings=5, sy=0.15)
     for (x, c) in ((6.05, "8FB8C9"), (7.35, "E8C5A0")):
-        Gd.lathe([(0.0, 0.0), (0.05, 0.0), (0.07, 0.07), (0.04, 0.16), (0.0, 0.16)], 8, S("LM_library_paint", G.hexc(c)), x, zf + 0.15, 1.63)
+        Gd.lathe([(0.0, 0.0), (0.05, 0.0), (0.07, 0.07), (0.04, 0.16), (0.0, 0.16)], 16, S("LM_library_paint", G.hexc(c)), x, zf + 0.15, 1.63)
     # the painting above: gilt frame, a landscape (sky, hills, a lake, a little church) in raised paint layers
     px0, px1, py0, py1, pz = 5.9, 7.5, 2.2, 3.4, zf + 0.115
     D.box(px0, px1, py0, py1, pz - 0.06, pz, BRASS)
@@ -382,14 +296,95 @@ def table_kind(L=2.4, W=1.2, h=0.76):
     m.box(-W / 2 + 0.08, W / 2 - 0.08, h - 0.15, h - 0.05, -L / 2 + 0.08, L / 2 - 0.08, OAK_DK, skip=("+y",))
     for x in (-W / 2 + 0.1, W / 2 - 0.1):
         for z in (-L / 2 + 0.1, L / 2 - 0.1):
-            m.lathe([(0.045, 0.0), (0.035, 0.08), (0.045, 0.12), (0.03, 0.3), (0.035, 0.5), (0.045, 0.56), (0.045, h - 0.15)], 8, OAK, x, z, 0.0)
+            m.lathe([(0.045, 0.0), (0.035, 0.08), (0.045, 0.12), (0.03, 0.3), (0.035, 0.5), (0.045, 0.56), (0.045, h - 0.15)], 16, OAK, x, z, 0.0)
+    return m
+
+
+def reading_chair(name, w=0.46, back=0.95):
+    """An oak reading-room chair facing +z (seat top 0.46, the seat's front edge at +0.22, the back at -0.21, inside the seat's
+    contract box): turned front legs, square back legs rising into the back posts, stretchers, a seat with a green leather pad,
+    a curved top rail and a splat."""
+    m = Mesh(name)
+    h = w / 2
+    leather = S("LM_library_plaster", G.hexc("3E6B4E"))
+    for x in (-h + 0.03, h - 0.03):
+        m.lathe([(0.02, 0.0), (0.016, 0.03), (0.021, 0.08), (0.014, 0.2), (0.018, 0.3), (0.022, 0.34), (0.022, 0.42)], 14, OAK_DK, x, 0.18, 0.0)
+        m.member((x, 0.0, -0.18), (x, 0.42, -0.18), G.prof_box(0.034, 0.034), OAK_DK)
+        m.member((x, 0.42, -0.18), (x, back, -0.205), G.prof_box(0.034, 0.03), OAK_DK)
+        m.member((x, 0.14, -0.17), (x, 0.14, 0.17), G.prof_round(0.011, 10), OAK_DK)
+    m.member((-h + 0.03, 0.2, 0.0), (h - 0.03, 0.2, 0.0), G.prof_round(0.011, 10), OAK_DK)
+    m.cbox(-h, h, 0.4, 0.43, -0.205, 0.22, OAK.u((1, 0, 0)), c=0.01)
+    m.cbox(-h + 0.025, h - 0.025, 0.43, 0.46, -0.18, 0.2, leather, c=0.014)
+    # the top rail (curved back), a lower rail and the splat between
+    for (y, hh) in ((back - 0.1, 0.1), (0.6, 0.05)):
+        pts = [(-h + 0.03 + (w - 0.06) * i / 6, y, -0.198 - 0.008 * math.sin(math.pi * i / 6)) for i in range(7)]
+        for a, b in zip(pts, pts[1:]):
+            m.member(a, b, G.prof_box(0.022, hh), OAK.u((1, 0, 0)))
+    m.box(-0.055, 0.055, 0.625, back - 0.15, -0.21, -0.195, OAK.u((0, 1, 0)))
     return m
 
 
 def bankers_lamp(m, x, z, y):
-    m.lathe([(0.08, 0.0), (0.08, 0.02), (0.02, 0.04), (0.012, 0.3)], 8, BRASS, x, z, y)
-    m.member((x - 0.18, y + 0.33, z), (x + 0.18, y + 0.33, z), G.prof_round(0.06, 10), GREEN_GLASS)
-    m.member((x - 0.18, y + 0.33, z), (x + 0.18, y + 0.33, z), G.prof_round(0.062, 10), S("LM_library_paint", G.hexc("2F6B47")))
+    """A banker's lamp: a round brass base with mouldings, a turned stem, the harp arm, a half-cylinder cased-glass shade (green
+    outside, opal white inside, closed ends with brass rims), a pull chain. The glow tube under the shade is the caller's."""
+    m.lathe([(0.085, 0.0), (0.085, 0.008), (0.078, 0.014), (0.07, 0.03), (0.03, 0.04), (0.016, 0.05), (0.012, 0.22), (0.016, 0.235), (0.012, 0.25), (0.012, 0.27), (0.0, 0.27)], 24, BRASS, x, z, y)
+    m.member((x, y + 0.26, z), (x, y + 0.3, z), G.prof_round(0.008, 8), BRASS)
+    m.member((x - 0.05, y + 0.3, z), (x + 0.05, y + 0.3, z), G.prof_round(0.006, 8), BRASS)
+    r, half, yc = 0.072, 0.17, y + 0.33
+    outer = S("LM_library_paint", G.hexc("1E5A36"))
+    inner = PAPER.t(G.hexc("FFF8E8"))
+    n = 14
+    angs = [math.radians(-105 + 210 * i / n) for i in range(n + 1)]
+    for i in range(n):
+        a0, a1 = angs[i], angs[i + 1]
+        p = lambda xx, a, rr: (x + xx, yc + rr * math.cos(a), z + rr * math.sin(a))
+        m.poly([p(-half, a0, r), p(-half, a1, r), p(half, a1, r), p(half, a0, r)], outer, smooth=True)
+        m.poly([p(-half, a0, r - 0.003), p(half, a0, r - 0.003), p(half, a1, r - 0.003), p(-half, a1, r - 0.003)], inner, smooth=True)
+    for sx in (-1, 1):
+        cap = [(sx * half, yc + r * math.cos(a), z + r * math.sin(a)) for a in angs]
+        cap.append((sx * half, yc - 0.01, z))
+        cap = [(x + q[0], q[1], q[2]) for q in cap]
+        if G.dot(G.poly_normal(cap), (sx, 0, 0)) < 0:
+            cap.reverse()
+        m.poly(cap, outer)
+        m.poly(list(reversed([(q[0] - sx * 0.002, q[1], q[2]) for q in cap])), inner)
+        for i in range(0, n, 2):
+            a0, a1 = angs[i], angs[min(n, i + 2)]
+            m.member((x + sx * (half + 0.002), yc + (r + 0.002) * math.cos(a0), z + (r + 0.002) * math.sin(a0)),
+                     (x + sx * (half + 0.002), yc + (r + 0.002) * math.cos(a1), z + (r + 0.002) * math.sin(a1)), G.prof_round(0.004, 5), BRASS)
+    # the pull chain
+    for k in range(7):
+        m.sphere(x + 0.04, yc - 0.06 - k * 0.012, z + 0.03, 0.004, BRASS, n=6, rings=3)
+    m.sphere(x + 0.04, yc - 0.06 - 7 * 0.012, z + 0.03, 0.008, BRASS, n=8, rings=4)
+
+
+def bouquet(m, cx, y, cz, seed):
+    """A glass vase of flowers: a cased-glass vase, stems arching out, cupped blooms (roses and tulips) and leaves."""
+    m.lathe([(0.0, 0.0), (0.045, 0.0), (0.06, 0.05), (0.058, 0.1), (0.035, 0.17), (0.03, 0.2), (0.038, 0.22), (0.0, 0.22)], 20, GREEN_GLASS, cx, cz, y)
+    rg = G.rng(seed)
+    cols = ("F2A0B4", "FFFFFF", "F7D46A", "E8607A", "F6C7D4")
+    for k in range(9):
+        a = k * 2.39996 + rg.uniform(-0.3, 0.3)
+        out = rg.uniform(0.03, 0.11)
+        top = (cx + out * math.cos(a), y + rg.uniform(0.33, 0.44), cz + out * math.sin(a))
+        mid = (cx + out * 0.4 * math.cos(a), y + 0.26, cz + out * 0.4 * math.sin(a))
+        m.member((cx, y + 0.12, cz), mid, G.prof_round(0.0035, 5), LEAF_DK)
+        m.member(mid, top, G.prof_round(0.003, 5), LEAF_DK)
+        col = S("LM_library_plaster", G.hexc(cols[k % len(cols)]))
+        if k % 3 == 0:
+            # a tulip: a tall closed cup
+            m.lathe([(0.0, 0.0), (0.012, 0.004), (0.02, 0.02), (0.019, 0.04), (0.012, 0.052), (0.0, 0.045)], 12, col, top[0], top[2], top[1])
+        else:
+            # a rose: an open cup with rolled petals, a darker heart
+            m.lathe([(0.0, 0.0), (0.014, 0.004), (0.026, 0.016), (0.03, 0.028), (0.024, 0.032), (0.012, 0.026), (0.0, 0.03)], 14, col, top[0], top[2], top[1], phase=rg.uniform(0, 1))
+        for sg in (-1, 1):
+            b = a + sg * 0.9
+            l0 = G.lerp((cx, y + 0.12, cz), mid, 0.7)
+            tip = (l0[0] + 0.07 * math.cos(b), l0[1] + 0.02, l0[2] + 0.07 * math.sin(b))
+            side = (-math.sin(b) * 0.014, 0.0, math.cos(b) * 0.014)
+            q = [l0, G.add(G.lerp(l0, tip, 0.5), side), tip, G.sub(G.lerp(l0, tip, 0.5), side)]
+            m.poly(q, LEAF, smooth=True)
+            m.poly(list(reversed(q)), LEAF, smooth=True)
 
 
 def tables(kit, spec, sol):
@@ -397,7 +392,7 @@ def tables(kit, spec, sol):
     eight seats (facing the tables)."""
     Gd, D = kit.G, kit.D
     tk = table_kind()
-    ck = R.chair_kind("chair", OAK, OAK_DK, w=0.46, back=0.95)
+    ck = reading_chair("chair", w=0.46, back=0.95)
     for name in ("table_a", "table_b"):
         r = sol[name]["rect"]
         cx, cz = (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2
@@ -406,17 +401,10 @@ def tables(kit, spec, sol):
             bankers_lamp(Gd, cx, cz + dz, 0.76)
             kit.glow("lamps").member((cx - 0.16, 1.07, cz + dz), (cx + 0.16, 1.07, cz + dz), G.prof_round(0.04, 6), P.GLASS.t(P.LAMP))
             kit.lights.append(("point", cx, 1.0, cz + dz, (1.0, 0.85, 0.6), 25.0))
-        for (dx, dz, a) in ((-0.3, -0.6, 0.2), (0.32, 0.55, -0.15), (-0.28, 0.65, 0.1)):
-            bk = Mesh("ob")
-            bk.poly([(-0.16, 0.765, -0.11), (0.0, 0.775, -0.11), (0.0, 0.775, 0.11), (-0.16, 0.765, 0.11)][::-1], PAPER)
-            bk.poly([(0.0, 0.775, -0.11), (0.16, 0.765, -0.11), (0.16, 0.765, 0.11), (0.0, 0.775, 0.11)][::-1], PAPER)
-            bk.box(-0.165, 0.165, 0.76, 0.765, -0.115, 0.115, FAB.t(G.hexc("7A2E2E")))
-            Gd.extend(G.moved(bk, cx + dx, 0.0, cz + dz, a))
-        Gd.lathe([(0.0, 0.0), (0.05, 0.0), (0.06, 0.08), (0.03, 0.16), (0.035, 0.2), (0.0, 0.2)], 8, GREEN_GLASS, cx, cz, 0.76)
-        for k in range(5):
-            a = k * 1.256
-            Gd.sphere(cx + 0.06 * math.cos(a), 1.0 + 0.03 * (k % 2), cz + 0.06 * math.sin(a), 0.04, S("LM_library_plaster", G.hexc(("F5A3B5", "FFFFFF", "F7D46A")[k % 3])), n=6, rings=4)
-            Gd.member((cx, 0.9, cz), (cx + 0.06 * math.cos(a), 0.99, cz + 0.06 * math.sin(a)), G.prof_round(0.004, 4), LEAF_DK)
+        for k, (dx, dz, a) in enumerate(((-0.3, -0.6, 0.2 + math.pi / 2), (0.32, 0.55, -0.15 - math.pi / 2), (-0.28, 0.65, 0.1 + math.pi / 2))):
+            LB.open_book(Gd, cx + dx, 0.76, cz + dz, a, int(cx * 10) + k)
+        LB.pile(Gd, cx + 0.35, 0.76, cz - 0.15, 0.4, 3, int(cx * 10) + 7, hmax=0.25)
+        bouquet(Gd, cx, 0.76, cz, int(cx * 100))
     yaw = {"right": math.pi / 2, "left": -math.pi / 2}
     for s in spec["seats"]:
         if s["id"].startswith("lot_library_chair"):
@@ -437,18 +425,23 @@ def librarian(kit, sol):
         a = x0 + 0.08 + k * (x1 - x0 - 0.16) / n
         b = a + (x1 - x0 - 0.16) / n - 0.08
         D.box(a, b, 0.15, 0.88, z0 - 0.0, z0 + 0.02, OAK_DK)
+    for k in range(n):
+        a = x0 + 0.08 + k * (x1 - x0 - 0.16) / n
+        b = a + (x1 - x0 - 0.16) / n - 0.08
+        D.box(a, b, 0.15, 0.88, z1 - 0.02, z1, OAK_DK)
+        D.box(a + 0.03, b - 0.03, 0.18, 0.85, z1 - 0.01, z1 + 0.0, OAK_LT.t(G.hexc("D8B47E")))
+    for (za, zb_) in ((z0 - 0.0, z0 + 0.025), (z1 - 0.025, z1)):
+        D.box(x0, x1, 0.0, 0.1, za, zb_, OAK_DK)
     D.box(x0 + 0.05, x1 - 0.05, 1.05, 1.052, z0 + 0.2, z1 - 0.1, FAB.t(G.hexc("3F6B52")))
-    Gd.lathe([(0.05, 0.0), (0.045, 0.03), (0.02, 0.06), (0.006, 0.09)], 10, BRASS, x0 + 0.3, z0 + 0.35, 1.05)
+    Gd.lathe([(0.05, 0.0), (0.045, 0.03), (0.02, 0.06), (0.006, 0.09)], 18, BRASS, x0 + 0.3, z0 + 0.35, 1.05)
     Gd.box(x0 + 0.6, x0 + 0.78, 1.05, 1.07, z0 + 0.3, z0 + 0.42, FAB.t(G.hexc("2F4B6E")))
-    Gd.lathe([(0.025, 0.0), (0.02, 0.05), (0.008, 0.06), (0.015, 0.12), (0.0, 0.13)], 8, OAK_DK, x0 + 0.68, z0 + 0.36, 1.07)
-    for k in range(6):
-        c = G.hexc(BOOK_COLS[(k * 5) % len(BOOK_COLS)])
-        Gd.box(x0 + 1.0 + 0.01 * (k % 2), x0 + 1.24 + 0.01 * (k % 2), 1.05 + k * 0.032, 1.08 + k * 0.032, z0 + 0.25, z0 + 0.42, S("LM_library_paint", c))
+    Gd.lathe([(0.025, 0.0), (0.02, 0.05), (0.008, 0.06), (0.015, 0.12), (0.0, 0.13)], 16, OAK_DK, x0 + 0.68, z0 + 0.36, 1.07)
+    LB.pile(Gd, x0 + 1.12, 1.05, z0 + 0.34, 0.0, 6, 911, hmax=0.24, spin=0.12)
     bankers_lamp(Gd, x1 - 0.5, z0 + 0.5, 1.05)
     kit.glow("lamps").member((x1 - 0.66, 1.36, z0 + 0.5), (x1 - 0.34, 1.36, z0 + 0.5), G.prof_round(0.04, 6), P.GLASS.t(P.LAMP))
     Gd.cbox(x1 - 0.95, x1 - 0.75, 1.05, 1.15, z0 + 0.25, z0 + 0.5, OAK_LT, c=0.008)
-    P.potted_plant(Gd, (x0 + 1.6, 1.05, z0 + 0.6), POT, S("LM_library_plaster", G.hexc("9A8FD0")), 0.28)
-    ch = R.chair_kind("lchair", OAK, OAK_DK, w=0.46)
+    DR.leafy_plant(Gd, x0 + 1.6, 1.05, z0 + 0.5, 0.26, seed=5, leaf=S("LM_library_plaster", G.hexc("8E84C8")), leaf_dk=S("LM_library_plaster", G.hexc("6A9E4C")))
+    ch = reading_chair("lchair", w=0.46, back=0.9)
     D.extend(G.moved(ch, (x0 + x1) / 2, 0.0, z1 - 0.26, math.pi).transformed(lambda p: (p[0], p[1], min(p[2], z1 - 0.005))))
 
 
@@ -461,7 +454,7 @@ def catalogue(kit, sol):
     D.cbox(x0, x1, 0.32, 1.3, z0, z1 - 0.012, OAK, c=0.012)
     for x in (x0 + 0.06, x1 - 0.06):
         for z in (z0 + 0.06, z1 - 0.06):
-            D.lathe([(0.03, 0.0), (0.04, 0.1), (0.025, 0.3), (0.035, 0.32)], 6, OAK_DK, x, z, 0.0)
+            D.lathe([(0.03, 0.0), (0.04, 0.1), (0.025, 0.3), (0.035, 0.32)], 12, OAK_DK, x, z, 0.0)
     cols, rows = 4, 6
     for i in range(cols):
         for j in range(rows):
@@ -486,8 +479,8 @@ def cart(kit, sol):
             D.sphere(x, 0.04, z, 0.035, BRASS, n=6, rings=3)
     D.member((x0 + 0.02, 0.98, z0 + 0.02), (x0 + 0.02, 0.98, z1 - 0.02), G.prof_round(0.016, 6), BRASS)
     for k, y in enumerate((0.175, 0.525)):
-        kit.place("books_%d" % (k % 4), RUNS[k % 4], x0 + 0.38, y, z0 + 0.02, -math.pi / 2)
-        kit.place("books_%d" % ((k + 1) % 4), RUNS[(k + 1) % 4], x1 - 0.38, y, z1 - 0.02, math.pi / 2)
+        kit.place("books_%d" % (k % 4), DR.RUNS[k % 4], x0 + 0.38, y, z0 + 0.02, -math.pi / 2)
+        kit.place("books_%d" % ((k + 1) % 4), DR.RUNS[(k + 1) % 4], x1 - 0.38, y, z1 - 0.02, math.pi / 2)
 
 
 def ladder(kit, sol):
@@ -523,7 +516,7 @@ def armchairs(kit, sol):
             a.cbox(x - 0.09 if x > 0 else x, x if x > 0 else x + 0.09, 0.66, 1.0, -0.38, -0.12, s, c=0.04)
         for x in (-0.3, 0.3):
             for z in (-0.3, 0.3):
-                a.lathe([(0.03, 0.0), (0.035, 0.06), (0.025, 0.12)], 6, OAK_DK, x, z, 0.0)
+                a.lathe([(0.03, 0.0), (0.035, 0.06), (0.025, 0.12)], 12, OAK_DK, x, z, 0.0)
         a.cbox(-0.2, 0.2, 0.52, 0.82, -0.2, -0.08, CUSH_3, c=0.05)
         D.extend(G.moved(a, cx, 0.0, cz, yaw))
     # a little stack of books on the floor beside the west chair (walk-over height)

@@ -1184,7 +1184,14 @@ const LIBRARY_IN: LotInteriorSpec = {
     iseat("lot_library_nook_1", 2.6, 0.4, "in", "backless", 2.4, 2, 0.48, 0.2, 0.2), // the bay window seats (cushion, sat facing the room)
     iseat("lot_library_nook_2", 10.8, 0.4, "in", "backless", 2.4, 2, 0.48, 0.2, 0.2),
   ],
-  budget: { pc: { triangles: 90_000, textureMB: 32, draws: 45 }, phone: { triangles: 35_000, textureMB: 10, draws: 28 } },
+  // 2026-11-20 (owner "책들이 너무 허접해 … 실제와 같이 … 고해상도로 선명하게"): every book is its own hardback (a rounded spine on the
+  // procedural spine atlas, page block, boards; ~4,000 books in 16 instanced 0.42 m runs, ~17 triangles a book) and the props are
+  // turned smoothly (16–24 sides, was 6–8): 140k triangles (was 90k; the 대웅전 and 성당 are 140k too), 60 draws (16 run kinds).
+  // Textures (PC): the oak, floor and limestone at 2K, the books atlas 2048 + normal / ORM 1024, the rugs 2048, the lightmaps 2048
+  // (UASTC): ~66 MB (was 29) — a desktop GPU holds it easily. The phone's maps are capped (colour 1024, normal / ORM 512, lightmaps
+  // 1024: ~14 MB). NOTE: there is no phone GLB for this room yet — a phone draws the same file (before: 79k triangles over the 35k
+  // phone budget; now ~130k); the phone budget below is what a `_phone` file (LOT_ROOM_PHONE_FILES) should meet.
+  budget: { pc: { triangles: 140_000, textureMB: 72, draws: 60 }, phone: { triangles: 60_000, textureMB: 16, draws: 45 } },
   program: ["벽 책장 가득한 책(책등 다양, 인스턴스)", "열람 테이블 2 + 의자 8(앉기)", "초록 갓 독서등", "창가 독서 자리 2(쿠션·담요·책 더미, 앉기)", "사서 데스크(도장·책 수레)", "벽난로·안락의자(장식)", "책장 사다리", "천장 들보·펜던트"],
 };
 

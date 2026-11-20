@@ -99,12 +99,39 @@
       "normalScale": 1.0,
       "metal": false
     },
+    "M_books": {
+      "kind": "own",
+      "maps": {
+        "albedo": "lot_library_reading_books.ktx2",
+        "normal": "lot_library_reading_books_normal.ktx2",
+        "orm": "lot_library_reading_books_orm.ktx2"
+      },
+      "uv": "atlas (TEXCOORD_0 0..1, no repeat)",
+      "colorSpace": "srgb",
+      "note": "procedural spine atlas (b1_book_atlas.mjs): albedo 2048 UASTC sRGB; normal + ORM (G roughness, B metal: the gilt) 1024 UASTC linear; COLOR_0 tints the side boards",
+      "vertexColor": true
+    },
     "M_fire": {
       "kind": "fire",
       "note": "HOOK for L5v2: the fire__ nodes' flame cards. Draw additive (blending Additive, depthWrite false, double-sided), unlit; COLOR_0.rgb = emissive colour, COLOR_0.a = soft edge (0 at the rim); TEXCOORD_0.x = across the card (-1..1), TEXCOORD_0.y = height up the flame (0..1): flicker by scrolling a noise texture up y and scaling alpha/brightness with it (time uniform), 0.6–1.2 Hz with a faster 7 Hz jitter. The node fire__<unit>_light marks a warm point light (2200 K, ~180 cd, range 6 m) to flicker in step; L6 bakes its steady part into the hearth and floor."
     },
+    "M_garden": {
+      "kind": "garden",
+      "maps": {
+        "albedo": "../garden/ninomaru_garden.ktx2"
+      }
+    },
     "M_glass": {
       "kind": "glass"
+    },
+    "M_globe": {
+      "kind": "own",
+      "maps": {
+        "albedo": "lot_library_globe.ktx2"
+      },
+      "uv": "atlas (TEXCOORD_0 0..1, no repeat)",
+      "colorSpace": "srgb",
+      "note": "Natural Earth land and rivers; SOURCES_lot_library.md"
     },
     "M_painting": {
       "kind": "own",
@@ -115,24 +142,18 @@
       "colorSpace": "srgb",
       "note": "public-domain landscapes (Constable, Hobbema, Corot, Ruisdael): SOURCES_lot_library.md"
     },
+    "M_rugs": {
+      "kind": "own",
+      "maps": {
+        "albedo": "lot_library_reading_rugs.ktx2"
+      },
+      "uv": "atlas (TEXCOORD_0 0..1, no repeat)",
+      "colorSpace": "srgb",
+      "note": "procedural Persian-style rugs (b1_book_atlas.mjs), 2048 UASTC sRGB"
+    },
     "M_screen": {
       "kind": "screen",
       "note": "the garden-and-sky view behind interior windows: unlit, COLOR_0 is the colour"
-    },
-    "M_garden": {
-      "kind": "garden",
-      "maps": {
-        "albedo": "../garden/ninomaru_garden.ktx2"
-      }
-    },
-    "M_globe": {
-      "kind": "own",
-      "maps": {
-        "albedo": "lot_library_globe.ktx2"
-      },
-      "uv": "equirectangular (TEXCOORD_0)",
-      "colorSpace": "srgb",
-      "note": "Natural Earth land and rivers; SOURCES_lot_library.md"
     }
   },
   "pbrSets": [

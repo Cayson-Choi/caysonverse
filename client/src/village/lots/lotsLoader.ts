@@ -126,7 +126,7 @@ export async function loadManifestMaps(
   bank: LotTextureBank,
   /** true: every set in full at the bank's tier; a function: per set (a room's texture plan, LotRoom.tsx). */
   near: boolean | ((set: string) => boolean) = false,
-): Promise<{ specs: Record<string, LotMatSpec>; own: Record<string, Texture>; textures: Texture[] }> {
+): Promise<{ specs: Record<string, LotMatSpec>; own: Record<string, Texture>; ownExtra: Record<string, { normal?: Texture; orm?: Texture }>; textures: Texture[] }> {
   const specs: Record<string, LotMatSpec> = {};
   const dirOf: Record<string, string> = {};
   for (const m of manifests)
@@ -136,6 +136,7 @@ export async function loadManifestMaps(
       dirOf[name] = m.dir;
     }
   const own: Record<string, Texture> = {};
+  const ownExtra: Record<string, { normal?: Texture; orm?: Texture }> = {};
   const textures: Texture[] = [];
   const sets = new Set(Object.values(specs).flatMap((s) => (s.pbr ? [s.pbr] : [])));
   await Promise.all([
@@ -149,12 +150,20 @@ export async function loadManifestMaps(
           const t = await loadLotOwnMap(gl, path);
           own[name] = t;
           textures.push(t);
+          // an atlas's normal map and ORM beside it (linear)
+          for (const k of ["normal", "orm"] as const) {
+            const f = s.maps![k];
+            if (!f) continue;
+            const x = await loadLotOwnMap(gl, new URL(dirOf[name]! + f, location.origin).pathname, false);
+            (ownExtra[name] ??= {})[k] = x;
+            textures.push(x);
+          }
         } catch (e) {
           console.error(`[lots] ${name} map`, e);
         }
       }),
   ]);
-  return { specs, own, textures };
+  return { specs, own, ownExtra, textures };
 }
 
 /** Free a load's own textures (the bank's sets go with the bank, the scenes' geometry with `disposeLots`). */
