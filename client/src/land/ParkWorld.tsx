@@ -47,8 +47,7 @@ import { GRASS_VARIATION_PARS } from "../village/grassVariation";
 import { buildParkTerrain } from "./parkTerrain";
 import { parkSkyTexture } from "./parkSkyTexture";
 import { ALL_PARK_URLS, featherTexture, parkMaterial, pickSet } from "./pbr";
-import { addBellRoof, addHedge, addLathe } from "./parkShapes";
-import { boxwoodTextures } from "./boxwoodTexture";
+import { addBellRoof, addLathe } from "./parkShapes";
 import { parkBorders, parkTroughStone } from "./parkBorders";
 import { grassTuft } from "../village/veg/vegGeometry";
 import { soilTextures } from "../village/veg/vegSoil";
@@ -656,31 +655,11 @@ function PathBorders({ stone }: { stone: MeshStandardMaterial }) {
 function Beds({ all }: { all: Texture[] }) {
   const troughGeo = useMemo(parkTroughStone, []);
   const troughMat = useMemo(() => parkMaterial(pickSet(all, "Concrete034"), 1, { vertexColors: true, color: new Color("#efe6d6"), normalScale: 0.6 }), [all]);
-  // hedges lining the promenade's two sides: clipped boxwood, a trimmed profile with a leafy skin (parkShapes.addHedge)
-  const hedgeGeo = useMemo(() => {
-    const b = new GeoBuilder();
-    for (const [i, hx] of [28.6, 51.4].entries()) {
-      // a run of short hedges with a hand's gap between them, so it reads as planted sections and not one long box
-      const segs: Array<[number, number]> = [];
-      for (let z = -178; z < -122; z += 7) segs.push([z + 0.15, Math.min(z + 6.85, -122)]);
-      segs.forEach(([a, c], k) =>
-        addHedge(b, hx, a, hx, c, { width: 1.25, height: 1.15, bump: 0.05, tile: 0.6, seed: 11 + i * 17 + k }, (_t, crown, lf) => {
-          const v = 0.74 + lf * 0.35 + crown * 0.22;
-          return [v * 0.9, v, v * 0.88];
-        }),
-      );
-    }
-    return b.build();
-  }, []);
-  const hedgeMat = useMemo(() => {
-    const tx = boxwoodTextures();
-    return new MeshStandardMaterial({ map: tx.map, bumpMap: tx.bump, bumpScale: 2.2, vertexColors: true, roughness: 0.72, side: DoubleSide });
-  }, []);
+  // (the long low boxwood strips that lined the promenade were taken out, owner 2026-11-21: they only got in the walkers' way; plain lawn)
   return (
     <group>
       <PathBorders stone={troughMat} />
       <mesh geometry={troughGeo} material={troughMat} castShadow receiveShadow />
-      <mesh geometry={hedgeGeo} material={hedgeMat} castShadow receiveShadow />
     </group>
   );
 }

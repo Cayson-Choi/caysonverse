@@ -43,6 +43,9 @@ export function plazaRingSpots(): PoleSpot[] {
   });
 }
 
+/** The lane lamps' bases (client street/streetLayout.ts LAMP_POSTS light__lamp_42 / _43). */
+export const LANE_LAMPS: readonly PoleSpot[] = [{ x: 2.35, z: -51 }, { x: -26.35, z: 44.723 }];
+
 /** Every street lamp's base (the plaza ring's posts, then the ring road's, skipping the lanes' crossings and the bus stop). */
 export function lampSpots(layout: Pick<VillageLayout, "plaza" | "lanes">): PoleSpot[] {
   const pts: PoleSpot[] = plazaRingSpots();
@@ -55,6 +58,8 @@ export function lampSpots(layout: Pick<VillageLayout, "plaza" | "lanes">): PoleS
       laneAngles.push(Math.atan2(b.z, b.x));
     }
   }
+  // the two lane lamps (light__lamp_42 beside the memorial's lane, light__lamp_43 on the bridge lane): they had no collider
+  pts.push(...LANE_LAMPS);
   const limit = (7 * Math.PI) / 180;
   for (let k = 0; k < 18; k++) {
     const a = (2 * Math.PI * (k + 0.5)) / 18;

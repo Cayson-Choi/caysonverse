@@ -1073,6 +1073,25 @@ export const LOT_HURDLES: Readonly<Record<string, number>> = Object.freeze({
   lot_gate_planter_r: 0.9,
 });
 
+/**
+ * The lots' planted beds and clipped borders as solids (owner 2026-11-21: "화단에 식물이 있는데 이걸 그냥 통과해버리네"): lot-local
+ * rectangles, kept apart from the models' collider boxes (the models have none for them; client/village/lots/entranceGardens.ts draws
+ * the beds from the same numbers). The chapel's and the church's entrance borders either side of the walk, the chapel's five side
+ * pockets, the school's and the library's boxwood borders and the library's two clipped crowns.
+ */
+export const LOT_BED_SOLIDS: Readonly<Record<LotId, readonly LotRect[]>> = Object.freeze({
+  lot_school: Object.freeze([rect(-6.9, -3.2, 9.5, 9.8), rect(3.2, 9, 9.5, 9.8)]),
+  lot_chapel: Object.freeze([
+    rect(1.88, 4.66, 5.68, 7.05), rect(-4.66, -1.88, 5.68, 7.05),
+    rect(9.9, 11.6, -3.6, 1.6), rect(5.5, 6.6, -4.6, -2.8), rect(-11.7, -9.9, -4.5, 1.5), rect(-6.5, -5.3, -4.6, -1.6), rect(-11.6, -9.4, 1.9, 4.2),
+  ]),
+  lot_library: Object.freeze([rect(-9.85, -8.75, 3.53, 3.81), rect(-5.55, -5.02, 3.53, 3.81), rect(-0.98, -0.45, 3.53, 3.81), rect(-5.15, -4.25, 3.35, 4.25), rect(-1.75, -0.85, 3.35, 4.25)]),
+  lot_temple: Object.freeze([]),
+  lot_church: Object.freeze([rect(2.55, 4.08, 3.08, 5.13), rect(-4.08, -2.55, 3.08, 5.13)]),
+  lot_gate: Object.freeze([]),
+  lot_cafe: Object.freeze([]),
+});
+
 /** The lots' boxes as the village geometry takes them: every collider an obstacle, the tall ones and the roof slabs camera boxes (`hurdles`: LOT_HURDLES). */
 export function lotGeometryColliders(ids: readonly LotId[] = LOTS_WITH_MODEL): { obstacles: AABB[]; cameraBoxes: CameraBox[]; hurdles: CameraBox[] } {
   const obstacles: AABB[] = [];
@@ -1086,6 +1105,7 @@ export function lotGeometryColliders(ids: readonly LotId[] = LOTS_WITH_MODEL): {
       else if (LOT_HURDLES[c.id] !== undefined) hurdles.push({ ...c.box, height: LOT_HURDLES[c.id]! });
     }
     obstacles.push(...lotSeatFurnitureBoxes(l));
+    for (const r of LOT_BED_SOLIDS[l.id]) obstacles.push(lotBox(l, r));
     for (const s of LOT_ROOF_SLABS[l.id]) cameraBoxes.push({ ...lotBox(l, s.rect), minY: s.minY, height: s.height });
   }
   return { obstacles, cameraBoxes, hurdles };

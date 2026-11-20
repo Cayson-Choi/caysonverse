@@ -18,6 +18,8 @@ import type { AABB, CameraBox } from "../collision";
 import { shopWindows, WINDOW_BOX } from "./parkShopWindowLayout";
 import type { Bounds, MapGeometry } from "../school/geometry";
 import { makeGeometry } from "../school/geometry";
+import { islandSolids } from "./parkIslands";
+import { parkBenchSolids } from "./parkBenches";
 import { PARK_WALL_PLAN, PARK_WALL_SOLIDS, distanceToWall } from "./parkWall";
 
 export const PARK_AREA = "park" as const;
@@ -268,6 +270,9 @@ function buildSolids(): AABB[] {
   for (const t of PARK_TROUGHS) out.push(box(t.x0, t.x1, t.z0, t.z1));
   for (const p of PARK_PLANTERS) out.push(box(p.x - p.w / 2, p.x + p.w / 2, p.z - p.d / 2, p.z + p.d / 2));
   for (const b of PARK_BINS) out.push(box(b.x - 0.3, b.x + 0.3, b.z - 0.3, b.z + 0.3));
+  // the lamp posts (a 0.17 m round base) and the planted islands' kerbs (owner 2026-11-21: walked through both)
+  for (const l of PARK_LAMPS) out.push(box(l.x - 0.2, l.x + 0.2, l.z - 0.2, l.z + 0.2));
+  out.push(...islandSolids(), ...parkBenchSolids());
   for (const t of PARK_TREES) out.push(box(t.x - 0.45, t.x + 0.45, t.z - 0.45, t.z + 0.45));
   // the castle wall round the park (parkWall.ts, owner 2026-11-20): its runs (the north ones sealed out to the bounds' edge) and towers
   out.push(...PARK_WALL_SOLIDS.obstacles);
