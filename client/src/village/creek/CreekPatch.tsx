@@ -225,16 +225,30 @@ function build(root: Object3D, nodes: VillageNodes, tier: VillageTier, sets: { g
   }
 
   // stones and pebbles: one geometry, one draw
-  const stoneG = mergeStones([...plan.stones, ...plan.pebbles]);
-  if (stoneG) {
+  // (merged per 24 m cell, each culled by its own sphere: one merged mesh for the whole creek was ~98k triangles on every frame,
+  // facing the creek or not; a view sees one or two cells)
+  const stoneSpecs = [...plan.stones, ...plan.pebbles];
+  const stoneCells = new Map<string, typeof stoneSpecs>();
+  for (const sp of stoneSpecs) {
+    const key = `${Math.floor(sp.x / 24)},${Math.floor(sp.z / 24)}`;
+    const list = stoneCells.get(key);
+    if (list) list.push(sp);
+    else stoneCells.set(key, [sp]);
+  }
+  if (stoneCells.size) {
     const m = rockMaterial(sets.rock, shared);
-    const mesh = new Mesh(stoneG, m);
-    mesh.name = "creek_stones";
-    mesh.frustumCulled = false;
-    group.add(mesh);
-    own.push(stoneG, m);
-    triangles += triCount(stoneG);
-    meshes++;
+    own.push(m);
+    for (const [key, list] of stoneCells) {
+      const stoneG = mergeStones(list);
+      if (!stoneG) continue;
+      stoneG.computeBoundingSphere();
+      const mesh = new Mesh(stoneG, m);
+      mesh.name = `creek_stones_${key}`;
+      group.add(mesh);
+      own.push(stoneG);
+      triangles += triCount(stoneG);
+      meshes++;
+    }
   }
 
   // reeds

@@ -236,6 +236,12 @@ export function setNightLightmap(texture: Texture | null): void {
 /** The light tier's largest colour-texture side. Keep 2048 so close first-person paving stays crisp on phones. */
 export const LIGHT_TIER_MAX_TEXTURE = 2048;
 
+/**
+ * Materials whose colour map the phone caps below the tier's 2048 (perf/phone-library, 2026-11-21): a 2048 RGBA map is 21 MB on the GPU
+ * and these two never show texels: the bus stop's pad top is a few square metres of flat grey, the backdrop the far horizon.
+ */
+export const LIGHT_TIER_MATERIAL_CAPS: Readonly<Record<string, number>> = { M_stop_pad: 512, M_backdrop: 1024 };
+
 /** The slice of a canvas `capTextureSize` draws into. */
 export interface CanvasLike {
   width: number;
@@ -898,7 +904,17 @@ export function prepareVillage(
   // left out, the current one stays; null clears it.
   if (nightLightmap !== undefined) setNightLightmap(nightLightmap);
   // The light (phone) tier caps oversized colour textures at 2048 px while retaining close floor detail.
-  if (tier === "low") capModelTextures(source, LIGHT_TIER_MAX_TEXTURE, undefined, isUploaded);
+  if (tier === "low") {
+    capModelTextures(source, LIGHT_TIER_MAX_TEXTURE, undefined, isUploaded);
+    source.traverse((o) => {
+      if (!isMesh(o)) return;
+      for (const m of materialsOf(o)) {
+        const cap = LIGHT_TIER_MATERIAL_CAPS[m.name];
+        const map = (m as unknown as { map?: Texture | null }).map;
+        if (cap && map) capTextureSize(map, cap, undefined, isUploaded);
+      }
+    });
+  }
   const own: VillageNodes["own"] = [];
   const hazed: MeshBasicMaterial[] = [];
   const graded: VillageNodes["graded"] = [];

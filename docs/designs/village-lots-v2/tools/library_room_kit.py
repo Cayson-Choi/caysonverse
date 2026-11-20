@@ -78,14 +78,18 @@ def build(spec, unit, layout, phone=False):
     if phone:
         # the phone: the shelf runs are merged into the goods mesh instead of 16 GPU-instanced kinds (a draw call apiece: the
         # CPU's cost on a phone is the draws, and the runs' triangles are the same either way); chairs and tables stay instanced
+        # (one merged mesh a wall, each its own draw with its own bounding sphere: a view of one wall does not draw the others' books)
         place = kit.place
+        walls = {}
 
         def place_or_merge(kind, mesh, x, y, z, yaw=0.0):
             if kind.startswith("books_"):
-                kit.G.extend(G.moved(mesh, x, y, z, yaw))
+                w = "b" if z > 9.3 else "w" if x < 6.7 else "e"
+                walls.setdefault(w, Mesh("books_" + w)).extend(G.moved(mesh, x, y, z, yaw))
             else:
                 place(kind, mesh, x, y, z, yaw)
         kit.place = place_or_merge
+        kit.wall_books = walls
     kit.mats = dict(MATS)
     sol = {s["name"]: s for s in spec["solids"]}
     holes = {
@@ -150,6 +154,10 @@ def build(spec, unit, layout, phone=False):
     kit.exposure = 0.45
     kit.haze = (0.3, X - 0.3, 0.0, H - 0.3, 0.3, Z - 0.3, 0.004)
     kit.ground = Mesh("ground")
+    if phone:
+        for w, m in sorted(kit.wall_books.items()):
+            kit.kinds["bookwall_" + w] = m          # (a kind placed once: an instanced node of one, culled by its own sphere)
+            kit.inst["bookwall_" + w] = [(0.0, 0.0, 0.0, 0.0)]
     return kit
 
 
