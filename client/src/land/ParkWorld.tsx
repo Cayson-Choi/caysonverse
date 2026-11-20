@@ -1,7 +1,6 @@
 import { groundOld } from "../village/ground/groundMode";
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame, useLoader, useThree } from "@react-three/fiber";
-import { useTexture } from "@react-three/drei";
 import {
   BackSide,
   CircleGeometry,
@@ -57,11 +56,14 @@ import { parkBorders } from "./parkBorders";
 import { grassTuft } from "../village/veg/vegGeometry";
 import { soilTextures } from "../village/veg/vegSoil";
 import { CLICK_PICK_KEY } from "../game/clickPick";
-import { PARK_MARBLE_URL_HI, PARK_MARBLE_URL_LO, PARK_PINE_URL_HI, PARK_PINE_URL_LO, useParkAssets } from "./parkAssets";
+import { PARK_PINE_URL_HI, PARK_PINE_URL_LO, useParkAssets } from "./parkAssets";
 import { dayNight } from "../village/dayNightDriver";
+import { buildFountainStone, createStoneFountainWater } from "../village/fountain/stoneFountain";
+import { STAR_FOUNTAIN, STAR_SPOUTS } from "../village/fountain/fountainDesigns";
+import { flagstoneRing } from "../village/lots/gateDress";
+import { getPbrSet, pbrTextures } from "../village/pbr/pbrLibrary";
 import { BulbHalos, LampPools } from "./nightGlow";
 
-const MARBLE_URL = isTouchDevice ? PARK_MARBLE_URL_LO : PARK_MARBLE_URL_HI;
 const PINE_URL = isTouchDevice ? PARK_PINE_URL_LO : PARK_PINE_URL_HI;
 
 /** Built once per page (a suspended or re-mounted park must not paint the sky or grow the terrain again: ~100-300 ms each on a phone). */
@@ -397,80 +399,90 @@ function GateArch({ all }: { all: Texture[] }) {
   );
 }
 
-/** The plaza's star fountain: a stepped, moulded marble basin, a baluster and a scalloped upper bowl turned on the lathe, a slender
- * column carrying a turning gilt star, eight arching jets, gilt star finials on the rim. Marble from the village's CC0 set. */
-function Fountain({ all, env }: { all: Texture[]; env: Texture }) {
-  const marbleTex = useTexture(MARBLE_URL) as Texture;
-  const marble = useMemo(() => {
-    const t = marbleTex.clone();
-    t.wrapS = t.wrapT = RepeatWrapping;
-    t.colorSpace = SRGBColorSpace;
-    t.anisotropy = 8;
-    t.needsUpdate = true;
-    return new MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.26, metalness: 0.02, envMap: env, envMapIntensity: 0.55 });
-  }, [marbleTex, env]);
-  const stone = useMemo(() => parkMaterial(pickSet(all, "Concrete034"), 1, { color: new Color("#eee6d8"), normalScale: 0.5 }), [all]);
-  const water = useMemo(() => new MeshStandardMaterial({ color: "#6ab4d8", roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.82 }), []);
-  const gold = useMemo(() => new MeshStandardMaterial({ color: "#f2c14e", emissive: new Color("#6b4a08"), emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.6 }), []);
-  const starGeo = useMemo(() => {
+/**
+ * The plaza's star fountain (fix/gate-fountain-park; the owner: "여기도 너무 허접하다"): STAR_FOUNTAIN turned in pale flamed
+ * granite (the library set at its real scale; the wet faces darker and glossier) on a ring of flagstones, eight carved spout
+ * piers on the rim throwing arcing jets inward, both bowls overflowing in sheets, the pools rippling with foam where the water
+ * lands (stoneFountain.ts), and a bevelled, gilded star turning slowly on the top.
+ */
+function Fountain({ env, tier }: { env: Texture; tier: VillageTier }) {
+  const gl = useThree((st) => st.gl);
+  const low = isTouchDevice || tier !== "high";
+  const made = useMemo(() => {
+    const stoneGeo = buildFountainStone(STAR_FOUNTAIN, low);
+    const flagGeo = flagstoneRing(4.72, 5.6, 28, low);
+    const dry = new MeshStandardMaterial({ name: "park_fountain_stone", vertexColors: true, roughness: 0.9, metalness: 0, color: new Color(1, 0.99, 0.97) });
+    const wet = new MeshStandardMaterial({ name: "park_fountain_wet", vertexColors: true, roughness: 0.32, metalness: 0, color: new Color(0.6, 0.6, 0.6) });
+    const water = createStoneFountainWater(STAR_FOUNTAIN, low);
+    // the star: bevelled all round (four bevel steps), its points a touch rounded
     const sh = new Shape();
     for (let i = 0; i < 10; i++) {
-      const r = i % 2 === 0 ? 1.3 : 0.55;
+      const r = i % 2 === 0 ? 0.6 : 0.27;
       const a = -Math.PI / 2 + (i * Math.PI) / 5;
       if (i === 0) sh.moveTo(Math.cos(a) * r, -Math.sin(a) * r);
       else sh.lineTo(Math.cos(a) * r, -Math.sin(a) * r);
     }
-    return new ExtrudeGeometry(sh, { depth: 0.3, bevelEnabled: true, bevelSize: 0.06, bevelThickness: 0.06, bevelSegments: 2 });
-  }, []);
-  const smallStar = useMemo(() => {
-    const sh = new Shape();
-    for (let i = 0; i < 10; i++) {
-      const r = i % 2 === 0 ? 0.3 : 0.13;
-      const a = -Math.PI / 2 + (i * Math.PI) / 5;
-      if (i === 0) sh.moveTo(Math.cos(a) * r, -Math.sin(a) * r);
-      else sh.lineTo(Math.cos(a) * r, -Math.sin(a) * r);
-    }
-    return new ExtrudeGeometry(sh, { depth: 0.08, bevelEnabled: true, bevelSize: 0.02, bevelThickness: 0.02, bevelSegments: 1 });
-  }, []);
-  const marbleGeo = useMemo(() => {
+    const starGeo = new ExtrudeGeometry(sh, { depth: 0.12, bevelEnabled: true, bevelSize: 0.06, bevelThickness: 0.07, bevelSegments: low ? 3 : 6, curveSegments: 4 });
+    starGeo.translate(0, 0, -0.06);
+    starGeo.computeVertexNormals();
+    const gold = new MeshStandardMaterial({ name: "park_fountain_gilt", color: "#ffd46a", metalness: 0.65, roughness: 0.3, envMap: env, envMapIntensity: 1.4, emissive: new Color("#8a5c0c"), emissiveIntensity: 0.5 });
+    // the spouts: a short bronze nozzle out of each pier's inner face, along its jet
     const b = new GeoBuilder();
-    const W: V3 = [1, 1, 1];
-    // the paving apron and the moulded basin (outer foot, ogee lip, inner wall, floor just under the water)
-    addLathe(b, 0, 0, [[5.35, 0], [5.35, 0.06], [4.8, 0.1]], [0.96, 0.95, 0.92], 2, 64);
-    addLathe(b, 0, 0, [[0.01, 0.0], [4.6, 0.0], [4.6, 0.2], [4.5, 0.28], [4.5, 0.55], [4.62, 0.62], [4.62, 0.8], [4.5, 0.95], [4.25, 1.0], [4.05, 0.95], [4.0, 0.86], [0.01, 0.86]], W, 2, 72);
-    // the baluster: a plinth, a swelling urn, a collar, the upper bowl with a rolled lip, a column to the star
-    addLathe(b, 0, 0, [[0.01, 0.86], [1.05, 0.86], [1.05, 1.0], [0.85, 1.08], [0.6, 1.14], [0.5, 1.4], [0.68, 1.72], [0.62, 1.95], [0.5, 2.1], [0.58, 2.3], [1.2, 2.4], [1.75, 2.62], [1.82, 2.78], [1.7, 2.82], [1.52, 2.74], [1.45, 2.68], [0.01, 2.68]], W, 2, 56);
-    addLathe(b, 0, 0, [[0.01, 2.68], [0.46, 2.68], [0.38, 2.88], [0.24, 3.1], [0.2, 3.5], [0.22, 4.2], [0.33, 4.36], [0.3, 4.52], [0.16, 4.64], [0.01, 4.66]], W, 2, 28);
-    // eight low piers round the rim, each carrying a small gilt star (the gold is its own mesh below)
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
-      addLathe(b, Math.cos(a) * 4.62, Math.sin(a) * 4.62, [[0.01, 0.95], [0.2, 0.95], [0.2, 1.25], [0.26, 1.32], [0.2, 1.4], [0.01, 1.42]], W, 1, 12);
+    for (let k = 0; k < STAR_SPOUTS.count; k++) {
+      const a = STAR_SPOUTS.angle0 + (2 * Math.PI * k) / STAR_SPOUTS.count;
+      const c = Math.cos(a);
+      const s = Math.sin(a);
+      const jet = STAR_FOUNTAIN.jets[0]!;
+      const len = Math.hypot(jet.out, jet.up);
+      const p1: V3 = [c * jet.r, jet.y, s * jet.r];
+      const p0: V3 = [p1[0] - ((c * jet.out) / len) * -0.0 - c * 0.14, jet.y - (jet.up / len) * 0.05, p1[2] - s * 0.14];
+      b.cylinder(p0, p1, 0.028, 0.022, 12, [1, 1, 1], true);
     }
-    return b.build();
-  }, []);
-  const jets = useMemo(() => Array.from({ length: 8 }, (_, i) => (i / 8) * Math.PI * 2), []);
+    const nozzleGeo = b.build();
+    const bronze = new MeshStandardMaterial({ name: "park_fountain_bronze", color: "#9a7444", metalness: 0.85, roughness: 0.38, envMap: env, envMapIntensity: 0.9 });
+    return { stoneGeo, flagGeo, dry, wet, water, starGeo, gold, nozzleGeo, bronze };
+  }, [low, env]);
+  // the stone's maps: the library's flamed granite (metre UVs: one tile a metre)
+  useEffect(() => {
+    let alive = true;
+    getPbrSet("granite_flamed", low ? "1k" : "2k", gl).then((set) => {
+      if (!alive) return;
+      for (const [m, ns] of [[made.dry, 0.75], [made.wet, 0.5]] as const) {
+        const t = pbrTextures(set);
+        m.map = t.map;
+        m.normalMap = t.normalMap;
+        m.normalScale.set(ns, -ns);
+        m.roughnessMap = t.orm;
+        m.aoMap = t.orm;
+        m.needsUpdate = true;
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [made, gl, low]);
+  useEffect(
+    () => () => {
+      for (const x of [made.stoneGeo, made.flagGeo, made.dry, made.wet, made.starGeo, made.gold, made.nozzleGeo, made.bronze]) x.dispose();
+      for (const x of made.water.own) x.dispose();
+    },
+    [made],
+  );
   const ref = useRef<Mesh>(null);
   useFrame(({ clock }) => {
-    if (ref.current) ref.current.rotation.y = clock.elapsedTime * 0.4;
+    if (ref.current) ref.current.rotation.y = clock.elapsedTime * 0.35;
+    made.water.update(performance.now() / 1000, dayNight.applied);
   });
   const { x, z } = PARK_PLAZA;
-  void stone;
   return (
     <group position={[x, 0, z]}>
-      <mesh geometry={marbleGeo} material={marble} castShadow receiveShadow />
-      <mesh position={[0, 0.92, 0]} material={water}><cylinderGeometry args={[4.0, 4.0, 0.08, 40]} /></mesh>
-      <mesh position={[0, 2.75, 0]} material={water}><cylinderGeometry args={[1.45, 1.45, 0.06, 28]} /></mesh>
-      <mesh position={[0, 4.78, 0]} material={gold}><sphereGeometry args={[0.2, 14, 10]} /></mesh>
-      <mesh ref={ref} position={[0, 5.45, 0]} geometry={starGeo} material={gold} />
-      {jets.map((a, i) => (
-        <mesh key={i} position={[Math.cos(a) * 2.2, 1.7, Math.sin(a) * 2.2]} rotation={[Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35]} material={water}>
-          <cylinderGeometry args={[0.03, 0.06, 1.4, 6]} />
-        </mesh>
-      ))}
-      {Array.from({ length: 8 }, (_, i) => {
-        const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
-        return <mesh key={`s${i}`} geometry={smallStar} material={gold} position={[Math.cos(a) * 4.62, 1.5, Math.sin(a) * 4.62]} rotation={[0, -a + Math.PI / 2, 0]} castShadow />;
-      })}
+      <mesh geometry={made.stoneGeo} material={[made.dry, made.wet]} castShadow receiveShadow />
+      {/* the flags sit on the plaza's paving (y 0.04, drawn with a polygon offset), not in it */}
+      <mesh geometry={made.flagGeo} material={made.dry} position-y={0.035} receiveShadow />
+      <mesh geometry={made.nozzleGeo} material={made.bronze} />
+      <primitive object={made.water.group} />
+      <mesh position={[0, 3.77, 0]} material={made.gold}><sphereGeometry args={[0.075, 20, 14]} /></mesh>
+      <mesh ref={ref} position={[0, 4.48, 0]} geometry={made.starGeo} material={made.gold} castShadow />
     </group>
   );
 }
@@ -687,7 +699,7 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       <Ground all={all} />
       <Shops all={all} />
       <GateArch all={all} />
-      <Fountain all={all} env={env} />
+      <Fountain env={env} tier={tier} />
       <ParkVegetation />
       <Lamps />
       <Beds pine={pine} all={all} />

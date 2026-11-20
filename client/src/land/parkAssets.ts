@@ -32,7 +32,8 @@ export const PARK_GLB_URLS: readonly string[] = [
 
 /** The single textures the park's components load one at a time (the cache key of a one-url list is the same as a plain url's). */
 export function parkSingleTextureUrls(touch: boolean): string[] {
-  return [touch ? PARK_PINE_URL_LO : PARK_PINE_URL_HI, touch ? PARK_MARBLE_URL_LO : PARK_MARBLE_URL_HI, CAR_AO_URL, MOUNTAINS_TEXTURE_URL];
+  // (the star fountain's marble is gone: it is turned in the library's granite now, fix/gate-fountain-park)
+  return [touch ? PARK_PINE_URL_LO : PARK_PINE_URL_HI, CAR_AO_URL, MOUNTAINS_TEXTURE_URL];
 }
 
 let started = false;
