@@ -9,3 +9,5 @@ K.MATS["H_hanji"] = dict(tex="T_h_paper.png", rough=0.9, tint=True)
 def use_wallpaper(n):
     K.MATS["H_wallpaper"]["tex"] = f"T_h_wp_{n}.png"
     K._M.pop("H_wallpaper", None)
+    import kit_paint
+    kit_paint.set_house(n)

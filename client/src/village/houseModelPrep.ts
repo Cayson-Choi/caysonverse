@@ -1,4 +1,5 @@
 import { BufferAttribute, Color, Matrix4, RepeatWrapping, SRGBColorSpace, Vector3, type InstancedMesh, type Material, type Mesh, type MeshBasicMaterial, type Object3D, type Texture } from "three";
+import { houseMirrorMaterial, isHouseMirrorMaterial } from "./houseMirror";
 import { COLLIDER_PREFIX, LIGHTMAP_MATERIAL_PREFIX, configureLightmap, isMesh, lightmapMaterial, materialsOf } from "../game/hub/hubModelPrep";
 import { HOUSE_FLOORS, HOUSE_NODE, houseFiles, type HouseFloor, type HouseNumber } from "@caysonverse/shared/village/houseAreas";
 import { freeTexture } from "./villageModelPrep";
@@ -27,7 +28,7 @@ export const HOUSE_VIEW_MATERIAL = "M_view";
  * `export_materials`) — every `E_H_*` but the lamp, the lamp shade and the glass carries the light map on its second UV set.
  */
 const HB_PREFIX = "E_H_";
-const HB_DIRECT = new Set(["E_H_lamp", "E_H_shade", "E_H_glass"]);
+const HB_DIRECT = new Set(["E_H_lamp", "E_H_shade", "E_H_glass", "E_H_mirror"]);
 /** The lit-from-within materials (bulbs, lamp shades): drawn as they are, a little dimmer by day (patchHouseGlowMaterial). */
 const GLOW = new Set(["M_lamp", "M_shade", "E_H_lamp", "E_H_shade"]);
 
@@ -223,6 +224,12 @@ export function dressLoadedHouse(scene: Object3D, n: HouseNumber): void {
   scene.traverse((o) => {
     if (!isMesh(o) || Array.isArray(o.material) || (o as InstancedMesh).isInstancedMesh) return;
     const m = o.material as MeshBasicMaterial;
+    if (isHouseMirrorMaterial(m.name)) {
+      o.material = houseMirrorMaterial(); // mirror glass: silvered, reflecting a room (houseMirror.ts)
+      // the unlit export carries no normals, a reflecting material needs them (flat per face: the mirror is a flat disc)
+      if (!o.geometry.getAttribute("normal")) o.geometry.computeVertexNormals();
+      return;
+    }
     if (m.name === HOUSE_VIEW_MATERIAL) {
       m.color.set("#ffffff");
       return;

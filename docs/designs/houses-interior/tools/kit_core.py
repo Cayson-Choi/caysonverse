@@ -96,6 +96,7 @@ MATS = {
     "H_jagae": dict(tex="T_h_jagae.png", rough=0.25, coat=0.5),
     "H_metal": dict(color="#FFFFFF", rough=0.38, metal=0.7, tint=True),
     "H_glass": dict(color="#E8F2F2", rough=0.03, transmission=1.0, ior=1.45),
+    "H_mirror": dict(color="#C9D3D6", rough=0.04, metal=1.0),     # mirror glass: opaque, drawn direct (M_mirror / E_H_mirror), the game gives it a room reflection
     "H_ceramic": dict(color="#FFFFFF", rough=0.15, coat=0.5, tint=True),
     "H_lamp": dict(kind="emit", color="#FFE2B8", strength=10.0),
     "H_shade": dict(color="#F2E6CC", rough=0.9, glow=0.0, kind="shade"),
@@ -108,6 +109,10 @@ MATS = {
     "H_rubber": dict(color="#1D1D1F", rough=0.7),
     "H_stone": dict(color="#8E8B85", rough=0.9, tint=True),
     "H_brick": dict(color="#B4563C", rough=0.9, tint=True),
+    "H_floral": dict(tex="T_h_floral.png", rough=0.95, tint=True),   # cottage pass: damask linen (curtains, armchairs, quilts)
+    "H_logwall": dict(tex="T_h_logwall.png", rough=0.8, tint=True),   # log cabin walls (10번 집): realism pass
+    "H_rock": dict(tex="T_h_stone.png", rough=0.9, tint=True),      # fieldstone (fireplace, chimney breast): realism pass
+    "H_check": dict(tex="T_h_check.png", rough=1.0, tint=True),     # layered pass: woven gingham / check linen (armchairs, cushions, curtains)
 }
 _M = {}
 
@@ -118,6 +123,9 @@ def _img(name, cs="sRGB"):
     im.colorspace_settings.name = cs
     return im
 
+
+# layered pass: the game material is unlit albedo (texture x vertex tint): white-tinted untextured materials are the same thing in the GLB
+UNLIT_SAME = {"H_terracotta": "H_paint", "H_metal": "H_paint", "H_ceramic": "H_paint", "H_plastic": "H_paint"}
 
 ALIAS = {"H_screen": "H_rubber", "H_soil": "H_rubber", "H_plastic": "H_ceramic", "H_wood_walnut": "H_wood_dark"}   # HA: <= 24 materials per house
 
@@ -231,6 +239,9 @@ class _State:
     objs = []
     furn = None       # contract furniture kind of the piece being drawn (seat markers)
     fuv = None        # forced atlas uv (props): every face takes this colour cell and the H_atlas material
+    remap = {}        # layered pass: material swaps for the piece being drawn (e.g. an armchair's H_fabric -> H_check)
+    pillow_m = None   # layered pass: scatter-cushion material / tints of the house palette
+    pillow_tns = None
 
 
 S = _State()
@@ -245,6 +256,8 @@ class MB:
         self.mats = []
 
     def mi(self, n):
+        n = S.remap.get(n, n)
+        n = UNLIT_SAME.get(n, n)
         if n not in self.mats:
             self.mats.append(n)
         return self.mats.index(n)
@@ -377,7 +390,7 @@ def rbox(F, x0, x1, z0, z1, y0, y1, m, r=0.01, seg=2, grain=(1, 0, 0), tile=1.0,
     cuts = min(cuts, 3)
     if r < 0.012:
         seg = 1
-    elif r < 0.03:
+    elif r < 0.045:                  # realism pass budget: a 4 cm round-over reads round with 2 segments under the light map
         seg = min(seg, 2)
     bm = bmesh.new()
     bmesh.ops.create_cube(bm, size=1.0)
@@ -428,7 +441,10 @@ def rbox(F, x0, x1, z0, z1, y0, y1, m, r=0.01, seg=2, grain=(1, 0, 0), tile=1.0,
 
 def lathe(F, cx, cz, y0, profile, m, segs=24, tn=None, tile=1.0, smooth=True, uvscale=None):
     """Surface of revolution, profile [(r, y)] bottom to top; faces with r = 0 become triangles."""
-    if max(r for r, _ in profile) < 0.3:     # HA triangle budget: small turned parts need fewer segments
+    rmax = max(r for r, _ in profile)
+    if rmax < 0.06:                          # realism pass budget: a cup, a knob, a candle -> 8 sides at most read round at reach
+        segs = min(segs, max(6, int(segs * 0.45)))
+    elif rmax < 0.3:                         # HA triangle budget: small turned parts need fewer segments
         segs = max(8, int(segs * 0.62))
     rings = [[(cx + r * math.cos(2 * math.pi * i / segs), cz + r * math.sin(2 * math.pi * i / segs), y0 + y)
               for i in range(segs)] for (r, y) in profile]
