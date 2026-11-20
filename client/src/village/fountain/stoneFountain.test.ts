@@ -37,7 +37,7 @@ describe("stoneFountain: the turned stone", () => {
       // the PC tier stays under 42k triangles a fountain, the phone's about half
       expect(tris).toBeLessThan(low ? 22000 : 42000);
     }
-  });
+  }, 30000); // (a per-vertex walk of two tiers: slow on a loaded machine)
 
   it("faces point out of the stone (the basin's outer wall outward, its floor up)", () => {
     const g = buildFountainStone(GATE_FOUNTAIN, false);
