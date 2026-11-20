@@ -10,6 +10,7 @@ import { PLAYER_RADIUS } from "../worldMap";
 import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { guideColliders } from "./guides";
+import { stagePathPlants } from "./pathPlants";
 import { A7_MODEL_HOUSE_BOXES, A8_TREE_MOVES, modelHasA8Houses, stageA8Colliders } from "./a8Staging";
 import { houseFootprintSize } from "./houseExterior";
 import { HOUSE_FLOORS, HOUSE_NUMBERS, houseFloorBounds } from "./houseAreas";
@@ -889,7 +890,7 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
     // A8 hand-over: the A7 houses' boxes swapped for the contract's until village.glb is rebuilt with the new houses (a8Staging.ts);
     // vrb2's rebuild (release 4) has no col__bus box any more (the filter stays for older models)
     // ...and what a lot building replaces (plot_w's scaffold, L5): vrb2's rebuild has none left, so nothing is taken out
-    expect(VILLAGE_MODEL_COLLIDERS).toEqual(withoutLotReplaced(stageA8Colliders(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES }), L.sceneryHouses)));
+    expect(VILLAGE_MODEL_COLLIDERS).toEqual(withoutLotReplaced(stagePathPlants(stageA8Colliders(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES }), L.sceneryHouses))));
     expect(VILLAGE_COLLIDERS.filter((b) => replacedByLot(b))).toHaveLength(0);
     const legacy = VILLAGE_COLLIDERS.filter((b) => sameBox(b, MODEL_LEGACY_BUS_BOX)).length;
     expect(legacy).toBe(0);

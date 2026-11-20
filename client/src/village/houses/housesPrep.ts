@@ -476,6 +476,19 @@ export function a8TreeShift(x: number, z: number): { dx: number; dz: number } | 
   return null;
 }
 
+/** The same for the bush the A8 houses displace (bush_15, a drawn bush found in the file's cards): its shift, or null. */
+export function a8BushShift(x: number, z: number): { dx: number; dz: number } | null {
+  if (modelHasA8Houses(VILLAGE_COLLIDERS, VILLAGE_LAYOUT.sceneryHouses)) return null;
+  for (const m of A8_TREE_MOVES) {
+    const old = A7_MODEL_HOUSE_BOXES.find((b) => b.id === m.id)?.box;
+    if (!old || !m.id.startsWith("bush_")) continue;
+    const cx = (old.minX + old.maxX) / 2;
+    const cz = (old.minZ + old.maxZ) / 2;
+    if (Math.abs(cx - x) < 0.3 && Math.abs(cz - z) < 0.6) return { dx: m.to.x - cx, dz: m.to.z - cz };
+  }
+  return null;
+}
+
 /** Names of village.glb meshes the trim never touches (streetTrim.ts KEEP, plus the leaf chunks' far cards). */
 const KEEP = /^(village_sky|village_water|village_backdrop|fountain_moon|col__|light__|seat__|inst__|houseproxy__)/;
 

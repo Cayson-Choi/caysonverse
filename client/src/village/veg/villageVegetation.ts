@@ -1,4 +1,7 @@
+import { pathPlantShift } from "@caysonverse/shared/village/pathPlants";
+import { cardsOffPaving } from "./floraOffPaving";
 import { laneClearance } from "../ground/groundPaths";
+import { pavedClearance } from "./pavedGround";
 import {
   Box3,
   BufferAttribute,
@@ -49,7 +52,7 @@ import { removePlazaZelkova, zelkovaSkeleton } from "./zelkova";
 import { TriangleGrid, faceNormal, openEdges, type DrawnGap, type V3 } from "./drawnGap";
 import { PLAZA_BEDS, SPECIES_COUNT, linearHex, type Bed, type Plant } from "./flowerPlacement";
 import type { FloraResult } from "./floraWork";
-import { a8TreeShift, housesMode, makeHouseGrounds } from "../houses/housesPrep";
+import { a8BushShift, a8TreeShift, housesMode, makeHouseGrounds } from "../houses/housesPrep";
 import { houseFlowerBoxBeds } from "../houses/houseFlowerBoxes";
 import { keepTriangles, readCards, type AttributeLike, type Card } from "./vegCards";
 import { makeBlossomAtlas } from "./vegAtlas";
@@ -830,7 +833,9 @@ export class VillageVegetation {
     const floraCards = houseGrounds ? allCards.filter((c) => !houseGrounds((c.ax + c.bx) / 2, (c.az + c.bz) / 2)) : allCards;
     // ── the flowers' layout and the beds' soil: worked out off the page (floraWork.ts, in the crowns' worker) while the
     //    page makes the materials and asks for the crowns; dressed here when it comes back ──
-    const floraJob = grower.flora(floraCards, beds);
+    // (the cards the old flat lanes left on the redrawn paving move to the grass beside it, floraOffPaving.ts)
+    const sendCards = !options.parkBeds && !options.flowersOnly ? cardsOffPaving(floraCards, beds).cards : floraCards;
+    const floraJob = grower.flora(sendCards, beds);
     let placed: { plants: Plant[]; replaced: Card[] } = { plants: [], replaced: [] };
     // the textures drawn in code, made in the first worker meanwhile (null: no worker, made here)
     const texMade = await texturesJob;
@@ -941,7 +946,8 @@ export class VillageVegetation {
     const villageFile = (options.parkTrees ?? VILLAGE_TREE_SPECS).map(treeSkeleton);
     const village = villageFile.map((sk, i) => {
       const spec = (options.parkTrees ?? VILLAGE_TREE_SPECS)[i]!;
-      const shift = !parkOnly && housesMode() === "new" ? a8TreeShift(spec.x, spec.z) : null;
+      // (the trees that stood on a path move off it, shared/village/pathPlants.ts; the A8 houses' moves first)
+      const shift = parkOnly ? null : (housesMode() === "new" ? a8TreeShift(spec.x, spec.z) : null) ?? pathPlantShift(spec.x, spec.z, "tree");
       return shift ? shiftSkeleton(sk, shift.dx, shift.dz) : sk;
     });
     // (the lot buildings' trees with them: the schoolyard's, from the lot models' extras, L5v2)
@@ -962,11 +968,19 @@ export class VillageVegetation {
       barkStreetCherry: findInstanced(root, "inst__street_cherry_0"),
       barkOrchard: findInstanced(root, "inst__orchard_0"),
     };
+    // the instances that stood on a path move off it (shared/village/pathPlants.ts)
+    const offPath = (list: Matrix4[], kind: "tree" | "shrub"): Matrix4[] => {
+      if (parkOnly) return list;
+      return list.map((m) => {
+        const s = pathPlantShift(m.elements[12]!, m.elements[14]!, kind);
+        return s ? m.clone().premultiply(new Matrix4().makeTranslation(s.dx, 0, s.dz)) : m;
+      });
+    };
     const xfs = {
-      street_green: inst.street_green ? varyBoundaryRow(instanceMatrices(inst.street_green)) : [],
-      street_cherry: inst.street_cherry ? instanceMatrices(inst.street_cherry) : [],
+      street_green: inst.street_green ? offPath(varyBoundaryRow(instanceMatrices(inst.street_green)), "tree") : [],
+      street_cherry: inst.street_cherry ? offPath(instanceMatrices(inst.street_cherry), "tree") : [],
       orchard: inst.orchard ? varyBoundaryRow(typeof location !== "undefined" && floraOld(location.search, import.meta.env.DEV) ? instanceMatrices(inst.orchard) : varyOrchard(instanceMatrices(inst.orchard))) : [],
-      shrub: inst.shrub ? varyBoundaryRow(instanceMatrices(inst.shrub)) : [],
+      shrub: inst.shrub ? offPath(varyBoundaryRow(instanceMatrices(inst.shrub)), "shrub") : [],
     };
     if (await step("skeletons")) return v.abandon();
 
@@ -1335,6 +1349,14 @@ export class VillageVegetation {
     greenCards.forEach((cards, mi) => cards.forEach((c) => !claimedGreen[mi]!.has(c) && rest.push({ card: c, mesh: mi })));
     const found = findBushes(rest.map(({ card }) => ({ x: card.x, y: card.y, z: card.z, s: Math.hypot(card.bx - card.ax, card.bz - card.az) })));
     for (const b of found) for (const i of b.cards) claimedGreen[rest[i]!.mesh]!.add(rest[i]!.card);
+    // (the bush the A8 houses displace is drawn where its collider now stands, houses/housesPrep.ts a8BushShift)
+    if (!parkOnly && housesMode() === "new") for (const b of found) {
+      const sh = a8BushShift(b.x, b.z);
+      if (sh) {
+        b.x += sh.dx;
+        b.z += sh.dz;
+      }
+    }
     const variantBush = bushSize(SHRUB_VARIANT.H, SHRUB_VARIANT.R);
     const bushes: Bush[] = [
       ...found,
@@ -1343,7 +1365,7 @@ export class VillageVegetation {
         const s = new Vector3().setFromMatrixScale(m).x;
         return { x: m.elements[12]!, y: m.elements[13]!, z: m.elements[14]!, h: variantBush.h * s, r: variantBush.r * s, seed: (Math.abs(Math.sin(m.elements[12]! * 3.1 + m.elements[14]! * 1.7)) * 1e4) % 1, cards: [] };
       }),
-    ].filter((b) => options.parkBushes?.includes(b) || laneClearance(b.x, b.z) > b.r * 0.5); // none left standing on a lane the ground paths redrew (ground/groundPaths.ts)
+    ].filter((b) => options.parkBushes?.includes(b) || (parkOnly ? laneClearance : pavedClearance)(b.x, b.z) > b.r * 0.5); // none left standing on a lane the ground paths redrew (ground/groundPaths.ts), the road or a doorstep
     // which bush each one is: the plaza planters' and the memorial roof's clipped boxwood balls; elsewhere (the
     // houses' porch corners, the lanes and plots) about half are azalea mounds (some in flower under the April cherries)
     const speciesOfBush = (b: Bush): BushSpecies => (b.y > 2 || bushInPlanter(b) || b.seed < 0.5 ? "boxwood" : "azalea");
@@ -1371,6 +1393,8 @@ export class VillageVegetation {
     }
     stats.bushSpecies = BUSH_SPECIES.map((_, i) => v.bushes.filter((d) => d.species === i).length);
     stats.bushes = bushes.length;
+    // DEV/E2E: the bushes as drawn (scripts export them to the collider table, shared/village/generated/villageBushColliders.ts)
+    if (import.meta.env.DEV) ((globalThis as { __cvBushList?: Record<string, unknown[]> }).__cvBushList ??= {})[parkOnly ? "park" : options.flowersOnly ? "houses" : "village"] = bushes.map((b) => ({ x: b.x, y: b.y, z: b.z, h: b.h, r: b.r }));
     if (await step("bushes")) return v.abandon();
 
     // ── the bark: every tree's trunk, limbs and side branches drawn here, in its twigs' bark (barkGeometry.ts) ──
