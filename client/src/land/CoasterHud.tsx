@@ -5,7 +5,7 @@ import { VillageServerMsg, type RideNoticePayload } from "@caysonverse/shared/vi
 import { COASTER_DWELL_MS } from "@caysonverse/shared/land/coaster";
 import { CAROUSEL_DWELL_MS } from "@caysonverse/shared/land/carousel";
 import { MOON_DWELL_MS } from "@caysonverse/shared/land/moonBoat";
-import { DROP_DWELL_MS } from "@caysonverse/shared/land/dropTower";
+import { DROP_DWELL_MS, dropAt } from "@caysonverse/shared/land/dropTower";
 import { coasterNow, landPose, rideComfort, rideNotice, rideReserved, selfRide, setRideComfort, subscribeRideComfort, type RideComfort } from "./coasterRide";
 import { rideMuted, setRideMuted } from "./coasterAudio";
 import { useSoundStore } from "../stores/soundStore";
@@ -15,6 +15,7 @@ import { villageClock } from "../village/villageClock";
 import { boardRide } from "./rideBoardWalk";
 import { useParkReady } from "./parkReady";
 import { wheelSeatPose } from "@caysonverse/shared/land/wheel";
+import { moonSeatPref, setMoonSeatPref, subscribeMoonSeatPref } from "./moonSeatPref";
 import "./ridePanel.css";
 
 /** What a refused board says: one short line, shown once in the panel's toast (a reservation is shown by the status line, never repeated here). */
@@ -79,6 +80,7 @@ export function CoasterHud() {
     });
   }, []);
   const comfort = useSyncExternalStore(subscribeRideComfort, rideComfort, rideComfort);
+  const seatPref = useSyncExternalStore(subscribeMoonSeatPref, moonSeatPref, moonSeatPref);
   const [rideOnlyMuted, setMuted] = useState(rideMuted());
   // the menu's master 소리 switch silences the rides too; the panel's button then shows (and undoes) that
   const masterMuted = useSoundStore((s) => s.muted);
@@ -171,6 +173,16 @@ export function CoasterHud() {
         </div>
         {folded ? null : (
           <>
+            {def.key === "moonboat" && !reserved ? (
+              // the moon boat's seat choice (owner 2026-11-20): the end rows swing highest; the middle is the gentle ride
+              <div className="cv-ride-tools" role="group" aria-label="자리 고르기">
+                {(["end", "middle"] as const).map((k) => (
+                  <button key={k} type="button" className="cv-ride-tool" data-testid={`moon-pref-${k}`} aria-pressed={seatPref === k} onClick={() => setMoonSeatPref(k)}>
+                    {k === "end" ? "맨 끝 자리" : "가운데 자리"}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <button
               type="button"
               data-testid={`ride-go-${def.key}`}
@@ -241,11 +253,10 @@ export function CoasterHud() {
         </div>
       )}
       <div className="cv-ride-tools">
-        {isCoaster ? (
-          <button type="button" className="cv-ride-tool" data-testid="coaster-comfort" onClick={() => setRideComfort(((comfort + 1) % 3) as RideComfort)}>
-            {isTouchDevice ? COMFORT_SHORT[comfort] : COMFORT_LABEL[comfort]}
-          </button>
-        ) : null}
+        {/* every ride's camera reads the comfort setting (the moon boat's tipping horizon, the drop's lens): the switch is on every ride */}
+        <button type="button" className="cv-ride-tool" data-testid="coaster-comfort" onClick={() => setRideComfort(((comfort + 1) % 3) as RideComfort)}>
+          {isTouchDevice ? COMFORT_SHORT[comfort] : COMFORT_LABEL[comfort]}
+        </button>
         <button
           type="button"
           className="cv-ride-tool"
@@ -259,7 +270,7 @@ export function CoasterHud() {
         </button>
       </div>
       <button type="button" data-testid="coaster-leave" disabled={aloft} className={"cv-ride-primary" + (aloft ? "" : " is-danger")} onClick={() => sendRideLeave()}>
-        {aloft ? "높이 떠 있어요" : isWheel ? "내리기" : now.status === "riding" ? "비상 내리기" : "내리기"}
+        {aloft ? "높이 떠 있어요" : isWheel ? "내리기" : now.status === "riding" && !(def?.key === "droptower" && dropAt(wall).stage === "rest") ? "비상 내리기" : "내리기"}
       </button>
     </section>
   );

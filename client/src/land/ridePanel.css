@@ -279,3 +279,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* a choice (the moon boat's seat): the picked one stands out */
+.cv-ride-tool[aria-pressed="true"] {
+  color: #1d1640;
+  font-weight: 700;
+  background: #c9b8ff;
+  border-color: transparent;
+}
