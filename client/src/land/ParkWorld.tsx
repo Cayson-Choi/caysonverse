@@ -5,7 +5,6 @@ import {
   BackSide,
   CircleGeometry,
   Color,
-  CylinderGeometry,
   DoubleSide,
   ExtrudeGeometry,
   Float32BufferAttribute,
@@ -60,7 +59,7 @@ import { PARK_PINE_URL_HI, PARK_PINE_URL_LO, useParkAssets } from "./parkAssets"
 import { dayNight } from "../village/dayNightDriver";
 import { buildFountainStone, createStoneFountainWater } from "../village/fountain/stoneFountain";
 import { STAR_FOUNTAIN, STAR_SPOUTS } from "../village/fountain/fountainDesigns";
-import { flagstoneRing } from "../village/lots/gateDress";
+import { LAMP_GLOBE, flagstoneRing, victorianLampGeometry } from "../village/lots/gateDress";
 import { getPbrSet, pbrTextures } from "../village/pbr/pbrLibrary";
 import { BulbHalos, LampPools } from "./nightGlow";
 
@@ -489,36 +488,86 @@ function Fountain({ env, tier }: { env: Texture; tier: VillageTier }) {
 
 // ───────────────────────────────────────── trees, lamps, flowers, benches ─────────────────────────────────────────
 
-function Lamps() {
+/**
+ * The park's lamps (fix/gate-fountain-park): the gate lot's Victorian cast-iron twin lamp (gateDress.ts) in place of the plain
+ * stick and ball, its arms along the path they light (round the plaza: along the ring). One instanced draw for the iron, one for
+ * the opal globes, one for the bulbs; the halos and the pools of light at night as before (nightGlow.tsx), at the globes.
+ */
+function lampYaw(l: { x: number; z: number }): number {
+  if (Math.hypot(l.x - PARK_PLAZA.x, l.z - PARK_PLAZA.z) < PARK_PLAZA.radius) return Math.atan2(l.z - PARK_PLAZA.z, l.x - PARK_PLAZA.x) + Math.PI / 2;
+  // the promenade's and the queue approach's lamps stand beside paths running north-south; the avenue's run east-west
+  return Math.abs(l.z + 119) < 0.5 || Math.abs(l.z + 105) < 0.5 ? 0 : Math.PI / 2;
+}
+
+function Lamps({ tier }: { tier: VillageTier }) {
+  const gl = useThree((st) => st.gl);
+  const low = isTouchDevice || tier !== "high";
   const lampSpots = useMemo(() => PARK_LAMPS.map((l) => ({ x: l.x, z: l.z })), []);
-  const halos = useMemo(() => PARK_LAMPS.map((l) => [l.x, 4.45, l.z] as const), []);
-  const post = useRef<InstancedMesh>(null);
-  const bulb = useRef<InstancedMesh>(null);
-  const postGeo = useMemo(() => new CylinderGeometry(0.07, 0.11, 4.2, 8), []);
-  const bulbGeo = useMemo(() => new SphereGeometry(0.28, 10, 8), []);
-  const postMat = useMemo(() => new MeshStandardMaterial({ color: "#2a2d4a", roughness: 0.4, metalness: 0.4 }), []);
-  const bulbMat = useMemo(() => new MeshStandardMaterial({ color: "#fff2c6", emissive: new Color("#ffd98a"), emissiveIntensity: 1.2, roughness: 0.3 }), []);
+  const globesAt = useMemo(
+    () =>
+      PARK_LAMPS.flatMap((l) => {
+        const yaw = lampYaw(l);
+        return [-1, 1].map((s) => [l.x + Math.cos(yaw) * s * LAMP_GLOBE.offset, LAMP_GLOBE.y, l.z - Math.sin(yaw) * s * LAMP_GLOBE.offset] as const);
+      }),
+    [],
+  );
+  const made = useMemo(() => {
+    const iron = victorianLampGeometry(low);
+    const ironMat = new MeshStandardMaterial({ name: "park_lamp_iron", vertexColors: true, roughness: 0.55, metalness: 0 });
+    const globe = new SphereGeometry(LAMP_GLOBE.r, low ? 14 : 22, low ? 10 : 16);
+    const bulb = new SphereGeometry(0.045, 8, 6);
+    const globeMat = new MeshStandardMaterial({ name: "park_lamp_globe", color: "#f7f2e8", emissive: new Color("#ffe2b8"), emissiveIntensity: 0.25, roughness: 0.18, transparent: true, opacity: 0.62, depthWrite: false });
+    const bulbMat = new MeshStandardMaterial({ name: "park_lamp_bulb", color: "#fff6e0", emissive: new Color("#ffd28a"), emissiveIntensity: 0.4, roughness: 0.4 });
+    return { iron, ironMat, globe, bulb, globeMat, bulbMat };
+  }, [low]);
   useEffect(() => {
+    let alive = true;
+    getPbrSet("cast_iron", low ? "1k" : "2k", gl).then((set) => {
+      if (!alive) return;
+      const t = pbrTextures(set);
+      made.ironMat.map = t.map;
+      made.ironMat.normalMap = t.normalMap;
+      made.ironMat.normalScale.set(0.6, -0.6);
+      made.ironMat.roughnessMap = t.orm;
+      made.ironMat.needsUpdate = true;
+    });
+    return () => {
+      alive = false;
+    };
+  }, [made, gl, low]);
+  useEffect(() => () => Object.values(made).forEach((x) => x.dispose()), [made]);
+  const post = useRef<InstancedMesh>(null);
+  const globes = useRef<InstancedMesh>(null);
+  const bulbs = useRef<InstancedMesh>(null);
+  useLayoutEffect(() => {
     const m = new Matrix4();
     PARK_LAMPS.forEach((l, i) => {
-      m.makeTranslation(l.x, 2.1, l.z);
-      post.current?.setMatrixAt(i, m);
-      m.makeTranslation(l.x, 4.45, l.z);
-      bulb.current?.setMatrixAt(i, m);
+      post.current?.setMatrixAt(i, m.makeRotationY(lampYaw(l)).setPosition(l.x, 0, l.z));
     });
-    if (post.current) post.current.instanceMatrix.needsUpdate = true;
-    if (bulb.current) bulb.current.instanceMatrix.needsUpdate = true;
-  }, []);
-  // the bulbs burn brighter at night (the halos and the pools on the paving come from nightGlow.tsx)
+    globesAt.forEach((p, i) => {
+      m.makeTranslation(p[0], p[1], p[2]);
+      globes.current?.setMatrixAt(i, m);
+      bulbs.current?.setMatrixAt(i, m);
+    });
+    for (const r of [post, globes, bulbs]) {
+      if (!r.current) continue;
+      r.current.instanceMatrix.needsUpdate = true;
+      r.current.computeBoundingSphere();
+    }
+  }, [globesAt]);
+  // the globes and bulbs burn brighter at night (the halos and the pools on the paving come from nightGlow.tsx)
   useFrame(() => {
-    bulbMat.emissiveIntensity = 1.2 + 2.2 * dayNight.applied.lights;
+    const k = dayNight.applied.lights;
+    made.globeMat.emissiveIntensity = 0.25 + 1.9 * k;
+    made.bulbMat.emissiveIntensity = 0.4 + 3.2 * k;
   });
   return (
     <group>
       <LampPools places={lampSpots} radius={5.2} strength={0.4} />
-      <BulbHalos places={halos} size={2.6} />
-      <instancedMesh frustumCulled={false} ref={post} args={[postGeo, postMat, PARK_LAMPS.length]} castShadow />
-      <instancedMesh frustumCulled={false} ref={bulb} args={[bulbGeo, bulbMat, PARK_LAMPS.length]} />
+      <BulbHalos places={globesAt} size={1.7} />
+      <instancedMesh ref={post} args={[made.iron, made.ironMat, PARK_LAMPS.length]} castShadow />
+      <instancedMesh ref={bulbs} args={[made.bulb, made.bulbMat, globesAt.length]} />
+      <instancedMesh ref={globes} args={[made.globe, made.globeMat, globesAt.length]} renderOrder={3} />
     </group>
   );
 }
@@ -701,7 +750,7 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       <GateArch all={all} />
       <Fountain env={env} tier={tier} />
       <ParkVegetation />
-      <Lamps />
+      <Lamps tier={tier} />
       <Beds pine={pine} all={all} />
       <ParkProps all={all} />
       <ParkScenery all={all} />
