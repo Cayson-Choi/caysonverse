@@ -66,3 +66,8 @@
 | `spanish_singer` | Edouard Manet | The Spanish Singer | 1860 | https://www.metmuseum.org/art/collection/search/436944 | CC0 1.0 (The Met Open Access, public domain) |
 | `red_boy` | Francisco de Goya | Manuel Osorio Manrique de Zuñiga | 1787–88 | https://www.metmuseum.org/art/collection/search/436545 | CC0 1.0 (The Met Open Access, public domain) |
 | `irises_met` | Vincent van Gogh | Irises | 1890 | https://www.metmuseum.org/art/collection/search/436528 | CC0 1.0 (The Met Open Access, public domain) |
+
+
+## 커튼 리넨 (2026-11-20)
+
+`T_h_linen` (커튼 천: 촘촘한 평직 리넨, 0.6 m 한 타일): 직접 제작(절차 생성, `art/village/tools/houses/make_linen.py`).

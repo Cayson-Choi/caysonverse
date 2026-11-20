@@ -26,10 +26,10 @@ vec3 mirrorRoom(vec3 r) {
   float az = atan(r.x, r.z);
   // two tall windows and a glazed door round the room (bright, a little blue), only at wall height
   float band = smoothstep(-0.3, -0.12, up) * (1.0 - smoothstep(0.35, 0.55, up));
-  float w1 = smoothstep(0.42, 0.3, abs(az - 0.9));
-  float w2 = smoothstep(0.42, 0.3, abs(az + 1.1));
+  float w1 = smoothstep(0.3, 0.2, abs(az - 0.9));
+  float w2 = smoothstep(0.3, 0.2, abs(az + 1.1));
   float w3 = smoothstep(0.42, 0.34, abs(abs(az) - 2.6));
-  c = mix(c, vec3(0.93, 0.97, 1.0), clamp(w1 + w2, 0.0, 1.0) * band);
+  c = mix(c, vec3(0.80, 0.87, 0.95), clamp(w1 + w2, 0.0, 1.0) * band);
   c = mix(c, vec3(1.0, 0.97, 0.9), w3 * band * 0.9);
   // a dark piece of furniture low down
   c *= 1.0 - 0.35 * smoothstep(0.18, 0.1, abs(az - 2.0)) * smoothstep(-0.05, -0.12, up) * smoothstep(-0.42, -0.3, up);
@@ -40,7 +40,7 @@ vec3 mirrorColor() {
   vec3 v = normalize(vMirrorWorld - cameraPosition);
   if (dot(n, v) > 0.0) n = -n;
   vec3 r = reflect(v, n);
-  vec3 c = mirrorRoom(r) * uMirrorTint;
+  vec3 c = mirrorRoom(r) * uMirrorTint * 0.82;
   float f = pow(1.0 - clamp(dot(n, -v), 0.0, 1.0), 2.0);
   c *= 1.0 - 0.28 * f;                                   // edge-on: darker (the silvering's fall-off)
   float sheen = smoothstep(0.82, 0.97, dot(r, normalize(vec3(0.55, 0.35, 0.6))));
