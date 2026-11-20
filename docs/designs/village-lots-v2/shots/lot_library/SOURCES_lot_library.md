@@ -42,3 +42,7 @@
 ## 열람실 지구본 지도
 
 육지와 강의 윤곽은 Natural Earth의 1:110m 퍼블릭 도메인 자료를 사용했다. 경위도망과 해안 음영을 더한 1024×512 지도를 구에 감고, 원본의 북극과 남극을 지구본 축에 맞췄다. [육지](https://www.naturalearthdata.com/downloads/110m-physical-vectors/110m-land/) · [강](https://www.naturalearthdata.com/downloads/110m-physical-vectors/110m-rivers-lake-centerlines/) · [생성 스크립트](../../tools/b1_globe_map.mjs)
+
+## 열람실 책과 깔개 (2026-11-20)
+
+책등·책장 단면·펼친 책·깔개는 사진이나 남의 그림 없이 [b1_book_atlas.mjs](../../tools/b1_book_atlas.mjs)가 노이즈와 규칙으로 직접 그린 것이다(가죽 결, 책 천의 씨실·날실, 양피지, 종이 커버, 띠·금박 줄·꽃무늬 도장, 제목 조각의 글자 비슷한 금박 획 — 실제 책 제목이나 글자는 없다). 페르시아풍 깔개(메달리온·테두리·덩굴·매듭·염색 얼룩)도 같은 스크립트가 그린다. 아틀라스 칸은 `tools/library_book_atlas.json`, 책 모양(둥근 책등·책장 덩어리·표지판·세트·기운 책·눕힌 더미)은 [library_books.py](../../tools/library_books.py).
