@@ -54,7 +54,18 @@ BOOKS = ["5A3420", "7A4A2A", "3E2A1E", "6E1E1E", "234A33", "1F2F4F", "E8DCC0", "
 
 # the shelf runs: real books (library_books.py on the spine atlas b1_book_atlas.mjs), 16 kinds of 0.42 m so neighbours rarely
 # repeat; the old flat-colour boxes with painted gilt bars (owner 2026-11-20: "책들이 너무 허접해") are gone
-RUNS = [LB.run(seed) for seed in (3, 17, 29, 41, 53, 67, 71, 83, 97, 101, 113, 127, 131, 149, 151, 163)]
+RUN_SEEDS = (3, 17, 29, 41, 53, 67, 71, 83, 97, 101, 113, 127, 131, 149, 151, 163)
+RUNS = [LB.run(seed) for seed in RUN_SEEDS]
+PHONE = False   # the phone LOD (lot_library_reading_phone.glb): the same layout and atlases, lighter geometry (set by library_room_kit.build)
+
+
+def set_phone(phone):
+    """Switches the room's detail level and rebuilds the book runs (the same seeds: the same books in the same places)."""
+    global PHONE
+    PHONE = phone
+    LB.PHONE = phone
+    G.LOD = 0.6 if phone else 1.0
+    RUNS[:] = [LB.run(seed) for seed in RUN_SEEDS]
 
 
 # ------------------------------------------------------------------------------------------------ small props (2026-11-20) --
@@ -179,7 +190,7 @@ def coffered_ceiling(m, kit):
             a2, b2 = a + (0.11 if a > 0 else 0.15), b - (0.11 if b < X else 0.15)
             c2, d2 = c + (0.11 if c > 0 else 0.15), d - (0.11 if d < Z else 0.15)
             # bed moulding inside the coffer
-            for (p0, p1, q0, q1) in ((a2, b2, c2, c2 + 0.05), (a2, b2, d2 - 0.05, d2), (a2, a2 + 0.05, c2, d2), (b2 - 0.05, b2, c2, d2)):
+            for (p0, p1, q0, q1) in (() if PHONE else ((a2, b2, c2, c2 + 0.05), (a2, b2, d2 - 0.05, d2), (a2, a2 + 0.05, c2, d2), (b2 - 0.05, b2, c2, d2))):
                 m.box(p0, p1, H - 0.08, H - 0.0, q0, q1, OAK, skip=("+y",))
             cx, cz = (a2 + b2) / 2, (c2 + d2) / 2
             m.lathe([(0.2, 0.0), (0.16, -0.03), (0.08, -0.05), (0.0, -0.06)], 12, COFFER.t(G.hexc("FFF6E2")), cx, cz, H - 0.001)
@@ -191,7 +202,7 @@ def coffered_ceiling(m, kit):
         u = 0.05
         while u < L - 0.05:
             f.box(m, u, u + 0.04, H - dep - 0.27, H - dep - 0.2, 0.0, 0.06, OAK, skip=("-w",))
-            u += 0.09
+            u += 0.09 if not PHONE else 0.18   # (the phone: every other dentil, twice as wide a gap)
 
 
 # ------------------------------------------------------------------------------------------------ bookcases --

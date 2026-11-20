@@ -1026,6 +1026,15 @@ def run_room(unit_id, kit_mod, viewdef, prefix, tex_dir):
             lightmap = {"day": "lots/%s/%s_lm_day.ktx2" % (tex_dir, fid), "night": "lots/%s/%s_lm_night.ktx2" % (tex_dir, fid),
                         "scale": lm["scale"], "channel": 1, "size": lm["size"],
                         "note": "irradiance = (texel in linear) * scale on TEXCOORD_1 of the lotroom__ shell (bake_lots.py)"}
+    if arg("--lm-reuse") and not lightmap:
+        # --lm-reuse <scale>:<size>: the phone file shares the PC file's lightmaps (the shell is the same box room, so its unwrap is
+        # the same): unwrap TEXCOORD_1 the way the bake does, bake nothing, and point the extras at the PC's two files
+        import bake_lots
+        bake_lots._lightmap_uvs(bake_lots._targets(objs, unit_id))
+        sc, sz = arg("--lm-reuse").split(":")
+        lightmap = {"day": "lots/%s/%s_lm_day.ktx2" % (tex_dir, unit_id), "night": "lots/%s/%s_lm_night.ktx2" % (tex_dir, unit_id),
+                    "scale": float(sc), "channel": 1, "size": int(sz),
+                    "note": "irradiance = (texel in linear) * scale on TEXCOORD_1 of the lotroom__ shell (the PC file's maps, shared: same shell, same unwrap)"}
     out = arg("--out", os.path.join(LOTS, fid + ".glb"))
     if "--no-export" not in argv:
         manifest = os.path.join(LOTS, tex_dir, "%s_textures.json" % unit_id)

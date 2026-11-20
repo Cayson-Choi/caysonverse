@@ -2,6 +2,7 @@ import { Suspense, useEffect, useLayoutEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
 import {
+  Frustum,
   InstancedBufferAttribute,
   InstancedMesh,
   Matrix4,
@@ -15,6 +16,7 @@ import {
   type Texture,
 } from "three";
 import { litUniform, type VillageTier } from "../villageModelPrep";
+import { InstanceCuller } from "../instanceCull";
 import { versionedUrl } from "../modelUrl";
 import { BANNER_POLES, BANNER_POLE_LIGHT_Y, LAMP_MODEL_LIGHT_Y, LAMP_POSTS, bannerSlot, BANNER_ATLAS } from "./streetLayout";
 import { bannerFabricGeometry, bannerHardwareGeometry, lampPostGeometry, lanternGlassGeometry } from "./streetGeometry";
@@ -33,7 +35,7 @@ const BANNER_POLE_LIFT = BANNER_POLE_LIGHT_Y - LAMP_MODEL_LIGHT_Y;
 declare global {
   interface Window {
     /** Dev-only: the street furniture's numbers (draw calls, instances, what the trim took out of the village). */
-    __cvStreet?: () => { trim: StreetTrimStats; drawCalls: number; instances: Record<string, number> };
+    __cvStreet?: () => { trim: StreetTrimStats; drawCalls: number; postsDrawn?: number; instances: Record<string, number> };
   }
 }
 
@@ -84,6 +86,18 @@ export function StreetFurniture({ root, tier }: { root: Object3D; tier: VillageT
     const matrices = all.map((a) => a.m);
     const postMesh = instanced(postGeo, metal, matrices, "street_lamp_posts");
     const glassMesh = instanced(glassGeo, glass, matrices, "street_lamp_glass");
+    // three culls an instanced set as one: the posts (3.7k triangles each, spread over the village) are repacked to the ones in view
+    const heights = [...LAMP_POSTS.map((p) => p.lightY), ...BANNER_POLES.map(() => BANNER_POLE_LIGHT_Y)];
+    const culler = new InstanceCuller(
+      [postMesh, glassMesh],
+      [[lifts], []],
+      {
+        spheres: all.map((a, i) => {
+          const h = heights[i]! + 0.8;
+          return [a.m.elements[12]!, h / 2, a.m.elements[14]!, h / 2 + 0.6] as const;
+        }),
+      },
+    );
     const hwMesh = instanced(hwGeo, metal, BANNER_POLES.map((p) => at(p.x, p.z, p.yaw)), "street_banner_arms");
     const pMap = poolTexture();
     const pool = poolMaterial(pMap);
@@ -92,6 +106,7 @@ export function StreetFurniture({ root, tier }: { root: Object3D; tier: VillageT
     poolMesh.renderOrder = 2;
     return {
       meshes: [postMesh, glassMesh, hwMesh, poolMesh],
+      culler,
       glass,
       pool,
       dispose() {
@@ -108,6 +123,7 @@ export function StreetFurniture({ root, tier }: { root: Object3D; tier: VillageT
     window.__cvStreet = () => ({
       trim: trim.stats,
       drawCalls: 5,
+      postsDrawn: posts.culler.drawn,
       instances: { posts: LAMP_POSTS.length + BANNER_POLES.length, arms: BANNER_POLES.length, banners: BANNER_POLES.length * 2, pools: BANNER_POLES.length },
     });
     return () => {
@@ -115,8 +131,13 @@ export function StreetFurniture({ root, tier }: { root: Object3D; tier: VillageT
     };
   }, [trim]);
 
-  useFrame((_, delta) => {
+  const view = useMemo(() => ({ frustum: new Frustum(), m: new Matrix4() }), []);
+  useFrame(({ camera }, delta) => {
     streetTime.value += Math.min(delta, 0.1);
+    // the posts in view only (a lamp 3 m behind the camera is still drawn: its sphere's reach is its height)
+    view.m.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    view.frustum.setFromProjectionMatrix(view.m);
+    posts.culler.update(view.frustum, camera.position);
     const lit = litUniform.value;
     setGlassLit(posts.glass, lit);
     posts.pool.opacity = 0.42 * lit;
