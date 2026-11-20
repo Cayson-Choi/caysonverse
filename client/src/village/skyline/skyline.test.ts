@@ -53,6 +53,16 @@ describe("skyline geometry: light and built from the park's own data", () => {
     expect(again.staticBulbs.length).toBe(high.staticBulbs.length);
   });
 
+  it("plants only the trees that would show over the castle wall, and stands no gate of its own (the village gatehouse is the gate)", () => {
+    const none = buildSkyline("high", () => 0, { treeShows: () => false });
+    expect(none.triangles).toBeLessThan(high.triangles - 5_000);
+    // nothing of the old gate castle at the park's gate line (park z -186.5): only the promenade's flat paving starts beyond it
+    const p = high.staticGeo.getAttribute("position");
+    let gateTop = -Infinity;
+    for (let i = 0; i < p.count; i++) if (Math.abs(p.getZ(i) + 186.5) < 4 && Math.abs(p.getX(i) - 40) < 25) gateTop = Math.max(gateTop, p.getY(i));
+    expect(gateTop).toBeLessThan(10);
+  });
+
   it("buries every footing: the support columns reach below a tilted ground", () => {
     const g = (x: number, z: number) => -3 + 0.0002 * x + 0.0001 * z;
     const sloped = buildSkyline("high", g);
@@ -106,5 +116,12 @@ describe("the far forest makes way for the skyline", () => {
     expect(skylineClearsForest(-24, 230)).toBe(false); // the ridge-side forest behind the park
     expect(skylineClearsForest(-150, 150)).toBe(false); // beside it
     expect(skylineClearsForest(150, 150)).toBe(false);
+  });
+
+  it("clears the castle wall's whole ring and a margin outside it (no far-forest tree stands in the stone)", () => {
+    for (const [x, z] of [[-102, 150], [108, 150], [0, 207.5], [-102, 207.5], [108, 97], [-60, 97]] as const) {
+      expect(skylineClearsForest(x - 6, z)).toBe(true);
+      expect(skylineClearsForest(x + 6, z)).toBe(true);
+    }
   });
 });

@@ -1,11 +1,11 @@
 /**
  * 케이슨랜드 skyline (2026-11-19): a LIGHT stand-in of the park that the village sees beyond the south gate, so a visitor sees the park
- * (the coaster's lift hill and loop, the 하늘 등불 바퀴, the carousel roof, the gate castle, trees and lamps) without pressing "enter".
+ * (the coaster's lift hill and loop, the 하늘 등불 바퀴, the carousel roof, trees and lamps) without pressing "enter"; since 2026-11-20 it stands inside the castle wall (parkWall.ts), only the trees that would rise over the battlements planted.
  *
  * Everything is built from the SAME data as the real park (shared/land: the coaster's sampled track, the wheel's radius / hub / frame legs
  * and gondola pivots, the carousel's centre and canopy height, the gate's tower places in ParkWorld) in PARK-LOCAL metres and merged:
  *
- *   static     one mesh: gate, promenade / plaza decals, the wheel's frame, the carousel's platform, the coaster's track and supports,
+ *   static     one mesh: promenade / plaza decals, the wheel's frame, the carousel's platform, the coaster's track and supports,
  *              the station, kiosks, trees, lamp posts
  *   rotor      the wheel's rims, spokes and hub (one mesh, turned by the real wheel's clock)
  *   gondolas   8 instances, hung upright from the rim (the real wheel's pivots and sway)
@@ -31,7 +31,6 @@ import { CAROUSEL_CANOPY_Y, CAROUSEL_CENTER, CAROUSEL_DECK_Y, CAROUSEL_RADIUS } 
 import { PARK_PLAZA, COASTER_PAD, DROP_SITE_AT, MOON_BOAT_SITE_AT } from "@caysonverse/shared/village/parkArea";
 import { MOON_FRAME, MOON_HULL, MOON_PIVOT_Y, moonKeelY } from "@caysonverse/shared/land/moonBoat";
 import { DROP_BEAM_YS, DROP_CROWN_Y, DROP_FRAME, dropFrameD } from "@caysonverse/shared/land/dropTowerGeometry";
-import { addBellRoof } from "../../land/parkShapes";
 import { GeoBuilder, cross, norm, type V3 } from "../../land/geoBuilder";
 
 export type SkylineTier = "high" | "low";
@@ -232,7 +231,15 @@ export const TRAIN_WIDEN = 1.5;
 /** The ground's height in park-local metres at (x, z): below 0 is under the skyline's reference plane. */
 export type GroundLocal = (x: number, z: number) => number;
 
-export function buildSkyline(tier: SkylineTier, ground: GroundLocal = () => 0): SkylineBuild {
+export interface SkylineOptions {
+  /**
+   * Whether a tree (park-local foot x, z and the top of its crown, park-local y) can be seen over the castle wall from the village: one
+   * that cannot is not planted (the wall hides it, and a low-poly crown peeking over the battlements looked toy-like). Absent: all are.
+   */
+  treeShows?: (x: number, z: number, top: number) => boolean;
+}
+
+export function buildSkyline(tier: SkylineTier, ground: GroundLocal = () => 0, opts: SkylineOptions = {}): SkylineBuild {
   const high = tier === "high";
   const track = coasterTrack();
   const rand = rng(20261119);
@@ -308,34 +315,8 @@ export function buildSkyline(tier: SkylineTier, ground: GroundLocal = () => 0): 
     addBlob(s, mx, g0 + MOON_PIVOT_Y + moonKeelY(MOON_HULL.halfZ) + 1.6, mz + MOON_HULL.halfZ, 0.8, 0.8, C.gold, high ? 7 : 5, 3);
   }
 
-  // — the gate castle: two towers with bell spires, the lintel and the indigo name board between them —
-  {
-    const CZ = GATE.z;
-    for (const sx of [-1, 1]) {
-      const tx = GATE.x + sx * GATE.towerDx;
-      s.box([tx, 5, CZ], X, Y, 1.9, 5, 3.6, C.sand);
-      s.box([tx, 10.35, CZ], X, Y, 2.3, 0.35, 3.9, C.sandDark);
-      s.box([tx, 0.25, CZ], X, Y, 2.15, 0.9, 3.85, C.sandDark); // plinth, buried a little
-      s.box([tx, 6.4, CZ], X, Y, 2.05, 0.14, 3.75, C.cream);
-      addBellRoof(s, tx, 10.6, CZ, 2.25, 3.8, 7.2, C.roofGreen, 2, high ? 14 : 10);
-      s.cylinder([tx, 17.6, CZ], [tx, 20.6, CZ], 0.12, 0.05, 4, C.gold);
-      s.box([tx, 18.1, CZ], X, Y, 0.34, 0.34, 0.34, C.gold);
-      for (const sz of [-1, 1]) s.box([tx, 8.0, CZ + sz * 3.65], X, Y, 0.45, 1.0, 0.08, [0.1, 0.1, 0.16]); // a dark window slit
-    }
-    // the arch's lintel and the name board (both faces), the opening below it
-    s.box([GATE.x, 8.4, CZ], X, Y, GATE.towerDx - 1.8, 1.9, 2.0, C.sand);
-    for (const sz of [-1, 1]) {
-      s.box([GATE.x, 8.5, CZ + sz * 2.08], X, Y, 5.6, 1.55, 0.1, C.indigoDeep);
-      s.box([GATE.x, 8.5, CZ + sz * 2.14], X, Y, 5.7, 1.65, 0.04, C.gold);
-      s.box([GATE.x, 8.5, CZ + sz * 2.2], X, Y, 5.45, 1.4, 0.04, C.indigo);
-    }
-    s.cylinder([GATE.x, 10.3, CZ], [GATE.x, 12.9, CZ], 1.45, 0.05, 5, C.gold); // the gold star, a spire of five facets
-    // the low arcade wings
-    for (const sx of [-1, 1]) {
-      s.box([GATE.x + sx * 17, 2.2, CZ], X, Y, 6.2, 2.2, 3.0, C.sand);
-      s.box([GATE.x + sx * 17, 4.5, CZ], X, Y, 6.6, 0.25, 3.4, C.coral);
-    }
-  }
+  // (the gate castle that stood here is gone: the village's own gatehouse is the park's gate now, set in the castle wall round the park,
+  // shared/src/village/parkWall.ts; owner 2026-11-20)
 
   // — the promenade, the star plaza and the side paths (flat patches that follow the ground) —
   {
@@ -522,11 +503,6 @@ export function buildSkyline(tier: SkylineTier, ground: GroundLocal = () => 0): 
       const a = (k / ringB) * Math.PI * 2;
       bulbsStatic.push(CAROUSEL_CENTER.x + Math.cos(a) * (CAROUSEL_RADIUS + 0.4), CAROUSEL_CANOPY_Y - 0.1, CAROUSEL_CENTER.z + Math.sin(a) * (CAROUSEL_RADIUS + 0.4));
     }
-    // the gate's name board
-    for (let k = 0; k < (high ? 14 : 8); k++) {
-      const x = GATE.x - 6 + (12 * k) / ((high ? 14 : 8) - 1);
-      bulbsStatic.push(x, 10.4, GATE.z + 2.4, x, 6.6, GATE.z + 2.4);
-    }
   }
 
   // — kiosks round the plaza: a box and a striped pyramid roof —
@@ -572,6 +548,7 @@ export function buildSkyline(tier: SkylineTier, ground: GroundLocal = () => 0): 
       const g = ground(x, z);
       const h = (big ? 8.5 : 6.4) * (0.8 + rand() * 0.5);
       const col = greens[Math.floor(rand() * greens.length)]!;
+      if (opts.treeShows && !opts.treeShows(x, z, g + 1.15 * h + 0.8)) return;
       if (rand() < 0.3) {
         // a conifer: two stacked skirts
         const pc = pines[Math.floor(rand() * pines.length)]!;
@@ -609,11 +586,7 @@ export function buildSkyline(tier: SkylineTier, ground: GroundLocal = () => 0): 
         plant(x, z, rand() < 0.6);
       }
     }
-    // a green wall along the park's north edge, either side of the gate (against the village's own forest)
-    for (let x = -150; x < 370; x += high ? 15 : 24) {
-      if (Math.abs(x - GATE.x) < 30) continue;
-      plant(x + rand() * 5, GATE.z - 3 - rand() * 6, true);
-    }
+    // (the green wall that stood along the park's north edge is the castle wall now)
   }
 
   const staticGeo = finish(s);

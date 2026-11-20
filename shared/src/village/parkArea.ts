@@ -18,6 +18,7 @@ import type { AABB, CameraBox } from "../collision";
 import { shopWindows, WINDOW_BOX } from "./parkShopWindowLayout";
 import type { Bounds, MapGeometry } from "../school/geometry";
 import { makeGeometry } from "../school/geometry";
+import { PARK_WALL_PLAN, PARK_WALL_SOLIDS, distanceToWall } from "./parkWall";
 
 export const PARK_AREA = "park" as const;
 export type ParkAreaId = typeof PARK_AREA;
@@ -163,7 +164,8 @@ function buildTrees(): ParkTree[] {
   }
   return out;
 }
-export const PARK_TREES: readonly ParkTree[] = Object.freeze(buildTrees());
+/** A tree whose crown would stand in the castle wall's stone (parkWall.ts) is left out (the rest keep their places). */
+export const PARK_TREES: readonly ParkTree[] = Object.freeze(buildTrees().filter((t) => distanceToWall(PARK_WALL_PLAN, t.x, t.z) > 3.2 + 1.4 * t.s));
 
 /** Lamp posts: both sides of the promenade, round the plaza, along the avenue and the queue approach. */
 function buildLamps(): { x: number; z: number }[] {
@@ -267,6 +269,8 @@ function buildSolids(): AABB[] {
   for (const p of PARK_PLANTERS) out.push(box(p.x - p.w / 2, p.x + p.w / 2, p.z - p.d / 2, p.z + p.d / 2));
   for (const b of PARK_BINS) out.push(box(b.x - 0.3, b.x + 0.3, b.z - 0.3, b.z + 0.3));
   for (const t of PARK_TREES) out.push(box(t.x - 0.45, t.x + 0.45, t.z - 0.45, t.z + 0.45));
+  // the castle wall round the park (parkWall.ts, owner 2026-11-20): its runs (the north ones sealed out to the bounds' edge) and towers
+  out.push(...PARK_WALL_SOLIDS.obstacles);
   return out;
 }
 export const PARK_SOLIDS: readonly AABB[] = Object.freeze(buildSolids());
@@ -277,4 +281,4 @@ export const PARK_HURDLES: readonly CameraBox[] = Object.freeze([
   ...PARK_TROUGHS.map((t) => ({ minX: t.x0, maxX: t.x1, minZ: t.z0, maxZ: t.z1, height: t.y })),
 ]);
 
-export const parkGeometry: MapGeometry = makeGeometry("park", PARK_BOUNDS, [], PARK_SOLIDS, [], PARK_HURDLES);
+export const parkGeometry: MapGeometry = makeGeometry("park", PARK_BOUNDS, [], PARK_SOLIDS, PARK_WALL_SOLIDS.cameraBoxes, PARK_HURDLES);

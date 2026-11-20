@@ -10,6 +10,7 @@
  * so footings and decals follow the actual ground. The reference plane lies 0.3 m under the fitted plane: bases are buried, not floating.
  * Pure maths, no three.js object but the matrix elements.
  */
+import { VILLAGE_WALL_RECT, WALL } from "@caysonverse/shared/village/parkWall";
 import { SKYLINE_SCALE, GATE, type GroundLocal } from "./skylineGeometry";
 
 /** The village gate lot's centre (villageLots GATE) and the world z the park's gate stands at. */
@@ -77,14 +78,16 @@ export function skylinePlacement(heightAt: (x: number, z: number) => number): Sk
 }
 
 /**
- * The village's far forest stands behind the gate (the ridge-side tree belt, mountains.ts cutFarBackdrop); inside the park's footprint it is
- * cut away (the park's own trees stand there) so the coaster and the wheel are seen, not hidden behind a wall of leaves. World metres.
+ * The village's far forest stands behind the gate (the ridge-side tree belt, mountains.ts cutFarBackdrop); inside the park's castle wall
+ * (parkWall.ts VILLAGE_WALL_RECT, round the skyline's footprint) it is cut away, and a few metres outside it too so no tree stands in the
+ * stone (the park's own skyline stands inside). World metres.
  */
+const FOREST_MARGIN = WALL.towerParapetR + 4;
 export const FOREST_CLEAR = Object.freeze({
-  minX: OX + PARK_EXTENT.minX * SKYLINE_SCALE - 8,
-  maxX: OX + PARK_EXTENT.maxX * SKYLINE_SCALE + 8,
-  minZ: 98,
-  maxZ: OZ + PARK_EXTENT.maxZ * SKYLINE_SCALE + 6,
+  minX: Math.min(VILLAGE_WALL_RECT.minX, OX + PARK_EXTENT.minX * SKYLINE_SCALE) - FOREST_MARGIN,
+  maxX: Math.max(VILLAGE_WALL_RECT.maxX, OX + PARK_EXTENT.maxX * SKYLINE_SCALE) + FOREST_MARGIN,
+  minZ: 92,
+  maxZ: Math.max(VILLAGE_WALL_RECT.maxZ, OZ + PARK_EXTENT.maxZ * SKYLINE_SCALE) + FOREST_MARGIN,
 });
 export const skylineClearsForest = (x: number, z: number): boolean => x > FOREST_CLEAR.minX && x < FOREST_CLEAR.maxX && z > FOREST_CLEAR.minZ && z < FOREST_CLEAR.maxZ;
 
@@ -92,4 +95,10 @@ export const skylineClearsForest = (x: number, z: number): boolean => x > FOREST
 export function skylineMode(): "on" | "off" {
   if (!import.meta.env.DEV || typeof location === "undefined") return "on";
   return new URLSearchParams(location.search).get("skyline") === "off" ? "off" : "on";
+}
+
+/** Dev switch: `?wall=off` draws no castle wall in the village (the before / after shots). */
+export function wallMode(): "on" | "off" {
+  if (!import.meta.env.DEV || typeof location === "undefined") return "on";
+  return new URLSearchParams(location.search).get("wall") === "off" ? "off" : "on";
 }

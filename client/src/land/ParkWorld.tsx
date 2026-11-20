@@ -61,6 +61,10 @@ import { LAMP_GLOBE, flagstoneRing, victorianLampGeometry } from "../village/lot
 import { getPbrSet, pbrTextures } from "../village/pbr/pbrLibrary";
 import { addGateArch, addGateStar } from "./parkGateStone";
 import { BulbHalos, LampPools } from "./nightGlow";
+import { CastleWall, PARK_WALL_LOOK } from "./CastleWall";
+import { PARK_WALL_PLAN } from "@caysonverse/shared/village/parkWall";
+import { parkGroundHeight } from "./parkTerrain";
+import { wallMode } from "../village/skyline/skylinePlacement";
 import { parkAltitude } from "./parkAltitude";
 import { ParkAltitudeProbe, ParkHighClouds } from "./ParkAltitudeFx";
 
@@ -755,6 +759,7 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       <Ground all={all} />
       <Shops all={all} />
       <GateArch all={all} />
+      {wallMode() === "on" && <CastleWall id="park" plan={PARK_WALL_PLAN} heightAt={parkGroundHeight} tier={tier === "high" ? "high" : "low"} look={PARK_WALL_LOOK} lampsOn="inner" shadows={!isTouchDevice} />}
       <Fountain env={env} tier={tier} />
       <ParkVegetation />
       <Lamps tier={tier} />

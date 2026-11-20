@@ -28,6 +28,7 @@
  * shares no object between two fields.
  */
 
+import { VILLAGE_WALL_SOLIDS } from "./parkWall";
 import type { AABB, CameraBox } from "../collision";
 import { DEFAULT_WALL_THICKNESS, makeGeometry, wallsAround } from "../school/geometry";
 import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColliders";
@@ -1340,7 +1341,7 @@ export const HALL_MODEL_COLLIDERS: GeneratedColliders = hallInteriorColliders(VI
  * village area; Task 9: the hall's interior), the hall's walls and the blockers around it. `greyboxColliders(VILLAGE_LAYOUT)` stays the
  * layout's own list (the model must contain each of its boxes exactly: scripts/check-school-glb.ts).
  */
-export const villageGeometry: MapGeometry = buildVillageGeometry(
+export const villageGeometry: MapGeometry = withParkWall(buildVillageGeometry(
   VILLAGE_LAYOUT,
   VILLAGE_MODEL_COLLIDERS,
   HALL_MODEL_COLLIDERS,
@@ -1352,7 +1353,16 @@ export const villageGeometry: MapGeometry = buildVillageGeometry(
   houseColliders(),
   // 마을 부지 건물 (L5, 2026-11-17): the six lot buildings' boxes, appended last (no earlier obstacle's index moves)
   lotGeometryColliders(),
-);
+));
+
+/**
+ * 케이슨랜드's castle wall (parkWall.ts, owner 2026-11-20) round the park's skyline behind the gate: its runs and towers appended after
+ * everything else (no earlier obstacle's index moves). They stand beyond the walk bounds (z 95) — the wall's front face at z 95.45 — so
+ * they take no walkable ground; they keep the camera out of the stone.
+ */
+export function withParkWall(g: MapGeometry): MapGeometry {
+  return { ...g, obstacles: [...g.obstacles, ...VILLAGE_WALL_SOLIDS.obstacles], cameraBoxes: [...g.cameraBoxes, ...VILLAGE_WALL_SOLIDS.cameraBoxes] };
+}
 
 /**
  * The A8 house contract for the Blender kit and build (X1, X2, X4): per house its frame (centre, door side), porch kind, solid,

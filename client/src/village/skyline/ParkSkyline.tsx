@@ -1,6 +1,6 @@
 /**
  * The 케이슨랜드 skyline in the village (2026-11-19): a light distant view of the park behind the south gate, so a visitor sees the coaster,
- * the wheel, the carousel and the gate castle without entering. Geometry: skylineGeometry.ts; place: skylinePlacement.ts.
+ * the wheel and the carousel over the castle wall round it (VillageParkWall) without entering. Geometry: skylineGeometry.ts; place: skylinePlacement.ts.
  *
  *  - Built lazily: only once the village is dressed (AfterDressed in VillageScene) AND the outer ground exists, in a timer of its own, then
  *    its programs are compiled with compileSafely (the night-only bulbs included) before the first frame that shows it.
@@ -40,7 +40,8 @@ import { villageClock } from "../villageClock";
 import { getOuterGround, type OuterGround } from "../outerGround";
 import type { VillageTier } from "../villageModelPrep";
 import { buildSkyline, type SkylineBuild } from "./skylineGeometry";
-import { skylineMode, skylinePlacement } from "./skylinePlacement";
+import { skylineMode, skylinePlacement, wallMode, type SkylinePlacement } from "./skylinePlacement";
+import { VILLAGE_WALL_FRONT_Z, WALL } from "@caysonverse/shared/village/parkWall";
 
 declare global {
   interface Window {
@@ -117,7 +118,7 @@ function pointsOf(positions: Float32Array, mat: PointsMaterial): Points {
 
 function make(tier: VillageTier, ground: OuterGround): Built {
   const placement = skylinePlacement(ground.heightAt);
-  const build = buildSkyline(tier === "high" ? "high" : "low", placement.groundLocal);
+  const build = buildSkyline(tier === "high" ? "high" : "low", placement.groundLocal, wallMode() === "off" ? {} : { treeShows: treeShowsOverWall(placement, ground.heightAt) });
   const root = new Group();
   root.name = "park_skyline";
   root.matrixAutoUpdate = false;
@@ -190,6 +191,31 @@ function make(tier: VillageTier, ground: OuterGround): Built {
       gondolas.dispose();
       train.dispose();
     },
+  };
+}
+
+/**
+ * Whether a skyline tree's crown rises over the castle wall's battlements (VILLAGE_WALL_PLAN's north side) seen from the village: from
+ * the square (eye 7.5 m up) or the gate's forecourt (6 m up), straight north of the tree. Park-local in, world maths inside.
+ */
+function treeShowsOverWall(p: SkylinePlacement, heightAt: (x: number, z: number) => number): (x: number, z: number, top: number) => boolean {
+  const e = p.elements;
+  const crestZ = VILLAGE_WALL_FRONT_Z - WALL.parapetOut;
+  const eyes = [
+    { z: 10, h: 7.5 },
+    { z: 75, h: 6 },
+  ];
+  return (px, pz, top) => {
+    const wx = e[0] * px + e[3];
+    const wz = e[10] * pz + e[11];
+    const wy = e[4] * px + e[5] * top + e[6] * pz + e[7];
+    const ex = Math.max(-90, Math.min(90, wx));
+    const crestY = (Number.isFinite(heightAt(wx, crestZ)) ? heightAt(wx, crestZ) : 0) + 9.95;
+    return eyes.some((eye) => {
+      const ey = (Number.isFinite(heightAt(ex, eye.z)) ? heightAt(ex, eye.z) : 0) + eye.h;
+      const sight = ey + ((crestY - ey) * (wz - eye.z)) / (crestZ - eye.z);
+      return wy > sight - 0.3;
+    });
   };
 }
 
