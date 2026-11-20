@@ -49,8 +49,8 @@ def plate(F):
 
 def plates_stack(F):
     C(0)
-    for k in range(5):
-        lathe(F, 0, 0, k * 0.013, PLATE, "H_atlas", 22)
+    for k in range(3):
+        lathe(F, 0, 0, k * 0.013, PLATE, "H_atlas", 16)
 
 
 def bowl_p(F):
@@ -166,10 +166,10 @@ def cutting_board(F):
 
 
 def frame_small(F):
-    C(3)
-    rbox(F, -0.08, 0.08, -0.012, 0.012, 0.0, 0.2, "H_atlas", r=0.004, seg=1, tilt=0.15)
-    C(13)
-    rbox(F, -0.065, 0.065, 0.011, 0.0125, 0.015, 0.185, "H_atlas", r=0.0, seg=1, tilt=0.15)
+    """a small standing picture frame (shelf, sideboard): a real painting in a slim frame on a short back strut."""
+    import kit_paint as KP
+    rbox(F, -0.012, 0.012, -0.06, 0.02, 0.0, 0.11, "H_wood_oak", r=0.002, seg=1, tn=(0.35, 0.25, 0.16, 1))
+    KP.framed(F.sub(0, 0.02, 0.0, 0), 0.16, 0.2, frame_tn=(0.5, 0.34, 0.2, 1), mat=False)
 
 
 def magazine(F):

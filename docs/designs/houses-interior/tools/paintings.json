@@ -1,0 +1,290 @@
+[
+ {
+  "id": "starry_night",
+  "artist": "Vincent van Gogh",
+  "name": "The Starry Night",
+  "year": "1889",
+  "aspect": 1.2942,
+  "source": "https://commons.wikimedia.org/wiki/File:Vincent_van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg",
+  "license": "Public domain (Wikimedia Commons, PD-Art)"
+ },
+ {
+  "id": "bedroom_arles",
+  "artist": "Vincent van Gogh",
+  "name": "Bedroom in Arles",
+  "year": "1888",
+  "aspect": 1.2603,
+  "source": "https://commons.wikimedia.org/wiki/File:Vincent_van_Gogh_-_De_slaapkamer_-_Google_Art_Project.jpg",
+  "license": "Public domain (Wikimedia Commons, PD-Art)"
+ },
+ {
+  "id": "irises",
+  "artist": "Vincent van Gogh",
+  "name": "Irises",
+  "year": "1889",
+  "aspect": 1.3083,
+  "source": "https://commons.wikimedia.org/wiki/File:Irises-Vincent_van_Gogh.jpg",
+  "license": "Public domain (Wikimedia Commons, PD-Art)"
+ },
+ {
+  "id": "cafe_terrace",
+  "artist": "Vincent van Gogh",
+  "name": "Cafe Terrace at Night",
+  "year": "1888",
+  "aspect": 0.7814,
+  "source": "https://commons.wikimedia.org/wiki/File:Vincent-van-gogh-cafe-terrace-on-the-place-du-forum-arles-at-night-the.jpg",
+  "license": "CC0 1.0 (Wikimedia Commons; the painting is public domain)"
+ },
+ {
+  "id": "wheat_cypresses_met",
+  "artist": "Vincent van Gogh",
+  "name": "Wheat Field with Cypresses",
+  "year": "1889",
+  "aspect": 1.2563,
+  "source": "https://www.metmuseum.org/art/collection/search/436535",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "madame_roulin",
+  "artist": "Vincent van Gogh",
+  "name": "Madame Roulin and Her Baby",
+  "year": "1888",
+  "aspect": 0.8027,
+  "source": "https://www.metmuseum.org/art/collection/search/459123",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "la_berceuse",
+  "artist": "Vincent van Gogh",
+  "name": "La Berceuse",
+  "year": "1889",
+  "aspect": 0.7943,
+  "source": "https://www.metmuseum.org/art/collection/search/437984",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "vg_straw_hat",
+  "artist": "Vincent van Gogh",
+  "name": "Self-Portrait with a Straw Hat",
+  "year": "1887",
+  "aspect": 0.8037,
+  "source": "https://www.metmuseum.org/art/collection/search/436532",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "water_pitcher",
+  "artist": "Johannes Vermeer",
+  "name": "Young Woman with a Water Pitcher",
+  "year": "ca. 1662",
+  "aspect": 0.889,
+  "source": "https://www.metmuseum.org/art/collection/search/437881",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "dance_class",
+  "artist": "Edgar Degas",
+  "name": "The Dance Class",
+  "year": "1874",
+  "aspect": 0.9275,
+  "source": "https://www.metmuseum.org/art/collection/search/438817",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "woman_vase_flowers",
+  "artist": "Edgar Degas",
+  "name": "A Woman Seated beside a Vase of Flowers",
+  "year": "1865",
+  "aspect": 1.2285,
+  "source": "https://www.metmuseum.org/art/collection/search/436121",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "by_the_seashore",
+  "artist": "Auguste Renoir",
+  "name": "By the Seashore",
+  "year": "1883",
+  "aspect": 0.7905,
+  "source": "https://www.metmuseum.org/art/collection/search/437430",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "girls_at_piano",
+  "artist": "Auguste Renoir",
+  "name": "Two Young Girls at the Piano",
+  "year": "1892",
+  "aspect": 0.7815,
+  "source": "https://www.metmuseum.org/art/collection/search/459112",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "madame_charpentier",
+  "artist": "Auguste Renoir",
+  "name": "Madame Georges Charpentier",
+  "year": "1878",
+  "aspect": 1.2293,
+  "source": "https://www.metmuseum.org/art/collection/search/438815",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "card_players",
+  "artist": "Paul Cézanne",
+  "name": "The Card Players",
+  "year": "1890–92",
+  "aspect": 1.2561,
+  "source": "https://www.metmuseum.org/art/collection/search/435868",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "apples_primroses",
+  "artist": "Paul Cézanne",
+  "name": "Still Life with Apples and a Pot of Primroses",
+  "year": "ca. 1890",
+  "aspect": 1.2602,
+  "source": "https://www.metmuseum.org/art/collection/search/435882",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "jas_de_bouffan",
+  "artist": "Paul Cézanne",
+  "name": "Trees and Houses Near the Jas de Bouffan",
+  "year": "1885–86",
+  "aspect": 1.3307,
+  "source": "https://www.metmuseum.org/art/collection/search/459092",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "great_wave",
+  "artist": "Katsushika Hokusai",
+  "name": "Under the Wave off Kanagawa (The Great Wave)",
+  "year": "ca. 1830–32",
+  "aspect": 1.4626,
+  "source": "https://www.metmuseum.org/art/collection/search/39799",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "rembrandt_self_portrait",
+  "artist": "Rembrandt van Rijn",
+  "name": "Self-Portrait",
+  "year": "1660",
+  "aspect": 0.8245,
+  "source": "https://www.metmuseum.org/art/collection/search/437397",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "aristotle_homer",
+  "artist": "Rembrandt van Rijn",
+  "name": "Aristotle with a Bust of Homer",
+  "year": "1653",
+  "aspect": 0.948,
+  "source": "https://www.metmuseum.org/art/collection/search/437394",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "jalais_hill",
+  "artist": "Camille Pissarro",
+  "name": "Jalais Hill, Pontoise",
+  "year": "1867",
+  "aspect": 1.311,
+  "source": "https://www.metmuseum.org/art/collection/search/437299",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "manet_boating",
+  "artist": "Edouard Manet",
+  "name": "Boating",
+  "year": "1874",
+  "aspect": 1.3106,
+  "source": "https://www.metmuseum.org/art/collection/search/436947",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "haystacks_autumn",
+  "artist": "Jean-François Millet",
+  "name": "Haystacks: Autumn",
+  "year": "ca. 1874",
+  "aspect": 1.2805,
+  "source": "https://www.metmuseum.org/art/collection/search/437097",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "village_ladies",
+  "artist": "Gustave Courbet",
+  "name": "Young Ladies of the Village",
+  "year": "1851–52",
+  "aspect": 1.3386,
+  "source": "https://www.metmuseum.org/art/collection/search/438820",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "harvesters",
+  "artist": "Pieter Bruegel the Elder",
+  "name": "The Harvesters",
+  "year": "1565",
+  "aspect": 1.3567,
+  "source": "https://www.metmuseum.org/art/collection/search/435809",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "view_of_toledo",
+  "artist": "El Greco",
+  "name": "View of Toledo",
+  "year": "ca. 1599–1600",
+  "aspect": 0.8887,
+  "source": "https://www.metmuseum.org/art/collection/search/436575",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "repast_lion",
+  "artist": "Henri Rousseau",
+  "name": "The Repast of the Lion",
+  "year": "ca. 1907",
+  "aspect": 1.4204,
+  "source": "https://www.metmuseum.org/art/collection/search/438822",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "ia_orana_maria",
+  "artist": "Paul Gauguin",
+  "name": "Ia Orana Maria",
+  "year": "1891",
+  "aspect": 0.7867,
+  "source": "https://www.metmuseum.org/art/collection/search/438821",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "circus_sideshow",
+  "artist": "Georges Seurat",
+  "name": "Circus Sideshow",
+  "year": "1887–88",
+  "aspect": 1.4956,
+  "source": "https://www.metmuseum.org/art/collection/search/437654",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "spanish_singer",
+  "artist": "Edouard Manet",
+  "name": "The Spanish Singer",
+  "year": "1860",
+  "aspect": 0.7856,
+  "source": "https://www.metmuseum.org/art/collection/search/436944",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "red_boy",
+  "artist": "Francisco de Goya",
+  "name": "Manuel Osorio Manrique de Zuñiga",
+  "year": "1787–88",
+  "aspect": 0.7372,
+  "source": "https://www.metmuseum.org/art/collection/search/436545",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ },
+ {
+  "id": "irises_met",
+  "artist": "Vincent van Gogh",
+  "name": "Irises",
+  "year": "1890",
+  "aspect": 1.261,
+  "source": "https://www.metmuseum.org/art/collection/search/436528",
+  "license": "CC0 1.0 (The Met Open Access, public domain)"
+ }
+]

@@ -26,7 +26,7 @@ def _stem(F, pts, r, tn=(0.55, 0.7, 0.4, 1)):
     tube(F, pts, r, "H_leaf", 5, tn=tn, caps=False)
 
 
-def plant_monstera_full(F, h=1.15, seed=4, leaves=26, pot_r=0.21):
+def plant_monstera_full(F, h=1.15, seed=4, leaves=21, pot_r=0.21):
     """monstera: many long stems each ending in a big heart-shaped leaf, leaves facing outward / up (reads as a full plant)"""
     rnd = random.Random(seed)
     DE.pot(F, pot_r, 0.34)
@@ -55,8 +55,8 @@ def plant_olive_full(F, h=1.7, seed=6, pot_r=0.22):
         tipz = h * (0.72 + 0.1 * (b % 3) / 2)
         pts = [(0, 0, h * 0.52), (math.cos(a) * r1 * 0.6, math.sin(a) * r1 * 0.6, h * 0.62), (math.cos(a) * r1 * 1.2, math.sin(a) * r1 * 1.2, tipz)]
         tube(F, pts, [0.011, 0.008, 0.005], "H_wood_oak", 5, tn=wood, caps=False)
-        for k in range(12):
-            t = 0.25 + 0.75 * k / 12
+        for k in range(9):
+            t = 0.25 + 0.75 * k / 9
             px = pts[0][0] + (pts[2][0] - pts[0][0]) * t
             py = pts[0][1] + (pts[2][1] - pts[0][1]) * t
             pz = pts[0][2] + (pts[2][2] - pts[0][2]) * t
@@ -71,8 +71,8 @@ def plant_rubber_full(F, h=1.5, seed=8, pot_r=0.23):
     rnd = random.Random(seed)
     DE.pot(F, pot_r, 0.4, tn=(0.9, 0.88, 0.84, 1), m="H_ceramic")
     tube(F, [(0, 0, 0.38), (0.01, 0, h * 0.6), (0.0, 0.01, h - 0.08)], [0.026, 0.02, 0.012], "H_leaf", 8, tn=(0.35, 0.42, 0.3, 1))
-    for k in range(52):
-        t = 0.12 + 0.88 * k / 52
+    for k in range(40):
+        t = 0.12 + 0.88 * k / 40
         a = k * 2.4 + rnd.random() * 0.5
         DE.leaf(F, (0.0, 0.0, 0.38 + (h - 0.42) * t), (math.cos(a), math.sin(a), 0.28 + 0.2 * rnd.random()), 0.30 * (1.05 - 0.4 * t), 0.17,
                 droop=0.22, tn=(0.35 + 0.2 * rnd.random(), 0.65, 0.4, 1), segs=3)
@@ -222,6 +222,8 @@ def set_house(n):
     """H_plaster (walls + ceilings) becomes this house's patterned wallpaper T_h_wp<n>.png (same material count)"""
     K.MATS["H_plaster"] = dict(tex=f"T_h_wp{n}.png", rough=0.92, tint=True)
     K._M.pop("H_plaster", None)
+    import kit_paint
+    kit_paint.set_house(n)
 
 
 def shoes_pair(F, tn=(0.85, 0.85, 0.82, 1), sole=(0.95, 0.95, 0.95, 1)):
@@ -235,7 +237,7 @@ def shoes_pair(F, tn=(0.85, 0.85, 0.82, 1), sole=(0.95, 0.95, 0.95, 1)):
         rbox(G, -0.03, 0.03, -0.06, 0.0, 0.075, 0.1, "H_fabric", r=0.0, seg=1, tn=tn)
 
 
-def part_wall(F, length, openings=(), th=0.12, h=3.7, tn=None, name="part", along="x", trim_tn=None):
+def part_wall(F, length, openings=(), th=0.12, h=3.7, tn=None, name="part", along="x", trim_tn=None, low_tn=None, frieze_tn=None):
     """interior partition: a wall of `length` along local +x of F with doorways (s0, s1, head) (doorless, >= 1.6 m wide), both faces
     wallpapered, baseboards, a crown line, architrave on both sides, colliders per segment (camera boxes). Origin = start of the wall,
     the wall is centred on z = 0."""
@@ -251,13 +253,23 @@ def part_wall(F, length, openings=(), th=0.12, h=3.7, tn=None, name="part", alon
         segs.append((s, length))
     hz = th / 2
     for (a, b) in segs:
-        rbox(F, a, b, -hz, hz, 0.0, h, "H_plaster", r=0.0, seg=1, tn=tn, grain=(1, 0, 0))
+        if low_tn is not None:      # layered pass: the partition takes the room's wainscot / wall / frieze paint like the outer walls
+            rbox(F, a, b, -hz, hz, 0.0, 0.92, "H_plaster", r=0.0, seg=1, tn=low_tn, grain=(1, 0, 0), tile=3.7, skip=("+y",))
+            top = 2.78 if frieze_tn is not None else h
+            rbox(F, a, b, -hz, hz, 0.92, top, "H_plaster", r=0.0, seg=1, tn=tn, grain=(1, 0, 0), tile=3.7, skip=("-y", "+y") if top < h else ("-y",))
+            if top < h:
+                rbox(F, a, b, -hz, hz, top, h, "H_plaster", r=0.0, seg=1, tn=frieze_tn, grain=(1, 0, 0), tile=3.7, skip=("-y",))
+            for sgn in (-1, 1):
+                z0, z1 = (hz, hz + 0.024) if sgn > 0 else (-hz - 0.024, -hz)
+                rbox(F, a, b, z0, z1, 0.9, 0.95, "H_paint", r=0.0, seg=1, tn=ttn)
+        else:
+            rbox(F, a, b, -hz, hz, 0.0, h, "H_plaster", r=0.0, seg=1, tn=tn, grain=(1, 0, 0), tile=3.7)
         for sgn in (-1, 1):
             rbox(F, a, b, sgn * hz if sgn > 0 else -hz - 0.014, (hz + 0.014) if sgn > 0 else -hz, 0.0, 0.1, "H_paint", r=0.0, seg=1, tn=ttn)
             rbox(F, a, b, sgn * hz if sgn > 0 else -hz - 0.03, (hz + 0.03) if sgn > 0 else -hz, h - 0.08, h, "H_paint", r=0.0, seg=1, tn=ttn)
         col(F, a, b, -hz, hz, h, name=name, camera=True)
     for (a, b, hd) in ops:
-        rbox(F, a, b, -hz, hz, hd, h, "H_plaster", r=0.0, seg=1, tn=tn)
+        rbox(F, a, b, -hz, hz, hd, h, "H_plaster", r=0.0, seg=1, tn=tn, tile=3.7)
         for sgn in (-1, 1):
             z0, z1 = (hz, hz + 0.016) if sgn > 0 else (-hz - 0.016, -hz)
             rbox(F, a - 0.07, a, z0, z1, 0.0, hd + 0.07, "H_paint", r=0.0, seg=1, tn=ttn)

@@ -63,39 +63,67 @@ def threshold(F, x0, x1, z, depth=0.12, tn=None):
 
 
 # ----------------------------------------------------------------------------------------------- walls ----------
-def _wall_panels(W, length, h, ops, m, tn, t=WALL_T, y0=0.0):
+WALL_TILE = 3.7     # cottage pass: the wall texture is a 3.7 m repeat from the floor (wainscot below 0.92 m, limewash above)
+
+
+DADO = 0.92          # layered pass: the wall face is split at the chair rail so the wainscot takes its own paint (low_tn)
+PICTURE = 2.78       # layered pass: a picture rail; above it the frieze takes the ceiling colour (the 3.7 m rooms read cottage-proportioned)
+
+
+def _wall_panels(W, length, h, ops, m, tn, t=WALL_T, y0=0.0, low_tn=None, frieze_tn=None):
     """inner face + reveals. ops: [dict(s0, s1, y0, y1)] sorted by s0 (openings do not overlap)."""
     ops = sorted(ops, key=lambda o: o["s0"])
+
+    def q(a, b, ya, yb):
+        """one wall rectangle, split at the dado line (wainscot below in low_tn) and at the picture rail (frieze above in frieze_tn)"""
+        if frieze_tn is not None and ya < PICTURE - 1e-4 and yb > PICTURE + 1e-4:
+            q(a, b, ya, PICTURE)
+            gface(W, [(a, 0, PICTURE), (b, 0, PICTURE), (b, 0, yb), (a, 0, yb)], m, (1, 0, 0), WALL_TILE, (0, 1, 0), tn=frieze_tn)
+            return
+        if frieze_tn is not None and ya >= PICTURE - 1e-4:
+            gface(W, [(a, 0, ya), (b, 0, ya), (b, 0, yb), (a, 0, yb)], m, (1, 0, 0), WALL_TILE, (0, 1, 0), tn=frieze_tn)
+            return
+        if low_tn is not None and ya < DADO - 1e-4 < yb:
+            gface(W, [(a, 0, ya), (b, 0, ya), (b, 0, DADO), (a, 0, DADO)], m, (1, 0, 0), WALL_TILE, (0, 1, 0), tn=low_tn)
+            gface(W, [(a, 0, DADO), (b, 0, DADO), (b, 0, yb), (a, 0, yb)], m, (1, 0, 0), WALL_TILE, (0, 1, 0), tn=tn)
+        else:
+            gface(W, [(a, 0, ya), (b, 0, ya), (b, 0, yb), (a, 0, yb)], m, (1, 0, 0), WALL_TILE, (0, 1, 0),
+                  tn=(low_tn if (low_tn is not None and yb <= DADO + 1e-4) else tn))
     s = 0.0
     for o in ops:
         if o["s0"] > s + 1e-4:
-            gface(W, [(s, 0, y0), (o["s0"], 0, y0), (o["s0"], 0, h), (s, 0, h)], m, (1, 0, 0), 2.5, (0, 0, 1), tn=tn)
+            q(s, o["s0"], y0, h)
         # below / above the opening
         if o["y0"] > y0 + 1e-4:
-            gface(W, [(o["s0"], 0, y0), (o["s1"], 0, y0), (o["s1"], 0, o["y0"]), (o["s0"], 0, o["y0"])], m, (1, 0, 0), 2.5,
-                  (0, 0, 1), tn=tn)
+            q(o["s0"], o["s1"], y0, o["y0"])
         if o["y1"] < h - 1e-4:
-            gface(W, [(o["s0"], 0, o["y1"]), (o["s1"], 0, o["y1"]), (o["s1"], 0, h), (o["s0"], 0, h)], m, (1, 0, 0), 2.5,
-                  (0, 0, 1), tn=tn)
+            q(o["s0"], o["s1"], o["y1"], h)
         # reveals (jambs, sill, head), depth t
         gface(W, [(o["s0"], 0, o["y0"]), (o["s0"], -t, o["y0"]), (o["s0"], -t, o["y1"]), (o["s0"], 0, o["y1"])], m,
-              (0, 1, 0), 2.5, (1, 0, 0), tn=tn)
+              (0, 1, 0), WALL_TILE, (1, 0, 0), tn=tn)
         gface(W, [(o["s1"], 0, o["y0"]), (o["s1"], -t, o["y0"]), (o["s1"], -t, o["y1"]), (o["s1"], 0, o["y1"])], m,
-              (0, 1, 0), 2.5, (-1, 0, 0), tn=tn)
+              (0, 1, 0), WALL_TILE, (-1, 0, 0), tn=tn)
         gface(W, [(o["s0"], 0, o["y1"]), (o["s1"], 0, o["y1"]), (o["s1"], -t, o["y1"]), (o["s0"], -t, o["y1"])], m,
-              (1, 0, 0), 2.5, (0, 0, -1), tn=tn)
+              (1, 0, 0), WALL_TILE, (0, 0, -1), tn=tn)
         if o["y0"] > y0 + 1e-4:
             gface(W, [(o["s0"], 0, o["y0"]), (o["s1"], 0, o["y0"]), (o["s1"], -t, o["y0"]), (o["s0"], -t, o["y0"])], m,
-                  (1, 0, 0), 2.5, (0, 0, 1), tn=tn)
+                  (1, 0, 0), WALL_TILE, (0, 0, 1), tn=tn)
         s = o["s1"]
     if s < length - 1e-4:
-        gface(W, [(s, 0, y0), (length, 0, y0), (length, 0, h), (s, 0, h)], m, (1, 0, 0), 2.5, (0, 0, 1), tn=tn)
+        q(s, length, y0, h)
 
 
 def wall(W, length, h=CEILING_HEIGHT, ops=(), m="H_plaster", tn=None, base=True, crown=True, base_h=0.10,
-         base_tn=None, crown_tn=None):
+         base_tn=None, crown_tn=None, low_tn=None, frieze_tn=None):
     """one inner wall with openings, baseboard (걸레받이) and crown moulding; ops: list of dict(s0, s1, y0, y1)."""
-    _wall_panels(W, length, h, list(ops), m, tn)
+    _wall_panels(W, length, h, list(ops), m, tn, low_tn=low_tn, frieze_tn=frieze_tn if h > PICTURE + 0.2 else None)
+    if frieze_tn is not None and h > PICTURE + 0.2:      # the picture rail, broken at the openings that reach above it
+        highs = sorted([o for o in ops if o["y1"] > PICTURE - 0.03], key=lambda o: o["s0"])
+        s_ = 0.0
+        for o in highs + [dict(s0=length, s1=length)]:
+            if o["s0"] - s_ > 0.08:
+                rbox(W, s_, o["s0"], 0.0, 0.03, PICTURE - 0.035, PICTURE + 0.01, "H_paint", r=0.0, seg=1, tn=base_tn or PAL["paint_white"], skip=("-z",))
+            s_ = max(s_, o["s1"])
     if base:
         doors = sorted([o for o in ops if o["y0"] <= 0.001], key=lambda o: o["s0"])
         s = 0.0
@@ -110,6 +138,13 @@ def wall(W, length, h=CEILING_HEIGHT, ops=(), m="H_plaster", tn=None, base=True,
             btn = base_tn or PAL["paint_white"]
             rbox(W, a, b, 0.0, 0.016, 0.0, base_h, "H_paint", r=0.004, seg=1, tn=btn, grain=(1, 0, 0))
             rbox(W, a, b, 0.0, 0.010, base_h, base_h + 0.018, "H_paint", r=0.004, seg=1, tn=btn)
+    # cottage pass: a painted chair rail at 0.92 m over the wainscot (the panels are in the wall texture), broken at every opening below it
+    lows = sorted([o for o in ops if o["y0"] < 0.97], key=lambda o: o["s0"])
+    s_ = 0.0
+    for o in lows + [dict(s0=length, s1=length)]:
+        if o["s0"] - s_ > 0.08:
+            rbox(W, s_, o["s0"], 0.0, 0.024, 0.9, 0.95, "H_paint", r=0.0, seg=1, tn=base_tn or PAL["paint_white"], skip=("-z",))
+        s_ = max(s_, o["s1"])
     if crown:
         ctn = crown_tn or PAL["paint_white"]
         rbox(W, 0, length, 0.0, 0.05, h - 0.05, h, "H_paint", r=0.006, seg=1, tn=ctn)
@@ -158,11 +193,29 @@ def casing(W, s0, s1, y0, y1, top_extra=0.0, w=0.075, th=0.016, tn=None, bottom=
         rbox(W, s0, s1, 0.0, th, y0 - w, y0, "H_paint", r=0.003, seg=1, tn=tn)
 
 
+SILL = {"left": 0, "k": 0}     # layered pass 2: how many windows of the shell being drawn still get a sill vase (the house sets it)
+SILL_TNS = [(0.86, 0.9, 0.92, 1), (0.42, 0.58, 0.66, 1), (0.93, 0.9, 0.82, 1)]
+FLOWER_TNS = [(0.95, 0.75, 0.82, 1), (0.98, 0.96, 0.9, 1), (0.62, 0.66, 0.92, 1)]
+
+
+def sill_vase(W, x, y, k=0):
+    """a small jug of garden flowers on a window sill (centre x, sill top y): ceramic jug, stems, round flower heads"""
+    lathe(W, x, 0.0, y, [(0.0, 0.0), (0.035, 0.0), (0.045, 0.05), (0.03, 0.11), (0.034, 0.13), (0.0, 0.13)], "H_ceramic", 8,
+          tn=SILL_TNS[k % 3])
+    for j, (dx, dz, h) in enumerate(((-0.04, 0.01, 0.24), (0.0, -0.01, 0.29), (0.045, 0.012, 0.22), (0.02, 0.02, 0.26))):
+        tube(W, [(x, 0.0, y + 0.1), (x + dx, dz, y + h)], 0.003, "H_leaf", 3, tn=(0.35, 0.55, 0.3, 1), caps=False)
+        lathe(W, x + dx, dz, y + h - 0.012, [(0.0, 0.0), (0.022, 0.012), (0.016, 0.03), (0.0, 0.034)], "H_paint", 6, tn=FLOWER_TNS[(j + k) % 3])
+
+
 def window(W, s0, s1, y0, y1, style="grid", cols=2, rows=2, tn=None, frame_m="H_paint", paper=False):
     """window in an opening (s0..s1, y0..y1) of wall frame W: casing, interior sill (창턱), frame set 0.12 m deep,
     glass, mullions / lattice. style: grid | slide (2-sash sliding) | ttisal (Korean lattice, paper) | picture."""
     tn = tn or PAL["paint_white"]
     casing(W, s0, s1, y0, y1, tn=tn)
+    if SILL["left"] > 0 and y0 > 0.5 and style != "ttisal" and s1 - s0 > 0.8:
+        SILL["left"] -= 1
+        SILL["k"] += 1
+        sill_vase(W, s0 + 0.2 if SILL["k"] % 2 else s1 - 0.2, y0 + 0.005, SILL["k"])
     # sill board (projects 4 cm) + apron
     rbox(W, s0 - 0.09, s1 + 0.09, 0.0, 0.10, y0 - 0.025, y0 + 0.005, "H_paint", r=0.006, seg=2, tn=tn)
     rbox(W, s0 - 0.04, s1 + 0.04, 0.0, 0.016, y0 - 0.12, y0 - 0.025, "H_paint", r=0.004, seg=1, tn=tn)
@@ -282,11 +335,20 @@ def entry_door(W, s0, s1, h=2.9):
 
 
 # --------------------------------------------------------------------------------------------- soft furnishings --
-def curtain(W, s0, s1, y_top, y_bot, folds=8, z=0.10, amp=0.035, tn=None, m="H_fabric", rod=True, panels=2, gap=0.0):
-    """pleated curtain: two panels with sine folds (real geometry), rod with finials + rings. W frame (face z = 0)."""
+def curtain(W, s0, s1, y_top, y_bot, folds=8, z=0.17, amp=0.035, tn=None, m="H_drape", rod=True, panels=2, gap=0.0, tie_tn=None):
+    """pleated linen drape: two panels with soft double-sine folds (real geometry, smooth normals), a hem band, rings on the rod and a
+    short strap from every ring to the cloth. (realism pass 2026-11-17: z 0.10 -> 0.17 — the folds cut through the 10 cm window sill.)
+    layered pass: open panels (gap > 0) are gathered by a tie-back a third of the way up — narrow at the tie, flaring below it,
+    deeper folds where the cloth bunches — so a window reads as dressed, not as a wall of cloth.
+    owner 2026-11-20 ("커튼이 골판지 같아"): the cloth is the fine-weave linen `H_drape` in the house's curtain colour, more segments so the
+    folds are round rather than ridged, and a darker hem."""
     tn = tn or PAL["cream"]
-    n = 30
+    m = "H_drape" if m in ("H_floral", "H_check", "H_fabric") else m
     width = s1 - s0
+    open_ = panels == 2 and gap > 0.0
+    yt = y_bot + 0.38 * (y_top - y_bot)          # tie-back height
+    hem = tuple(c * 0.9 for c in tn[:3]) + (1,)
+    ring_x = []
     for pi_ in range(panels):
         a = s0 + pi_ * width / panels
         b = s0 + (pi_ + 1) * width / panels
@@ -295,30 +357,43 @@ def curtain(W, s0, s1, y_top, y_bot, folds=8, z=0.10, amp=0.035, tn=None, m="H_f
                 b -= gap
             else:
                 a += gap
-        nf = max(2, int(folds / panels))
-        cols = []
-        for i in range(n + 1):
-            u = i / n
-            x = a + (b - a) * u
-            zz = z + amp * math.sin(u * nf * 2 * math.pi) + 0.004 * math.sin(u * nf * 14)
-            cols.append((x, zz))
-        for i in range(n):
-            (xa, za), (xb, zb) = cols[i], cols[i + 1]
-            gface(W, [(xa, za, y_bot), (xb, zb, y_bot), (xb, zb, y_top), (xa, za, y_top)], m, (1, 0, 0), 0.6, (0, 1, 0),
-                  tn=tn, smooth=True)
-            gface(W, [(xa, za, y_bot), (xb, zb, y_bot), (xb, zb, y_top), (xa, za, y_top)], m, (1, 0, 0), 0.6, (0, -1, 0),
-                  tn=tn, smooth=True)
+        nf = max(3, int(folds / panels)) if not open_ else max(4, int(folds / 2))
+        n = 26 if not open_ else 15
+        outer = a if pi_ == 0 else b
+        hy = y_bot + 0.07                                                   # the hem band
+        rows = [(y_top, 1.0, 1.0), (hy, 1.0, 1.0), (y_bot, 1.0, 1.0)] if not open_ else [(y_top, 1.0, 1.0), (yt, 0.42, 1.7), (hy, 0.7, 1.25), (y_bot, 0.7, 1.25)]
+        ph = 0.9 * pi_
+
+        def pt(u, y, k, ak):
+            x = outer + ((a + (b - a) * u) - outer) * k
+            fold = 0.72 * math.sin(u * nf * 2 * math.pi + ph) + 0.28 * math.sin(u * nf * 2 * math.pi * 2.3 + 1.7 + ph)
+            zz = z + amp * ak * fold + (amp * 0.6 if ak > 1.5 else 0.0)
+            return (x, zz, y)
+        for r in range(len(rows) - 1):
+            (ya, ka, aa), (yb, kb, ab) = rows[r], rows[r + 1]
+            tint = hem if r == len(rows) - 2 else tn
+            for i in range(n):
+                u0, u1 = i / n, (i + 1) / n
+                P = [pt(u0, yb, kb, ab), pt(u1, yb, kb, ab), pt(u1, ya, ka, aa), pt(u0, ya, ka, aa)]
+                gface(W, P, m, (1, 0, 0), 0.6, (0, 1, 0), tn=tint, smooth=True)
+                gface(W, P, m, (1, 0, 0), 0.6, (0, -1, 0), tn=tint, smooth=True)
+        # one ring per fold crest on the rod, a strap down to the cloth's top edge
+        for f_ in range(0, nf, 2 if open_ else 1):
+            u = (f_ + 0.25) / nf
+            ring_x.append(outer + ((a + (b - a) * u) - outer))
+        if open_:
+            xa, xb = sorted((outer + (a - outer) * 0.42, outer + (b - outer) * 0.42))
+            rbox(W, xa - 0.012, xb + 0.012, z - amp * 1.9, z + amp * 2.6, yt - 0.03, yt + 0.03, m, r=0.0, seg=1, tile=0.3,
+                 tn=tie_tn or tuple(c * 0.8 for c in tn[:3]) + (1,))
     if rod:
-        tube(W, [(s0 - 0.12, z + 0.04, y_top + 0.06), (s1 + 0.12, z + 0.04, y_top + 0.06)], 0.014, "H_metal", 8,
-             tn=(0.18, 0.18, 0.18, 1))
+        ry, rz = y_top + 0.06, z + 0.04
+        tube(W, [(s0 - 0.12, rz, ry), (s1 + 0.12, rz, ry)], 0.014, "H_metal", 8, tn=(0.18, 0.18, 0.18, 1))
         for xx in (s0 - 0.12, s1 + 0.12):
-            lathe(W, xx, z + 0.04, y_top + 0.06 - 0.03, [(0, 0), (0.025, 0.0), (0.03, 0.03), (0.02, 0.06), (0, 0.062)], "H_metal",
-                  10, tn=(0.18, 0.18, 0.18, 1))
-            # (lathe is vertical; the finial is a little knob above the rod end)
-        for i in range(6):
-            x = s0 + width * (i + 0.5) / 6
-            tube(W, [(x - 0.012, z + 0.04, y_top + 0.06), (x, z + 0.04, y_top + 0.02), (x + 0.012, z + 0.04, y_top + 0.06)], 0.004, "H_metal", 6,
-                 tn=(0.18, 0.18, 0.18, 1), caps=False)
+            lathe(W, xx, rz, ry - 0.03, [(0, 0), (0.025, 0.0), (0.03, 0.03), (0.02, 0.06), (0, 0.062)], "H_metal", 10, tn=(0.18, 0.18, 0.18, 1))
+        for x in ring_x:
+            circ = [(x, rz + 0.024 * math.cos(t), ry + 0.024 * math.sin(t)) for t in [2 * math.pi * k / 8 for k in range(9)]]
+            tube(W, circ, 0.0035, "H_metal", 3, tn=(0.2, 0.2, 0.2, 1), caps=False)
+            tube(W, [(x, rz - 0.01, ry - 0.022), (x, z + 0.012, y_top + 0.005)], 0.003, "H_metal", 4, tn=(0.2, 0.2, 0.2, 1), caps=False)
 
 
 def blind_bamboo(W, s0, s1, y_top, y_bot, z=0.03):
@@ -530,7 +605,7 @@ def stair_guard_2f(F, wall_side="left", width=STAIR_WIDTH, length=(STAIR_STEPS -
 
 
 def room_shell(F, W=10.6, D=7.8, h=CEILING_HEIGHT, ops=None, hole=None, floor_kind="oak", wall_tn=None, floor_tn=None, lights=((2.6, 3.9), (7.9, 3.9)),
-               skip=(), floor_hole=None):
+               skip=(), floor_hole=None, low_tn=None, trim_tn=None, ceil_tn=None):
     """One whole room: floor, ceiling (optional stairwell hole), four walls with their openings, baseboards, crown mouldings.
     ops = {"front"|"right"|"back"|"left": [dict(s0, s1, y0, y1)]} in each wall's own frame (wall_frames); returns the frames so
     the caller can place windows / doors / curtains with the same coordinates."""
@@ -548,9 +623,9 @@ def room_shell(F, W=10.6, D=7.8, h=CEILING_HEIGHT, ops=None, hole=None, floor_ki
             for (a, b, c, d, hint) in ((hx0, hz0, hx0, hz1, (1, 0, 0)), (hx1, hz0, hx1, hz1, (-1, 0, 0)), (hx0, hz0, hx1, hz0, (0, 1, 0)),
                                        (hx0, hz1, hx1, hz1, (0, -1, 0))):
                 gface(F, [(a, b, 0), (c, d, 0), (c, d, -0.3), (a, b, -0.3)], "H_plaster", (1, 0, 0), 2.5, hint, tn=wall_tn)
-    ceiling(F, W, D, h, hole=hole, tn=wall_tn, lights=lights)
+    ceiling(F, W, D, h, hole=hole, tn=ceil_tn or wall_tn, lights=lights)
     for k, (Wf, ln) in fr.items():
-        wall(Wf, ln, h, ops.get(k, []), tn=wall_tn)
+        wall(Wf, ln, h, ops.get(k, []), tn=wall_tn, low_tn=low_tn, base_tn=trim_tn, crown_tn=trim_tn, frieze_tn=ceil_tn if low_tn is not None else None)
     return fr
 
 

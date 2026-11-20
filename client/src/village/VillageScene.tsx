@@ -1,13 +1,13 @@
 import { MemorialOverlays } from "./memorial/MemorialOverlays";
 import { isTouchDevice } from "../device";
-import { Suspense, useEffect, useLayoutEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { PlayShell } from "../game/PlayShell";
 import { villageActiveMap } from "../game/activeMap";
 import { clearClickTarget } from "../game/clickMove";
 import { fireTarget, setTargetHandler, setTargetSource } from "../game/interactTargets";
-import { takeArmedHouseUse } from "./houseTap";
+import { disarmHouseUse, takeArmedHouseUse } from "./houseTap";
 import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor, sendUseStair } from "../net/connection";
@@ -349,8 +349,14 @@ function VillageDoors({ pose }: { pose: Pose }) {
     };
   }, [pose, boarded, keypadOpen]);
   // A tap on a house's stair or front door armed its use (houseTap.ts): once the walk has brought us into the pad's reach, it is used.
+  const lastArea = useRef<string | null>(null);
   useFrame(() => {
     const area = localArea();
+    // Going in, out or up / down: a use armed by an earlier tap is stale (owner 2026-11-20: never climb without the player's own use)
+    if (lastArea.current !== area) {
+      lastArea.current = area;
+      disarmHouseUse();
+    }
     // A tap on a ride, or a press of its 타기 from afar, walked to the pad: the board is sent on arrival (rideBoard.ts)
     if (area === "park") {
       const key = takeArmedRide(pose.x, pose.z);

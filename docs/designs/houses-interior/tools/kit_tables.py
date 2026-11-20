@@ -164,7 +164,7 @@ def dressing_table(F, w=1.0, d=0.45, h=0.74, tn=None):
         pts = [(rr * math.cos(2 * math.pi * i / n), 0.0, rr * math.sin(2 * math.pi * i / n)) for i in range(n)]
         gface(mir, pts, "H_metal", (1, 0, 0), 1.0, (0, 1, 0), tn=(0.9, 0.85, 0.7, 1))
         pts2 = [(0.29 * math.cos(2 * math.pi * i / n), 0.004, 0.29 * math.sin(2 * math.pi * i / n)) for i in range(n)]
-        gface(mir, pts2, "H_glass", (1, 0, 0), 1.0, (0, 1, 0))
+        gface(mir, pts2, "H_mirror", (1, 0, 0), 1.0, (0, 1, 0))
     for (x, hh) in ((-0.3, 0.12), (-0.2, 0.09), (0.3, 0.1)):
         lathe(F, x, 0.02, h, [(0, 0), (0.025, 0.0), (0.028, hh * 0.6), (0.012, hh), (0.012, hh + 0.03), (0, hh + 0.03)], "H_ceramic", 12,
               tn=(0.9, 0.8, 0.8, 1))
