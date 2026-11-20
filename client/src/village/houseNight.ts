@@ -87,11 +87,31 @@ varying vec3 vHouseWorld;
 void main() {`;
 const GLOW_COLOR = /* glsl */ `#include <color_fragment>
 	diffuseColor.rgb *= mix( ${GLOW_DAY.toFixed(3)}, 1.0, uHouseNight );${FLAME_GLSL}`;
+/**
+ * A lamp's bulb at night: a warm white that is over 1 (the PC post chain's bloom makes it glow; the phone just sees it bright).
+ * By day it is the plain dimmed bulb.
+ */
+const BULB_COLOR = /* glsl */ `#include <color_fragment>
+	diffuseColor.rgb *= mix( ${GLOW_DAY.toFixed(3)}, 1.0, uHouseNight );
+	diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 1.5, 1.15, 0.7 ), uHouseNight );${FLAME_GLSL}`;
+/**
+ * A lamp shade at night (owner 2026-11-21: the house-5 floor lamp read as flat cream paint, not switched on): lit fabric — a warm
+ * glow, brightest at the bottom rim where the bulb shines down through (vGlowT 0 at the rim .. 1 at the top, a vertex attribute
+ * houseLampGlow.ts adds), a faint weave so it reads as cloth. By day it stays as it was.
+ */
+const SHADE_COLOR = /* glsl */ `#include <color_fragment>
+	vec3 shadeDay = diffuseColor.rgb * ${GLOW_DAY.toFixed(3)};
+	float shadeWeave = 1.0 + 0.035 * sin( ( vHouseWorld.x + vHouseWorld.z ) * 310.0 ) * sin( vHouseWorld.y * 290.0 );
+	vec3 shadeNight = diffuseColor.rgb * mix( vec3( 1.85, 1.45, 0.95 ), vec3( 0.98, 0.66, 0.34 ), smoothstep( 0.0, 0.85, vGlowT ) ) * shadeWeave;
+	diffuseColor.rgb = mix( shadeDay, shadeNight, uHouseNight );${FLAME_GLSL}`;
 
 /** Let a bulb / lamp-shade material glow at night and calm down by day (idempotent). */
 export function patchHouseGlowMaterial(material: Material): void {
   if (patched.has(material)) return;
   patched.add(material);
+  const legacy = import.meta.env.DEV && (globalThis as { __cvLampOld?: boolean }).__cvLampOld; // dev: the old flat lamp look (before shots)
+  const shade = !legacy && material.name.endsWith("shade");
+  const bulb = !legacy && !shade && material.name.endsWith("lamp");
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uHouseNight = houseNightUniform;
     shader.uniforms.uHearthMin = houseHearthMin;
@@ -99,12 +119,18 @@ export function patchHouseGlowMaterial(material: Material): void {
     shader.uniforms.uEmberY = houseEmberY;
     shader.uniforms.uHouseFireTime = houseFireTime;
     // Locate the model's ember bed and old flame cards inside the exported hearth.
+    const NL = "\n";
+    const vPars = "varying vec3 vHouseWorld;" + (shade ? NL + "attribute float glowT;" + NL + "varying float vGlowTv;" : "");
+    const vSet = "vHouseWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;" + (shade ? NL + "vGlowTv = glowT;" : "");
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vHouseWorld;")
-      .replace("#include <project_vertex>", "#include <project_vertex>\nvHouseWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
-    shader.fragmentShader = shader.fragmentShader.replace("void main() {", GLOW_PARS).replace("#include <color_fragment>", GLOW_COLOR);
+      .replace("#include <common>", "#include <common>" + NL + vPars)
+      .replace("#include <project_vertex>", "#include <project_vertex>" + NL + vSet);
+    const fPars = shade ? GLOW_PARS.replace("varying vec3 vHouseWorld;", "varying vec3 vHouseWorld;" + NL + "varying float vGlowTv;" + NL + "#define vGlowT vGlowTv") : GLOW_PARS;
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", fPars)
+      .replace("#include <color_fragment>", shade ? SHADE_COLOR : bulb ? BULB_COLOR : GLOW_COLOR);
   };
-  material.customProgramCacheKey = () => "house-glow-night-fire";
+  material.customProgramCacheKey = () => (shade ? "house-glow-shade" : bulb ? "house-glow-bulb" : "house-glow-night-fire");
   material.needsUpdate = true;
 }
 
