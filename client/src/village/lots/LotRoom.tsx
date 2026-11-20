@@ -40,7 +40,8 @@ import { beginHouseEntry, houseEntryReady, houseEntryState } from "../houseEntry
 import { dayNight } from "../dayNightDriver";
 import { versionedUrl } from "../modelUrl";
 import { lotGltfLoader, loadManifestMaps, disposeLoadedLots } from "./lotsLoader";
-import { gardenWindow } from "./gardenWindow";
+import { WINDOW_VIEWS, gardenWindow, windowViewWeights } from "./gardenWindow";
+import { LOT_ROOM_LIGHT } from "../DayNight";
 import { applyLotTextures, drawnTris, lotSurfaceMaterial } from "./lotsPrep";
 import { roomBaked } from "./roomBaked";
 import { LotTextureBank, capMips, fetchLotManifest, loadLotOwnMap, manifestPaths, type LotMatSpec } from "./lotTextures";
@@ -91,6 +92,9 @@ export const ROOM_OWN_PHONE_MAX = { color: 1024, detail: 512 } as const;
 
 /** A room's lightmaps on a phone: their top mips dropped to this size (the 2048 bakes; 1024 is still 2 cm a texel). */
 export const ROOM_LIGHTMAP_PHONE_MAX = 1024;
+
+/** The windows' village panoramas on a phone (3072 x 1536 on a PC): 1536 wide, ~8.5 texels a degree round the eye-level band. */
+export const WINDOW_VIEW_PHONE_MAX = 1536;
 
 /**
  * Rooms drawn at a higher pixel ratio on a phone than the light tier's 1 (the village keeps 1: 100 players, no stutter): the
@@ -592,9 +596,9 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
     const { specs, own, ownExtra, textures } = await loadManifestMaps(manifests, gl, bank, (set) => roomSetFull(unit, set, phone));
     if (phone) {
       // a phone: the room's own atlases at most 1024 (their normal / ORM 512), 4x anisotropy
-      for (const t of Object.values(own)) {
+      for (const [name, t] of Object.entries(own)) {
         t.anisotropy = Math.min(t.anisotropy, ROOM_ANISOTROPY.mobile);
-        capMips(t, ROOM_OWN_PHONE_MAX.color);
+        capMips(t, specs[name]?.kind === "garden" ? WINDOW_VIEW_PHONE_MAX : ROOM_OWN_PHONE_MAX.color);
       }
       for (const x of Object.values(ownExtra))
         for (const t of [x.normal, x.orm]) {
@@ -602,6 +606,26 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
           t.anisotropy = Math.min(t.anisotropy, ROOM_ANISOTROPY.mobile);
           capMips(t, ROOM_OWN_PHONE_MAX.detail);
         }
+    }
+    // the village behind the windows: the evening's and the night's panoramas (the day's is the manifest's own M_garden map)
+    const view = WINDOW_VIEWS[unit];
+    // (index-aligned with the keys after the day's: a key that failed to load stays undefined and shows the day's)
+    const viewMaps: (Texture | undefined)[] = [];
+    if (view) {
+      const more = await Promise.allSettled(view.keys.slice(1).map((k) => loadLotOwnMap(gl, `/models/village/${k.file}`)));
+      for (const r of more) {
+        if (r.status !== "fulfilled") {
+          console.error("[lots] window view", unit, r.reason);
+          viewMaps.push(undefined);
+          continue;
+        }
+        if (phone) {
+          r.value.anisotropy = Math.min(r.value.anisotropy, ROOM_ANISOTROPY.mobile);
+          capMips(r.value, WINDOW_VIEW_PHONE_MAX);
+        }
+        textures.push(r.value);
+        viewMaps.push(r.value);
+      }
     }
     const scene = gltf.scene;
     scene.updateMatrixWorld(true);
@@ -675,7 +699,7 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
       } else if (spec?.kind === "glass" || src.name === "M_glass") {
         m = new MeshStandardMaterial({ name: src.name, color: "#c9d6dc", roughness: 0.05, metalness: 0, transparent: true, opacity: 0.22, depthWrite: false });
       } else if (spec?.kind === "garden") {
-        const b = gardenWindow(own[src.name]);
+        const b = gardenWindow([own[src.name], ...viewMaps], view, room.origin, 1 / LOT_ROOM_LIGHT.exposure);
         screens.push(b);
         m = b;
       } else if (spec?.kind === "screen") {
@@ -1112,9 +1136,12 @@ export function LotRoomArea({ area, pose }: { area: string; pose: Pose }) {
     for (const g of loaded.glass) g.m.emissiveIntensity = g.night + (g.day - g.night) * day;
     colour.setScalar(0.22 + 0.78 * day);
     for (const m of loaded.screens) {
-      if (m.name === "M_garden") {
-        m.color.setRGB(0.018 + 0.982 * day, 0.032 + 0.968 * day, 0.071 + 0.929 * day);
-      } else m.color.copy(colour);
+      const v = m.userData.windowView as { uViewWeight: { value: Vector3 } } | undefined;
+      if (v) {
+        // the village's own light at this hour (evening: the sun in the west, -x)
+        const keys = WINDOW_VIEWS[loaded.unit]?.keys ?? [];
+        windowViewWeights(keys, o.night, o.golden, o.sunDir[0] < 0, v.uViewWeight.value);
+      } else if (m.name !== "M_garden") m.color.copy(colour);
     }
     loaded.glow.opacity = Math.max(0.25, o.lights);
     // the room's lamps: brighter at night (they carry the room then), the fill lower

@@ -118,7 +118,7 @@
     "M_garden": {
       "kind": "garden",
       "maps": {
-        "albedo": "../garden/ninomaru_garden.ktx2"
+        "albedo": "../windowview/lot_library_reading_day.ktx2"
       }
     },
     "M_glass": {

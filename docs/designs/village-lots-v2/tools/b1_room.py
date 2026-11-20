@@ -11,7 +11,10 @@ import b1_parts as P
 from b1_geom import Mesh, S
 
 GARDEN = S("M_garden")
-GARDEN_MAP = {"garden": "../garden/ninomaru_garden.ktx2"}
+# The windows show the real village, baked from the running game at the room's place (e2e/window-view-bake.mjs,
+# window_view_atlas.mjs): each room names its own day panorama (the evening and night ones come from windowViews.json).
+def garden_map(unit):
+    return {"garden": "../windowview/%s_day.ktx2" % unit}
 
 
 def fiddle_leaf(m, stem, angle, length, width, rise, leaf):
