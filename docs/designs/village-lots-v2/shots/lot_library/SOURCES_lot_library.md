@@ -37,8 +37,19 @@
 
 ## 교실과 열람실의 창밖 정원
 
-두 방의 창밖은 Greg Zaal의 CC0 전방위 사진 [Ninomaru Teien](https://polyhaven.com/a/ninomaru_teien)을 사용한다. Blender 5.3에 포함된 1K 원본 `forest.exr`의 HDR 명암을 SDR로 변환하고, 1024×512 ETC1S KTX2 한 장에 전체 밉 체인을 넣었다. 세로로 꺾인 돌출창을 포함한 모든 유리면에서 같은 시선 방향으로 이 사진을 읽는다.
+두 방의 창은 Greg Zaal의 CC0 전방위 사진 *Ninomaru Teien*을 공유한다. 배포자가 톤 매핑한 8192×4096 JPEG에서 수평선 근처(아래 13°~위 23°)를 180°씩 두 장으로 나누어 뽑았다. 시선을 한 바퀴 돌리면 이 구간에는 가로 2032텍셀이 쓰인다. 천정과 바닥 방향은 나머지 두 구역에 담고 경계 3°를 겹쳤다. 돌출창의 꺾인 유리면에서도 같은 시선은 같은 방향의 사진을 읽는다. 네 구역은 1024×512, 밉맵 11단계의 sRGB ETC1S KTX2 한 장으로 배포한다. [작품과 라이선스](https://polyhaven.com/a/ninomaru_teien) · [8K 원본](https://dl.polyhaven.org/file/ph-assets/HDRIs/extra/Tonemapped%20JPG/ninomaru_teien.jpg)
+
+저장소 루트에서 다음 명령으로 게임용 KTX2를 생성한다. Blender에서 창의 배경을 굽는 경우에는 전체 원본을 등거리 원통도법 PNG로 변환해 `ninomaru_garden.png`로 넣는다.
+
+```sh
+node docs/designs/village-lots-v2/tools/b1_garden_atlas.mjs ninomaru_teien.jpg garden_atlas.png
+node docs/designs/village-lots-v2/tools/png2ktx2.mjs --png garden_atlas.png --out client/public/models/village/lots/garden/ninomaru_garden.ktx2
+```
 
 ## 열람실 지구본 지도
 
 육지와 강의 윤곽은 Natural Earth의 1:110m 퍼블릭 도메인 자료를 사용했다. 경위도망과 해안 음영을 더한 1024×512 지도를 구에 감고, 원본의 북극과 남극을 지구본 축에 맞췄다. [육지](https://www.naturalearthdata.com/downloads/110m-physical-vectors/110m-land/) · [강](https://www.naturalearthdata.com/downloads/110m-physical-vectors/110m-rivers-lake-centerlines/) · [생성 스크립트](../../tools/b1_globe_map.mjs)
+
+## 열람실 책과 깔개 (2026-11-20)
+
+책등·책장 단면·펼친 책·깔개는 사진이나 남의 그림 없이 [b1_book_atlas.mjs](../../tools/b1_book_atlas.mjs)가 노이즈와 규칙으로 직접 그린 것이다(가죽 결, 책 천의 씨실·날실, 양피지, 종이 커버, 띠·금박 줄·꽃무늬 도장, 제목 조각의 글자 비슷한 금박 획 — 실제 책 제목이나 글자는 없다). 페르시아풍 깔개(메달리온·테두리·덩굴·매듭·염색 얼룩)도 같은 스크립트가 그린다. 아틀라스 칸은 `tools/library_book_atlas.json`, 책 모양(둥근 책등·책장 덩어리·표지판·세트·기운 책·눕힌 더미)은 [library_books.py](../../tools/library_books.py).

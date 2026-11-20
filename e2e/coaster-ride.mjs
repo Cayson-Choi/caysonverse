@@ -169,12 +169,13 @@ await run.step("board", async () => {
   await act(A);
   const seated = await until(async () => (await probe(A)).slot >= 0, 8000);
   run.check("A boards: the server gives a seat", seated);
+  // B presses right away (the window is ~29 s and a phone's screenshots are slow): the second rider takes the other front seat
+  await act(B);
   const me = await probe(A);
   run.check("A's seat is 0 (the front row of the front car, the first free seat)", me.slot === 0, { slot: me.slot });
   const carOf = (slot) => A.page.evaluate(async (slot) => (await window.__imp("/land/coaster.ts")).seatCar(slot), slot);
   const carA = await carOf(me.slot);
   run.check("a lone rider sits in the FRONT car (nothing ahead but the track)", carA.car === 0, carA);
-  await act(B);
   const bSeated = await until(async () => (await probe(B)).slot >= 0, 8000);
   const meB = await probe(B);
   run.check("the second rider gets the other front seat (seat 1, front car, right side)", bSeated && meB.slot === 1 && (await carOf(meB.slot)).car === 0, { slot: meB.slot });

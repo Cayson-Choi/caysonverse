@@ -26,7 +26,10 @@ export interface LotMatSpec {
   metal?: boolean;
   /** A linear RGB multiplier on the set's albedo (the material's colour): one set, a lighter or warmer stone of it. */
   albedoGain?: [number, number, number];
-  maps?: { albedo: string };
+  /** An `own` atlas: the albedo (sRGB) and, optionally, a tangent-space normal map and an ORM (G roughness, B metal), linear. */
+  maps?: { albedo: string; normal?: string; orm?: string };
+  /** An `own` material whose COLOR_0 tints the atlas (the reading room's books: their side boards take the spine's colour). */
+  vertexColor?: boolean;
 }
 
 export interface LotManifest {
@@ -50,10 +53,10 @@ export async function fetchLotManifest(path: string, signal?: AbortSignal): Prom
   return { dir: LOTS_MODEL_BASE + path.slice(0, path.lastIndexOf("/") + 1), materials: meta.materials };
 }
 
-/** A lot's own map (an `own` atlas, the light pools): sRGB, glTF UVs, no repeat. */
-export async function loadLotOwnMap(gl: WebGLRenderer, url: string): Promise<Texture> {
+/** A lot's own map (an `own` atlas, the light pools): sRGB (a normal map or an ORM: `srgb` false), glTF UVs, no repeat, mips + 16x anisotropy. */
+export async function loadLotOwnMap(gl: WebGLRenderer, url: string, srgb = true): Promise<Texture> {
   const tex = await getPbrKtx2Loader(gl).loadAsync(versionedUrl(url));
-  tex.colorSpace = SRGBColorSpace;
+  tex.colorSpace = srgb ? SRGBColorSpace : NoColorSpace;
   tex.flipY = false;
   tex.anisotropy = Math.min(16, gl.capabilities.getMaxAnisotropy());
   tex.needsUpdate = true;
@@ -119,15 +122,26 @@ export const NEAR_KEEP_MS = 20_000;
 export class LotTextureBank {
   readonly tier: PbrTier;
   private gl: WebGLRenderer;
+  /** A set's tier when it differs from the bank's (a room's close-up sets at 2K on a PC: `ROOM_TEXTURES.pc2k`). */
+  private readonly tierOf: ((id: string) => PbrTier) | null;
+  /** Anisotropic filtering of the near sets' clones (null: the library's per-tier default). */
+  private readonly anisotropy: number | null;
   private sets = new Map<string, Entry>();
   private changed = false;
   /** Textures to upload a few per frame (`pump`) before they are shown; off for a room (it uploads under its entry cover). */
   private readonly staged: boolean;
   private queue: Texture[] = [];
-  constructor(gl: WebGLRenderer, tier: PbrTier, staged = true) {
+  constructor(gl: WebGLRenderer, tier: PbrTier, staged = true, opts: { tierOf?: (id: string) => PbrTier; anisotropy?: number } = {}) {
     this.gl = gl;
     this.tier = tier;
     this.staged = staged;
+    this.tierOf = opts.tierOf ?? null;
+    this.anisotropy = opts.anisotropy ?? null;
+  }
+
+  /** The tier a set's near maps are read at. */
+  setTier(id: string): PbrTier {
+    return this.tierOf ? this.tierOf(id) : this.tier;
   }
 
   /**
@@ -196,6 +210,7 @@ export class LotTextureBank {
     const tile = pbrSetInfo(id).tileMeters;
     c.repeat.set(1 / tile, 1 / tile);
     c.wrapS = c.wrapT = RepeatWrapping;
+    if (this.anisotropy !== null) c.anisotropy = Math.min(this.anisotropy, this.gl.capabilities.getMaxAnisotropy());
     c.needsUpdate = true;
     return c;
   }
@@ -232,16 +247,17 @@ export class LotTextureBank {
 
   private requestNear(id: string, e: Entry): Promise<void> {
     if (!e.near) {
-      e.near = acquireSet(id, this.tier, this.gl).then((s) => {
+      const tier = this.setTier(id);
+      e.near = acquireSet(id, tier, this.gl).then((s) => {
         if (this.sets.get(id) !== e) {
-          releaseSet(id, this.tier);
+          releaseSet(id, tier);
           return;
         }
         this.stageNear(e, { map: this.repeat(id, s.map), normalMap: this.repeat(id, s.normalMap), orm: this.repeat(id, s.orm) });
       });
       e.near.catch(() => {
         e.near = null;
-        releaseSet(id, this.tier);
+        releaseSet(id, tier);
       });
     }
     return e.near;
@@ -257,7 +273,7 @@ export class LotTextureBank {
     e.near = null;
     e.nearTex = null;
     e.nearStaged = null;
-    releaseSet(id, this.tier);
+    releaseSet(id, this.setTier(id));
   }
 
   /** Mark which sets the detailed lots want now; starts their loads, lets go of the others after NEAR_KEEP_MS. */
@@ -303,8 +319,9 @@ export class LotTextureBank {
       if (e.nearTex) {
         nearSets++;
         const info = pbrSetInfo(id);
+        const tier = this.setTier(id);
         for (const kind of ["albedo", "normal", "orm"] as const) {
-          const side = info.tiers[this.tier]?.[kind] ? (this.tier === "2k" ? 2048 : 1024) : 1024;
+          const side = info.tiers[tier]?.[kind] ? (tier === "2k" ? 2048 : 1024) : 1024;
           near += side * side * (kind === "albedo" && device === "mobile" ? 0.5 : 1) * (4 / 3);
         }
       }

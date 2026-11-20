@@ -96,8 +96,8 @@ SKULL = [(face_section_z(v), w/PIXELS_PER_METRE, depth(f), depth(b)) for v,w,f,b
 FACE_PLANES = {
     171:(3,594.5), 169.8:(8.2,590), 168:(14.1,584.6), 165:(20.1,576.7),
     162:(23.7,571.8), 158:(26.9,569.4), 154:(29.5,568.5), 150:(31.9,568),
-    147:(33.6,567.3), 142:(36.5,566.2), 136:(39.5,565.7), 130:(41.7,565.2),
-    122:(43.3,565), 115:(43.6,565.2), 108:(43.2,564.5),
+    147:(33.5,567.3), 142:(35.6,566.2), 136:(37.3,565.7), 130:(38.6,565.2),
+    122:(40.0,565), 115:(41.1,565.2), 108:(42.0,564.5),
     103:(42.5,563.2), 96:(42.6,561)}
 FACE = []
 for row,width,front,back in SECTIONS:
@@ -169,15 +169,16 @@ def relief(x,z):
           + .0018*paired(.078,lid-.009,.045,.015)
           - .0067*paired(.065,1.693,.058,.039)
           - .0030*paired(.038,lid,.008,.0065))
-    cheeks=(.023*paired(.096,1.627,.077,.072)
-            + .0080*paired(.099,1.601,.078,.060))
-    # The lobes round over the alar crease on the cheek and return underneath
-    # into the nostril. Their low edge sits above the rounded columella.
-    wings=(.0087*paired(.028,1.604,.017,.016)
-           - .0095*paired(.036,1.609,.027,.030)
-           - .0018*paired(.019,1.613,.010,.016)
-           - .0016*paired(.029,1.626,.016,.011)
-           - .0038*paired(.020,1.590,.010,.0075))
+    cheeks=(.023*paired(.094,1.627,.063,.072)
+            + .0080*paired(.098,1.601,.066,.060))
+    # The two alae rise independently of the tip. Each wraps around a shallow
+    # recess underneath, then seats in a curved crease on the cheek plane.
+    wing_height=(z-1.601)/.017
+    crease_x=.040-.005*min(4.,wing_height**2)
+    wings=(.0190*paired(.0295,1.602,.0145,.0155)
+           - .0036*paired(crease_x,1.603,.006,.017)
+           - .0025*paired(.021,1.617,.0085,.013)
+           - .0058*paired(.021,1.588,.011,.0058))
     seam=lip_line(x)
     mouth=(.0040*paired(.018,seam+.006,.018,.0060)
            + .0055*paired(.014,seam-.008,.023,.0075)
@@ -189,24 +190,39 @@ def relief(x,z):
 
 def fy(x,z):
     w,front,back=profile(FACE,z)
-    q=min(.99999,abs(x)/w)
+    # Keep the forward malar plane full while folding the outer cheek back to
+    # the temple-to-jaw line. The new section width takes effect at its rim.
+    skull_width=profile(SKULL,z)[0]
+    outer=max(0.,min(1.,(abs(x)/w-.63)/.37))
+    section_width=w+(max(w,skull_width)-w)*(1-outer*outer*(3-2*outer))
+    q=min(.99999,abs(x)/section_width)
     x-=FACE_AXIS
     outline=profile(MIDLINE,z)[0]
-    bulb=exp(-((z-1.600)/.025)**2)
+    bulb=exp(-((z-1.599)/.026)**2)
     muzzle=1/(1+exp(min(80.,(z-1.576)/.0085)))
     chin=1/(1+exp(min(80.,(z-1.517)/.010)))
-    spread=(.0235 + .0102*bulb - .0076*exp(-((z-1.580)/.009)**2)
+    spread=(.0235 + .0135*bulb - .0156*exp(-((z-1.580)/.009)**2)
             + .0050*exp(-((z-1.71)/.039)**2) + .020*muzzle + .046*chin)
     # Ease the cross section continuously from the bridge to the rounded tip
     # and over the columella, preserving the measured midline at every height.
     bridge=exp(-((z-1.655)/.053)**4)
-    ridge=(front-outline)*exp(-(abs(x)/spread)**(2+.19*bridge+.10*bulb))
+    ridge=(front-outline)*exp(-(abs(x)/spread)**(2+.19*bridge+.26*bulb))
     center=.5*(front+back)
     # Constrain only the midline to the measured sagittal profile. Spreading
     # the lip's correction across a whole section cuts a shelf into both cheeks.
     axial_correction=relief(0,z)*exp(-(x/.023)**2)
     lip_seam=.0019*exp(-(x/.038)**4-((z-lip_line(x))/.0029)**2)
-    return center-(center-front)*(1-q*q)**.50-(ridge+relief(x,z)-axial_correction-lip_seam)*(1-q*q)**.65
+    y=center-(center-front)*(1-q*q)**.50-(ridge+relief(x,z)-axial_correction-lip_seam)*(1-q*q)**.65
+    # The wings flare to the sides but sit behind the tip in both profiles.
+    # Round the transverse reach against the measured sagittal silhouette.
+    if 1.577 < z < 1.633 and abs(x)<.060:
+        roll=min(4.,(x/.020)**2)
+        limit=outline+.0028*roll
+        distance=limit-y
+        bevel=.0016*min(1.,roll)
+        weight=exp(-((z-1.605)/.021)**8)
+        y+=weight*.5*(distance+sqrt(distance*distance+bevel*bevel))
+    return y
 
 
 def soften_face_normals(mesh):
@@ -226,33 +242,28 @@ def soften_face_normals(mesh):
         # A triangle bridging different rolls otherwise catches an isolated glint.
         lip=exp(-(local_x/.043)**4-((z-1.553)/.016)**4)
         tip=exp(-(local_x/.049)**4-((z-1.607)/.031)**4)
-        radius=.0022+.0036*lip+.0034*tip
+        radius=.0022+.0036*lip+.0017*tip
         dx=(fy(x+radius,z)-fy(x-radius,z))/(2*radius)
         dz=(fy(x,z+radius)-fy(x,z-radius))/(2*radius)
         # Gently round the steep normals at the sides and underside of the nose,
         # much as the broad bevel of the gilded ground rounds the edge of the cast.
         nose=exp(-(local_x/.043)**4-((z-1.650)/.075)**4)
         cheek=exp(-((abs(local_x)-.089)/.057)**4-((z-1.640)/.055)**4)
-        ala=exp(-((abs(local_x)-.028)/.014)**2-((z-1.608)/.019)**2)
-        dx *= 1-.28*nose-.41*cheek-.21*ala
-        dz *= 1-.26*nose-.41*cheek-.20*ala
-        # Turn the leaf around the broad tip and each smaller wing. Across the
-        # base the sagittal profile alone would reflect one horizontal strip.
+        dx *= 1-.31*nose-.41*cheek
+        dz *= 1-.30*nose-.41*cheek
+        # Round the side of each ala over its embedded foot. Its small outer
+        # rim turns down around the nostril, leaving a softer specular crest.
         lateral=abs(local_x)
-        wing=.84*exp(-((lateral-.028)/.015)**2-((z-1.605)/.018)**2)
-        wing_slope=.26*(lateral-.028)/.016 * (1 if local_x>=0 else -1)
-        dx+=wing*(wing_slope-dx)
-        dz+=wing*(.32*tanh((z-1.605)/.015)-dz)
+        ala=.85*exp(-((lateral-.0295)/.016)**4-((z-1.603)/.020)**4)
+        ala_dx=(.11+.48*tanh((lateral-.0295)/.013))*(1 if local_x>=0 else -1)
+        dx+=ala*(ala_dx-dx)
+        dz+=ala*(.40*tanh((z-1.603)/.013)-.10-dz)
+        # At the root the bridge picks up the tall silk reflection. Across the
+        # ball and alae the normals follow the actual turns of the cast.
         dorsum=.88*exp(-(local_x/.024)**2-((z-1.629)/.045)**4)
+        dorsum*=max(0.,min(1.,(z-1.608)/.021))
         dx+=dorsum*(.29*local_x/.026-dx)
         dz+=dorsum*(.51*tanh((z-1.603)/.013)-dz)
-        # At grazing incidence the ala turns sideways before it rolls under.
-        # A continuous lateral normal keeps the bridge reflection off its rim.
-        outer=max(0.,min(1.,(lateral-.025)/.016))
-        flank=.70*outer*outer*(3-2*outer)*exp(-((lateral-.034)/.016)**2-((z-1.612)/.019)**2)
-        turn=(.61+.26*tanh((lateral-.033)/.015))*(1 if local_x>=0 else -1)
-        dx+=flank*(turn-dx)
-        dz+=flank*(.23*tanh((z-1.610)/.012)-dz)
         columella=exp(-(local_x/.012)**2-((z-1.590)/.013)**2)
         dz-=.34*min(0.,dz)*columella
         under_lip=exp(-(local_x/.055)**4-((z-1.530)/.024)**2)
@@ -386,10 +397,15 @@ def hair_floor(a):
 
 def hair_pos(a,z):
     w,d,cy=profile(HAIR,z)
-    # The low occiput is broad behind the ear and tapers into the existing
-    # cranium at the temple. Both profiles constrain its posterior depth.
+    # The back view shows the greatest width difference just behind the
+    # helix. Round out the posterior half while keeping the temple and the
+    # measured fore-aft profile in place. Taper into the last row at the nape.
     rear=max(0.,min(1.,-cos(a)/.44))
-    w+=.014*rear*rear*(3-2*rear)*exp(-((z-1.550)/.065)**2)
+    rear=rear*rear*(3-2*rear)
+    w+=.014*rear*exp(-((z-1.550)/.065)**2)
+    taper=max(0.,min(1.,(z-1.535)/.095))
+    fullness=.080+.076*exp(-((z-1.690)/.092)**2)
+    w*=1.+fullness*rear*taper*taper*(3-2*taper)
     return Vector((w*sin(a),cy-d*cos(a),z))
 
 

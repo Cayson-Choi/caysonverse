@@ -144,6 +144,8 @@ export type VillageServerMsg = (typeof VillageServerMsg)[keyof typeof VillageSer
 /** Server → client: the server's `Date.now()` at the moment of sending (Unix epoch milliseconds, UTC). */
 export interface ServerTimePayload {
   serverTimeMs: number;
+  /** The server's ride timetable fingerprint (land/rides.ts `rideScheduleKey`); absent from an older server. */
+  rideSchedule?: string;
 }
 
 /** How often the server re-sends its clock to everyone in a village room (5 minutes). */

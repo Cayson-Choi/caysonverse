@@ -73,6 +73,7 @@ def local_access(mesh):
 
 def dress(mesh, output, lod):
     from buddha_head import FACE, FACE_AXIS, HEAD_X, URNA_RADII, URNA_Z, profile
+    from buddha_ear_atlas import ear_chart_uv, ear_finish_patch, ear_tangent_basis
 
     access = local_access(mesh)
     tiles = {key:i for i,key in enumerate(KEYS)}
@@ -89,6 +90,11 @@ def dress(mesh, output, lod):
                 u = .5 + (x-HEAD_X)/(2*face_limit)
                 v = min(.997, max(.003, (z-chin)/(crown-chin)))
                 uv.data[k].uv = (.5 + .5*u, v)
+                continue
+            if finish == "Auricular relief":
+                u,v = ear_chart_uv(x-HEAD_X,y,z)
+                tile = tiles["crease"]
+                uv.data[k].uv = ((tile%4+u)/8,(tile//4+v)/2)
                 continue
             tile = tiles[finish]
             if finish == "urna":
@@ -115,6 +121,7 @@ def dress(mesh, output, lod):
             mesh.uv_layers.remove(layer)
     mesh.uv_layers.active = mesh.uv_layers[0]
     mesh.uv_layers[0].active_render = True
+    ear_basis = ear_tangent_basis(mesh, mesh.uv_layers[0])
     for p in mesh.polygons:
         p.material_index = 0
     mesh.materials.clear()
@@ -136,6 +143,9 @@ def dress(mesh, output, lod):
         for i, key in enumerate(KEYS):
             color, rough, metal = FINISHES[key]
             patch = arr[(i//4)*tile_height:(i//4+1)*tile_height,(i%4)*tile_size:(i%4+1)*tile_size]
+            if key == "crease":
+                ear_finish_patch(patch, kind, ear_basis)
+                continue
             if kind == "color":
                 for channel, value in enumerate(color):
                     # Subtle warm reflected light remains in leaf recesses.
@@ -184,15 +194,21 @@ def dress(mesh, output, lod):
                     crest = np.exp(-((x+.11)/.44)**2-((y-.34)/.32)**2)
                     for c,value in enumerate(color):
                         linear = value*(.12+2.95*dome-groove)+(.080,.084,.090)[c]*crest
-                        # The phone room omits the desktop spots. Keep the
-                        # lacquer returns legible on its lower-resolution beads.
+                        # The phone has no overhead spot. Lift the shoulders
+                        # and the top of each bead while retaining black seams.
                         if lod == "phone":
-                            linear = .0025+3.70*linear
+                            shoulder = 4*dome*(1-dome)
+                            linear = .0025+3.70*linear+.021*shoulder*(1-crest)+.060*dome**3
                         patch[:,:,c] = np.where(linear<=.0031308,12.92*linear,1.055*linear**(1/2.4)-.055)
                 else:
                     patch[:,:,0] = .54+.44*dome
                     patch[:,:,1] = rough+.15*(1-dome)
                     patch[:,:,2] = .83-.73*dome
+                    if lod == "pc":
+                        # The warm altar spot is reflected at grazing angles.
+                        # Dark lacquer on the raised beads gives a softer return.
+                        patch[:,:,1] += .13*dome
+                        patch[:,:,2] += .30*dome
         x = ((np.arange(w//2)+.5)/(w//2)*2 - 1)*face_limit
         z = chin + (np.arange(h)+.5)/h*(crown-chin)
         jaw_width = np.array([profile(FACE, height)[0] for height in z])

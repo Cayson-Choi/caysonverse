@@ -5,9 +5,10 @@ import {
 } from "three";
 import { LOT_DOOR_YAW, VILLAGE_LOTS, lotWorldToLocal, type VillageLot } from "@caysonverse/shared/village/villageLots";
 import { GeoBuilder, type V3 } from "../../land/geoBuilder";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { versionedUrl } from "../modelUrl";
 import { PLANT_CELL } from "../veg/plantCells";
-import { climbingRoseSpray, fountainBoxwood, planterSprig, forecourtTulips } from "../veg/vegPlants";
+import { borderBoxwood, climbingRoseSpray, fountainBoxwood, planterSprig, forecourtTulips } from "../veg/vegPlants";
 import { mulberry32 } from "../veg/vegRandom";
 import { lotSurfaceMaterial, patchLotLight, visibleLoad, type LotNodes } from "./lotsPrep";
 
@@ -298,6 +299,30 @@ export function plantExistingBoxes(goods: Object3D, id: string, low: boolean, pl
   goods.add(top);
 }
 
+/** The model's solid crowns remain as inner shade. Only the nearby goods LOD draws their shoots. */
+export function plantClippedBorders(lot: VillageLot, low: boolean, plants: MeshStandardMaterial): Mesh {
+  const school = lot.id === "lot_school";
+  const beds = school ? [[-6.9, -3.2], [3.2, 9.0]] : [[-9.85, -8.75], [-5.55, -5.02], [-0.98, -0.45]];
+  const parts = beds.map(([a, b], i) => borderBoxwood(b! - a!, school ? 0.30 : 0.28, low, 123 + i)
+    .translate((a! + b!) / 2, 0, school ? 9.65 : 3.67));
+  if (!school) {
+    for (const x of [-4.7, -1.3]) {
+      const crown = fountainBoxwood(low);
+      crown.translate(0, -0.155, 0).scale(1.45, 2.65, 1.45).rotateY(x).translate(x, 1.55, 3.8);
+      parts.push(crown);
+    }
+  }
+  const geometry = mergeGeometries(parts)!;
+  for (const part of parts) part.dispose();
+  const mesh = new Mesh(tintFlower(geometry, new Color(0xffffff)), plants);
+  mesh.name = lot.id + "_clipped_borders";
+  mesh.position.set(lot.centre.x, 0, lot.centre.z);
+  mesh.rotation.y = LOT_DOOR_YAW[lot.doorSide];
+  mesh.raycast = () => {};
+  mesh.castShadow = mesh.receiveShadow = true;
+  return mesh;
+}
+
 export function installEntranceGardens(nodes: LotNodes, low: boolean): { plants: MeshStandardMaterial; soil: MeshStandardMaterial } | null {
   if (!nodes.goods.size) return null;
   const loader = new TextureLoader();
@@ -339,6 +364,10 @@ export function installEntranceGardens(nodes: LotNodes, low: boolean): { plants:
       garden.rotation.y = LOT_DOOR_YAW[lot.doorSide];
       goods.add(garden);
       for (const child of garden.children) if (child instanceof InstancedMesh) plants.addEventListener("dispose", () => child.dispose());
+    } else {
+      const lot = VILLAGE_LOTS.find(l => l.id === id)!;
+      const border = plantClippedBorders(lot, low, plants);
+      goods.add(border);
     }
     plantExistingBoxes(goods, id, low, plants, soil);
     const measured = visibleLoad(goods);

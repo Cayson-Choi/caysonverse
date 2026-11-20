@@ -40,6 +40,8 @@ import {
 import { BUS_DRIVER, BusDriver, busDriveTrip } from "@caysonverse/shared/village/busDrive";
 import { busDismountSpot } from "@caysonverse/shared/village/busSeats";
 import { VillageCoaster } from "./villageCoaster";
+import { rideScheduleKey } from "@caysonverse/shared/land/rides";
+
 import { parkGeometry, useParkDoor } from "@caysonverse/shared/village/parkArea";
 import {
   BUS_CAPACITY,
@@ -248,7 +250,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
   /** The server's clock for one visitor (on join; queued until their join completes) or for everyone. */
   private serverTime(): ServerTimePayload {
-    return { serverTimeMs: this.wallClock() };
+    return { serverTimeMs: this.wallClock(), rideSchedule: rideScheduleKey() };
   }
 
   onDispose(): void {

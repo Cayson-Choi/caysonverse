@@ -16,10 +16,8 @@ import {
   MeshStandardMaterial,
   PMREMGenerator,
   Scene,
-  RepeatWrapping,
   Shape,
   SphereGeometry,
-  SRGBColorSpace,
   Texture,
   TextureLoader,
   Vector2,
@@ -29,18 +27,18 @@ import {
 import {
   PARK_LAMPS,
   PARK_PLAZA,
-  PARK_TROUGHS,
 } from "@caysonverse/shared/village/parkArea";
 import { isTouchDevice } from "../device";
 import { CoasterWorld } from "./CoasterWorld";
 import { CarouselWorld } from "./CarouselWorld";
-import { parkReady, setParkReady } from "./parkReady";
+import { parkReady, setParkReady, setParkStage } from "./parkReady";
 import { WheelWorld } from "./WheelWorld";
 import { MoonBoatWorld } from "./MoonBoatWorld";
 import { DropTowerWorld } from "./DropTowerWorld";
 import { Shops } from "./ParkShops";
 import { ParkMountains, ParkScenery } from "./ParkScenery";
 import { ParkProps } from "./ParkProps";
+import { ParkBenches } from "./ParkBenches";
 import { ParkVegetation } from "./ParkVegetation";
 import type { VillageTier } from "../village/villageModelPrep";
 import { GeoBuilder, type V3 } from "./geoBuilder";
@@ -51,7 +49,7 @@ import { parkSkyTexture } from "./parkSkyTexture";
 import { ALL_PARK_URLS, featherTexture, parkMaterial, pickSet } from "./pbr";
 import { addBellRoof, addHedge, addLathe } from "./parkShapes";
 import { boxwoodTextures } from "./boxwoodTexture";
-import { parkBorders } from "./parkBorders";
+import { parkBorders, parkTroughStone } from "./parkBorders";
 import { grassTuft } from "../village/veg/vegGeometry";
 import { soilTextures } from "../village/veg/vegSoil";
 import { CLICK_PICK_KEY } from "../game/clickPick";
@@ -61,7 +59,10 @@ import { buildFountainStone, createStoneFountainWater } from "../village/fountai
 import { STAR_FOUNTAIN, STAR_SPOUTS } from "../village/fountain/fountainDesigns";
 import { LAMP_GLOBE, flagstoneRing, victorianLampGeometry } from "../village/lots/gateDress";
 import { getPbrSet, pbrTextures } from "../village/pbr/pbrLibrary";
+import { addGateArch, addGateStar } from "./parkGateStone";
 import { BulbHalos, LampPools } from "./nightGlow";
+import { parkAltitude } from "./parkAltitude";
+import { ParkAltitudeProbe, ParkHighClouds } from "./ParkAltitudeFx";
 
 const PINE_URL = isTouchDevice ? PARK_PINE_URL_LO : PARK_PINE_URL_HI;
 
@@ -75,22 +76,56 @@ const setRepeat = (m: MeshStandardMaterial, rx: number, ry: number): void => {
   for (const t of [m.map, m.normalMap, m.roughnessMap]) t?.repeat.set(rx, ry);
 };
 
-/** A plain daytime sky dome that rides with the camera (the park has no village model to bring one). */
+/**
+ * A plain daytime sky dome that rides with the camera (the park has no village model to bring one). A dome at infinity keeps its horizon at the
+ * eye, which is right; what a height changes is the AIR (land/parkAltitude.ts): with the altitude factor `uAlt` the sky deepens and bluens
+ * overhead and the pale haze band at the horizon thickens (owner 2026-11-20: climbing the lift "하늘이 전혀 변화가 없이 그대로"). At the ground
+ * (uAlt 0) the shader adds exactly nothing.
+ */
+const SKY_PARS = `
+varying vec3 vSkyDir;
+uniform float uAlt;
+uniform vec3 uHazeCol;
+`;
 function ParkSky() {
   const ref = useRef<Mesh>(null);
   const geo = useMemo(() => new SphereGeometry(1450, 48, 24), []);
   const map = useMemo(() => (skyCache ??= parkSkyTexture()), []);
   const mat = useRef<MeshBasicMaterial>(null);
+  const uniforms = useMemo(() => ({ uAlt: { value: 0 }, uHazeCol: { value: new Color(1, 1, 1) } }), []);
+  const onBeforeCompile = useMemo(
+    () => (shader: { uniforms: Record<string, unknown>; vertexShader: string; fragmentShader: string }) => {
+      Object.assign(shader.uniforms, uniforms);
+      shader.vertexShader = shader.vertexShader.replace("#include <common>", `#include <common>\nvarying vec3 vSkyDir;`).replace("#include <begin_vertex>", "#include <begin_vertex>\nvSkyDir = normalize( position );");
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", `#include <common>\n${SKY_PARS}`)
+        .replace(
+          "#include <map_fragment>",
+          `#include <map_fragment>
+          {
+            float up = vSkyDir.y;
+            float zen = smoothstep( 0.04, 0.95, up ) * uAlt;
+            diffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.80, 0.90, 1.03 ), zen );
+            float band = exp( -max( up, 0.0 ) / ( 0.05 + 0.16 * uAlt ) ) * ( 0.12 + 0.5 * uAlt ) * uAlt;
+            diffuseColor.rgb = mix( diffuseColor.rgb, uHazeCol, band );
+          }`,
+        );
+    },
+    [uniforms],
+  );
   useFrame(({ camera }) => {
     ref.current?.position.copy(camera.position);
     // the day's dome painted dark and blue with the clock (night audit 2026-11-18: it stayed a pastel noon sky at midnight); the stars
     // and the moon are drawn over it by the village's sky
     const t = dayNight.applied.domeTint;
     mat.current?.color.setRGB(t[0], t[1], t[2]);
+    uniforms.uAlt.value = parkAltitude.a;
+    // the haze band's colour: the dome's own horizon colour (the texture's pale blue, in linear) under the same tint, a touch bluer with height
+    uniforms.uHazeCol.value.setRGB(0.80 * t[0], 0.87 * t[1], 0.94 * t[2]);
   });
   return (
     <mesh ref={ref} geometry={geo} renderOrder={-10} frustumCulled={false}>
-      <meshBasicMaterial ref={mat} map={map} side={BackSide} depthWrite={false} fog={false} toneMapped={false} />
+      <meshBasicMaterial ref={mat} map={map} side={BackSide} depthWrite={false} fog={false} toneMapped={false} onBeforeCompile={onBeforeCompile} customProgramCacheKey={() => "park-sky-altitude"} />
     </mesh>
   );
 }
@@ -332,27 +367,9 @@ function GateArch({ all }: { all: Texture[] }) {
         for (const sx of [-1, 1]) b.box([tx + sx * 0.46, 7.9, CZ + sz * 3.54], X, Y, 0.07, 1.0, 0.08, sand, 1.4);
       }
     }
-    // the segmental arch of 17 voussoirs between the towers (span 14 m, rise 2 m: R 13.25, springing at y 5.2), 1 m deep ring, a stepped keystone
-    const R = 13.25;
-    const yc = 7.2 - R;
-    const thMax = Math.asin(7 / R);
-    const n = 17;
-    const dth = (2 * thMax) / n;
-    for (let i = 0; i < n; i++) {
-      const th = -thMax + (i + 0.5) * dth;
-      const key = i === (n - 1) / 2;
-      const rc = R + 0.5 + (key ? 0.2 : 0);
-      const tone = 0.93 + 0.07 * Math.sin(i * 2.1);
-      b.box([40 + rc * Math.sin(th), yc + rc * Math.cos(th), CZ], [Math.cos(th), -Math.sin(th), 0], [Math.sin(th), Math.cos(th), 0], (rc * dth) / 2 + (key ? 0.12 : -0.02), key ? 0.72 : 0.5, key ? 1.78 : 1.6, [tone, tone * 0.98, tone * 0.95], 1.4);
-    }
-    // the imposts (the springing blocks) and the spandrel above the arch, up to the attic
+    addGateArch(b, CZ);
+    // Impost blocks at the springing points.
     for (const sx of [-1, 1]) b.box([40 + sx * 6.85, 5.1, CZ], X, Y, 0.34, 0.13, 1.8, [0.9, 0.88, 0.84], 1.4);
-    for (let x = 33.25; x < 47; x += 0.5) {
-      const dx = x - 40;
-      const yExt = yc + Math.sqrt((R + 1.0) ** 2 - dx * dx);
-      const h = 8.2 - yExt;
-      if (h > 0.02) b.box([x, yExt + h / 2, CZ], X, Y, 0.255, h / 2, 1.6, [1, 0.97, 0.93], 1.4);
-    }
     b.box([40, 9.1, CZ], X, Y, 7.0, 0.9, 1.6, [1, 0.97, 0.93], 1.4); // the attic that carries the name board
     // the carved board's frame: a raised stone border round the name board, on both faces
     for (const sz of [-1, 1]) {
@@ -383,6 +400,13 @@ function GateArch({ all }: { all: Texture[] }) {
     for (const sz of [-1, 1]) {
       const z = CZ + sz * 1.74;
       for (const sx of [-1, 1]) for (const yy of [8.35, 9.85]) b.cylinder([40 + sx * 3.95, yy, z], [40 + sx * 3.95, yy, z + sz * 0.1], 0.13, 0.1, 10, [1, 1, 1], true);
+      // The enamel face sits on a brass tray, with a projecting lip and two folded star reliefs.
+      b.box([40, 9.1, CZ + sz * 1.67], X, Y, 2.85, 0.745, 0.077, [1, 1, 1]);
+      for (const edge of [-1, 1]) {
+        b.box([40, 9.1 + edge * 0.724, CZ + sz * 1.760], X, Y, 2.85, 0.021, 0.032, [1, 1, 1]);
+        b.box([40 + edge * 2.829, 9.1, CZ + sz * 1.760], X, Y, 0.021, 0.702, 0.032, [1, 1, 1]);
+        addGateStar(b, 40 + edge * 2.14, 9.1, CZ + sz * 1.767, sz);
+      }
     }
     // gilt window sills on the towers and the arch's keystone boss
     for (const tx of [31.25, 48.75]) for (const sz of [-1, 1]) b.box([tx, 6.9, CZ + sz * 3.7], X, Y, 0.52, 0.04, 0.1, [1, 1, 1]);
@@ -394,10 +418,10 @@ function GateArch({ all }: { all: Texture[] }) {
       <mesh geometry={geoStone} material={stone} castShadow receiveShadow />
       <mesh geometry={roofGeo} material={roof} castShadow />
       <mesh geometry={trimGeo} material={gold} castShadow />
-      <mesh position={[40, 9.1, CZ + 1.66]} material={signMat}>
+      <mesh position={[40, 9.1, CZ + 1.765]} material={signMat}>
         <planeGeometry args={[5.6, 1.4]} />
       </mesh>
-      <mesh position={[40, 9.1, CZ - 1.66]} rotation={[0, Math.PI, 0]} material={signMat}>
+      <mesh position={[40, 9.1, CZ - 1.765]} rotation={[0, Math.PI, 0]} material={signMat}>
         <planeGeometry args={[5.6, 1.4]} />
       </mesh>
       <mesh geometry={starGeo} material={gold} position={[40, 12.2, CZ - 0.2]} scale={1.2} />
@@ -625,18 +649,8 @@ function PathBorders({ stone }: { stone: MeshStandardMaterial }) {
   );
 }
 
-function Beds({ pine, all }: { pine: Texture; all: Texture[] }) {
-  const troughGeo = useMemo(() => {
-    const b = new GeoBuilder();
-    // the flower troughs round the fountain (stone, with a cap course; the flowers and soil are the village flower system's)
-    for (const t of PARK_TROUGHS) {
-      const cx = (t.x0 + t.x1) / 2;
-      const cz = (t.z0 + t.z1) / 2;
-      b.box([cx, 0.4, cz], X, Y, (t.x1 - t.x0) / 2, 0.4, (t.z1 - t.z0) / 2, [0.9, 0.88, 0.84], 2);
-      b.box([cx, 0.82, cz], X, Y, (t.x1 - t.x0) / 2 + 0.07, 0.04, (t.z1 - t.z0) / 2 + 0.07, [1, 0.98, 0.94], 2);
-    }
-    return b.build();
-  }, []);
+function Beds({ all }: { all: Texture[] }) {
+  const troughGeo = useMemo(parkTroughStone, []);
   const troughMat = useMemo(() => parkMaterial(pickSet(all, "Concrete034"), 1, { vertexColors: true, color: new Color("#efe6d6"), normalScale: 0.6 }), [all]);
   // hedges lining the promenade's two sides: clipped boxwood, a trimmed profile with a leafy skin (parkShapes.addHedge)
   const hedgeGeo = useMemo(() => {
@@ -658,78 +672,11 @@ function Beds({ pine, all }: { pine: Texture; all: Texture[] }) {
     const tx = boxwoodTextures();
     return new MeshStandardMaterial({ map: tx.map, bumpMap: tx.bump, bumpScale: 2.2, vertexColors: true, roughness: 0.72, side: DoubleSide });
   }, []);
-  // benches (fix/gate-fountain-park: they were a plank, a board and two blocks): a park bench of five seat slats and three back
-  // slats, rounded at the front, on two cast-iron end frames (a scrolled front leg, a rear leg running up into the back, an arm
-  // with a curled end); length along z, the back toward +x * face, as before
-  const benchSpots = useMemo(() => {
-    const out: Array<[number, number, number]> = [];
-    for (let z = -170; z <= -140; z += 10) out.push([34, z, -1], [46, z, 1]);
-    for (let x = 90; x <= 330; x += 30) out.push([x, -108.2, 1]);
-    return out;
-  }, []);
-  const bedGeo = useMemo(() => {
-    const b = new GeoBuilder();
-    const wood: V3 = [0.86, 0.62, 0.42];
-    for (const [x, z, face] of benchSpots) {
-      // seat slats: front (away from the back) to rear, falling 3 cm toward the back
-      for (let i = 0; i < 5; i++) {
-        const d = -0.2 + i * 0.1; // across the seat, + toward the back
-        b.box([x + face * d, 0.455 - 0.006 * i, z], X, Y, 0.042, 0.017, 0.98, wood.map((c) => c * (0.95 + 0.05 * Math.sin(i * 2.1 + x))) as V3);
-      }
-      // back slats, leaning back 14 degrees
-      const lean = 0.24;
-      for (let i = 0; i < 3; i++) {
-        const h = 0.6 + i * 0.13;
-        const ax: V3 = [face * Math.sin(lean), Math.cos(lean), 0];
-        const nx: V3 = [face * Math.cos(lean), -Math.sin(lean), 0];
-        b.box([x + face * (0.26 + (h - 0.5) * Math.tan(lean)), h, z], nx, ax, 0.016, 0.05, 0.98, wood);
-      }
-    }
-    return b.build();
-  }, [benchSpots]);
-  const benchIronGeo = useMemo(() => {
-    const b = new GeoBuilder();
-    const iron: V3 = [1, 1, 1];
-    for (const [x, z, face] of benchSpots) {
-      for (const dz of [-0.88, 0.88]) {
-        const P = (d: number, y: number): V3 => [x + face * d, y, z + dz];
-        // the rear leg and the back's upright in one sweep
-        b.tube([P(0.3, 0.0), P(0.27, 0.15), P(0.23, 0.32), P(0.22, 0.44), P(0.26, 0.6), P(0.3, 0.75), P(0.33, 0.88), P(0.35, 0.92)], 0.022, 6, iron);
-        // the front leg, curving forward at the foot
-        b.tube([P(-0.27, 0.0), P(-0.24, 0.12), P(-0.22, 0.28), P(-0.21, 0.44)], 0.022, 6, iron);
-        // the seat rail
-        b.tube([P(-0.25, 0.44), P(0.24, 0.43)], 0.018, 6, iron);
-        // the arm: up from the front leg, back to the upright, a curl at the front
-        const arm: V3[] = [P(-0.21, 0.44), P(-0.2, 0.55), P(-0.16, 0.63), P(0.0, 0.66), P(0.18, 0.66), P(0.27, 0.66)];
-        b.tube(arm, 0.017, 6, iron);
-        const curl: V3[] = [];
-        for (let i = 0; i <= 8; i++) {
-          const a = Math.PI * 0.5 + (i / 8) * Math.PI * 1.5;
-          const rr = 0.045 * (1 - i / 14);
-          curl.push(P(-0.2 + rr * Math.cos(a), 0.6 + rr * Math.sin(a)));
-        }
-        b.tube(curl, 0.012, 5, iron);
-        // a stretcher between the legs, low
-        b.tube([P(-0.23, 0.12), P(0.26, 0.13)], 0.012, 5, iron);
-      }
-    }
-    return b.build();
-  }, [benchSpots]);
-  const benchIron = useMemo(() => new MeshStandardMaterial({ name: "park_bench_iron", color: "#24282b", roughness: 0.45, metalness: 0.55 }), []);
-  const benchMat = useMemo(() => {
-    const t = pine.clone();
-    t.wrapS = t.wrapT = RepeatWrapping;
-    t.colorSpace = SRGBColorSpace;
-    t.needsUpdate = true;
-    return new MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.75 });
-  }, [pine]);
   return (
     <group>
       <PathBorders stone={troughMat} />
       <mesh geometry={troughGeo} material={troughMat} castShadow receiveShadow />
       <mesh geometry={hedgeGeo} material={hedgeMat} castShadow receiveShadow />
-      <mesh geometry={bedGeo} material={benchMat} castShadow receiveShadow />
-      <mesh geometry={benchIronGeo} material={benchIron} castShadow />
     </group>
   );
 }
@@ -780,9 +727,16 @@ function ParkReadyProbe() {
     if (parkReady()) return;
     if (gl.info.render.calls > 30) frames.current++;
     else frames.current = 0;
+    if (frames.current > 0) setParkStage(2);
     if (frames.current >= 3 || performance.now() - born.current > 30_000) setParkReady(true);
   });
-  useEffect(() => () => setParkReady(false), []);
+  useEffect(() => {
+    setParkStage(1); // the files are in and the park is mounted: the loading screen's next line
+    return () => {
+      setParkReady(false);
+      setParkStage(0);
+    };
+  }, []);
   return null;
 }
 
@@ -795,14 +749,17 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
   return (
     <group>
       <ParkReadyProbe />
+      <ParkAltitudeProbe />
       <ParkSky />
+      <ParkHighClouds />
       <Ground all={all} />
       <Shops all={all} />
       <GateArch all={all} />
       <Fountain env={env} tier={tier} />
       <ParkVegetation />
       <Lamps tier={tier} />
-      <Beds pine={pine} all={all} />
+      <Beds all={all} />
+      <ParkBenches pine={pine} />
       <ParkProps all={all} />
       <ParkScenery all={all} />
       <Suspense fallback={null}>

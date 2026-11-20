@@ -110,8 +110,25 @@ def make_materials(matdefs):
             t = nt.nodes.new("ShaderNodeTexImage")
             t.image = load_png(os.path.join(PNG, d["own"] + ".png"))
             t.interpolation = "Cubic"
-            nt.links.new(t.outputs["Color"], b.inputs["Base Color"])
+            if d.get("vertexColor"):
+                # (the books: COLOR_0 tints the atlas's neutral side boards)
+                vm = nt.nodes.new("ShaderNodeMix")
+                vm.data_type = "RGBA"
+                vm.blend_type = "MULTIPLY"
+                vm.inputs["Factor"].default_value = 1.0
+                nt.links.new(t.outputs["Color"], vm.inputs["A"])
+                nt.links.new(vc.outputs["Color"], vm.inputs["B"])
+                nt.links.new(vm.outputs["Result"], b.inputs["Base Color"])
+            else:
+                nt.links.new(t.outputs["Color"], b.inputs["Base Color"])
             b.inputs["Roughness"].default_value = 0.45
+            if d.get("normal") and os.path.exists(os.path.join(PNG or "", d["normal"] + ".png")):
+                tn = nt.nodes.new("ShaderNodeTexImage")
+                tn.image = load_png(os.path.join(PNG, d["normal"] + ".png"))
+                tn.image.colorspace_settings.name = "Non-Color"
+                nm = nt.nodes.new("ShaderNodeNormalMap")
+                nt.links.new(tn.outputs["Color"], nm.inputs["Color"])
+                nt.links.new(nm.outputs["Normal"], b.inputs["Normal"])
             mats[name] = m
             continue
         if d.get("fire"):
@@ -614,6 +631,12 @@ def write_manifest(kit, lot, path):
         if d.get("own"):
             mats[name] = {"kind": "own", "maps": {"albedo": d["own"] + ".ktx2"}, "uv": "atlas (TEXCOORD_0 0..1, no repeat)", "colorSpace": "srgb",
                           "note": d.get("note", "")}
+            # optional: a tangent-space normal map and an ORM (G roughness, B metal) beside the albedo, linear; COLOR_0 tinting
+            for k in ("normal", "orm"):
+                if d.get(k):
+                    mats[name]["maps"][k] = d[k] + ".ktx2"
+            if d.get("vertexColor"):
+                mats[name]["vertexColor"] = True
             continue
         if d.get("fire"):
             mats[name] = {"kind": "fire", "note": "HOOK for L5v2: the fire__ nodes' flame cards. Draw additive (blending Additive, depthWrite "

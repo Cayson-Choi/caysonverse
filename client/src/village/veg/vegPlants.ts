@@ -676,6 +676,33 @@ export function fountainBoxwood(simple: boolean): BufferGeometry {
   return b.build();
 }
 
+/** Clipped border hedge. Shoots follow both flanks, the crown and the sheared ends. */
+export function borderBoxwood(length: number, height: number, simple: boolean, seed: number): BufferGeometry {
+  const b = builder(height), rand = mulberry32(seed);
+  const step = simple ? 0.19 : 0.135;
+  const cols = Math.ceil(length / step);
+  const sprig = (base: Vec3, axis: Vec3, normal: Vec3, shade: number) => {
+    const size = (simple ? 0.24 : 0.2) * (0.84 + rand() * 0.32);
+    card(b, base, axis, normal, size, size, rand() < 0.5 ? PLANT_CELL.boxA : PLANT_CELL.boxB,
+      grey(shade, 0), { fold: simple ? 0 : 0.14, shadeN: normal, colTop: grey(shade * 1.15, 0) });
+  };
+  for (let i = 0; i < cols; i++) {
+    const x = length * ((i + 0.5) / cols - 0.5);
+    for (const side of [-1, 1]) {
+      for (const y of [0.025, height * 0.47]) {
+        sprig([x + (rand() - 0.5) * 0.06, y, side * 0.158], [(rand() - 0.5) * 1.3, 1, side * 0.2],
+          [0, 0.22, side], y < 0.1 ? 0.7 : 0.89);
+      }
+      sprig([x, height + 0.008, side * (0.08 + rand() * 0.025)],
+        [(i % 2 ? 1 : -1) * (0.3 + rand()), 0.22, -side], [0, 1, 0], 0.95);
+    }
+  }
+  for (const side of [-1, 1]) for (const z of [-0.07, 0.07]) {
+    sprig([side * (length / 2 + 0.002), 0.04, z], [side * 0.22, 1, -z * 4], [side, 0.18, 0], 0.77);
+  }
+  return b.build();
+}
+
 /** A flowering lateral of a climbing rose. Its base attaches to a trained cane. */
 export function climbingRoseSpray(simple: boolean): BufferGeometry {
   const b = builder(0.23);

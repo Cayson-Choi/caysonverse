@@ -1,12 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, Vector3 } from "three";
 import { VILLAGE_LOTS, lotLocalToWorld } from "@caysonverse/shared/village/villageLots";
-import { clearEntranceBeds, makeEntranceGarden, plantExistingBoxes, plantFountainRing, plantRoseArch } from "./entranceGardens";
+import { clearEntranceBeds, makeEntranceGarden, plantClippedBorders, plantExistingBoxes, plantFountainRing, plantRoseArch } from "./entranceGardens";
 import { visibleLoad } from "./lotsPrep";
 
 const materials = { plants: new MeshStandardMaterial(), soil: new MeshStandardMaterial(), kerb: new MeshStandardMaterial() };
 
 describe("entrance gardens", () => {
+  it.each(["lot_school", "lot_library"])("%s keeps its clipped foliage in one close-range draw", id => {
+    const lot = VILLAGE_LOTS.find(l => l.id === id)!;
+    const near = plantClippedBorders(lot, false, materials.plants);
+    const phone = plantClippedBorders(lot, true, materials.plants);
+    expect(visibleLoad(phone).draws).toBe(1);
+    expect(visibleLoad(phone).triangles).toBeLessThan(900);
+    expect(visibleLoad(phone).triangles).toBeLessThan(visibleLoad(near).triangles);
+    expect(phone.position.x).toBe(lot.centre.x);
+    expect(phone.position.z).toBe(lot.centre.z);
+    near.geometry.dispose();
+    phone.geometry.dispose();
+  });
+
   it.each(["lot_chapel", "lot_church"] as const)("%s keeps the path clear and roots both species in the soil at either tier", (id) => {
     const costs = [false, true].map((low) => {
       const garden = makeEntranceGarden(id, low, materials);

@@ -21,7 +21,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { DESKTOP, PHONE, REPO, createRun, launchBrowser, openPlayer, pos, press, sleep, touchDown, touchUp, visibleButtons, walkAndWait, layoutReport } from "./lib/common.mjs";
 import { joinVillage } from "./lib/village.mjs";
 import { bigButton, waitButton } from "./lib/lakeMock.mjs";
-import { startFightAngler } from "./lib/lakeFight.mjs";
+import { installPhaseLog, phaseMark, startFightAnglerInPage, waitSeen } from "./lib/lakeFight.mjs";
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => (args.find((a) => a.startsWith(`--${name}=`)) ?? `--${name}=${fallback}`).slice(name.length + 3);
@@ -88,6 +88,7 @@ const waitPhase = async (names, ms) => {
 
 await run.step("join and walk to the pad", async () => {
   await joinVillage(p, "낚", time);
+  await installPhaseLog(p);
   for (const [x, z] of [[40, 0], [80, -9], [100, -12]]) await walkAndWait(p, x, z, 40000, 2);
   await walkAndWait(p, 102, -14.6, 20000, 1);
   await sleep(800);
@@ -218,9 +219,10 @@ await run.step("casts: the catch from the strike to the release", async () => {
       const hb = await waitButton(p, "당기세요", 3000);
       if (hb) {
         // the fight is a pull / release rhythm: the scripted angler does what the prompt says (lib/lakeFight.mjs) while the frames are taken
-        const angler = startFightAngler(p, { touch });
+        const mk = await phaseMark(p);
+        const angler = await startFightAnglerInPage(p);
         probes = await frames(join(OUT, `${tag}-c${n}-fight`), 10, 250);
-        await waitPhase(["lifting", "landed", "missed"], 40000);
+        await waitSeen(p, ["lifting", "landed", "missed"], 60000, mk);
         await angler.stop();
       }
     }
