@@ -46,12 +46,12 @@ def registered(x, z):
 # The dorsum inclines evenly, then rolls over a short tip into the philtrum.
 NOSE = [
     (1.566, .040, .040, .019, .0000), (1.573, .040, .043, .018, .0004),
-    (1.580, .039, .050, .018, .0021), (1.588, .038, .059, .021, .0070),
-    (1.596, .038, .064, .024, .0100), (1.602, .038, .065, .025, .0110),
-    (1.609, .037, .064, .025, .0094), (1.619, .036, .061, .025, .0050),
-    (1.637, .034, .056, .024, .0014), (1.659, .032, .050, .023, .0000),
-    (1.680, .032, .045, .022, .0000), (1.696, .034, .046, .024, .0000),
-    (1.706, .035, .047, .026, .0000)]
+    (1.580, .039, .050, .017, .0020), (1.588, .038, .063, .019, .0095),
+    (1.596, .038, .069, .022, .0150), (1.602, .038, .071, .024, .0165),
+    (1.609, .037, .070, .026, .0140), (1.619, .036, .066, .029, .0070),
+    (1.637, .034, .060, .032, .0014), (1.659, .032, .053, .032, .0000),
+    (1.680, .032, .047, .030, .0000), (1.696, .034, .046, .030, .0000),
+    (1.706, .035, .047, .030, .0000)]
 
 
 @lru_cache(maxsize=65536)
@@ -65,12 +65,12 @@ def relief_depth(x, z):
         rise = .006*smooth(.010,.041,a)*exp(-((v-1.590)/.030)**2)
         bed, ridge, radius, wing = profile(NOSE, v-rise)
         bridge = (ridge-bed)*exp(-(u/radius)**2)
-        ala = wing*exp(-((a-.031)/.016)**2)
+        ala = wing*exp(-((a-.034)/.014)**2)
         cheek_u = .5*(a+.055+sqrt((a-.055)**2+.008**2))
         cheek_bed = -.74*fy((cheek_u if u>=0 else -cheek_u)+FACE_AXIS, v)
         bed += smooth(.029,.062,a)*(cheek_bed-bed)
         # End the wing on a narrow, rounded foot at either side of the septum.
-        sill = .0019*exp(-((a-.023)/.010)**2-((v-1.586)/.006)**2)
+        sill = .0038*exp(-((a-.024)/.010)**2-((v-1.587)/.006)**2)
         blend = (1-smooth(.043,.076,a))*smooth(1.566,1.582,v)*(1-smooth(1.679,1.706,v))
         cast += blend*(bed+bridge+ala-sill-cast)
 
@@ -163,7 +163,7 @@ def sampling_sites(phone):
         for delta in (-.012*(1-t*t), 0., .0065*(1-t*t)):
             points.append(source(u, lip_height(t)+delta))
     for v in (1.558,1.568,1.577,1.583,1.589,1.596,1.602,1.609,1.619,1.635,1.656,1.680):
-        for u in ([-.050,-.033,-.020,-.009,0,.009,.020,.033,.050] if phone else
+        for u in ([-.050,-.034,-.024,-.012,0,.012,.024,.034,.050] if phone else
                   np.linspace(-.054,.054,17)):
             points.append(source(u,v))
     return np.array(points)
@@ -296,6 +296,11 @@ def sculpt(path, phone):
         cheek_wall = exp(-((abs(u[i])-.061)/.032)**4-((v[i]-1.634)/.048)**4)
         dx *= 1-.43*cheek_wall
         dz *= 1-.36*cheek_wall
+        # Roll the metal over the full width of the dorsum. Steep lateral
+        # normals on either side of a narrow spine reflect two separate bands.
+        dorsum = exp(-(u[i]/.047)**4-((v[i]-1.655)/.046)**4)
+        dx *= 1-.37*dorsum
+        dz *= 1-.23*dorsum
         # Gilding rounds the underside over the septum. Preserve the downward
         # turn without reflecting one dark band across the entire nasal base.
         dz -= .38*max(0.,dz)*nasal*exp(-((v[i]-1.586)/.015)**2)
@@ -339,7 +344,7 @@ def painted_leaf(size, segments, phone):
     glaze(1., leaf, (1.,.58,GILT_SKIN[2]))
     bare_leaf_planes(u, v, spot, glaze)
     satin = np.maximum(spot(.0,1.687,.045,.075),spot(.08,1.695,.072,.094))
-    lamp = np.maximum(spot(.0,1.747,.094,.048),spot(.0,1.653,.029,.059))
+    lamp = spot(.0,1.747,.094,.048)
     orm[...,1] += fade*(.12*satin+.08*lamp)
     orm[...,2] += fade*(.94-orm[...,2])*.67*lamp
     # The seated cast's calibrated base factor applies to bare leaf, easing
@@ -378,10 +383,17 @@ def painted_leaf(size, segments, phone):
     glaze(.76*brush*smooth(brow-.30*width-.0001,brow+.26*width+.0001,v),
           (.065,.21,.101), (.94,.68,.17))
 
-    glaze(.20*spot(.025,1.656,.010,.046), base*(.69,.32,.030), (.99,.66,.85))
-    glaze(.38*spot(.0,1.659,.012,.052), base*(.99,.62,.14), (1.,.70,.86))
-    aperture = np.exp(-((a-.022)/.007)**2-((v-1.591-.002*smooth(.016,.030,a))/.0030)**2)
-    glaze(.40*aperture, base*(.51,.23,.021), (.95,.67,.79))
+    # Carry the cheek's satin leaf across the shaft. Relief and the altar
+    # light describe its round crown and leave room for a shadow under each wing.
+    shaft = np.exp(-(u/.042)**4-((v-1.651)/.049)**4)
+    glaze(.83*shaft, base*(.96,.49,.044), (1.,.63,.87))
+    glaze(.31*spot(.034,1.608,.014,.013), base*(.98,.55,.082), (1.,.61,.84))
+    underside = 1.581+.008*smooth(.008,.034,a)
+    foot = np.exp(-((v-underside)/.0075)**2)*(1-smooth(.032,.046,a))
+    glaze(.53*foot, base*(.60,.26,.020), (.96,.68,.78))
+    nostril = 1.588+.0034*smooth(.015,.038,a)
+    aperture = np.exp(-((a-.0235)/.0105)**2-((v-nostril)/.0048)**2)
+    glaze(.83*aperture, base*(.25,.094,.008), (.88,.65,.62))
 
     t = np.clip(a/LIP_RADIUS,0,1)
     seam = lip_height(t)

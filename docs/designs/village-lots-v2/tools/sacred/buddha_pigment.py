@@ -35,7 +35,7 @@ def bare_leaf_planes(x, z, spot, lay):
     mask = (1.-smooth(.130,.161,np.abs(x)))*smooth(1.445,1.481,z)
     lay(mask, (.935,.431,.020), (1.,.59,.87))
     polish = np.maximum.reduce((spot(.0,1.755,.100,.051), spot(.072,1.646,.063,.048),
-                                spot(.0,1.658,.022,.060), spot(.0,1.612,.021,.015),
+                                spot(.0,1.658,.032,.060), spot(.0,1.612,.021,.015),
                                 spot(.033,1.608,.015,.015),spot(.0,1.512,.050,.032)))
     lay(polish, (.980,.520,.054), (1.,.58,.87))
     lay(.56*spot(.0,1.505,.061,.027), (.800,.393,.040), (1.,.66,.85))
@@ -118,7 +118,7 @@ def face_patch(kind, x, z, phone=False, half_width=None):
     lay(.63*np.exp(-((z-lower+.003)/.0086)**2)*arc, (.50,.230,.017), (1.,.54,.68))
     # The warm hollow turns inward under the brow and continues along the
     # side plane of the bridge. There is no second drawn contour here.
-    orbit_x=.022+.046*smooth(1.676,1.730,z)**1.64
+    orbit_x=.028+.040*smooth(1.676,1.730,z)**1.64
     orbit=np.exp(-((a-orbit_x)/.0145)**2-((z-1.699)/.036)**4)
     lay(.57*orbit, (.619,.262,.016), (1.,.64,.87))
     lay(.32*spot(.062,1.647,.038,.021), (.995,.63,.108), (1.,.61,.88))
@@ -169,18 +169,17 @@ def face_patch(kind, x, z, phone=False, half_width=None):
 
     # A warm return around each wing and a tiny occluded aperture tucked
     # beneath it. Leave the strip of gold across the columella unbroken.
-    bridge_side = spot(.030,1.675,.018,.052)
-    lay(.26*bridge_side, (.66,.310,.028), (1.,.62,.78))
-    lay(.51*spot(.0,1.666,.025,.049), (1.,.688,.245), (1.,.70,.81))
-    lay(.54*spot(.0,1.629,.023,.024), (1.,.702,.248), (1.,.71,.80))
-    # The source has a warm shadow on the left of the bridge through the
-    # inner orbit. Keep the soft, pale reflection to the right of its edge.
-    bridge_return = np.exp(-((x+.022)/.015)**2-((z-1.672)/.033)**2)
-    lay(.28*bridge_return, (.560,.242,.025), (1.,.68,.78))
+    bridge_side = spot(.039,1.675,.021,.052)
+    lay(.22*bridge_side, (.66,.310,.028), (1.,.62,.78))
+    # Soft gold across the crown of the column, with its return at the
+    # lateral plane. The underlying leaf remains visible on the centreline.
+    lay(.35*spot(.0,1.660,.036,.057), (.99,.609,.117), (1.,.68,.85))
+    bridge_return = np.exp(-((x+.034)/.020)**2-((z-1.672)/.033)**2)
+    lay(.21*bridge_return, (.592,.262,.025), (1.,.65,.81))
     # The wings turn away on either side of the bridge before their outer
     # rims catch the light. Their high point sits above the tucked apertures.
-    flank=spot(.030,1.634,.017,.022)
-    lay(.30*flank, (.689,.313,.023), (1.,.68,.85))
+    flank=spot(.036,1.634,.019,.022)
+    lay(.24*flank, (.689,.313,.023), (1.,.68,.85))
     # The source gilding is warmer where the lobule turns under. The edge
     # dips below the two lateral recesses, finishing just above the philtrum.
     underside=1.580+.008*smooth(.008,.034,a)

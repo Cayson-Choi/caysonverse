@@ -66,11 +66,11 @@ export function portraitLeaf(n, faceX, height, rgb, phone) {
   response[0] = response[0]*(1-.33*cheekTurn-.57*chin)+(.10+.04*brighterLid)*upperLid;
   response[1] = response[1]*(1-.28*cheekTurn-.40*chin)+(.12+.03*brighterLid)*upperLid;
   response[2] += (.10-.035*brighterLid)*upperLid;
-  // A broad, pale tent reflection crosses the nasal bridge and the
-  // upper face of its bulb. It falls off before the two gilded wings.
-  const noseLight = Math.exp(-(((faceX-.0017)/.023)**2+((height-1.650)/.038)**4));
-  response[1] += .074*noseLight;
-  response[2] += .105*noseLight;
+  // The rounded bridge catches the same warm silk as the forehead.
+  const noseLight = Math.exp(-((faceX/.034)**2+((height-1.655)/.041)**4));
+  response[0] += .027*noseLight;
+  response[1] += .024*noseLight;
+  response[2] += .006*noseLight;
   // The round outer wing sits behind the frontal bulb and picks up a
   // broader side light above the short aperture.
   const ala = Math.exp(-(((Math.abs(faceX)-.035)/.0135)**2+((height-1.609)/.014)**2));

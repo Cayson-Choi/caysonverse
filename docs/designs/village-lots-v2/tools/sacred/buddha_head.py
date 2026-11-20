@@ -213,11 +213,13 @@ def fy(x,z):
     spread=(.0235 + .0175*bulb + .0052*exp(-((z-1.650)/.047)**4)
             - .0095*exp(-((z-1.579)/.010)**2)
             + .0050*exp(-((z-1.71)/.039)**2) + .020*muzzle + .046*chin)
-    # Ease the cross section continuously from the bridge to the rounded tip
-    # and over the columella, preserving the measured midline at every height.
-    bridge=exp(-((z-1.655)/.053)**4)
+    # Broaden the dorsal column out to the inner orbital planes. The blend
+    # starts above the alae so their section and the tip retain their profile.
+    rise=max(0.,min(1.,(z-1.617)/.025))
+    bridge=rise*rise*(3-2*rise)*exp(-((z-1.667)/.054)**4)
+    spread+=.0092*bridge
     ball=.16*exp(-((z-1.605)/.019)**2)
-    section=exp(-(abs(x)/spread)**(2+.10*bridge))
+    section=exp(-(abs(x)/spread)**(2+.10*exp(-((z-1.655)/.053)**4)))
     ridge=(front-outline)*((1-ball)*section+ball*exp(-(x/.020)**2))
     center=.5*(front+back)
     # Constrain only the midline to the measured sagittal profile. Spreading
@@ -265,12 +267,13 @@ def soften_face_normals(mesh):
         ala_dx=(.12+.48*tanh((lateral-.034)/.014))*(1 if local_x>=0 else -1)
         dx+=ala*(ala_dx-dx)
         dz+=ala*(.47*tanh((z-1.604)/.014)-.03-dz)
-        # At the root the bridge picks up the tall silk reflection. Across the
-        # ball and alae the normals follow the actual turns of the cast.
-        dorsum=.81*exp(-(local_x/.030)**2-((z-1.635)/.043)**4)
-        dorsum*=max(0.,min(1.,(z-1.608)/.021))
-        dx+=dorsum*(.29*local_x/.032-dx)
-        dz+=dorsum*(.51*tanh((z-1.603)/.013)-dz)
+        # Ease the normals across the whole rounded bridge. Carry the measured
+        # sagittal slope through its shoulders without a polished central ridge.
+        rise=max(0.,min(1.,(z-1.608)/.023))
+        dorsum=rise*rise*(3-2*rise)*exp(-((z-1.660)/.050)**4)
+        shoulder=exp(-(local_x/.042)**2)*dorsum
+        dx+=.63*shoulder*(.38*tanh(local_x/.034)-dx)
+        dz+=.52*shoulder*(.43*tanh((z-1.604)/.022)-dz)
         columella=exp(-(local_x/.012)**2-((z-1.590)/.013)**2)
         dz-=.34*min(0.,dz)*columella
         # Once the lateral wing meets the upper lip, its shadow dies into
@@ -388,13 +391,13 @@ HAIR = [(section_z(v),w/PIXELS_PER_METRE,(b-f)/(2*PIXELS_PER_METRE),depth(.5*(f+
         for v,w,f,b in HAIR_SECTIONS]
 
 
-# Azimuth from the brow and profile image row. The tab rolls under in
-# front of the helix, arches above it and descends behind it to the nape.
+# Azimuth from the brow and profile image row. The front turn is broad
+# enough for a whole row to round into the upper helix on either side.
 HAIRLINE = [(0,75.6),(.42,76.0),(.65,76.7),(.82,77.6),(.96,78.8),
-            (1.08,81.1),(1.19,83.7),(1.30,89.1),(1.36,96.1),(1.40,103.1),
-            (1.435,106.6),(1.47,108.1),(1.50,108.6),(1.53,108.4),(1.56,107.2),
-            (1.59,104.7),(1.62,100.1),(1.66,96.0),(1.72,92.8),
-            (1.80,91.4),(1.87,92.7),(1.92,96.7),(1.96,105.3),
+            (1.08,79.8),(1.19,82.4),(1.30,88.6),(1.36,96.3),(1.40,103.3),
+            (1.435,106.8),(1.47,108.4),(1.50,108.8),(1.54,108.7),(1.57,108.1),
+            (1.59,106.8),(1.62,100.4),(1.66,95.3),(1.72,92.1),
+            (1.80,90.6),(1.87,91.8),(1.92,95.7),(1.96,105.3),
             (2.00,121.0),(2.05,134.5),(2.12,141.0),(2.22,144.4),(2.36,145.6),
             (2.55,146.5),(2.78,146.8),(pi,146.4)]
 
@@ -457,7 +460,7 @@ def scalloped_scalp(phone):
     vs,fs,coords,normals=[],[],[],[]
     sectors=8
     if phone:
-        # Spend the available meridians on the tab and helix. The broad
+        # Spend the available meridians on the temple and helix. The broad
         # occiput and brow carry the same painted curl spacing on both LODs.
         half=[[0,1/3,2/3,1], [0,.53,.78,.90,1],
               [0,.10,.30,.53,.72,1], [0,.5,1]]
@@ -487,15 +490,24 @@ def scalloped_scalp(phone):
                     # Bend the frontal rows with the measured temple arch.
                     wrap=abs(atan2(sin(a),cos(a)))
                     dip=(hair_floor(min(wrap,1.15))-front)*max(0.,cos(a))**.6
-                    # Set the last row on the rounded end of the tab and the
-                    # nape. A local bend keeps the rows level over the ear.
+                    # The terminal course rounds under the temple and the
+                    # next courses end against the helix. Limit their bend
+                    # on its steep sides to preserve the round curl diameter.
                     behind=min(1.,max(0.,(wrap-1.82)/.26))
                     anchor=front-.125-.150*behind*behind*(3-2*behind)
                     delta=floor-anchor
                     edge_bend=delta*exp(-(delta/.024)**2)
+                    around_ear=max(0.,min(1.,(wrap-1.16)/.17,(1.99-wrap)/.12))
+                    around_ear*=around_ear*(3-2*around_ear)
+                    crest=max(0.,min(1.,(wrap-1.55)/.19))
+                    ear_course=front-.125+.050*crest*crest*(3-2*crest)
+                    offset=floor-ear_course
+                    ear_bend=offset*exp(-(offset/.020)**2)
                     def bent(level):
-                        return (level+dip*exp(-((level-front)/.083)**2)
-                                +edge_bend*exp(-((level-anchor)/.048)**2))
+                        bend=(dip*exp(-((level-front)/.083)**2)
+                              +edge_bend*exp(-((level-anchor)/.048)**2))
+                        arch=ear_bend*exp(-((level-ear_course)/.047)**2)
+                        return level+bend*(1-around_ear)+arch*around_ear
                     bottom,top=bent(low),bent(high)
                     z=max(floor,bottom+(top-bottom)*t)
                     row_v=min(1.,(z-bottom)/(top-bottom))
@@ -546,37 +558,6 @@ def scalloped_scalp(phone):
             normals.append((normal-Vector((0,0,(1.0 if inner else .50)*(rear+temple)))).normalized())
             coords.append((.04,.04))
     connect(fs,len(angles),2,start)
-    # Each last curl turns under at the temple. Its upper pole joins a
-    # vertex of the tapering band and its rounded lower half covers the hem.
-    for side in (1,-1):
-        a=side*1.50
-        floor=hair_floor(a)
-        center=hair_root(a,floor)+Vector((side*.001,-.001,.007))
-        crown=center+Vector((0,0,.016))
-        cap_vertex=min(range(start),key=lambda k:(vs[k]-crown).length_squared)
-        nx=6 if phone else 10
-        latitudes=(-1.05,-.35,.52) if phone else (-1.12,-.60,-.05,.54,1.04)
-        bottom=len(vs)
-        vs.append(center+Vector((0,0,-.017)))
-        normals.append(Vector((0,0,-1)))
-        coords.append((.04+.5*.92/7,.04))
-        for latitude in latitudes:
-            radius=cos(latitude)
-            for j in range(nx):
-                angle=2*pi*j/nx
-                xx,yy,zz=radius*cos(angle),radius*sin(angle),sin(latitude)
-                vs.append(center+Vector((.009*xx,.0125*yy,.017*zz)))
-                normals.append(Vector((xx/.009,yy/.0125,zz/.017)).normalized())
-                across=side*.67*xx+.74*yy
-                coords.append((.04+.92*(.5+.47*across)/7,.04+.92*(.5+.47*zz)))
-        for j in range(nx):
-            k=(j+1)%nx
-            ring=bottom+1
-            fs.append((bottom,ring+k,ring+j))
-            for _ in latitudes[1:]:
-                fs.append((ring+j,ring+k,ring+nx+k,ring+nx+j))
-                ring+=nx
-            fs.append((ring+j,ring+k,cap_vertex))
     scalp=surface('Cast scalp with rows of snail curls',vs,fs,'hair')
     scalp.data.normals_split_custom_set_from_vertices(normals)
     lattice=scalp.data.uv_layers.new(name='Curl lattice')

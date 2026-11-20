@@ -57,16 +57,20 @@ def ear_finish_patch(patch,kind,triangles):
     tilt = TILT*(u-(left+right)/2)
     # Feather the tint off the rim and at the boundary with ordinary skin.
     mask = np.clip(roundness*3.2,0,1)
-    recess = mask*np.clip(.48*bowl+.57*concha,0,.64)*(1-.68*np.clip(folds/.010,0,1))
+    # Warmth collects under the two cartilage rolls, especially in the
+    # deep concha. The crest and uninterrupted pendant keep the skin finish.
+    recess = mask*np.clip(.60*bowl+.86*concha,0,.88)*(1-.88*np.clip(folds/.013,0,1))
+    rim = np.exp(-((v-25)/16)**2-((u-94)/41)**4)*mask
     if kind == "color":
         skin = np.array(GILT_SKIN[0])
-        leaf = skin*(1.-recess[...,None]*np.array([.46,.62,.72]))
+        leaf = skin*(1.-recess[...,None]*np.array([.61,.82,.85]))
+        leaf += rim[...,None]*np.array([.04,.12,.055])
         patch[:,:,:3] = np.where(leaf<=.0031308,12.92*leaf,1.055*leaf**(1/2.4)-.055)
         return
     if kind == "orm":
-        patch[:,:,0] = .995-.24*recess
+        patch[:,:,0] = .995-.33*recess
         patch[:,:,1] = GILT_SKIN[1]+.085*recess
-        patch[:,:,2] = GILT_SKIN[2]
+        patch[:,:,2] = GILT_SKIN[2]-.15*rim
         return
 
     # Transfer the normal of the continuous shell. Subtracting the low-poly
