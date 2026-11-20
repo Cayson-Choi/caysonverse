@@ -1,3 +1,4 @@
+import { VILLAGE_WALL_PLAN, VILLAGE_WALL_SOLIDS } from "@caysonverse/shared/village/parkWall";
 import { lotGeometryColliders } from "@caysonverse/shared/village/villageLots";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
@@ -39,7 +40,10 @@ describe("the follow camera's arm: the player's distance, shortened only by buil
     for (const w of cliff) expect(armBoxes()).toContainEqual(w);
     // (lots v2, L5v2: the lot buildings' tall bodies are buildings too)
     const lotTall = lotGeometryColliders().cameraBoxes.filter((b) => (b.height ?? 0) >= 12 && b.minY === undefined).length;
-    expect(armBoxes().filter((b) => (b.height ?? 0) >= 12).length).toBe(11 + cliff.length + lotTall);
+    // (케이슨랜드's castle wall, parkWall.ts: its towers are buildings for the arm too)
+    const wallTall = VILLAGE_WALL_SOLIDS.cameraBoxes.filter((b) => (b.height ?? 0) >= 12).length;
+    expect(wallTall).toBe(VILLAGE_WALL_PLAN.towers.length);
+    expect(armBoxes().filter((b) => (b.height ?? 0) >= 12).length).toBe(11 + cliff.length + lotTall + wallTall);
   });
 
   it("the café kiosk is a small building: a camera that would end up inside it is held in front of it (coordinator 2026-11-16)", () => {
