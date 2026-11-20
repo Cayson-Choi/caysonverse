@@ -39,11 +39,21 @@ export const fpEye = {
   pullMax: 1,
   /** The eye's sideways shift in the head's frame (character.glb units, + = the avatar's left): CAROUSEL_SIDE on the horse. */
   side: 0,
+  /** On foot (not seated, not on a ride): the walk's bob of the head bone is held out of the eye (see steadyHead). */
+  onFoot: false,
+  /** The body is going somewhere now (ground speed above STEADY_MOVING). */
+  moving: false,
   x: 0,
   y: 0,
   z: 0,
   camera: null as Camera | null,
 };
+
+/** Ground speed (m/s) above which the body counts as walking. */
+export const STEADY_MOVING = 0.15;
+/** How long the body must stand still (s) before its head's resting place is taken as the one to hold while walking. */
+export const STEADY_REST_S = 1.2;
+const STEADY_EASE_S = 0.25;
 
 /** The own body's first-person state (written by LocalPlayer every frame). */
 export const fpBody = {
@@ -71,6 +81,19 @@ export const fpBody = {
   /** DEV/e2e: the last head eye (world) and the correction applied. */
   lastEye: new Vector3(),
   lastFix: new Vector3(),
+  /**
+   * Owner 2026-11-20: "1인칭뷰로 볼때는 흔들림이 없도록": the head bone bobs with every step (up to 16 cm up and down running, 7 cm
+   * sideways), and the eye rode it. On foot the head's offset from the pose's estimate (in the body's frame) is HELD while walking:
+   * `rest` is that offset as it stands when the body has stood still a while, `hold` what the eye uses (eased to `rest` when
+   * walking begins, so a stand-up from a seat never freezes at the seat's height). Seated or riding, the live head is used.
+   */
+  hold: new Vector3(),
+  rest: new Vector3(),
+  hasRest: false,
+  haveHold: false,
+  stillFor: 0,
+  /** DEV/e2e: the hold is off (the live head, as before). */
+  steadyOff: false,
 };
 
 const eyeV = new Vector3();
@@ -78,6 +101,9 @@ const m4 = new Matrix4();
 const qBody = new Quaternion();
 const sBody = new Vector3();
 const pBody = new Vector3();
+const boneV = new Vector3();
+const rawV = new Vector3();
+const qInv = new Quaternion();
 
 /**
  * The head's eye point in world space (the head bone's matrixWorld must be current). `pull` (1 = the eye, 0 = over the neck,
@@ -167,6 +193,42 @@ function shadowStandIn(): Mesh {
   return mesh;
 }
 
+/**
+ * Hold the head bone's walking bob out of `eyeV` (the live eye, qBody the body's turn from headEyeWorld): the eye is the held
+ * offset instead of the bone's. Seated, riding or in the walk's absence the eye stays the live head.
+ */
+function steadyHead(head: Bone, dt: number, fix: typeof fpEye): void {
+  const b = fpBody;
+  if (b.steadyOff) return;
+  boneV.setFromMatrixPosition(head.matrixWorld);
+  qInv.copy(qBody).invert();
+  rawV.set(boneV.x - fix.x, boneV.y - fix.y, boneV.z - fix.z).applyQuaternion(qInv);
+  const k = (tau: number) => 1 - Math.exp(-dt / tau);
+  if (!fix.onFoot || !b.haveHold) {
+    b.hold.copy(rawV);
+    b.haveHold = true;
+    b.stillFor = 0;
+    if (!fix.onFoot) b.hasRest = false;
+  } else if (fix.moving) {
+    b.stillFor = 0;
+    if (b.hasRest) b.hold.lerp(b.rest, k(STEADY_EASE_S));
+  } else {
+    b.stillFor += dt;
+    if (b.stillFor < STEADY_REST_S) b.hold.lerp(rawV, k(0.15));
+    else {
+      if (!b.hasRest) {
+        b.rest.copy(b.hold);
+        b.hasRest = true;
+      }
+      b.rest.lerp(rawV, k(0.5));
+      b.hold.copy(b.rest);
+    }
+  }
+  // eye = live eye - the bone's raw offset + the held one (both turned with the body)
+  rawV.sub(b.hold).applyQuaternion(qBody);
+  eyeV.sub(rawV);
+}
+
 /** The render hook's work (exported for tests): the eye correction once per frame, the head shrunk, the labels hidden. */
 export function beforeRender(camera: Camera): void {
   const b = fpBody;
@@ -185,6 +247,7 @@ export function beforeRender(camera: Camera): void {
       b.side = fix.side;
       headEyeWorld(head, eyeV, b.pull, b.side);
       b.lastEye.copy(eyeV);
+      steadyHead(head, dt, fix);
       b.lastFix.set((eyeV.x - fix.x) * fix.w, (eyeV.y - fix.y) * fix.w, (eyeV.z - fix.z) * fix.w);
       camera.position.add(b.lastFix);
       camera.updateMatrixWorld();

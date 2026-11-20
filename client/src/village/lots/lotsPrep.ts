@@ -319,6 +319,16 @@ export function pickLotLevels(
   return out;
 }
 
+/**
+ * How far (m, from the lot's box) a lot's landmark dressing (`nodes.far`) stays drawn: the village's front door is seen from the whole
+ * square, and its lamps' glow sprites never hide — the posts, the fountain and the topiary used to pop in only within 25 / 35 m (owner
+ * 2026-11-20). Past it the fog has swallowed them. A hysteresis keeps the edge from flickering.
+ */
+export const FAR_DRESS_REACH = Object.freeze({ pc: 220, phone: 180, hysteresis: 8 });
+export function farDressShown(gap: number, was: boolean, device: LotDevice): boolean {
+  return gap <= (device === "pc" ? FAR_DRESS_REACH.pc : FAR_DRESS_REACH.phone) + (was ? FAR_DRESS_REACH.hysteresis : 0);
+}
+
 // ───────────────────────────────────────── the model ─────────────────────────────────────────
 
 export interface LotDoorLeaf {
@@ -343,6 +353,8 @@ export interface LotNodes {
   /** Per lot: the structure group (level >= 1) and the goods group (level 2). */
   detail: Map<LotId, Object3D>;
   goods: Map<LotId, Object3D>;
+  /** Per lot: the landmark dressing drawn far beyond the detail's reach (the gate: fountain, lamps, topiary, pennants, urns). */
+  far: Map<LotId, Object3D>;
   night: Object3D[];
   doors: LotDoorRig[];
   boxes: Array<{ id: LotId; box: AABB; detailTris: number; goodsTris: number }>;
@@ -899,7 +911,7 @@ export function prepareLots(
   lampCount = lampUniform.value.length;
   stats.lamps = points.length;
 
-  return { root, shells, detail, goods, night, doors, boxes, glow, surfaces, lotSets, own, stats };
+  return { root, shells, detail, goods, far: new Map(), night, doors, boxes, glow, surfaces, lotSets, own, stats };
 }
 /**
  * Put out the lots' lamp points within `r` m of (x, z) and under `belowY` (moved far below the ground: the count, and so the

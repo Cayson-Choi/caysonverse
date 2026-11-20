@@ -11,7 +11,7 @@ import { autoDoorOpenAmount } from "../publicAutoDoorModel";
 import { dayNight } from "../dayNightDriver";
 import type { VillageTier } from "../villageModelPrep";
 import { disposeLoadedLots, loadLots, type LoadedLot, type LoadedLots } from "./lotsLoader";
-import { applyLotTextures, applyLotsDayNight, disposeLots, lotsMode, pickLotLevels, prepareLots, setLotDoor, showLotLevels, visibleLoad, type LotLevel, type LotNodes } from "./lotsPrep";
+import { farDressShown, gapToBox, applyLotTextures, applyLotsDayNight, disposeLots, lotsMode, pickLotLevels, prepareLots, setLotDoor, showLotLevels, visibleLoad, type LotLevel, type LotNodes } from "./lotsPrep";
 import { LotTextureBank } from "./lotTextures";
 import { floraOld } from "../veg/vegMode";
 import { cutOldPines, makeTemplePines, pineGroundY } from "./templePines";
@@ -290,6 +290,14 @@ export function VillageLots({ pose, tier }: { pose: Pose; tier: VillageTier }) {
     if (changed) {
       levels.current = next;
       showLotLevels(nodes, next);
+    }
+    // the landmark dressing (the gate's fountain, lamps, topiary, pennants) from far away: its own reach, far beyond the detail's
+    for (const [id, grp] of nodes.far) {
+      const box = nodes.boxes.find((b) => b.id === id)?.box;
+      if (!box) continue;
+      const gap = Math.min(gapToBox(refs[0]!.x, refs[0]!.z, box), gapToBox(refs[1]!.x, refs[1]!.z, box));
+      const on = farDressShown(gap, grp.visible, device);
+      if (grp.visible !== on) grp.visible = on;
     }
     // the full textures of the detailed lots (the far albedo for the rest): asked for on a change, and twice a second for the releases;
     // uploaded a couple a frame before they are shown (no frame waits on a 2K upload), the lots drawn once every far albedo is up

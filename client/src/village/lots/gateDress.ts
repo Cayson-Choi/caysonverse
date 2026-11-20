@@ -61,6 +61,38 @@ export const GATE_SPOTS = {
   soilHalf: 0.6,
 } as const;
 
+/** One bunting span: both ends on a fixture, sagging `sag` m at the middle, `flags` pennants hanging along it. */
+export interface GateSpan {
+  a: V3;
+  b: V3;
+  sag: number;
+  flags: number;
+}
+/** The anchor stubs on the gatehouse's front face (z) and how far they stand out. */
+const FACE_Z = 92.45;
+const BRACKET_OUT = 0.28;
+/**
+ * The bunting: per side the two lamps' finials joined, the far lamp to a bracket low on the wing's face, and the near lamp to a
+ * bracket higher up on it. Every end is a lamp's finial (`lampTop`: its top, m) or a bracket drawn at the end.
+ */
+export function gateSpans(lampTop: number): { spans: GateSpan[]; brackets: V3[] } {
+  const spans: GateSpan[] = [];
+  const brackets: V3[] = [];
+  for (const x of [-33.5, -14.5]) {
+    const near: V3 = [x, lampTop, 84.5];
+    const far: V3 = [x, lampTop, 90.5];
+    const low: V3 = [x, 4.3, FACE_Z - BRACKET_OUT];
+    const high: V3 = [x, 5.45, FACE_Z - BRACKET_OUT];
+    brackets.push([x, 4.3, FACE_Z], [x, 5.45, FACE_Z]);
+    spans.push({ a: near, b: far, sag: 0.5, flags: 13 }, { a: far, b: low, sag: 0.18, flags: 5 }, { a: near, b: high, sag: 0.45, flags: 20 });
+  }
+  return { spans, brackets };
+}
+/** A point on a span (t 0..1): the straight line less a parabola's sag. */
+export function spanPoint(s: GateSpan, t: number): V3 {
+  return [s.a[0] + (s.b[0] - s.a[0]) * t, s.a[1] + (s.b[1] - s.a[1]) * t - s.sag * 4 * t * (1 - t), s.a[2] + (s.b[2] - s.a[2]) * t];
+}
+
 /** Which of the old triangles go (centroid in world, the mesh's material name). */
 export function isOldGatePiece(x: number, y: number, z: number, material: string): boolean {
   const f = GATE_SPOTS.fountain;
@@ -69,6 +101,13 @@ export function isOldGatePiece(x: number, y: number, z: number, material: string
   if (/goods/i.test(material) && d < 2.4 && y < 0.6) return true; // the lumpy shrubs round its foot
   if (/goods|oak/i.test(material) && y > GATE_SPOTS.planterTop - 0.02)
     for (const p of GATE_SPOTS.planters) if (Math.abs(x - p.x) < 0.8 && Math.abs(z - p.z) < 0.8) return true; // the topiaries
+  // the old bunting strings (thin steel ribbons from each lamp's top up to the tower's centre axis, where they ended inside the stone and
+  // read as lines hanging in the sky): replaced by gateSpans below, each end on a fixture you can see
+  if (/steel/i.test(material) && y > 3.4 && y < 9.3 && z > 84.3 && z < 92.45 && ((x > -33.7 && x < -27.5) || (x > -20.4 && x < -14.3))) return true;
+  // the two little planters at the front's ends (granite box + boxwood, centres x -14.9 / -33.1, z 95.7) were drawn before the castle wall
+  // stood there: half of each is inside the wall's footing (z >= 95.45) and its plant squeezes out of the stone
+  if (/granite|goods/i.test(material) && z > 94.6 && y < 1.4)
+    for (const px of [-14.9, -33.1]) if (Math.abs(x - px) < 1.5) return true;
   return false;
 }
 
@@ -431,6 +470,8 @@ export function dressGateLot(nodes: LotNodes, low: boolean, mats: GateDressMater
   nodes.surfaces.push(iron);
   own(iron);
   const one = victorianLampGeometry(low);
+  one.computeBoundingBox();
+  const lampTop = one.boundingBox!.max.y - 0.03;
   const lampGeos: BufferGeometry[] = [];
   const m4 = new Matrix4();
   for (const l of GATE_SPOTS.lamps) {
@@ -562,6 +603,67 @@ export function dressGateLot(nodes: LotNodes, low: boolean, mats: GateDressMater
       nodes.own.geometries.push(urnGeo);
     }
     nodes.own.geometries.push(ballGeo, stemGeo, mulchGeo);
+  }
+  // the landmark pieces leave the detail group for their own, which the lots' LOD shows far beyond the detail's reach (farDressShown)
+  const farGroup = new Group();
+  farGroup.name = "gate_far_dress";
+  detail.parent?.add(farGroup);
+  const goodsGroup = detail.getObjectByName("lotgoods__lot_gate");
+  const farKinds = ["lotinst__lot_gate_pennant", "lotinst__lot_gate_bulb", "lotinst__lot_gate_urn"];
+  for (const n of ["gate_fountain", "gate_lamps_iron", "gate_lamps_bulbs", "gate_lamps_globes", ...detail.children.filter((c) => c.name.startsWith("gate_topiary")).map((c) => c.name)]) {
+    const o = detail.getObjectByName(n);
+    if (o) farGroup.attach(o);
+  }
+  for (const n of farKinds) {
+    const o = goodsGroup?.getObjectByName(n);
+    if (o) farGroup.attach(o);
+  }
+  nodes.far.set("lot_gate", farGroup);
+  // the bunting: new strings with a little sag, every end on a lamp's finial or a bracket, the flags hanging along them
+  const { spans, brackets } = gateSpans(lampTop);
+  const rope = new GeoBuilder();
+  const ROPE: V3 = [0.4, 0.34, 0.26];
+  for (const s of spans) {
+    const pts: V3[] = [];
+    for (let i = 0; i <= 16; i++) pts.push(spanPoint(s, i / 16));
+    rope.tube(pts, 0.012, 4, ROPE);
+  }
+  for (const p of brackets) rope.tube([[p[0], p[1], p[2]], [p[0], p[1], p[2] - BRACKET_OUT]], 0.03, 6, ROPE);
+  const ropeGeo = rope.build();
+  const ropeMesh = new Mesh(ropeGeo, iron);
+  ropeMesh.name = "gate_bunting_rope";
+  ropeMesh.raycast = () => {};
+  farGroup.add(ropeMesh);
+  nodes.own.geometries.push(ropeGeo);
+  let flagKind: InstancedMesh | null = null;
+  farGroup.getObjectByName("lotinst__lot_gate_pennant")?.traverse((c) => {
+    if ((c as InstancedMesh).isInstancedMesh) flagKind = c as InstancedMesh;
+  });
+  const flags = flagKind as InstancedMesh | null;
+  if (flags) {
+    const mm = new Matrix4();
+    let n = 0;
+    for (const s of spans) {
+      const dx = s.b[0] - s.a[0];
+      const dz = s.b[2] - s.a[2];
+      const len = Math.hypot(dx, dz) || 1;
+      // the flags face across the span, toward the avenue's axis (x -24)
+      let nx = -dz / len;
+      let nz = dx / len;
+      if ((nx > 0 ? 1 : -1) !== (-24 - s.a[0] > 0 ? 1 : -1)) {
+        nx = -nx;
+        nz = -nz;
+      }
+      const yaw = Math.atan2(nx, nz);
+      for (let k = 0; k < s.flags; k++) {
+        const p = spanPoint(s, (k + 0.5) / s.flags);
+        if (n >= flags.instanceMatrix.count) break;
+        flags.setMatrixAt(n++, mm.makeRotationY(yaw).setPosition(p[0], p[1] - 0.01, p[2]));
+      }
+    }
+    flags.count = n;
+    flags.instanceMatrix.needsUpdate = true;
+    flags.computeBoundingSphere();
   }
   // the budget sheet's numbers: what was cut, what came in (the water's draws counted as the renderer draws them)
   let added = 0;
