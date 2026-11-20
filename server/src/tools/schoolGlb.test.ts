@@ -534,7 +534,7 @@ describe("checkSchoolGlb", () => {
     expect(BOX_TOLERANCE).toBeCloseTo(0.011, 6);
     expect(MAX_MATERIALS).toBe(24);
     // one more for the village: the fountain's live-lit crescent (M_moon)
-    expect(MATERIAL_LIMITS).toEqual({ village: 26, memorial: 24, house: 48 });
+    expect(MATERIAL_LIMITS).toEqual({ village: 26, memorial: 24, house: 56 });
     expect(BUDGETS.house).toEqual({ maxBytes: 1024 * 1024, maxTriangles: 52_000 }); // 집 실내 G: houseAreas HOUSE_BUDGET.glb
     expect(MAX_TEXTURE_SIDE).toBe(2048);
     expect(OBJ_ANCHOR_TOLERANCE).toBe(0.25);

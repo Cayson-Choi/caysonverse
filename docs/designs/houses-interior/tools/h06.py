@@ -8,6 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import hb_common as HB  # noqa: E402
+import kit_real as KR  # noqa: E402
 import hb_pieces as HP  # noqa: E402
 import kit_core as K  # noqa: E402
 import kit_shell as SH  # noqa: E402
@@ -42,9 +43,9 @@ H.piece(1, "shelf_b2", HP.bookwall_lite, 5.1, 7.63, 0, PI, w=2.4, seed=41)      
 H.piece(1, "rug_l", DE.rug_rect, 2.2, 2.3, 0, 0.0, w=2.9, d=2.0, cols=False, fringe=False)
 H.piece(1, "armchair", SE.armchair_reading, 0.95, 2.1, 0, PI / 2, tn=PAL["leather_tan"])
 H.piece(1, "armchair", SE.armchair_reading, 3.4, 2.4, 0, -PI / 2, tn=PAL["leather_tan"])
-H.piece(1, "sidetable", TA.table_coffee_round, 2.2, 3.45, 0, 0.0, d=0.62, h=0.5)
-H.piece(1, "ottoman", SE.ottoman, 1.0, 3.2, 0, 0.3, tn=PAL["leather_brown"])
-H.piece(1, "ottoman", SE.ottoman, 3.0, 3.6, 0, -0.2, tn=PAL["leather_brown"])
+H.piece(1, "sidetable", TA.table_coffee_round, 2.2, 1.0, 0, 0.0, d=0.62, h=0.5)
+H.piece(1, "ottoman", SE.ottoman, 1.4, 4.75, 0, 0.0, tn=PAL["leather_brown"])   # (seat-front pass) a pair at the rug's far edge: the armchairs' fronts stay clear
+H.piece(1, "ottoman", SE.ottoman, 2.55, 4.75, 0, 0.0, tn=PAL["leather_brown"])
 H.piece(1, "lamp_l", DE.floor_lamp, 0.9, 0.7)
 
 # --- writing desk in front of the back bookcase, chair on the room side, globe, lamp, books
@@ -59,18 +60,18 @@ H.piece(1, "rug_r", DE.rug_rect, 7.15, 3.9, 0, 0.0, w=2.2, d=1.6, cols=False)
 H.piece(1, "sofa", HP.sofa_leather_n, 8.45, 3.9, 0, -PI / 2, n=2, w=1.75, tn=PAL["leather_brown"])
 H.piece(1, "side", TA.bedside, 8.85, 5.15, 0, -PI / 2)
 H.piece(1, "sidelamp", DE.table_lamp, 8.85, 5.15, 0.55, 0.0)
-H.piece(1, "sideprops", HP.props_table, 2.2, 3.45, 0, 0.0, cols=False, top=0.5, seed=9, w=0.5)
+H.piece(1, "sideprops", HP.props_table, 2.2, 1.0, 0, 0.0, cols=False, top=0.5, seed=9, w=0.5)
 H.piece(1, "frame1", DE.frame_art, 3.47, 0.75, 1.45, -PI / 2, cols=False, w=0.6, h=0.45, art=1)
 H.piece(1, "clock", DE.wall_clock, 3.47, 1.25, 2.05, -PI / 2, cols=False)
-H.piece(1, "boots", DE.boots_pair, 4.2, 0.35, 0.0, 0.3, cols=False)
+pass  # (cottage pass) removed: H.piece(1, "boots", DE.boots_pair, 4.2, 0.35, 0.0, 0.3, cols
 H.piece(1, "lamp_r", DE.floor_lamp, 8.75, 2.65)
-H.piece(1, "plant", HP.plant_big, 8.95, 0.7, 0, 0.0, kind="fiddle", h=1.5, leaves=26)
+H.piece(1, "plant", HP.plant_big, 8.55, 7.05, 0, 0.0, kind="fiddle", h=1.5, leaves=26)
 
 # ============================================================================================== floor 2: bedroom ====
 win2 = HB.ext_windows(H, 2, w=1.4, style="grid", cols=3, rows=2, drape=("curtain", dict(folds=8, tn=(0.9, 0.86, 0.74, 1))),
                       over={("left", HB.EXT_SIDE): dict(w=1.7, y0=0.95, drape=("curtain", dict(folds=8, panels=2, tn=(0.9, 0.86, 0.74, 1))))})
 HB.room(H, 2, floor_kind="oak", wall_tn=CREAM_WALL, wall_m="H_wallpaper", trim_tn=WOOD_TRIM, casing_tn=WOOD_TRIM, ceil_tn=PAL["white"], windows=win2, bath=dict(wall="front", c=1.0))
-H.piece(2, "bed", BE.bed, 5.3, 6.75, 0, PI, w=1.5, l=2.05, headboard="panel", tn=PAL["sage"])
+H.piece(2, "bed", BE.bed, 5.3, 6.66, 0, PI, w=1.5, l=2.05, headboard="panel", tn=PAL["sage"])
 H.piece(2, "bedside", TA.bedside, 4.0, 7.5, 0, PI)
 H.piece(2, "bedside", TA.bedside, 6.6, 7.5, 0, PI)
 H.piece(2, "lamp", DE.table_lamp, 4.0, 7.5, 0.55, 0.0)
@@ -87,6 +88,26 @@ H.piece(2, "frame_a", DE.frame_art, 5.3, 7.78, 1.55, PI, cols=False, w=0.9, h=0.
 H.piece(2, "frames", DE.frame_family, 4.35, 7.78, 1.5, PI, cols=False)
 H.piece(2, "mirror", DE.mirror_round, 8.6, 7.78, 1.5, PI, cols=False, r=0.38)
 H.piece(2, "rug_w", DE.rug_rect, 1.9, 4.1, 0, PI / 2, w=1.6, d=1.0, cols=False, fringe=False)
+
+# ---- realism pass 2026-11-17 (refs: homify / library.re.kr home libraries): appliances and the lived-in things ------------------------
+pass  # (cottage pass) removed: H.piece(1, "aircon", KR.aircon_stand, 9.0, 0.2, 0, 0.0)
+H.piece(1, "drawers", KR.chest_drawers, 7.92, 0.3, 0, 0.0, w=1.2, h=0.74, rows=3, tn=(0.55, 0.38, 0.26, 1))
+H.piece(1, "drlamp", DE.table_lamp, 7.5, 0.3, 0.765, 0.0, cols=False)
+H.piece(1, "drprops", HP.props_table, 8.15, 0.3, 0, 0.0, cols=False, top=0.765, seed=13, w=0.6)
+pass  # (cottage pass) removed: H.piece(1, "purifier", KR.air_purifier, 7.4, 7.3)
+pass  # (cottage pass) removed: H.piece(1, "slippers", KR.slippers, 6.55, 1.15, 0.0, -PI / 2
+H.piece(1, "throw", KR.throw_folded, 3.0, 3.6, 0.42, -0.2, cols=False, w=0.45, d=0.3, layers=2, tn=(0.6, 0.65, 0.55, 1)) if False else None
+pass  # (cottage pass) removed: H.piece(2, "aircon", KR.aircon_wall, 5.3, 0.0, 2.3, 0.0, col
+H.piece(2, "throw", KR.throw_folded, 5.3, 6.0, 0.56, 0.0, cols=False, w=1.35, d=0.42, layers=2, tn=(0.8, 0.72, 0.55, 1))
+pass  # (cottage pass) removed: H.piece(2, "purifier", KR.air_purifier, 7.3, 7.45)
+H.piece(2, "dressing", TA.dressing_table, 6.3, 0.3, 0, 0.0)
+pass  # (cottage pass) removed: H.piece(2, "laundry", KR.laundry_basket, 1.0, 7.4)
+
+# ---- dream show-home styling (owner 2026-11-17): fresh flowers, styled tables, lamps and sconces, a console vignette --------
+H.piece(1, "flowers", KR.flower_vase, 8.35, 0.3, 0.765, 0.0, cols=False, tn=(0.86, 0.5, 0.4, 1), kind="rose", h=0.24)
+H.piece(1, "cstyle", KR.coffee_styling, 2.2, 1.0, 0.5, 0.0, cols=False, tn=(0.85, 0.55, 0.42, 1))
+H.piece(2, "sconce", KR.wall_sconce, 4.0, 7.8, 1.5, PI, cols=False)
+H.piece(2, "sconce", KR.wall_sconce, 6.6, 7.8, 1.5, PI, cols=False)
 
 VIEWS = [
     dict(name="f1_entry", floor=1, eye=[5.3, 0.55, 1.35], look=[4.2, 5.5, 1.35], lens=17),

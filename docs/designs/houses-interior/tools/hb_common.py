@@ -147,6 +147,26 @@ def room(H, floor, floor_kind="oak", wall_tn=None, floor_tn=None, windows=(), en
          wall_h_fn=None, trim_tn=None, casing_tn=None):
     """the room shell of a floor: floors (with the entry tile / stairwell hole), 4 walls with every opening, windows + curtains, entry door,
     bathroom door; the ceiling by `ceiling` ('flat' | 'none' | callable(F) via ceiling_fn). Returns the piece object."""
+    P = getattr(H, "pal", None)
+    low_tn = None
+    if P:                       # layered pass: the house palette (walls / wainscot / trim / ceiling / floor / curtains)
+        wall_tn = P["wall"] if floor == 1 else P["wall2"]
+        low_tn, trim_tn, casing_tn = P["low"], P["trim"], P["trim"]
+        ceil_tn = P["ceil"]
+        if floor_kind == "oak":
+            floor_tn = P["floor"]
+        wins = []
+        for w_ in windows:
+            w_ = dict(w_)
+            kind, kw = w_.get("drape") or (None, {})
+            if kind == "curtain":
+                kw = dict(kw)
+                kw["tn"], kw["m"] = P["curtain"], P["curtain_m"]
+                kw["tie"] = kw.get("tie") or 0.42
+                kw["folds"] = 6
+                w_["drape"] = (kind, kw)
+            wins.append(w_)
+        windows = wins
     ops = {"front": [], "right": [], "back": [], "left": []}
     for k, v in (extra_ops or {}).items():
         ops[k] += v
@@ -165,6 +185,7 @@ def room(H, floor, floor_kind="oak", wall_tn=None, floor_tn=None, windows=(), en
     wall_tn = wall_tn or PAL["white"]
 
     def fn(F):
+        SH.SILL["left"] = getattr(H, "sill_n", 2)     # layered pass 2: a jug of flowers on a couple of window sills
         fr = SH.wall_frames(F, W_, D_)
         draw_floor(F, floor, floor_kind, hole, entry, floor_tn, entry_kind, floor_extra)
         if ceiling == "flat":
@@ -172,7 +193,8 @@ def room(H, floor, floor_kind="oak", wall_tn=None, floor_tn=None, windows=(), en
         elif ceiling_fn:
             ceiling_fn(F, hole if floor == 1 else None)
         for k, (Wf, ln) in fr.items():
-            SH.wall(Wf, ln, CEIL, ops.get(k, []), m=wall_m, tn=wall_tn, base_tn=trim_tn, crown_tn=trim_tn)
+            SH.wall(Wf, ln, CEIL, ops.get(k, []), m=wall_m, tn=wall_tn, base_tn=trim_tn, crown_tn=trim_tn, low_tn=low_tn,
+                    frieze_tn=(ceil_tn if (low_tn is not None and ceiling == "flat") else None))
         if entry and floor == 1:
             SH.entry_door(fr["front"][0], 4.4, 6.2, 2.9)
         for w_ in windows:
@@ -201,6 +223,9 @@ def room(H, floor, floor_kind="oak", wall_tn=None, floor_tn=None, windows=(), en
         for fx in fixtures:
             fx(fr)
 
+    if not hasattr(H, "openings"):
+        H.openings = {}
+    H.openings[floor] = {k: [(o["s0"], o["s1"], o["y0"], o["y1"]) for o in lst] for k, lst in (ops or {}).items()}   # for House.keep_decor_clear
     ob = H.piece(floor, "shell", fn)
     H.windows = getattr(H, "windows", {1: [], 2: []})
     H.windows[floor] = list(windows)
@@ -236,6 +261,9 @@ def partition(H, floor, name, wall, c0, c1, at, gaps=(), m="H_wallpaper", tn=Non
     """interior wall: runs along x (wall='x': z = at, x from c0 to c1) or along z (wall='z': x = at, z from c0 to c1), 12 cm thick, full height, with doorways
     `gaps` = [(g0, g1)] (>= 1.6 m wide, no leaf - a wood door frame instead). Colliders part_<name>_<i> per segment. Wallpaper on both faces, wood skirting + crown."""
     tn = tn or PAL["white"]
+    if getattr(H, "pal", None):          # layered pass: the house palette
+        tn = H.pal["wall"] if floor == 1 else H.pal["wall2"]
+        trim = H.pal["trim"]
     segs, c = [], c0
     for (g0, g1) in sorted(gaps):
         if g0 > c:
@@ -247,13 +275,13 @@ def partition(H, floor, name, wall, c0, c1, at, gaps=(), m="H_wallpaper", tn=Non
     def fn(F):
         for i, (a, b) in enumerate(segs):
             if wall == "x":
-                K.rbox(F, a, b, at - t / 2, at + t / 2, 0.0, h, m, r=0.0, seg=1, tn=tn, skip=("-y",))
+                K.rbox(F, a, b, at - t / 2, at + t / 2, 0.0, h, m, r=0.0, seg=1, tn=tn, skip=("-y",), tile=3.7)
                 for sz in (-1, 1):
                     K.rbox(F, a, b, at + sz * (t / 2 + 0.008) - 0.008, at + sz * (t / 2 + 0.008) + 0.008, 0.0, 0.10, "H_wood_oak", r=0.0, seg=1, tn=trim)
                     K.rbox(F, a, b, at + sz * (t / 2 + 0.02) - 0.02, at + sz * (t / 2 + 0.02) + 0.02, h - 0.07, h, "H_wood_oak", r=0.0, seg=1, tn=trim)
                 K.col(F, a, b, at - t / 2, at + t / 2, h, name=f"part_{name}_{i}")
             else:
-                K.rbox(F, at - t / 2, at + t / 2, a, b, 0.0, h, m, r=0.0, seg=1, tn=tn, skip=("-y",))
+                K.rbox(F, at - t / 2, at + t / 2, a, b, 0.0, h, m, r=0.0, seg=1, tn=tn, skip=("-y",), tile=3.7)
                 for sx in (-1, 1):
                     K.rbox(F, at + sx * (t / 2 + 0.008) - 0.008, at + sx * (t / 2 + 0.008) + 0.008, a, b, 0.0, 0.10, "H_wood_oak", r=0.0, seg=1, tn=trim)
                     K.rbox(F, at + sx * (t / 2 + 0.02) - 0.02, at + sx * (t / 2 + 0.02) + 0.02, a, b, h - 0.07, h, "H_wood_oak", r=0.0, seg=1, tn=trim)
@@ -265,12 +293,12 @@ def partition(H, floor, name, wall, c0, c1, at, gaps=(), m="H_wallpaper", tn=Non
                 for (a, b) in ((g0 - 0.05, g0), (g1, g1 + 0.05)):
                     K.rbox(F, a, b, at - t / 2 - 0.01, at + t / 2 + 0.01, 0.0, hd, "H_wood_oak", r=0.0, seg=1, tn=trim, grain=(0, 0, 1))
                 K.rbox(F, g0 - 0.05, g1 + 0.05, at - t / 2 - 0.01, at + t / 2 + 0.01, hd, hd + 0.08, "H_wood_oak", r=0.0, seg=1, tn=trim)
-                K.rbox(F, g0, g1, at - t / 2, at + t / 2, hd + 0.08, h, m, r=0.0, seg=1, tn=tn, skip=("-y",))
+                K.rbox(F, g0, g1, at - t / 2, at + t / 2, hd + 0.08, h, m, r=0.0, seg=1, tn=tn, skip=("-y",), tile=3.7)
             else:
                 for (a, b) in ((g0 - 0.05, g0), (g1, g1 + 0.05)):
                     K.rbox(F, at - t / 2 - 0.01, at + t / 2 + 0.01, a, b, 0.0, hd, "H_wood_oak", r=0.0, seg=1, tn=trim, grain=(0, 0, 1))
                 K.rbox(F, at - t / 2 - 0.01, at + t / 2 + 0.01, g0 - 0.05, g1 + 0.05, hd, hd + 0.08, "H_wood_oak", r=0.0, seg=1, tn=trim)
-                K.rbox(F, at - t / 2, at + t / 2, g0, g1, hd + 0.08, h, m, r=0.0, seg=1, tn=tn, skip=("-y",))
+                K.rbox(F, at - t / 2, at + t / 2, g0, g1, hd + 0.08, h, m, r=0.0, seg=1, tn=tn, skip=("-y",), tile=3.7)
     return H.piece(floor, "part_" + name, fn, 0, 0)
 
 
@@ -287,7 +315,16 @@ def entry_hall(H, shoe_w=1.3, shoe_side="left", jungmun_open=True):
         K.rbox(F, 3.6, 3.616, 0.0, 1.5, 0.0, 0.10, "H_paint", r=0.003, seg=1, tn=PAL["paint_white"])
         K.rbox(F, 6.984, 7.0, 0.0, 1.5, 0.0, 0.10, "H_paint", r=0.003, seg=1, tn=PAL["paint_white"])
         # transom wall above the 중문 and its glass door (frame in a wall frame at z = 1.5 facing the room)
-        K.rbox(F, 3.5, 7.1, 1.45, 1.55, 2.45, CEIL, "H_plaster", r=0.002, seg=1, tn=t)
+        # (art round 2: a glazed transom instead of the flat plaster slab above the 중문 — slim aluminium rails + mullions, fixed glass, so the
+        # hall reads as a glass vestibule and the wall above no longer hangs as a blank grey panel)
+        mt = (0.18, 0.18, 0.19, 1)
+        yb, yt = 2.46, CEIL
+        K.rbox(F, 3.6, 7.0, 1.47, 1.53, yb, yb + 0.05, "H_metal", r=0.002, seg=1, tn=mt)
+        K.rbox(F, 3.6, 7.0, 1.47, 1.53, yt - 0.06, yt, "H_metal", r=0.002, seg=1, tn=mt)
+        for mx in (3.6, 4.733, 5.867, 7.0 - 0.04):
+            K.rbox(F, mx, mx + 0.04, 1.47, 1.53, yb, yt, "H_metal", r=0.002, seg=1, tn=mt, grain=(0, 0, 1))
+        for (ga, gb) in ((3.64, 4.733), (4.773, 5.867), (5.907, 6.96)):
+            K.gface(F, [(ga, 1.5, yb + 0.05), (gb, 1.5, yb + 0.05), (gb, 1.5, yt - 0.06), (ga, 1.5, yt - 0.06)], "H_glass", (1, 0, 0), 1.0, (0, 1, 0))
         Wf = F.sub(3.6, 1.5, 0, 0.0)
         SH.jungmun(Wf, 0.0, 3.4, 2.4)
         K.col(F, 6.3, 7.0, 1.4, 1.6, 2.4, name="middoor")

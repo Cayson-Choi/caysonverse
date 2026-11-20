@@ -8,6 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import hb_common as HB  # noqa: E402
+import kit_real as KR  # noqa: E402
 import hb_pieces as HP  # noqa: E402
 import hb_music as MU  # noqa: E402
 import kit_core as K  # noqa: E402
@@ -19,7 +20,7 @@ from kit_core import PAL  # noqa: E402
 
 PI = math.pi
 H = HB.House(7)
-MINT_WALL = (0.84, 0.94, 0.89, 1)
+MINT_WALL = (0.82, 0.92, 0.86, 1)      # cottage pass: mint limewash
 SHEER = (0.95, 0.96, 0.92, 1)
 
 # ============================================================================================== floor 1: music room ===
@@ -41,10 +42,10 @@ H.piece(1, "guitar", MU.guitar_a_frame, 0.97, 0.55, 0, 0.0, wood=1)
 # --- conversation: 3-seat sofa facing the audio wall, lounge chair, round table, rug, lamp
 H.piece(1, "rug", DE.rug_rect, 2.2, 3.0, 0, PI / 2, w=3.0, d=2.1, cols=False, fringe=True, tn=PAL["rug_blue"])
 H.piece(1, "sofa", SE.sofa_fabric, 3.55, 3.05, 0, -PI / 2, w=2.2, tn=PAL["sofa_sage"])
-H.piece(1, "armchair", SE.armchair_lounge, 2.3, 5.7, 0, PI, tn=PAL["mustard"])
-H.piece(1, "lamp", DE.floor_lamp, 3.0, 5.9)
+H.piece(1, "armchair", SE.armchair_lounge, 2.3, 5.95, 0, PI, tn=PAL["mustard"])
+H.piece(1, "lamp", DE.floor_lamp, 3.0, 6.15)
 H.piece(1, "records", MU.record_shelf, 10.4, 0.95, 0, -PI / 2, w=1.3, d=0.36, h=0.78, seed=3)
-H.piece(1, "plant_r", HP.plant_big, 10.2, 3.05, 0, 0.0, kind="fiddle", h=1.4, leaves=30)
+H.piece(1, "plant_r", HP.plant_big, 10.2, 5.25, 0, 0.0, kind="fiddle", h=1.4, leaves=30)
 
 # --- piano corner (right wall)
 H.piece(1, "piano", TA.piano_upright, 10.3, 6.9, 0, -PI / 2)
@@ -52,17 +53,17 @@ H.piece(1, "bench", SE.piano_bench, 9.72, 6.9, 0, PI / 2)
 H.piece(1, "pianoframe", DE.frame_art, 10.57, 6.9, 1.45, -PI / 2, cols=False, w=0.7, h=0.5, art=1)
 
 # --- dining corner (front right): round table + two chairs, pendant
-H.piece(1, "table", TA.table_dining_round, 8.9, 2.4, 0, 0.0, d=1.1)
-H.piece(1, "dchair", SE.chair_dining_wood, 7.97, 2.4, 0, PI / 2)
-H.piece(1, "dchair", SE.chair_dining_wood, 9.83, 2.4, 0, -PI / 2)
-H.piece(1, "tableprops", HP.props_table, 8.9, 2.4, 0, 0.0, cols=False, top=0.74, seed=6, w=0.8)
-H.piece(1, "pendant", DE.pendant_dome, 8.9, 2.4, 3.7, 0.0, cols=False, drop=1.05)
+H.piece(1, "table", TA.table_dining_round, 8.45, 2.4, 0, 0.0, d=1.1)
+H.piece(1, "dchair", SE.chair_dining_wood, 7.52, 2.4, 0, PI / 2)
+H.piece(1, "dchair", SE.chair_dining_wood, 9.38, 2.4, 0, -PI / 2)
+H.piece(1, "tableprops", HP.props_table, 8.45, 2.4, 0, 0.0, cols=False, top=0.74, seed=6, w=0.8)
+H.piece(1, "pendant", DE.pendant_dome, 8.45, 2.4, 3.7, 0.0, cols=False, drop=1.05)
 H.piece(1, "plant_b", HP.plant_big, 5.98, 7.3, 0, 0.0, kind="monstera", h=1.2)
 H.piece(1, "clock", DE.wall_clock, 3.47, 1.2, 2.1, -PI / 2, cols=False)
-H.piece(1, "rug2", DE.rug_round, 8.9, 2.4, 0, 0.0, cols=False, d=2.7, tn=PAL["rug_cream"])
+H.piece(1, "rug2", DE.rug_round, 8.45, 2.4, 0, 0.0, cols=False, d=2.7, tn=PAL["rug_cream"])
 H.piece(1, "frames", DE.frame_family, 10.57, 0.95, 1.5, -PI / 2, cols=False)
-H.piece(1, "side", TA.bedside, 3.55, 4.45, 0, -PI / 2)
-H.piece(1, "sidelamp", DE.table_lamp, 3.55, 4.45, 0.55, 0.0)
+H.piece(1, "side", TA.bedside, 3.6, 1.72, 0, -PI / 2)
+H.piece(1, "sidelamp", DE.table_lamp, 3.6, 1.72, 0.55, 0.0)
 H.piece(1, "case", HP.bookwall_lite, 9.5, 0.2, 0, 0.0, w=1.2, h=1.7, d=0.3, seed=33, shelves=5)
 H.piece(1, "pend1", DE.pendant_globe, 3.0, 2.6, 3.7, 0.0, cols=False, drop=1.1, r=0.13)
 H.piece(1, "pend2", DE.pendant_globe, 3.0, 3.6, 3.7, 0.0, cols=False, drop=1.1, r=0.13)
@@ -71,7 +72,9 @@ H.piece(1, "pend2", DE.pendant_globe, 3.0, 3.6, 3.7, 0.0, cols=False, drop=1.1, 
 win2 = HB.ext_windows(H, 2, w=1.5, style="grid", cols=3, rows=2, drape=None)
 HB.room(H, 2, floor_kind="dark", wall_tn=(0.93, 0.93, 0.88, 1), wall_m="H_wallpaper", trim_tn=WOOD_TRIM, casing_tn=WOOD_TRIM, ceil_tn=PAL["white"], windows=win2, bath=dict(wall="front", c=1.0))
 # tool wall + main bench (back wall, right)
-H.piece(2, "pegboard", MU.pegboard, 9.1, 7.79, 1.0, PI, w=2.3, h=1.1, seed=2)
+pass  # (layered pass 2: the pegboard of tools read as a garage) H.piece(2, "pegboard", MU.pegboard, 9.1, 7.79, 1.0, PI, w=2.3, h=1.1, seed=2)
+import kit_layer as KL  # noqa: E402
+H.piece(2, "benchgal", KL.gallery_wall, 9.1, 7.796, 1.25, PI, cols=False, w=2.2, seed=71, frame_tn=(0.45, 0.3, 0.18, 1))
 H.piece(2, "bench", TA.workbench, 9.1, 7.2, 0, PI, w=2.0, d=0.8, h=0.9)
 H.piece(2, "benchprops", MU.bench_props, 9.1, 7.2, 0, PI, cols=False, w=2.0, d=0.8, top=0.9, seed=7)
 H.piece(2, "stool", SE.stool_wood, 8.45, 6.35, 0, 0.3, h=0.66)
@@ -87,13 +90,27 @@ H.piece(2, "mat", MU.shelf_materials, 10.4, 0.95, 0, -PI / 2, w=1.2, d=0.4, h=1.
 H.piece(2, "mat", MU.shelf_materials, 10.4, 2.2, 0, -PI / 2, w=1.2, d=0.4, h=1.9, seed=5)
 H.piece(2, "mat", MU.shelf_materials, 10.4, 5.55, 0, -PI / 2, w=1.2, d=0.4, h=1.9, seed=6)
 H.piece(2, "mat", MU.shelf_materials, 10.4, 6.8, 0, -PI / 2, w=1.2, d=0.4, h=1.9, seed=8)
-H.piece(2, "wheel", MU.potter_wheel, 0.9, 1.5, 0, PI / 2)
+pass  # (cottage pass) removed: H.piece(2, "wheel", MU.potter_wheel, 0.9, 1.5, 0, PI / 2)
 H.piece(2, "plant", HP.plant_big, 6.6, 0.6, 0, 0.0, kind="monstera", h=1.1)
-H.piece(2, "lumber", MU.lumber_rack, 0.2, 5.6, 0, PI / 2, w=1.2, h=1.7)
-H.piece(2, "crates", MU.crate_stack, 0.5, 2.6, 0, 0.0, n=3)
-H.piece(2, "crates", MU.crate_stack, 2.2, 0.5, 0, 0.3, n=2, seed=5)
+pass  # (cottage pass) removed: H.piece(2, "lumber", MU.lumber_rack, 0.2, 5.6, 0, PI / 2, w=
+pass  # (cottage pass) removed: H.piece(2, "crates", MU.crate_stack, 0.5, 2.6, 0, 0.0, n=3)
+pass  # (cottage pass) removed: H.piece(2, "crates", MU.crate_stack, 2.2, 0.5, 0, 0.3, n=2, 
 H.piece(2, "clock", DE.wall_clock, 10.57, 3.0, 2.0, -PI / 2, cols=False)
 H.piece(2, "frame", DE.frame_art, 0.04, 4.9, 1.6, PI / 2, cols=False, w=0.5, h=0.65, art=1)
+
+# ---- realism pass 2026-11-17 (refs: unsplash upright-piano living rooms, pexels workshops): the room is used ---------------------------
+pass  # (cottage pass) removed: H.piece(1, "aircon", KR.aircon_stand, 1.6, 0.2, 0, 0.0)
+H.piece(1, "musicstand", KR.music_stand, 9.0, 5.75, 0, -PI / 2 - 0.5)
+H.piece(1, "throw", KR.throw_draped, 3.98, 2.6, 0.8, -PI / 2, cols=False, w=0.5, top_d=0.14, drop_front=0.28, drop_back=0.4, tn=(0.86, 0.78, 0.62, 1))
+pass  # (cottage pass) removed: H.piece(1, "purifier", KR.air_purifier, 7.5, 7.45)
+pass  # (cottage pass) removed: H.piece(1, "slippers", KR.slippers, 6.55, 1.15, 0.0, -PI / 2
+H.piece(1, "mats", KR.placemats, 8.45, 2.4, 0.745, 0.0, cols=False, spots=[(-0.3, 0.0, PI / 2), (0.3, 0.0, -PI / 2)], tn=(0.65, 0.6, 0.55, 1))
+pass  # (cottage pass) removed: H.piece(2, "vac", KR.shop_vac, 7.2, 6.65)
+H.piece(2, "toolchest", KR.chest_drawers, 7.3, 7.5, 0, PI, w=0.8, d=0.45, h=0.74, rows=4, tn=(0.62, 0.72, 0.66, 1))   # layered pass 2: painted in the house's soft sage (was tool-chest red)
+pass  # (cottage pass) removed: H.piece(2, "fan", KR.electric_fan, 5.2, 5.6, 0, PI - 0.4)
+
+# ---- dream show-home styling (owner 2026-11-17): fresh flowers, styled tables, lamps and sconces, a console vignette --------
+H.piece(1, "flowers", KR.flower_vase, 8.7, 2.4, 0.745, 0.0, cols=False, tn=(0.95, 0.62, 0.52, 1), kind="rose", h=0.24)
 
 VIEWS = [
     dict(name="f1_entry", floor=1, eye=[5.3, 0.55, 1.35], look=[4.4, 5.5, 1.3], lens=17),

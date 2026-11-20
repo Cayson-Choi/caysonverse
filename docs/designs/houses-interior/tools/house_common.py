@@ -159,6 +159,8 @@ class House:
             for (t0, t1, ty0, ty1) in taken:
                 if b > t0 and a < t1 and y + hgt > ty0 and y < ty1:
                     return False
+            if name.startswith("stair"):        # the stair's own wall pictures hang along the flight: only openings and each other matter
+                return True
             for c in self.hb.cols:
                 if c[0] != floor or c[6] < y - 0.02 or c[1].startswith("wall"):
                     continue
@@ -171,17 +173,24 @@ class House:
                     return False
             return True
 
-        for k in range(0, 200):
-            for sg in ((1,) if k == 0 else (1, -1)):
-                s = s0v + sg * 0.05 * k
-                if free(s):
-                    taken.append((s - half - 0.03, s + half + 0.03, y, y + hgt))
-                    ds = s - s0v
-                    if abs(ds) > 1e-6:
-                        print(f"DECOR {name} floor {floor} ({wall} wall): slid {ds:+.2f} m along the wall to clear an opening / piece")
-                        rx, rz = {"front": (1, 0), "back": (-1, 0), "left": (0, -1), "right": (0, 1)}[wall]
-                        return lx + rx * ds, lz + rz * ds
-                    return lx, lz
+        half0 = half
+        # first stay near where it was asked (<= 1 m along the wall, a gallery narrowing to fit), only then slide further
+        for (scale, kmax) in (([(1.0, 20), (0.8, 20), (0.62, 20), (0.48, 20)] if kind == "gal" else [(1.0, 20)]) + [(1.0, 200)]):
+            half = half0 * scale
+            for k in range(0, kmax):
+                for sg in ((1,) if k == 0 else (1, -1)):
+                    s = s0v + sg * 0.05 * k
+                    if free(s):
+                        taken.append((s - half - 0.03, s + half + 0.03, y, y + hgt))
+                        ds = s - s0v
+                        if scale < 1.0:
+                            kw["w"] = 2 * half
+                            print(f"DECOR {name} floor {floor} ({wall} wall): gallery narrowed to {2 * half:.2f} m to fit between openings")
+                        if abs(ds) > 1e-6:
+                            print(f"DECOR {name} floor {floor} ({wall} wall): slid {ds:+.2f} m along the wall to clear an opening / piece")
+                            rx, rz = {"front": (1, 0), "back": (-1, 0), "left": (0, -1), "right": (0, 1)}[wall]
+                            return lx + rx * ds, lz + rz * ds
+                        return lx, lz
         print(f"DECOR {name} floor {floor} ({wall} wall): no free spot, left out")
         return None
 
