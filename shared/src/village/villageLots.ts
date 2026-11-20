@@ -25,13 +25,14 @@
 
 import type { AABB, CameraBox } from "../collision";
 import type { PlotId, Point2, Side } from "./villageLayout";
+import { CAFE_CENTRE_XZ, CAFE_IN, CAFE_ROOM_SIZE } from "./cafeRoom";
 
 /** v2 ids (2026-11-17). v1's market/shops/hall/post/mart ids were never released (cancelled), so they are not kept. */
-export type LotId = "lot_school" | "lot_chapel" | "lot_library" | "lot_temple" | "lot_church" | "lot_gate";
+export type LotId = "lot_school" | "lot_chapel" | "lot_library" | "lot_temple" | "lot_church" | "lot_gate" | "lot_cafe";
 
 
 /** What a lot holds (design 2). */
-export type LotKind = "school" | "chapel" | "library" | "temple" | "church" | "park_gate";
+export type LotKind = "school" | "chapel" | "library" | "temple" | "church" | "park_gate" | "cafe";
 
 /** A rectangle in a lot's local frame (m): x0 < x1, z0 < z1. */
 export interface LotRect {
@@ -653,6 +654,43 @@ const GATE: VillageLot = {
   priority: 6,
 };
 
+/**
+ * 케이슨 카페 (owner 2026-11-20 "들어갈 수 있게 해"): the village café on the east side of the plaza, a roomed building like the others but
+ * not one of the lots (it is a layout `cafe` house with its own baked facade and terrace, so it is not in `VILLAGE_LOTS`: no lot model,
+ * no lot LOD, no lot colliders). It only carries what the walk-in room needs: its frame, its door and its room (cafeRoom.ts). Frame as
+ * parts_cafe.py: local z out of the door, the body x +-7.1, z -9.6..4.0 (the terrace is the 6 m before it).
+ */
+export const CAFE_LOT: VillageLot = {
+  id: "lot_cafe",
+  plot: null,
+  kind: "cafe",
+  name: "케이슨 카페",
+  sign: "케이슨 카페",
+  storeys: 2,
+  storeyHeight: 4.6,
+  height: 12.7,
+  doorSide: "w",
+  centre: { x: CAFE_CENTRE_XZ.x, z: CAFE_CENTRE_XZ.z },
+  front: 15,
+  depth: 20,
+  body: rect(-7.1, 7.1, -9.6, 4),
+  apron: 6,
+  entry: "door",
+  doors: [door("lot_cafe_main", 0, 2.4, "swing", "door", 1, "front", 3)],
+  units: [
+    {
+      id: "lot_cafe_room", name: "카페 홀", sign: "카페", x0: -7.1, x1: 7.1, door: "lot_cafe_main",
+      interior: interior("lot_cafe_room", { x: 560, z: 40 }, { x: CAFE_ROOM_SIZE.x, z: CAFE_ROOM_SIZE.z }, 4.3, 1),
+    },
+  ],
+  colliders: [],
+  seats: [],
+  slots: [],
+  approach: { x: 40.6, z: -15.1 },
+  phase: { exterior: 1, interior: 1 },
+  priority: 7,
+};
+
 function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
     Object.freeze(value);
@@ -665,7 +703,7 @@ function deepFreeze<T>(value: T): T {
 export const VILLAGE_LOTS: readonly VillageLot[] = deepFreeze([SCHOOL, CHAPEL, LIBRARY, TEMPLE, CHURCH, GATE]);
 
 export function villageLot(id: LotId): VillageLot {
-  const l = VILLAGE_LOTS.find((x) => x.id === id);
+  const l = id === "lot_cafe" ? CAFE_LOT : VILLAGE_LOTS.find((x) => x.id === id);
   if (!l) throw new Error(`unknown lot ${id}`);
   return l;
 }
@@ -836,6 +874,7 @@ export const LOT_TRIANGLES: Readonly<Record<LotId, { shell: number; detail: numb
   lot_temple: Object.freeze({ shell: 3_400, detail: 20_000 }),
   lot_church: Object.freeze({ shell: 2_400, detail: 14_000 }),
   lot_gate: Object.freeze({ shell: 4_000, detail: 25_000 }),
+  lot_cafe: Object.freeze({ shell: 0, detail: 0 }), // (no lot model: the facade is the village's)
 });
 
 /**
@@ -926,6 +965,8 @@ export const LOT_SURFACE_RULES = Object.freeze({
     // B3 2026-11-17: the 75ab7df gate re-seated on the library's KTX2 sets (v1's band names had no library sets): ashlar
     // towers, granite plinths, cream render, glossy painted iron and domes (plaster_painted), brushed metal, oak benches
     lot_gate: Object.freeze(["stone_ashlar", "granite_flamed", "stucco_white", "plaster_painted", "aluminium_brushed", "wood_oak"]),
+    // 2026-11-20: the café's room (no lot model: CafeRoom.tsx dresses its floor, walls and oak with these library sets)
+    lot_cafe: Object.freeze(["floor_wood", "plaster_painted", "wood_oak", "wood_painted", "tile_white"]),
   }),
 });
 
@@ -991,6 +1032,7 @@ export const LOT_ROOF_SLABS: Readonly<Record<LotId, readonly { rect: LotRect; mi
   ]),
   lot_church: Object.freeze([{ rect: rect(-2.2, 2.2, 3, 4.8), minY: 3.6, height: 4.8 }]), // columned porch
   lot_gate: Object.freeze([]),
+  lot_cafe: Object.freeze([]),
 });
 
 /**
@@ -1108,6 +1150,10 @@ export interface LotInteriorSeat {
   frontEdge: number;
   backDepth: number;
   places: number;
+  /** A chair pulled up to its table (the café's): its front is the table, so it is sat on from beside and stood up from in front-and-aside (the terrace chairs' rule), and the 0.6 m front strip is not kept clear. */
+  tableFront?: boolean;
+  /** A backless seat sat on from either side (a stool at a counter): two facings, one exclusive group. */
+  both?: boolean;
 }
 
 export interface LotInteriorSpec {
@@ -1256,7 +1302,7 @@ const TEMPLE_IN: LotInteriorSpec = {
 };
 
 /** Every walk-in interior, in fixed order (interior seat ids follow it; never reorder). */
-export const LOT_INTERIORS: readonly LotInteriorSpec[] = deepFreeze([SCHOOL_IN, LIBRARY_IN, CHAPEL_IN, CHURCH_IN, TEMPLE_IN]);
+export const LOT_INTERIORS: readonly LotInteriorSpec[] = deepFreeze([SCHOOL_IN, LIBRARY_IN, CHAPEL_IN, CHURCH_IN, TEMPLE_IN, CAFE_IN]);
 
 /** Every interior seat id in its one fixed order (append-only: a new seat goes at the end). Game ids `lotin:<id>…`. */
 export const LOT_INTERIOR_SEAT_ORDER: readonly string[] = Object.freeze(LOT_INTERIORS.flatMap((i) => i.seats.map((s) => s.id)));

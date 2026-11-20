@@ -67,18 +67,19 @@ function build(): Built {
     plain(parts.art, art, "cafe_art"),
     instanced(parts.chair, solid, parts.chairMatrices, "cafe_chairs"),
     instanced(parts.table, solid, parts.tableMatrices, "cafe_tables"),
+    instanced(parts.stool, solid, parts.stoolMatrices, "cafe_stools"),
     plain(parts.blobs, blob, "cafe_shadows"),
     plain(parts.pools, pool, "cafe_pools"),
   ];
-  meshes[4]!.renderOrder = 1;
-  meshes[5]!.renderOrder = 2;
+  meshes[5]!.renderOrder = 1;
+  meshes[6]!.renderOrder = 2;
   return {
     parts,
     meshes,
     pool,
     blob,
     dispose() {
-      for (const g of [parts.fixed, parts.art, parts.chair, parts.table, parts.blobs, parts.pools]) g.dispose();
+      for (const g of [parts.fixed, parts.art, parts.chair, parts.table, parts.stool, parts.blobs, parts.pools]) g.dispose();
       for (const m of [solid, art, blob, pool]) m.dispose();
       atlas.dispose();
       mirror.dispose();
@@ -88,10 +89,10 @@ function build(): Built {
 }
 
 /**
- * The village café's furniture (cafeLayout.ts): bentwood chairs and bistro tables as two instanced meshes, and one merged mesh of
+ * The village café's furniture (cafeLayout.ts): bentwood chairs and bistro tables as three instanced meshes (the counter stools too), and one merged mesh of
  * the rest (the counter's and the shelves' bread, cakes, jars and cups, the Kelsch banquette, the oak ceiling beams, the pendants,
  * the plants, the clock and mirror, the tile mat), a textured one for the chalkboard menu and the framed prints, and two decals
- * (contact shadows, the pendants' warm pools): six draw calls, about 30 k triangles, lit by the room's own model (cafeMaterials.ts)
+ * (contact shadows, the pendants' warm pools): seven draw calls, about 30 k triangles, lit by the room's own model (cafeMaterials.ts)
  * with the village's day and night. Seen through the glass only: the café is never entered, so nothing here is solid or sit-able.
  */
 export function CafeInterior() {

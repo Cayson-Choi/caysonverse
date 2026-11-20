@@ -955,7 +955,7 @@ function lotInteriorSeats(): VillageSeat[] {
           back: s.kind === "backed" ? Math.max(0.05, Math.round((s.backDepth - 0.05) * 1000) / 1000) : 0,
           width: Math.min(s.length / s.places, s.length),
           group: `lotin:${s.id}:${k + 1}`,
-          both: false,
+          both: s.both === true,
           exitTurn: 0,
           lean: s.kind === "backed" ? 0.12 : 0,
           pose: floor ? "floor" : undefined,

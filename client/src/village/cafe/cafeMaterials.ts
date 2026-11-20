@@ -9,15 +9,46 @@ import { lampPositions, CAFE_CENTRE } from "./cafeLayout";
  * and the new ones; weak by day, full when the village's lights are on: `uLit`), a faint sheen from them, and a floor
  * contact darkening. No scene lights are read (a MeshBasicMaterial), so the room costs no light passes.
  */
-export const cafeUniforms = {
-  uNight: { value: 0 },
-  uDay: { value: 1 },
-  uLit: { value: 0 },
-  uLamps: { value: lampPositions().map((p) => new Vector3(CAFE_CENTRE.x - p.z, p.y, CAFE_CENTRE.z + p.x)) },
-  uAmbDay: { value: new Color(0.46, 0.425, 0.385) },
-  uAmbNight: { value: new Color(0.05, 0.055, 0.085) },
-  uLampColor: { value: new Color(1.0, 0.64, 0.34) },
-};
+export interface CafeUniformSet {
+  uNight: { value: number };
+  uDay: { value: number };
+  uLit: { value: number };
+  uLamps: { value: Vector3[] };
+  uAmbDay: { value: Color };
+  uAmbNight: { value: Color };
+  uLampColor: { value: Color };
+  /** The directions (unit, pointing from the room toward the glass) the daylight comes in from: the front glass and the two side walls. */
+  uWinF: { value: Vector3 };
+  uWinA: { value: Vector3 };
+  uWinB: { value: Vector3 };
+}
+
+/**
+ * One set of the room model's inputs. `toWorld` turns a lamp's café-local (x, z) into the world's (the village's facade, or the walk-in
+ * room far away, which stands turned half a circle); `windows` says where the glass is in that world: the front (the door's wall) and the
+ * two side walls. The village's own set is `cafeUniforms`; the room makes its own (CafeRoom.tsx).
+ */
+export function makeCafeUniforms(
+  toWorld: (lx: number, lz: number) => { x: number; z: number },
+  windows: { front: readonly [number, number, number]; sideA: readonly [number, number, number]; sideB: readonly [number, number, number] },
+): CafeUniformSet {
+  const v = (a: readonly [number, number, number]) => new Vector3(a[0], a[1], a[2]).normalize();
+  return {
+    uNight: { value: 0 },
+    uDay: { value: 1 },
+    uLit: { value: 0 },
+    uLamps: { value: lampPositions().map((p) => { const w = toWorld(p.x, p.z); return new Vector3(w.x, p.y, w.z); }) },
+    uAmbDay: { value: new Color(0.46, 0.425, 0.385) },
+    uAmbNight: { value: new Color(0.05, 0.055, 0.085) },
+    uLampColor: { value: new Color(1.0, 0.64, 0.34) },
+    uWinF: { value: v(windows.front) },
+    uWinA: { value: v(windows.sideA) },
+    uWinB: { value: v(windows.sideB) },
+  };
+}
+
+/** The village facade's set: the glass front faces west (-x), the side walls +-z. */
+export const cafeUniforms = makeCafeUniforms((lx, lz) => ({ x: CAFE_CENTRE.x - lz, z: CAFE_CENTRE.z + lx }), { front: [-1, 0.25, 0], sideA: [0, 0.25, 1], sideB: [0, 0.25, -1] });
 export const LAMP_COUNT = cafeUniforms.uLamps.value.length;
 
 const VERT_PARS = /* glsl */ `attribute vec2 aMat;
@@ -47,14 +78,17 @@ uniform vec3 uLamps[${LAMP_COUNT}];
 uniform vec3 uAmbDay;
 uniform vec3 uAmbNight;
 uniform vec3 uLampColor;
+uniform vec3 uWinF;
+uniform vec3 uWinA;
+uniform vec3 uWinB;
 vec3 cafeShade( vec3 albedo, vec3 n, vec3 p, vec2 m ) {
 	// sky and floor ambient (the ceiling side brighter, the floor side bounced and dimmer)
 	vec3 amb = mix( uAmbDay, uAmbNight, uNight );
 	amb *= mix( 0.62, 1.0, n.y * 0.5 + 0.5 );
 	// window light: the glass front (west, -x) and the side walls (+-z) throw daylight across the room
-	float wl = max( dot( n, normalize( vec3( -1.0, 0.25, 0.0 ) ) ), 0.0 ) * 0.34
-		+ max( dot( n, normalize( vec3( 0.0, 0.25, 1.0 ) ) ), 0.0 ) * 0.12
-		+ max( dot( n, normalize( vec3( 0.0, 0.25, -1.0 ) ) ), 0.0 ) * 0.12;
+	float wl = max( dot( n, uWinF ), 0.0 ) * 0.34
+		+ max( dot( n, uWinA ), 0.0 ) * 0.12
+		+ max( dot( n, uWinB ), 0.0 ) * 0.12;
 	vec3 sky = vec3( 0.95, 0.9, 0.82 ) * wl * uDay;
 	// contact darkening: the floor and the wall feet are darker, the ceiling a little
 	float ao = mix( 0.58, 1.0, smoothstep( 0.0, 0.3, p.y ) ) * mix( 1.0, 0.82, smoothstep( 3.2, 4.3, p.y ) );
@@ -108,10 +142,10 @@ vec3 roomReflection(vec3 surface) {
 }`;
 
 /** A MeshBasicMaterial lit by the room's model (see above): vertex colours, optionally a map, double-sided. */
-export function cafeMaterial(key: string, map: Texture | null = null, mirror: Texture | null = null): MeshBasicMaterial {
+export function cafeMaterial(key: string, map: Texture | null = null, mirror: Texture | null = null, uniforms: CafeUniformSet = cafeUniforms): MeshBasicMaterial {
   const m = new MeshBasicMaterial({ vertexColors: true, side: DoubleSide, map });
   m.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, cafeUniforms);
+    Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader.replace("#include <common>", `#include <common>\n${VERT_PARS}`).replace("#include <begin_vertex>", VERT_WORLD);
     shader.fragmentShader = shader.fragmentShader.replace("#include <common>", `#include <common>\n${FRAG_PARS}`).replace("#include <opaque_fragment>", FRAG_LIGHT);
     if (mirror) {

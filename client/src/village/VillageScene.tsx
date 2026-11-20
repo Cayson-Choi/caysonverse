@@ -7,7 +7,7 @@ import { PlayShell } from "../game/PlayShell";
 import { villageActiveMap } from "../game/activeMap";
 import { clearClickTarget } from "../game/clickMove";
 import { fireTarget, setTargetHandler, setTargetSource } from "../game/interactTargets";
-import { disarmHouseUse, takeArmedHouseUse } from "./houseTap";
+import { armedHouseUse, disarmHouseUse, takeArmedHouseUse } from "./houseTap";
 import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor, sendUseStair } from "../net/connection";
@@ -75,6 +75,7 @@ import { SIGNALS_MODEL_URL, TransitRoadSignals } from "./TransitRoadSignals";
 import { PublicAutoDoor } from "./PublicAutoDoor";
 import { VillageLots } from "./lots/VillageLots";
 import { LotRoomArea } from "./lots/LotRoom";
+import { CAFE_ROOM_UNIT, CafeRoomArea, CafeRoomPrefetch } from "./cafe/CafeRoom";
 import { lotDoorNotice, lotDoorPadById, LOT_DOOR_TARGET_PREFIX } from "./lots/lotTargets";
 import { openKeypad, useKeypad } from "./keypadStore";
 import { VillageKeypad } from "./VillageKeypad";
@@ -184,7 +185,7 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
   if (area === "park") return <ParkArea tier={tier} />;
   if (area === "hall") return <HallArea pose={pose} />;
   if (isHouseArea(area)) return <HouseArea area={area} pose={pose} />;
-  if (isLotArea(area)) return <LotRoomArea area={area} pose={pose} />;
+  if (isLotArea(area)) return area === `lot:${CAFE_ROOM_UNIT}` ? <CafeRoomArea area={area} pose={pose} /> : <LotRoomArea area={area} pose={pose} />;
   return (
     <>
       {/* A failed download shows a plain ground and tries again, instead of the crash screen (final review m2). */}
@@ -229,6 +230,8 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
       <PublicAutoDoor area="village" pose={pose} />
       {/* The six lot buildings (마을 부지 건물, L5): their own loader, never waited for; a failed one is just not there. */}
       <VillageLots pose={pose} tier={tier} />
+      {/* The café's walk-in room starts to build when the avatar comes near its door (cafe/CafeRoom.tsx). */}
+      <CafeRoomPrefetch pose={pose} />
     </>
   );
 }
@@ -364,7 +367,8 @@ function VillageDoors({ pose }: { pose: Pose }) {
       return;
     }
     if (area === "village") maybePreloadPark(pose.x, pose.z); // the park's files start loading as the gate comes near
-    if (!isHouseArea(area)) return;
+    // a house floor, a lot building's room, or the village with a lot door's use armed by a tap on it (lotDoorTap.ts)
+    if (!isHouseArea(area) && !isLotArea(area) && armedHouseUse() === null) return;
     const offered = villageTargets(area, pose.x, pose.z);
     const id = takeArmedHouseUse(offered.map((t) => t.id));
     const target = id === null ? undefined : offered.find((t) => t.id === id);

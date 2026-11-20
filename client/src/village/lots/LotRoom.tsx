@@ -992,7 +992,7 @@ declare global {
 }
 
 /** The arrival camera: among 24 directions within 65° of straight behind, the one with the longest clear arm (the houses' rule). */
-function arrivalYaw(solid: SolidIndex, x: number, z: number, bodyYaw: number, wanted: number): number {
+export function arrivalYaw(solid: SolidIndex, x: number, z: number, bodyYaw: number, wanted: number): number {
   const pitch = 0.55;
   const behind = normalizeAngle(bodyYaw + Math.PI);
   const y = HEAD_HEIGHT + wanted * Math.sin(pitch);

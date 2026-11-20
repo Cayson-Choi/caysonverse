@@ -1,6 +1,8 @@
 import { BufferGeometry, Matrix4 } from "three";
 import { BRASS, BULB, LEAF, MATTE, MeshBuilder, POLISH, WOOD, lin, rng, type Mat, type V3 } from "./meshBuilder";
+import { CAFE_ALL_TABLES, CAFE_STOOL, cafeToRoom } from "@caysonverse/shared/village/cafeRoom";
 import {
+  BAKED_PENDANTS,
   BANQUETTE,
   BEAMS_Z,
   CAFE_CENTRE,
@@ -8,6 +10,7 @@ import {
   PENDANT_Y,
   ROOM,
   SHELF_UNIT,
+  STOOLS,
   TABLES,
   TABLE_RADIUS,
   TILE_MAT,
@@ -17,7 +20,7 @@ import {
 
 // ---------------------------------------------------------------------------------------------------------------
 // Colours (linear): the bake's oak and walnut, brass, steel, a cream glaze, terracotta, Kelsch red and cream.
-const C = {
+export const C = {
   oak: lin("#A47649"),
   oakDark: lin("#7E5636"),
   walnut: lin("#5E3F2A"),
@@ -43,6 +46,33 @@ const C = {
 /** Local (x, y, z) frame to the world: world = (cx - z, y, cz + x). A proper rotation, so windings and normals carry over. */
 export function localToWorld(): Matrix4 {
   return new Matrix4().set(0, 0, -1, CAFE_CENTRE.x, 0, 1, 0, 0, 1, 0, 0, CAFE_CENTRE.z, 0, 0, 0, 1);
+}
+
+/**
+ * Local (x, y, z) frame to the walk-in room's world (origin = the room frame's corner in the game): the half turn of cafeRoom.ts
+ * (room x = 6.8 - x, room z = 3.7 - z), a proper rotation, so windings and normals carry over.
+ */
+export function localToRoom(origin: { x: number; z: number }): Matrix4 {
+  const at = cafeToRoom(0, 0);
+  return new Matrix4().set(-1, 0, 0, origin.x + at.x, 0, 1, 0, 0, 0, 0, -1, origin.z + at.z, 0, 0, 0, 1);
+}
+
+/** A round counter stool: an oak seat on four splayed black steel legs with a foot ring (the seat top at CAFE_STOOL.seatTop). */
+export function stoolGeometry(): BufferGeometry {
+  const b = new MeshBuilder();
+  const r = CAFE_STOOL.radius;
+  const top = CAFE_STOOL.seatTop;
+  b.lathe(0, 0, [[r - 0.03, top - 0.05], [r, top - 0.035], [r + 0.005, top - 0.012], [r - 0.01, top], [0, top]], C.oak, WOOD, 16, [C.oakDark, C.oak, C.oak, C.oak]);
+  for (let k = 0; k < 4; k++) {
+    const a = k * (Math.PI / 2) + Math.PI / 4;
+    const c = Math.cos(a);
+    const s2 = Math.sin(a);
+    b.tube([[c * (r - 0.05), top - 0.05, s2 * (r - 0.05)], [c * (r + 0.06), 0.01, s2 * (r + 0.06)]], 0.011, C.black, POLISH, 5);
+  }
+  const ring: V3[] = [];
+  for (let i = 0; i <= 16; i++) ring.push([Math.cos((i / 16) * Math.PI * 2) * (r + 0.02), 0.25, Math.sin((i / 16) * Math.PI * 2) * (r + 0.02)]);
+  b.tube(ring, 0.008, C.steel, BRASS, 4);
+  return b.build();
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -87,7 +117,7 @@ export function tableGeometry(): BufferGeometry {
 }
 
 /** A pendant lamp over (x, z): a cord from the ceiling, then a brass dome or an opal globe with its bulb. */
-function pendant(b: MeshBuilder, x: number, z: number, kind: "dome" | "globe"): void {
+export function pendant(b: MeshBuilder, x: number, z: number, kind: "dome" | "globe"): void {
   const y = PENDANT_Y;
   if (kind === "dome") {
     b.tube([[x, ROOM.ceil, z], [x, y + 0.24, z]], 0.006, C.black, MATTE, 4);
@@ -109,7 +139,7 @@ function pendant(b: MeshBuilder, x: number, z: number, kind: "dome" | "globe"): 
 }
 
 /** One check-pattern rectangle: `nu` x `nv` cells from `o` along `du` and `dv` (unit axes), two colours. */
-function checkGrid(b: MeshBuilder, o: V3, du: V3, dv: V3, nu: number, nv: number, cell: number, a: V3, c: V3, hint: V3, m: Mat): void {
+export function checkGrid(b: MeshBuilder, o: V3, du: V3, dv: V3, nu: number, nv: number, cell: number, a: V3, c: V3, hint: V3, m: Mat): void {
   const P = (i: number, j: number): V3 => [o[0] + du[0] * i * cell + dv[0] * j * cell, o[1] + du[1] * i * cell + dv[1] * j * cell, o[2] + du[2] * i * cell + dv[2] * j * cell];
   for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) b.quad(P(i, j), P(i + 1, j), P(i + 1, j + 1), P(i, j + 1), (i + j) % 2 ? a : c, m, hint);
 }
@@ -132,7 +162,7 @@ const BLADES = {
   lance: [[0.2, 0.66], [0.48, 1], [0.78, 0.55]],
 } as const;
 
-function leaf(b: MeshBuilder, base: V3, d: readonly [number, number], L0: number, W: number, lift: number, color: V3, shape: keyof typeof BLADES = "oval"): void {
+export function leaf(b: MeshBuilder, base: V3, d: readonly [number, number], L0: number, W: number, lift: number, color: V3, shape: keyof typeof BLADES = "oval"): void {
   const L = Math.min(L0, reach(base, d));
   if (L < 0.02) return;
   const tip: V3 = [base[0] + d[0] * L, base[1] + lift, base[2] + d[1] * L];
@@ -161,7 +191,7 @@ function leaf(b: MeshBuilder, base: V3, d: readonly [number, number], L0: number
   b.tri(mid, tip, right, color, LEAF, up);
 }
 
-function pot(b: MeshBuilder, x: number, z: number, r: number, h: number, y = 0): void {
+export function pot(b: MeshBuilder, x: number, z: number, r: number, h: number, y = 0): void {
   b.lathe(x, z, [[r * 0.72, y], [r, y + h * 0.92], [r * 1.04, y + h], [r * 0.9, y + h * 1.02]], C.terracotta, MATTE, 10);
   b.lathe(x, z, [[r * 0.9, y + h * 0.98], [0, y + h * 0.98]], C.soil, MATTE, 10);
 }
@@ -222,7 +252,7 @@ function hangingPlant(b: MeshBuilder, x: number, z: number, y: number, seed: num
 }
 
 /** A potted herb: a small terracotta pot with a basil clump. */
-function herb(b: MeshBuilder, x: number, z: number, y: number, seed: number): void {
+export function herb(b: MeshBuilder, x: number, z: number, y: number, seed: number): void {
   const r = rng(seed);
   pot(b, x, z, 0.05, 0.08, y);
   for (let i = 0; i < 9; i++) {
@@ -232,7 +262,7 @@ function herb(b: MeshBuilder, x: number, z: number, y: number, seed: number): vo
 }
 
 /** A fiddle-leaf fig (taller, broad leaves), like the bake's two. */
-function fig(b: MeshBuilder, x: number, z: number, H: number, seed: number): void {
+export function fig(b: MeshBuilder, x: number, z: number, H: number, seed: number): void {
   const r = rng(seed);
   pot(b, x, z, 0.23, 0.42);
   b.tube([[x, 0.4, z], [x + 0.03, 0.4 + H * 0.5, z - 0.02], [x, 0.4 + H, z]], 0.018, lin("#6E5440"), WOOD, 4, 0.01);
@@ -244,7 +274,7 @@ function fig(b: MeshBuilder, x: number, z: number, H: number, seed: number): voi
 }
 
 /** A cake stand (white ceramic: plate on a stem and foot) with a bundt kougelhopf or a fruit tart on it. */
-function cakeStand(b: MeshBuilder, x: number, z: number, y: number, kind: "kougelhopf" | "tart", seed: number): void {
+export function cakeStand(b: MeshBuilder, x: number, z: number, y: number, kind: "kougelhopf" | "tart", seed: number): void {
   const r = rng(seed);
   b.lathe(x, z, [[0.09, y], [0.07, y + 0.01], [0.015, y + 0.04], [0.012, y + 0.12]], C.white, POLISH, 12);
   b.lathe(x, z, [[0.15, y + 0.115], [0.17, y + 0.125], [0.0, y + 0.13]], C.white, POLISH, 14);
@@ -346,7 +376,7 @@ function loaf(b: MeshBuilder, x: number, z: number, y: number, R: number, seed: 
 }
 
 /** Glazed pantry canisters with a foot ring, rounded shoulder and a wire bail over the lid. */
-function jar(b: MeshBuilder, x: number, z: number, y: number, h: number, radius: number, content: string): void {
+export function jar(b: MeshBuilder, x: number, z: number, y: number, h: number, radius: number, content: string): void {
   const foot = radius * 0.82;
   const neck = radius * 0.73;
   const glaze = lin(content);
@@ -364,7 +394,7 @@ function jar(b: MeshBuilder, x: number, z: number, y: number, h: number, radius:
 }
 
 /** A stack of cups on saucers. */
-function cupStack(b: MeshBuilder, x: number, z: number, y: number, n: number): void {
+export function cupStack(b: MeshBuilder, x: number, z: number, y: number, n: number): void {
   for (let i = 0; i < n; i++) {
     const yy = y + i * 0.07;
     b.lathe(x, z, [[0.05, yy], [0.075, yy + 0.012], [0.0, yy + 0.014]], C.white, POLISH, 10);
@@ -426,6 +456,9 @@ export interface CafeParts {
   table: BufferGeometry;
   chairMatrices: Matrix4[];
   tableMatrices: Matrix4[];
+  /** The counter stools, drawn as instances. */
+  stool: BufferGeometry;
+  stoolMatrices: Matrix4[];
   /** Contact shadows under chairs, tables and furniture (soft dark quads), and the warm pools under the new pendants. */
   blobs: BufferGeometry;
   pools: BufferGeometry;
@@ -442,13 +475,24 @@ function decal(b: MeshBuilder, x: number, z: number, rx: number, rz: number, y: 
   b.quad([xa, y, za], [xb, y, za], [xb, y, zb], [xa, y, zb], c, MATTE, [0, 1, 0], uv);
 }
 
+export interface BuildOptions {
+  /**
+   * The walk-in room (CafeRoom.tsx) rather than the village facade's glass view: the matrix to the room's world, and the furniture the
+   * village model has baked in (the bake's two tables and their chairs, the counter's three pendants, two more figs) is built too; the
+   * facade's round mirror (a probe of the village room) is left out.
+   */
+  room?: { matrix: Matrix4 };
+}
+
 /** All the café's added furniture as geometry in the café's local frame, then moved to the world. */
-export function buildCafe(): CafeParts {
+export function buildCafe(opts: BuildOptions = {}): CafeParts {
+  const room = opts.room;
   const f = new MeshBuilder();
   const art = new MeshBuilder();
   const blobs = new MeshBuilder();
   const pools = new MeshBuilder();
   const white: V3 = [1, 1, 1];
+  const tables = room ? CAFE_ALL_TABLES : TABLES;
 
   // --- the entrance's tile mat: 0.26 m cement tiles, charcoal and cream, with a charcoal border
   {
@@ -459,8 +503,10 @@ export function buildCafe(): CafeParts {
     checkGrid(f, [x0, 0.036, z0], [1, 0, 0], [0, 0, 1], nu, nv, cell, lin("#2F4A3F"), lin("#E6DABF"), [0, 1, 0], MATTE);
   }
   // --- exposed oak beams across the ceiling, with a plaster-white gap between and a darker underside
-  for (const z of BEAMS_Z) {
-    f.box(ROOM.x0, ROOM.x1, ROOM.ceil - 0.28, ROOM.ceil, z - 0.1, z + 0.1, C.beam, WOOD, ["top"]);
+  if (!room) {
+    for (const z of BEAMS_Z) {
+      f.box(ROOM.x0, ROOM.x1, ROOM.ceil - 0.28, ROOM.ceil, z - 0.1, z + 0.1, C.beam, WOOD, ["top"]);
+    }
   }
   // --- the banquette along the left wall: an oak base, a Kelsch-check seat and back
   {
@@ -473,8 +519,8 @@ export function buildCafe(): CafeParts {
     const nv = Math.round((z1 - z0) / cell);
     f.box(xs, x1, 0.385, 0.46, z0, z1, C.kelschCream, MATTE, ["top", "bot", "xm"]);
     checkGrid(f, [xs, 0.461, z0], [1, 0, 0], [0, 0, 1], nu, nv, (x1 - xs) / nu, C.kelschRed, C.kelschCream, [0, 1, 0], MATTE);
-    // the back: leaning on the wall, 0.1 m thick, 0.88 m up (under the windows' sills)
-    const bx1 = xs + 0.1;
+    // the back: a thin padded panel on the wall (3 cm: the sitter's back plane, cafeRoom.ts, stops at its cloth), 0.88 m up (under the windows' sills)
+    const bx1 = xs + 0.03;
     f.box(xs, bx1, 0.46, 0.86, z0, z1, C.kelschCream, MATTE, ["xp", "bot", "xm"]);
     checkGrid(f, [bx1 + 0.0005, 0.465, z0], [0, 0, 1], [0, 1, 0], Math.round((z1 - z0) / cell), 5, 0.08, C.kelschRed, C.kelschCream, [1, 0, 0], MATTE);
     f.box(xs, bx1, 0.86, 0.885, z0, z1, C.walnut, WOOD);
@@ -485,6 +531,8 @@ export function buildCafe(): CafeParts {
 
   // --- pendants over every table
   for (const p of allNewPendants()) pendant(f, p.x, p.z, p.lamp);
+  // (in the room the counter's three brass domes are built here too: the village model bakes them)
+  if (room) for (const p of BAKED_PENDANTS) pendant(f, p.x, p.z, "dome");
 
   // --- the counter's top (y 1.07): kougelhopf and a fruit tart on cake stands, pretzels, a stack of cups by the machine
   cakeStand(f, -1.68, -2.05, 1.07, "kougelhopf", 11);
@@ -549,6 +597,11 @@ export function buildCafe(): CafeParts {
   hangingPlant(f, -3.9, -0.5, 2.45, 103);
   hangingPlant(f, 6.2, 2.9, 2.5, 104);
   fig(f, 6.3, 3.25, 1.5, 105);
+  if (room) {
+    // the bake's two figs (by the door and by the counter's end)
+    fig(f, 1.8, 3.15, 1.5, 106);
+    fig(f, -6.3, -1.2, 1.5, 107);
+  }
 
   // --- a round mirror (brass frame) on the front wall's right end and a clock over the kitchen door
   {
@@ -561,8 +614,8 @@ export function buildCafe(): CafeParts {
       const a = (k / 24) * Math.PI * 2;
       ring.push([cx + mr * Math.cos(a), cy + mr * Math.sin(a), zf - 0.025]);
     }
-    f.tube(ring, 0.022, C.brass, BRASS, 5);
-    for (let k = 0; k < 24; k++) {
+    if (!room) f.tube(ring, 0.022, C.brass, BRASS, 5);
+    for (let k = 0; k < (room ? 0 : 24); k++) {
       const a0 = (k / 24) * Math.PI * 2;
       const a1 = ((k + 1) / 24) * Math.PI * 2;
       // The mirror shares the art draw. Its fully polished surface samples the captured café in the reflected direction.
@@ -622,12 +675,17 @@ export function buildCafe(): CafeParts {
 
   // --- contact shadows (soft, dark) and the warm pools under the pendants
   const dark = lin("#000000");
-  for (const t of TABLES) {
+  for (const t of tables) {
     decal(blobs, t.x, t.z, 0.55, 0.55, 0.04, dark);
     for (const c of tableChairs(t)) decal(blobs, c.x, c.z, 0.34, 0.34, 0.04, dark);
   }
   decal(blobs, BANQUETTE.x0 + 0.33, (BANQUETTE.z0 + BANQUETTE.z1) / 2, 0.55, (BANQUETTE.z1 - BANQUETTE.z0) / 2 + 0.2, 0.04, dark);
   decal(blobs, 6.07, -3.7, 0.9, 0.35, 0.04, dark);
+  for (const st of STOOLS) decal(blobs, st.x, st.z, 0.3, 0.3, 0.04, dark);
+  if (room) {
+    decal(blobs, 1.8, 3.15, 0.45, 0.45, 0.04, dark);
+    decal(blobs, -6.3, -1.2, 0.45, 0.45, 0.04, dark);
+  }
   decal(blobs, -6.15, 3.3, 0.5, 0.4, 0.04, dark);
   decal(blobs, 6.3, 3.25, 0.45, 0.45, 0.04, dark);
   const warm = lin("#FFB45E");
@@ -637,13 +695,17 @@ export function buildCafe(): CafeParts {
   const chair = chairGeometry();
   const table = tableGeometry();
   const l2w = localToWorld();
+  const l2wFinal = room ? room.matrix : l2w;
   const chairMatrices: Matrix4[] = [];
   const tableMatrices: Matrix4[] = [];
+  const stool = stoolGeometry();
+  const stoolMatrices: Matrix4[] = [];
   const inst = (x: number, z: number, yaw: number): Matrix4 => {
     const m = new Matrix4().makeRotationY(yaw).setPosition(x, 0, z);
-    return new Matrix4().multiplyMatrices(l2w, m);
+    return new Matrix4().multiplyMatrices(l2wFinal, m);
   };
-  for (const t of TABLES) {
+  for (const st of STOOLS) stoolMatrices.push(inst(st.x, st.z, 0));
+  for (const t of tables) {
     tableMatrices.push(inst(t.x, t.z, 0));
     for (const c of tableChairs(t)) chairMatrices.push(inst(c.x, c.z, c.yaw));
   }
@@ -653,7 +715,7 @@ export function buildCafe(): CafeParts {
   const artG = art.build();
   const blobG = blobs.build();
   const poolG = pools.build();
-  for (const g of [fixed, artG, blobG, poolG]) g.applyMatrix4(l2w);
+  for (const g of [fixed, artG, blobG, poolG]) g.applyMatrix4(l2wFinal);
     return {
     fixed,
     art: artG,
@@ -661,8 +723,10 @@ export function buildCafe(): CafeParts {
     table,
     chairMatrices,
     tableMatrices,
+    stool,
+    stoolMatrices,
     blobs: blobG,
     pools: poolG,
-    triangles: f.triangles + art.triangles + blobs.triangles + pools.triangles + (chair.attributes.position!.count / 3) * chairMatrices.length + (table.attributes.position!.count / 3) * tableMatrices.length,
+    triangles: f.triangles + art.triangles + blobs.triangles + pools.triangles + (chair.attributes.position!.count / 3) * chairMatrices.length + (table.attributes.position!.count / 3) * tableMatrices.length + (stool.attributes.position!.count / 3) * stoolMatrices.length,
   };
 }

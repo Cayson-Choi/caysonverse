@@ -2,8 +2,9 @@
  * The village café's ground-floor front room, furnished at runtime (CafeInterior.tsx). The room itself (floor, walls, the
  * back bar, the counter with its machine and cake case, two bistro tables, three pendants, the menu board) is baked into
  * village.glb (art/village/tools/parts_cafe.py `cafe_interior`); this file places what the bake lacks. The café is never
- * walked into (its door is closed for good, `col__cafe`), so all of this is seen through the glass, and none of it takes a
- * collider, a seat or a click.
+ * walked into by the village-plane door (it opens into the walk-in room instead: cafeRoom.ts in shared, CafeRoom.tsx here), so from
+ * the village all of this is seen through the glass, and none of it takes a collider, a seat or a click there. The same set of numbers
+ * (shared cafeRoom.ts) furnishes the room, where the tables, chairs, stools and the banquette are solid and sat on.
  *
  * Reference (research 2026-11-18, small Alsatian cafés and pâtisseries, Colmar and Riquewihr): an oak counter with a glass
  * pastry case, an espresso machine and kougelhopf on cake stands; open shelves of jars, cups and bread; a chalkboard menu;
@@ -14,12 +15,24 @@
  * y up. World = (50.6 - z, y, -15.1 + x); the café is `house("cafe", pt(50.6, -15.1), "wood", "w", "cafe")`.
  */
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
+import {
+  CAFE_BAKED_TABLES,
+  CAFE_BANQUETTE,
+  CAFE_CHAIR_DIST,
+  CAFE_ROOM_LOCAL,
+  CAFE_SHELF_UNIT,
+  CAFE_STOOLS,
+  CAFE_TABLES,
+  CAFE_TABLE_RADIUS,
+  cafeTableChairs,
+  type CafeTableSpot,
+} from "@caysonverse/shared/village/cafeRoom";
 
 const cafe = VILLAGE_LAYOUT.sceneryHouses.find((h) => h.id === "cafe")!;
 export const CAFE_CENTRE = { x: cafe.centre.x, z: cafe.centre.z } as const;
 
 /** The modelled room (local metres): the inner wall faces, the kitchen partition at the back and the ceiling. */
-export const ROOM = { x0: -6.8, x1: 6.8, zBack: -4.1, zFront: 3.7, ceil: 4.3 } as const;
+export const ROOM = CAFE_ROOM_LOCAL;
 
 /** Local (x, z) to world (x, z). */
 export function toWorld(lx: number, lz: number): { x: number; z: number } {
@@ -47,34 +60,20 @@ export const BAKED_FOOTPRINTS: readonly (Rect & { name: string })[] = [
 ];
 
 /** A round bistro table (top radius, m). */
-export const TABLE_RADIUS = 0.33;
+export const TABLE_RADIUS = CAFE_TABLE_RADIUS;
 /** How far a chair's centre stands from its table's centre (m): the bake's own (cafe_interior uses 0.72). */
-export const CHAIR_DIST = 0.72;
+export const CHAIR_DIST = CAFE_CHAIR_DIST;
 
-export interface TableSpot {
-  x: number;
-  z: number;
-  /** Which sides have a chair: the chair's centre is at this angle (rad, from +x toward +z) and CHAIR_DIST. */
-  chairs: readonly number[];
-  /** The pendant over it: "dome" (brass) or "globe" (opal glass). */
-  lamp: "dome" | "globe";
-}
+export type TableSpot = CafeTableSpot;
 
-const PI = Math.PI;
-/** The new tables (the bake's two at x 2.9 and 5.3, z 0.3, take pendants too: EXTRA_PENDANTS). */
-export const TABLES: readonly TableSpot[] = [
-  { x: -5.75, z: 0.85, chairs: [0], lamp: "globe" }, // the banquette's two tables: one chair each, the wall side is the bench
-  { x: -5.75, z: 2.2, chairs: [0], lamp: "globe" },
-  { x: -3.4, z: 2.2, chairs: [-PI / 2, PI / 2], lamp: "dome" },
-  { x: -1.7, z: 1.3, chairs: [-PI / 2, PI / 2], lamp: "globe" },
-  { x: 4.1, z: 2.6, chairs: [-PI / 2, PI / 2], lamp: "dome" },
-];
+/** The new tables (the bake's two, at x 2.9 and 5.3 / z 0.3, take pendants too: EXTRA_PENDANTS). Shared with the walk-in room (cafeRoom.ts). */
+export const TABLES: readonly TableSpot[] = CAFE_TABLES;
 
 /** Pendants over the bake's own two tables (their tops are 0.78 m up; the shade's lower rim 1.25 m over them). */
-export const EXTRA_PENDANTS: readonly { x: number; z: number; lamp: "dome" | "globe" }[] = [
-  { x: 2.9, z: 0.3, lamp: "dome" },
-  { x: 5.3, z: 0.3, lamp: "globe" },
-];
+export const EXTRA_PENDANTS: readonly { x: number; z: number; lamp: "dome" | "globe" }[] = CAFE_BAKED_TABLES.map((t) => ({ x: t.x, z: t.z, lamp: t.lamp }));
+
+/** The counter stools (backless, facing the counter). */
+export const STOOLS = CAFE_STOOLS;
 
 /** The shade's lowest point over the floor (m). */
 export const PENDANT_Y = 2.05;
@@ -83,10 +82,10 @@ export const PENDANT_Y = 2.05;
 export const BAKED_PENDANTS: readonly { x: number; z: number }[] = [-4.3, -2.7, -1.1].map((x) => ({ x, z: -2.07 }));
 
 /** The banquette along the left wall (Kelsch-check seat and back, an oak base). Depth 0.55 m from the wall. */
-export const BANQUETTE: Rect & { depth: number } = { x0: -6.8, x1: -6.25, z0: 0.25, z1: 2.95, depth: 0.55 };
+export const BANQUETTE: Rect & { depth: number } = CAFE_BANQUETTE;
 
 /** The open shelf unit right of the kitchen door. */
-export const SHELF_UNIT: Rect & { height: number } = { x0: 5.45, x1: 6.7, z0: -4.1, z1: -3.8, height: 2.3 };
+export const SHELF_UNIT: Rect & { height: number } = CAFE_SHELF_UNIT;
 
 /** Exposed oak ceiling beams (across the room along x, local z of each). */
 export const BEAMS_Z: readonly number[] = [-3.2, -1.0, 1.2, 3.4];
@@ -98,12 +97,7 @@ export const TILE_MAT: Rect = { x0: -1.25, x1: 1.25, z0: 2.45, z1: 3.7 };
 export const CHALKBOARD = { wall: 6.8, z0: -1.4, z1: -0.1, y0: 1.15, y1: 2.5 } as const;
 
 export function tableChairs(t: TableSpot): { x: number; z: number; yaw: number }[] {
-  return t.chairs.map((a) => {
-    const x = t.x + Math.cos(a) * CHAIR_DIST;
-    const z = t.z + Math.sin(a) * CHAIR_DIST;
-    // the chair faces the table: yaw about +y so the chair's +z (its front) points at the table
-    return { x, z, yaw: Math.atan2(t.x - x, t.z - z) };
-  });
+  return cafeTableChairs(t).map((c) => ({ x: c.x, z: c.z, yaw: { px: Math.PI / 2, nx: -Math.PI / 2, pz: 0, nz: Math.PI }[c.face] }));
 }
 
 /** Every pendant (the new ones), local (x, z) and its kind. */

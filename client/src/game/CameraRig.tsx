@@ -98,6 +98,7 @@ import { busFloorUnderRay, busSeatUnderRay } from "../village/busSeatPick";
 import { VILLAGE_LAYOUT, cubbyAtPoint, isHouseArea, isLotArea } from "@caysonverse/shared/village/villageLayout";
 import { localArea } from "../village/villageArea";
 import { armHouseUse, houseTapTarget } from "../village/houseTap";
+import { lotDoorTapTarget } from "../village/lotDoorTap";
 import { armRide, rideForTap, rideTapSpot } from "../land/rideBoard";
 import { openCubbyAt } from "../village/cubbyCard";
 import { cubbyFocusAnchor, stepCubbyFocus, type FocusPose } from "../village/cubbyFocus";
@@ -479,7 +480,8 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
       const inRoom = localArea() === "hall" || isHouseArea(localArea()) || isLotArea(localArea());
       let furniture = inRoom ? map.geometry.obstacles : map.furniture;
       // A tap on a house's stair or front door walks to its pad and uses it there (houseTap.ts): the pad is the destination, the use is armed.
-      const houseTap = pick && !pick.blocker && isHouseArea(localArea()) ? houseTapTarget(localArea(), pick.x, pick.y, pick.z) : null;
+      // (a lot building's door, the village side or a room's way out, the same way: lotDoorTap.ts)
+      const houseTap = pick && !pick.blocker ? (isHouseArea(localArea()) ? houseTapTarget(localArea(), pick.x, pick.y, pick.z) : lotDoorTapTarget(localArea(), pick.x, pick.y, pick.z)) : null;
       if (houseTap) surface = { x: houseTap.x, y: 0, z: houseTap.z, ny: 1 };
       armHouseUse(houseTap ? houseTap.id : null);
       // A tap on a ride (its platform, queue, station, the wheel's frame) walks to its boarding pad and boards there (rideBoard.ts); any other tap disarms it.

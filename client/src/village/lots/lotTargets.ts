@@ -7,6 +7,7 @@
  *  - Slots (contract 5): every `slot__` of the lots, as inert hooks (`onLotSlot`).
  */
 import {
+  CAFE_LOT,
   LOTS_WITH_MODEL,
   LOT_DOOR_INSIDE_HALF_WIDTH_M,
   VILLAGE_LOTS,
@@ -15,6 +16,7 @@ import {
   lotRoomOf,
   lotRoomOfDoor,
   lotSlots,
+  villageLot,
   type LotSlot,
   type LotSlotKind,
   type LotId,
@@ -38,9 +40,9 @@ export interface LotDoorPad {
   kind: "soon" | "enter";
 }
 
-/** Every lot door a player can stand at: the rooms' doors and the gate. */
+/** Every lot door a player can stand at: the rooms' doors (the café's too: 케이슨 카페 들어가기) and the gate. */
 export const LOT_DOOR_PADS: readonly LotDoorPad[] = Object.freeze(
-  VILLAGE_LOTS.filter((l) => LOTS_WITH_MODEL.includes(l.id)).flatMap((l) =>
+  [...VILLAGE_LOTS.filter((l) => LOTS_WITH_MODEL.includes(l.id)), CAFE_LOT].flatMap((l) =>
     l.doors
       .filter((d) => d.entry !== "walk_in")
       .map((d): LotDoorPad => {
@@ -52,13 +54,13 @@ export const LOT_DOOR_PADS: readonly LotDoorPad[] = Object.freeze(
 
 export function lotDoorNotice(pad: Pick<LotDoorPad, "kind" | "lot">): string {
   if (pad.kind === "soon") return "🎡 케이슨랜드는 곧 문을 열어요. 조금만 기다려 주세요!";
-  const name = VILLAGE_LOTS.find((l) => l.id === pad.lot)?.name ?? "건물";
+  const name = villageLot(pad.lot).name;
   return `${name}에 들어가요.`;
 }
 
 /** The short name of a lot for its door button ("학교", "성당"…: the last word of the building's name). */
 export function lotShortName(lot: LotId): string {
-  const name = VILLAGE_LOTS.find((l) => l.id === lot)?.name ?? "";
+  const name = villageLot(lot).name;
   return name.split(" ").pop() || name;
 }
 

@@ -21,7 +21,7 @@ function glbJson(file: string): { asset: { extras?: Record<string, unknown> }; m
 }
 
 /** The lots with the triangle counts the game measured (L5v2, window.__cvLots, 2026-11-17). */
-const MEASURED: Record<LotId, [number, number]> = {
+const MEASURED: Record<Exclude<LotId, "lot_cafe">, [number, number]> = {
   lot_school: [7622, 8570],
   lot_chapel: [6467, 8427],
   lot_library: [6758, 10500],
@@ -29,7 +29,7 @@ const MEASURED: Record<LotId, [number, number]> = {
   lot_church: [5411, 2772],
   lot_gate: [7130, 7630],
 };
-const LOTS = VILLAGE_LOTS.map((l) => ({ id: l.id, box: lotFootprint(l), detailTris: MEASURED[l.id][0], goodsTris: MEASURED[l.id][1] }));
+const LOTS = VILLAGE_LOTS.map((l) => ({ id: l.id, box: lotFootprint(l), detailTris: MEASURED[l.id as keyof typeof MEASURED][0], goodsTris: MEASURED[l.id as keyof typeof MEASURED][1] }));
 const at = (x: number, z: number) => [{ x, z }];
 
 describe("lot LOD (one pool, nearest first)", () => {

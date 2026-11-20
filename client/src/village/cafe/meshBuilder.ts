@@ -87,6 +87,30 @@ export class MeshBuilder {
   }
 
   /**
+   * A quad whose uv are planar metres over the tile size (the PBR sets' real tile): u, v follow the face's dominant axes (a floor:
+   * x, z; a wall along x: x, y; a wall along z: z, y), so a texture repeats at its true size on every wall without hand-set uv.
+   */
+  quadTiled(a: V3, b: V3, c: V3, d: V3, color: V3, m: Mat, hint: V3, tile: number): void {
+    const n = norm(cross(sub(b, a), sub(c, a)));
+    const ax = Math.abs(n[0]);
+    const ay = Math.abs(n[1]);
+    const az = Math.abs(n[2]);
+    const uv = (p: V3): [number, number] => (ay >= ax && ay >= az ? [p[0] / tile, p[2] / tile] : ax >= az ? [p[2] / tile, -p[1] / tile] : [p[0] / tile, -p[1] / tile]);
+    this.quad(a, b, c, d, color, m, hint, [uv(a), uv(b), uv(c), uv(d)]);
+  }
+
+  /** `box`, with tiled uv on every face (see `quadTiled`). */
+  boxTiled(x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, color: V3, m: Mat, tile: number, skip: readonly string[] = []): void {
+    const s = (k: string) => skip.includes(k);
+    if (!s("top")) this.quadTiled([x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1], color, m, [0, 1, 0], tile);
+    if (!s("bot")) this.quadTiled([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], color, m, [0, -1, 0], tile);
+    if (!s("xm")) this.quadTiled([x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1], color, m, [-1, 0, 0], tile);
+    if (!s("xp")) this.quadTiled([x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1], color, m, [1, 0, 0], tile);
+    if (!s("zm")) this.quadTiled([x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], color, m, [0, 0, -1], tile);
+    if (!s("zp")) this.quadTiled([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], color, m, [0, 0, 1], tile);
+  }
+
+  /**
    * A solid of revolution about the vertical axis through (cx, cz): `profile` is (radius, y) pairs from the bottom up; the
    * normals are smooth round it and flat along each profile step.
    */
