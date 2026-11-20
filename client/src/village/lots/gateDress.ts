@@ -69,6 +69,10 @@ export function isOldGatePiece(x: number, y: number, z: number, material: string
   if (/goods/i.test(material) && d < 2.4 && y < 0.6) return true; // the lumpy shrubs round its foot
   if (/goods|oak/i.test(material) && y > GATE_SPOTS.planterTop - 0.02)
     for (const p of GATE_SPOTS.planters) if (Math.abs(x - p.x) < 0.8 && Math.abs(z - p.z) < 0.8) return true; // the topiaries
+  // the two little planters at the front's ends (granite box + boxwood, centres x -14.9 / -33.1, z 95.7) were drawn before the castle wall
+  // stood there: half of each is inside the wall's footing (z >= 95.45) and its plant squeezes out of the stone
+  if (/granite|goods/i.test(material) && z > 94.6 && y < 1.4)
+    for (const px of [-14.9, -33.1]) if (Math.abs(x - px) < 1.5) return true;
   return false;
 }
 
@@ -563,6 +567,21 @@ export function dressGateLot(nodes: LotNodes, low: boolean, mats: GateDressMater
     }
     nodes.own.geometries.push(ballGeo, stemGeo, mulchGeo);
   }
+  // the landmark pieces leave the detail group for their own, which the lots' LOD shows far beyond the detail's reach (farDressShown)
+  const farGroup = new Group();
+  farGroup.name = "gate_far_dress";
+  detail.parent?.add(farGroup);
+  const goodsGroup = detail.getObjectByName("lotgoods__lot_gate");
+  const farKinds = ["lotinst__lot_gate_pennant", "lotinst__lot_gate_bulb", "lotinst__lot_gate_urn"];
+  for (const n of ["gate_fountain", "gate_lamps_iron", "gate_lamps_bulbs", "gate_lamps_globes", ...detail.children.filter((c) => c.name.startsWith("gate_topiary")).map((c) => c.name)]) {
+    const o = detail.getObjectByName(n);
+    if (o) farGroup.attach(o);
+  }
+  for (const n of farKinds) {
+    const o = goodsGroup?.getObjectByName(n);
+    if (o) farGroup.attach(o);
+  }
+  nodes.far.set("lot_gate", farGroup);
   // the budget sheet's numbers: what was cut, what came in (the water's draws counted as the renderer draws them)
   let added = 0;
   let draws = 0;

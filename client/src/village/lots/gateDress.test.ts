@@ -29,3 +29,22 @@ describe("gateDress", () => {
     expect(victorianLampGeometry(true).getAttribute("position").count).toBeLessThan(lamp.getAttribute("position").count);
   });
 });
+
+describe("gateDress: the wall's end planters and the far dressing", () => {
+  it("cuts the two planters that stand half inside the castle wall's footing, not the turret base", () => {
+    expect(isOldGatePiece(-14.9, 0.9, 95.7, "M_martgate_goods")).toBe(true);
+    expect(isOldGatePiece(-33.1, 0.33, 95.5, "LM_martgate_granite")).toBe(true);
+    expect(isOldGatePiece(-15.5, 1.38, 92.4, "LM_martgate_granite")).toBe(false);
+    expect(isOldGatePiece(-24, 0.9, 95.7, "M_martgate_goods")).toBe(false);
+  });
+});
+
+describe("farDressShown", () => {
+  it("keeps the gate's landmark dressing far past the detail reach, with a hysteresis", async () => {
+    const { farDressShown, FAR_DRESS_REACH } = await import("./lotsPrep");
+    expect(farDressShown(100, false, "phone")).toBe(true);
+    expect(farDressShown(FAR_DRESS_REACH.phone + 4, false, "phone")).toBe(false);
+    expect(farDressShown(FAR_DRESS_REACH.phone + 4, true, "phone")).toBe(true);
+    expect(farDressShown(FAR_DRESS_REACH.pc + 20, true, "pc")).toBe(false);
+  });
+});
