@@ -220,6 +220,20 @@ for (const n of houses) {
       await waitArea(`house:house_${n}:2`, 15000);
       await coverGone();
     }
+    if (mode === "spots") {
+      // --spots="label,x,z,lx,ly,lz;..." : stand at (x, z) (a free spot near it), look at (lx, ly, lz) in first person, shoot
+      for (const sp of arg("spots", "").split(";").filter(Boolean)) {
+        const [label, x, z, lx, ly, lz] = sp.split(",");
+        if (Number(label.split("_")[0].replace("f", "")) !== floor && label.startsWith("f")) continue;
+        const at = await goto(Number(x), Number(z), 0.5);
+        const dx = Number(lx) - at.x, dz = Number(lz) - at.z;
+        await fpLook(Math.atan2(-dx, -dz), -Math.atan2(Number(ly) - 1.5, Math.hypot(dx, dz)));
+        await page.screenshot({ path: `${outDir}/h${n}-${label}-${tag}-${dev}-${dn}.png` });
+        console.log("  spot", n, label, JSON.stringify(at));
+        await tpBack();
+      }
+      continue;
+    }
     const info = await page.evaluate(() => window.__cvMirror?.() ?? null);
     console.log("MIRRORS", n, floor, JSON.stringify(info));
     if (mode !== "mirrors" || !info) continue;

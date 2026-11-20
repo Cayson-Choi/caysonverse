@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
-import { MeshBasicMaterial, RepeatWrapping, SRGBColorSpace, type Material, type Mesh, type Texture } from "three";
+import { MeshBasicMaterial, RepeatWrapping, type PerspectiveCamera, SRGBColorSpace, type Material, type Mesh, type Texture } from "three";
 import {
   houseFloorBounds,
   parseHouseFloorArea,
@@ -146,11 +146,17 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
     return prepareHouse(gltf.scene, n, floor, day);
   }, [gltf, n, floor, day]);
   useEffect(() => () => disposeHouse(nodes), [nodes]);
+  useEffect(() => {
+    for (const m of nodes.lightmapped) patchHouseLightmapMaterial(m);
+    for (const m of nodes.glows) patchHouseGlowMaterial(m);
+  }, [nodes]);
   // The mirrors draw the real room live while they are on screen and near (houseMirror.ts HouseMirrorRig).
   const mirrorRig = useRef<HouseMirrorRig | null>(null);
+  const { gl, scene: threeScene, camera: threeCamera } = useThree();
   useEffect(() => {
     const rig = new HouseMirrorRig({ low: tier === "low" });
     rig.attach(nodes.root);
+    if (tier === "low") rig.warm(gl, threeScene, threeCamera as PerspectiveCamera); // the phone's picture is another program variant: compile it now, under the entry cover
     mirrorRig.current = rig;
     if (import.meta.env.DEV) window.__cvMirror = () => ({ mirrors: rig.count, redraws: rig.redraws, lastFrameRedraws: rig.lastFrameRedraws, size: rig.size, low: tier === "low", planes: rig.planes });
     return () => {
@@ -158,11 +164,7 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
       rig.dispose();
       if (import.meta.env.DEV) delete window.__cvMirror;
     };
-  }, [nodes, tier]);
-  useEffect(() => {
-    for (const m of nodes.lightmapped) patchHouseLightmapMaterial(m);
-    for (const m of nodes.glows) patchHouseGlowMaterial(m);
-  }, [nodes]);
+  }, [nodes, tier, gl, threeScene, threeCamera]);
   useEffect(() => {
     if (!view) return;
     // the band shows the village the way this house's real windows look out (houseViewMapping: the two builders' panoramas differ)

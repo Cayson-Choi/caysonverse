@@ -520,6 +520,22 @@ export class HouseMirrorRig {
     e.uniforms.live.value = 1;
   }
 
+  /**
+   * Compile the house's programs for the mirror picture's target now (the light tier's picture is sRGB-encoded and not tone-mapped, a
+   * different program variant from the screen's: its first redraw would otherwise compile every house material in the middle of a frame).
+   */
+  warm(renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera): void {
+    const first = this.entries[0];
+    if (!first) return;
+    const prev = renderer.getRenderTarget();
+    renderer.setRenderTarget(this.targetFor(first));
+    try {
+      renderer.compile(scene, camera);
+    } finally {
+      renderer.setRenderTarget(prev);
+    }
+  }
+
   /** Free the pictures, unhook the meshes, show the painted room again (the materials are shared with the cached model). */
   dispose(): void {
     for (const e of this.entries) {
