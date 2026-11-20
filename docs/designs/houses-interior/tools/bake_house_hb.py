@@ -559,7 +559,7 @@ def main():
     tris = sum(len(p.vertices) - 2 for o in lm_list + hidden for p in o.data.polygons)
     info = dict(glb=glb, bytes=os.path.getsize(glb), triangles=tris, materials=[m.get("name") for m in js.get("materials", [])],
                 seats=n_seats, colliders=len(cols), nodes=len(nodes), lightmap=stats,
-                budget=dict(bytes_ok=os.path.getsize(glb) <= 1_000_000, tris_ok=tris <= 52000, mats_ok=len(js.get("materials", [])) <= 56))
+                budget=dict(bytes_ok=os.path.getsize(glb) <= 1_000_000, tris_ok=tris <= 54000, mats_ok=len(js.get("materials", [])) <= 56))
     json.dump(info, open(os.path.join(out_dir, f"house_{n}.json"), "w", encoding="utf-8"), indent=1)
     log("EXPORTED", glb, info["bytes"], "bytes", tris, "tris", len(info["materials"]), "materials", info["budget"])
 

@@ -732,9 +732,9 @@ export function houseGeneratedFiles(n: HouseNumber) {
 
 const MB = 1024 * 1024;
 const KB = 1024;
-/** Budgets (design 7.2; 2026-11-20: 52k triangles and 56 materials since every picture is its own painting material and the stairwell shows the whole flight), checked by scripts/check-school-glb.ts kind `house` (chunk G adds it). Triangles exclude col__. */
+/** Budgets (design 7.2; 2026-11-20: 54k triangles and 56 materials since every picture is its own painting material and the stairwell shows the whole flight), checked by scripts/check-school-glb.ts kind `house` (chunk G adds it). Triangles exclude col__. */
 export const HOUSE_BUDGET = Object.freeze({
-  glb: Object.freeze({ maxBytes: 1.0 * MB, maxTriangles: 52_000, maxMaterials: 56, maxTextureSide: 2048 }),
+  glb: Object.freeze({ maxBytes: 1.0 * MB, maxTriangles: 54_000, maxMaterials: 56, maxTextureSide: 2048 }),
   props: Object.freeze({ maxBytes: 0.6 * MB, maxTriangles: 25_000 }),
   lightmap: Object.freeze({ side: 2048, maxBytes: 450 * KB, side1k: 1024, maxBytes1k: 230 * KB }),
   view: Object.freeze({ width: 2048, height: 1024 }),

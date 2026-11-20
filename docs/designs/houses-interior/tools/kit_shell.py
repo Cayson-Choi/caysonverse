@@ -358,7 +358,7 @@ def curtain(W, s0, s1, y_top, y_bot, folds=8, z=0.17, amp=0.035, tn=None, m="H_d
             else:
                 a += gap
         nf = max(3, int(folds / panels)) if not open_ else max(4, int(folds / 2))
-        n = 48 if not open_ else 28
+        n = 26 if not open_ else 15
         outer = a if pi_ == 0 else b
         hy = y_bot + 0.07                                                   # the hem band
         rows = [(y_top, 1.0, 1.0), (hy, 1.0, 1.0), (y_bot, 1.0, 1.0)] if not open_ else [(y_top, 1.0, 1.0), (yt, 0.42, 1.7), (hy, 0.7, 1.25), (y_bot, 0.7, 1.25)]
@@ -378,7 +378,7 @@ def curtain(W, s0, s1, y_top, y_bot, folds=8, z=0.17, amp=0.035, tn=None, m="H_d
                 gface(W, P, m, (1, 0, 0), 0.6, (0, 1, 0), tn=tint, smooth=True)
                 gface(W, P, m, (1, 0, 0), 0.6, (0, -1, 0), tn=tint, smooth=True)
         # one ring per fold crest on the rod, a strap down to the cloth's top edge
-        for f_ in range(nf):
+        for f_ in range(0, nf, 2 if open_ else 1):
             u = (f_ + 0.25) / nf
             ring_x.append(outer + ((a + (b - a) * u) - outer))
         if open_:
@@ -391,8 +391,8 @@ def curtain(W, s0, s1, y_top, y_bot, folds=8, z=0.17, amp=0.035, tn=None, m="H_d
         for xx in (s0 - 0.12, s1 + 0.12):
             lathe(W, xx, rz, ry - 0.03, [(0, 0), (0.025, 0.0), (0.03, 0.03), (0.02, 0.06), (0, 0.062)], "H_metal", 10, tn=(0.18, 0.18, 0.18, 1))
         for x in ring_x:
-            circ = [(x, rz + 0.024 * math.cos(t), ry + 0.024 * math.sin(t)) for t in [2 * math.pi * k / 10 for k in range(11)]]
-            tube(W, circ, 0.0035, "H_metal", 4, tn=(0.2, 0.2, 0.2, 1), caps=False)
+            circ = [(x, rz + 0.024 * math.cos(t), ry + 0.024 * math.sin(t)) for t in [2 * math.pi * k / 8 for k in range(9)]]
+            tube(W, circ, 0.0035, "H_metal", 3, tn=(0.2, 0.2, 0.2, 1), caps=False)
             tube(W, [(x, rz - 0.01, ry - 0.022), (x, z + 0.012, y_top + 0.005)], 0.003, "H_metal", 4, tn=(0.2, 0.2, 0.2, 1), caps=False)
 
 
