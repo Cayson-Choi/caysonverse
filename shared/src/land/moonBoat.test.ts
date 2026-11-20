@@ -52,20 +52,20 @@ describe("moon boat timeline", () => {
       const s = moonBoatAt(ms);
       expect(s.omega).toBeCloseTo((a1 - a0) / (2 * h / 1000), 1);
     }
-    expect(MOON_OMEGA).toBeGreaterThan(0.75);
+    expect(MOON_OMEGA).toBeGreaterThan(0.5);
   });
-  it("weighs about 0.14 g (nearly weightless) at the 82 degree turn and about 2.5 g (under 3) through the bottom", () => {
+  it("weighs about 0.14 g (nearly weightless) at the 82 degree turn and about 2.9 g (under 3.5) through the bottom", () => {
     let lo = 9;
     let hi = 0;
-    for (let t = 58; t < 70; t += 0.01) {
+    for (let t = 72; t < 86; t += 0.01) {
       const g = moonGLoad(moonBoatAt(MOON_DWELL_MS + t * 1000));
       lo = Math.min(lo, g);
       hi = Math.max(hi, g);
     }
     expect(lo).toBeGreaterThan(0.05);
     expect(lo).toBeLessThan(0.3);
-    expect(hi).toBeGreaterThan(2.2);
-    expect(hi).toBeLessThan(3);
+    expect(hi).toBeGreaterThan(2.5);
+    expect(hi).toBeLessThan(3.5);
   });
   it("is in the ride table with 32 distinct seats, the end rows handed out first", () => {
     const r = rideByKey("moonboat")!;
@@ -97,8 +97,8 @@ describe("moon boat timeline", () => {
   });
   it("the seat pose follows the swing", () => {
     const rest = moonSeatPose(0, 0);
-    let tTop = 58;
-    for (let t = 58; t < 66; t += 0.01) if (Math.abs(moonBoatAt(MOON_DWELL_MS + t * 1000).angle) > Math.abs(moonBoatAt(MOON_DWELL_MS + tTop * 1000).angle)) tTop = t;
+    let tTop = 72;
+    for (let t = 72; t < 80; t += 0.01) if (Math.abs(moonBoatAt(MOON_DWELL_MS + t * 1000).angle) > Math.abs(moonBoatAt(MOON_DWELL_MS + tTop * 1000).angle)) tTop = t;
     const swung = moonSeatPose(0, MOON_DWELL_MS + tTop * 1000);
     expect(rest.fz).toBeCloseTo(1, 6);
     expect(Math.hypot(swung.fy, swung.fz)).toBeCloseTo(1, 6);
@@ -124,8 +124,8 @@ describe("moon boat clearances through the whole swing", () => {
     let minY = Infinity;
     for (let d = -MAXA; d <= MAXA; d += (1 * Math.PI) / 180) for (const { p } of pts) minY = Math.min(minY, moonPointAt(p, d)[1]);
     expect(minY).toBeGreaterThan(0.9);
-    expect(MOON_FRAME.legX - MOON_FRAME.armX - 0.36).toBeGreaterThan(1.0);
-    expect(MOON_FRAME.legX - MOON_HULL.halfX - 0.36).toBeGreaterThan(1.2);
+    expect(MOON_FRAME.legX - MOON_FRAME.chord - MOON_FRAME.chordR - 0.04 - MOON_FRAME.armX - 0.09).toBeGreaterThan(1.0);
+    expect(MOON_FRAME.legX - MOON_FRAME.chord - MOON_FRAME.chordR - 0.04 - MOON_HULL.halfX).toBeGreaterThan(1.2);
   });
   it("the platform and its rails stay 0.6 m from the boat at every angle", () => {
     let min = Infinity;
@@ -137,7 +137,7 @@ describe("moon boat clearances through the whole swing", () => {
     expect(min).toBeGreaterThan(0.6);
   });
   it("at rest the deck is flush with the hull's floor at the middle, 0.9 m off its side", () => {
-    expect(MOON_DECK_Y).toBeCloseTo(MOON_PIVOT_Y - 11.3 + 0.55, 6);
+    expect(MOON_DECK_Y).toBeCloseTo(MOON_PIVOT_Y - 28.4 + 0.55, 6);
     expect(moonFloorY(0) + MOON_PIVOT_Y).toBeCloseTo(MOON_DECK_Y, 6);
     expect(MOON_DECK.x0 - MOON_HULL.halfX).toBeGreaterThan(0.8);
     expect(MOON_DECK.x0 - MOON_HULL.halfX).toBeLessThan(1.2);

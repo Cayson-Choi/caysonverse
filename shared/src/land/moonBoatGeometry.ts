@@ -38,8 +38,9 @@ export const MOON_PLATFORM_BOXES: readonly Box[] = Object.freeze([
 export function moonFrameCapsules(): Capsule[] {
   const out: Capsule[] = [];
   for (const sx of [-1, 1])
-    for (const sz of [-1, 1]) out.push({ a: [sx * MOON_FRAME.legX, 0.2, sz * MOON_FRAME.footZ], b: [sx * MOON_FRAME.legX, MOON_PIVOT_Y + 0.5, sz * 0.5], r: 0.36, name: "leg" });
-  out.push({ a: [-MOON_FRAME.legX - 0.5, MOON_PIVOT_Y, 0], b: [MOON_FRAME.legX + 0.5, MOON_PIVOT_Y, 0], r: 0.3, name: "axle" });
+    for (const sz of [-1, 1])
+      for (const c of [-MOON_FRAME.chord, MOON_FRAME.chord]) out.push({ a: [sx * MOON_FRAME.legX + c, 0.2, sz * MOON_FRAME.footZ], b: [sx * MOON_FRAME.legX + c, MOON_PIVOT_Y + 0.5, sz * 0.5], r: MOON_FRAME.chordR + 0.04, name: "leg" });
+  out.push({ a: [-MOON_FRAME.legX - MOON_FRAME.chord - 0.3, MOON_PIVOT_Y, 0], b: [MOON_FRAME.legX + MOON_FRAME.chord + 0.3, MOON_PIVOT_Y, 0], r: 0.3, name: "axle" });
   return out;
 }
 

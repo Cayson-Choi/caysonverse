@@ -142,8 +142,8 @@ await run.step("moon boat seated view", async () => {
   // the boat at the peak of its swing: from the ground (two places) and from the end seats' own eyes
   const atPeak = async (ms) => until(async () => (await P.page.evaluate(async () => { const m = await window.__imp("/land/moonBoat.ts"); const c = await window.__imp("/src/village/villageClock.ts"); const n = m.moonBoatAt(c.villageClock.liveMs()); return n.status === "riding" && Math.abs(n.angle) > 1.36 && Math.abs(n.omega) < 0.3; })), ms);
   const cam = (x, y, z, tx, ty, tz, fov) => P.page.evaluate(([x, y, z, tx, ty, tz, fov]) => { window.__cvShot = { x, y, z, tx, ty, tz, fov }; }, [x, y, z, tx, ty, tz, fov]);
-  await P.page.evaluate(() => { window.__cvShot = { x: -62, y: 4, z: -128, tx: -95, ty: 8, tz: -140, fov: 62 }; });
-  for (const [name, c] of [["p1-peak-from-the-ground.png", [-62, 4, -128, -95, 9, -140, phone ? 70 : 62]], ["p2-peak-from-afar.png", [-60, 14, -165, -95, 9, -140, phone ? 66 : 58]]]) {
+  await P.page.evaluate(() => { window.__cvShot = { x: -50, y: 3, z: -112, tx: -95, ty: 17, tz: -140, fov: 70 }; });
+  for (const [name, c] of [["p1-peak-from-the-ground.png", [-50, 3, -112, -95, 17, -140, phone ? 76 : 70]], ["p2-peak-from-afar.png", [-40, 14, -200, -95, 16, -140, phone ? 66 : 58]]]) {
     run.check(`the swing is at its peak for ${name}`, await atPeak(400000));
     await cam(...c);
     await sleep(120);

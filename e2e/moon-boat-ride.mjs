@@ -205,7 +205,7 @@ if (!process.argv.includes("--seat-only")) {
           ["m06-first-swings", st.rideT > 8 && Math.abs(st.angle) > 0.12],
           ["m07-top-of-the-swing-bow-up", big && up],
           ["m08-top-of-the-swing-bow-down", big && !up],
-          ["m09-bottom-fast", st.rideT > 62 && Math.abs(st.angle) < 0.12 && Math.abs(st.omega) > 0.7],
+          ["m09-bottom-fast", st.rideT > 75 && Math.abs(st.angle) < 0.12 && Math.abs(st.omega) > 0.6],
         ])
           if (!shot.has(name) && test) {
             shot.add(name);

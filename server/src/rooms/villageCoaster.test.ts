@@ -354,7 +354,7 @@ describe("VillageCoaster (server rules)", () => {
   });
   it("the moon boat: 32 seats, all handed out once, a rider is put off when the cycle ends", () => {
     const r = rig();
-    const MB_T0 = 20 * 130_000 + 8000; // 8 s into a cycle: boarding
+    const MB_T0 = 20 * 150_000 + 8000; // 8 s into a cycle: boarding
     r.setNow(MB_T0);
     for (let i = 0; i < 33; i++) {
       r.add(`m${i}`);
@@ -368,7 +368,7 @@ describe("VillageCoaster (server rules)", () => {
     expect(p0.rideSeat).toBe(MOON_END_FIRST[0]);
     expect(new Set(Array.from({ length: 32 }, (_, i) => r.players.get(`m${i}`)!.rideSeat)).size).toBe(32);
     expect(r.players.get("m32")!.rideSeat).toBe(-1); // full
-    r.setNow(20 * 130_000 + 130_000 + 300);
+    r.setNow(20 * 150_000 + 150_000 + 300);
     r.coaster.tick();
     expect(p0.rideSeat).toBe(-1);
     expect(p0.rideId).toBe(0);

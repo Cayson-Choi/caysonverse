@@ -7,8 +7,8 @@
  * Boat frame: origin at the axle, y up, z toward the bow (south at rest), x across. The hull's two horns rise out of the keel; 32 seats stand on
  * eight flat terraces in the hull's bowl (seat = row * 4 + column, row 0 at the bow), all facing the bow.
  *
- * Ride: 5 s unloading, 29 s boarding, 6 s gate, then 90 s of swinging: the amplitude builds to 82 degrees over 58 s, holds, and is braked in the last
- * 20 s; the swing has a fixed period (a real pendulum's), so angle(t) = amplitude(t) * sin(2 pi t / period). One cycle is 130 s.
+ * Ride: 5 s unloading, 29 s boarding, 6 s gate, then 110 s of swinging: the amplitude builds to 82 degrees over 70 s, holds, and is braked in the last
+ * 25 s; the swing has a fixed period (a real pendulum's), so angle(t) = amplitude(t) * sin(2 pi t / period). One cycle is 150 s. The axle stands 30 m up on a steel A-frame (arm 28.4 m), the period is 11 s.
  */
 
 export const MOON_BOAT_SITE = Object.freeze({ x: -95, z: -140 });
@@ -17,25 +17,25 @@ export const MOON_BOAT_COLS = 4;
 export const MOON_BOAT_ROWS = 8;
 
 /** The axle's height over the ground and the arm length down to the keel (m). */
-export const MOON_PIVOT_Y = 12.9;
-export const MOON_ARM_L = 11.3;
+export const MOON_PIVOT_Y = 30;
+export const MOON_ARM_L = 28.4;
 /** The hull: half length to the horn tips (z), half width (x), the keel's thickness at the middle and the horns' height over the keel. */
 export const MOON_HULL = Object.freeze({ halfZ: 7.2, halfX: 2.2, keelT: 0.55, horn: 2.2 });
 /** The seats: column spacing (x), row spacing (z), the front row's z, the cushion's height over the terrace. */
 export const MOON_SEAT = Object.freeze({ dx: 0.85, dz: 1.0, z0: 3.6, cushion: 0.5, eye: 0.9 });
 /** The frame's feet and legs. */
-export const MOON_FRAME = Object.freeze({ legX: 3.9, footZ: 9.5, armX: 2.45 });
+export const MOON_FRAME = Object.freeze({ legX: 4.7, footZ: 15, armX: 2.45, chord: 0.55, chordR: 0.2 });
 
 export const MOON_MAX_ANGLE = (82 * Math.PI) / 180;
-export const MOON_PERIOD_S = 7.8;
+export const MOON_PERIOD_S = 11;
 export const MOON_OMEGA = (2 * Math.PI) / MOON_PERIOD_S;
-const BUILD_S = 58;
-const BRAKE_S = 20;
+const BUILD_S = 70;
+const BRAKE_S = 25;
 
 export const MOON_UNLOAD_MS = 5000;
 export const MOON_DWELL_MS = 40_000;
 export const MOON_GATE_MS = 6000;
-export const MOON_RIDE_MS = 90_000;
+export const MOON_RIDE_MS = 110_000;
 export const MOON_CYCLE_MS = MOON_DWELL_MS + MOON_RIDE_MS;
 const RIDE_S = MOON_RIDE_MS / 1000;
 
