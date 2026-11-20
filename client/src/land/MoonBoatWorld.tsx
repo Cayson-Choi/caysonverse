@@ -45,6 +45,7 @@ import {
   MOON_HULL,
   MOON_PIVOT_Y,
   MOON_SEAT,
+  moonRowZ,
   moonBoatAt,
   moonFloorY,
   moonKeelY,
@@ -464,52 +465,55 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
   // the bench rows: a wooden terrace; each row a real bench: a seat frame, a slatted back with a carved top rail, carved dividers with gold finials and an armrest
   // each, and a tufted velvet pad (gold piping and buttons) per seat; a padded lap bar
   for (let row = 0; row < MOON_BOAT_ROWS; row++) {
-    const z = MOON_SEAT.z0 - row * MOON_SEAT.dz;
+    const z = moonRowZ(row);
     const fy = moonFloorY(z);
+    // the bow half (rows 0-3) faces the stern and the stern half the bow, like a real Viking: f is the bench's facing along z, `zo(d)` a point d ahead of the bench's middle
+    const f = row < MOON_BOAT_ROWS / 2 ? -1 : 1;
+    const zo = (d: number): number => z + f * d;
     const half = fInner(z) - 0.06;
     boat.box("deck", half * 2, 0.34, MOON_SEAT.dz - 0.06, 0, fy - 0.17 + 0.012, z);
     // the seat frame: a plank seat under the pads, a front skirt, gold brackets under it
-    boat.box("deck", half * 2 - 0.04, 0.06, 0.62, 0, fy + 0.34, z - 0.04);
-    boat.box("deck", half * 2 - 0.04, 0.12, 0.05, 0, fy + 0.28, z + 0.27);
+    boat.box("deck", half * 2 - 0.04, 0.06, 0.62, 0, fy + 0.34, zo(-0.04));
+    boat.box("deck", half * 2 - 0.04, 0.12, 0.05, 0, fy + 0.28, zo(0.27));
     for (let k = 0; k <= MOON_BOAT_COLS; k++) {
       const xb = (k - MOON_BOAT_COLS / 2) * MOON_SEAT.dx;
       // a divider (an armrest and a back post): a carved board with a gold ball on its top, a rail along its top edge
-      boat.box("deck", 0.05, 0.42, 0.52, xb, fy + 0.55, z - 0.03);
-      boat.rod("gold", [xb, fy + 0.77, z - 0.26], [xb, fy + 0.77, z + 0.22], 0.025, 0.025, 8);
-      fin(0.016, xb, fy + 0.78, z + 0.25);
-      boat.box("deck", 0.06, 0.82, 0.08, xb, fy + 0.7, z - 0.37); // the back post
-      fin(0.02, xb, fy + 1.11, z - 0.37); // its turned brass finial
-      boat.rod("gold", [xb, fy + 0.15, z - 0.2], [xb, fy + 0.3, z + 0.25], 0.012, 0.012, 6); // a curved-iron bracket under the seat
+      boat.box("deck", 0.05, 0.42, 0.52, xb, fy + 0.55, zo(-0.03));
+      boat.rod("gold", [xb, fy + 0.77, zo(-0.26)], [xb, fy + 0.77, zo(0.22)], 0.025, 0.025, 8);
+      fin(0.016, xb, fy + 0.78, zo(0.25));
+      boat.box("deck", 0.06, 0.82, 0.08, xb, fy + 0.7, zo(-0.37)); // the back post
+      fin(0.02, xb, fy + 1.11, zo(-0.37)); // its turned brass finial
+      boat.rod("gold", [xb, fy + 0.15, zo(-0.2)], [xb, fy + 0.3, zo(0.25)], 0.012, 0.012, 6); // a curved-iron bracket under the seat
     }
     // the slatted back: three planks between the posts and a carved top rail with a gold cap
-    for (const yy of [0.52, 0.68, 0.84]) boat.box("deck", half * 2 - 0.08, 0.1, 0.045, 0, fy + yy, z - 0.37);
-    boat.box("deck", half * 2 - 0.02, 0.08, 0.07, 0, fy + 1.07, z - 0.37);
-    boat.box("gold", half * 2 - 0.02, 0.022, 0.085, 0, fy + 1.115, z - 0.37);
+    for (const yy of [0.52, 0.68, 0.84]) boat.box("deck", half * 2 - 0.08, 0.1, 0.045, 0, fy + yy, zo(-0.37));
+    boat.box("deck", half * 2 - 0.02, 0.08, 0.07, 0, fy + 1.07, zo(-0.37));
+    boat.box("gold", half * 2 - 0.02, 0.022, 0.085, 0, fy + 1.115, zo(-0.37));
     for (let col = 0; col < MOON_BOAT_COLS; col++) {
       const x = (col - (MOON_BOAT_COLS - 1) / 2) * MOON_SEAT.dx;
-      boat.soft("velvet", 0.72, 0.1, 0.56, x, fy + 0.45, z - 0.02, 0.04); // the seat pad's body (top 0.5: the hips settle onto it)
-      boat.add("velvet", tuftedCap(0.7, 0.54, 4, 3, 0.045), new Matrix4().makeTranslation(x, fy + 0.5, z - 0.02)); // its tufted, buttoned top
-      boat.soft("velvet", 0.66, 0.3, 0.07, x, fy + 0.8, z - 0.34, 0.03, -0.1); // the back pad's body
-      boat.add("velvet", tuftedCap(0.64, 0.32, 4, 2, 0.04), new Matrix4().compose(new Vector3(x, fy + 0.8, z - 0.298), new Quaternion().setFromEuler(new Euler(Math.PI / 2 - 0.1, 0, 0)), new Vector3(1, 1, 1))); // its tufted face
+      boat.soft("velvet", 0.72, 0.1, 0.56, x, fy + 0.45, zo(-0.02), 0.04); // the seat pad's body (top 0.5: the hips settle onto it)
+      boat.add("velvet", tuftedCap(0.7, 0.54, 4, 3, 0.045), new Matrix4().makeTranslation(x, fy + 0.5, zo(-0.02))); // its tufted, buttoned top
+      boat.soft("velvet", 0.66, 0.3, 0.07, x, fy + 0.8, zo(-0.34), 0.03, -0.1 * f); // the back pad's body
+      boat.add("velvet", tuftedCap(0.64, 0.32, 4, 2, 0.04), new Matrix4().compose(new Vector3(x, fy + 0.8, zo(-0.298)), new Quaternion().setFromEuler(new Euler(f * (Math.PI / 2 - 0.1), 0, 0)), new Vector3(1, 1, 1))); // its tufted face
       // gold piping round the seat pad's top edge and four tufting buttons on it, two on the back
-      boat.rod("gold", [x - 0.36, fy + 0.5, z + 0.25], [x + 0.36, fy + 0.5, z + 0.25], 0.012, 0.012, 6);
-      boat.rod("gold", [x - 0.36, fy + 0.5, z - 0.27], [x - 0.36, fy + 0.5, z + 0.25], 0.012, 0.012, 6);
-      boat.rod("gold", [x + 0.36, fy + 0.5, z - 0.27], [x + 0.36, fy + 0.5, z + 0.25], 0.012, 0.012, 6);
+      boat.rod("gold", [x - 0.36, fy + 0.5, zo(0.25)], [x + 0.36, fy + 0.5, zo(0.25)], 0.012, 0.012, 6);
+      boat.rod("gold", [x - 0.36, fy + 0.5, zo(-0.27)], [x - 0.36, fy + 0.5, zo(0.25)], 0.012, 0.012, 6);
+      boat.rod("gold", [x + 0.36, fy + 0.5, zo(-0.27)], [x + 0.36, fy + 0.5, zo(0.25)], 0.012, 0.012, 6);
       for (const bx of [-0.17, 0.17]) {
         for (const bz of [-0.1, 0.12]) boat.ball("gold", 0.02, x + bx, fy + 0.505, z + bz, 1, 0.7, 1, 6);
-        boat.ball("gold", 0.02, x + bx, fy + 0.82, z - 0.275, 1, 1, 0.7, 6);
+        boat.ball("gold", 0.02, x + bx, fy + 0.82, zo(-0.275), 1, 1, 0.7, 6);
       }
     }
     // the lap bar: a padded indigo bar, posts at the ends with gold caps
     const by = fy + 0.82;
-    boat.rod("chrome", [-half + 0.18, by, z + 0.46], [half - 0.18, by, z + 0.46], 0.032, 0.032, 12);
+    boat.rod("chrome", [-half + 0.18, by, zo(0.46)], [half - 0.18, by, zo(0.46)], 0.032, 0.032, 12);
     for (let col = 0; col < MOON_BOAT_COLS; col++) {
       const x = (col - (MOON_BOAT_COLS - 1) / 2) * MOON_SEAT.dx;
-      boat.rod("velvet", [x - 0.3, by, z + 0.46], [x + 0.3, by, z + 0.46], 0.06, 0.06, 12); // the padded sleeve over each rider's lap
+      boat.rod("velvet", [x - 0.3, by, zo(0.46)], [x + 0.3, by, zo(0.46)], 0.06, 0.06, 12); // the padded sleeve over each rider's lap
     }
     for (const s of [-1, 1]) {
-      boat.rod("chrome", [s * (half - 0.18), fy + 0.04, z + 0.46], [s * (half - 0.18), by, z + 0.46], 0.03, 0.03, 10);
-      fin(0.02, s * (half - 0.18), by + 0.03, z + 0.46);
+      boat.rod("chrome", [s * (half - 0.18), fy + 0.04, zo(0.46)], [s * (half - 0.18), by, zo(0.46)], 0.03, 0.03, 10);
+      fin(0.02, s * (half - 0.18), by + 0.03, zo(0.46));
     }
   }
   // the carved rail along both gunwales: turned balusters (a swelling and a ball) under a gold hand rail, a row of gilded scallops on the rim cap, gold posts at the horns

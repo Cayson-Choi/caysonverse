@@ -39,14 +39,17 @@ export function wheelRiderPose(seat: number, nowMs: number, outPos: Vector3, out
   outQuat.premultiply(qz);
 }
 
-const mp: MoonSeatPose = { x: 0, y: 0, z: 0, fy: 0, fz: 1, uy: 1, uz: 0, angle: 0, gload: 1 };
+const mp: MoonSeatPose = { x: 0, y: 0, z: 0, fy: 0, fz: 1, uy: 1, uz: 0, angle: 0, gload: 1, face: 1 };
 const axX = new Vector3(1, 0, 0);
+const qFlip = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI);
 
-/** The moon boat seat's avatar pose: seated on the cushion facing the bow, pitched with the hull (the boat swings along z: a turn about x). */
+/** The moon boat seat's avatar pose: seated on the cushion facing the middle of the boat (toward the stern in the bow half), pitched with the hull (the boat swings along z: a turn about x). */
 export function moonBoatRiderPose(seat: number, nowMs: number, outPos: Vector3, outQuat: Quaternion): void {
   moonSeatPose(seat, nowMs, mp);
   outPos.set(mp.x, mp.y - SIT_POSE.contactY * mp.uy + mp.fy * SIT_POSE.hipsBehindRoot, mp.z - SIT_POSE.contactY * mp.uz + mp.fz * SIT_POSE.hipsBehindRoot);
   outQuat.setFromAxisAngle(axX, -mp.angle);
+  // the avatar faces +z (the bow) by default; the bow half sits facing the stern (toward the middle)
+  if (mp.face < 0) outQuat.multiply(qFlip);
 }
 
 const dp: DropSeatPose = { x: 0, y: 0, z: 0, fx: 1, fz: 0, face: 0, vy: 0, gload: 1, stage: "idle" };

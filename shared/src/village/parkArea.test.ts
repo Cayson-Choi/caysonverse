@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   COASTER_BOARD_REACH_M,
+  CAROUSEL_PAD,
   COASTER_PAD,
+  DROP_PAD,
+  DROP_SITE_AT,
+  MOON_BOAT_PAD,
+  MOON_BOAT_SITE_AT,
+  WHEEL_PAD,
   PARK_ARRIVAL,
   PARK_BOUNDS,
   PARK_EXIT_PAD,
@@ -18,6 +24,7 @@ import {
 import { arrivalArea, spreadArrival } from "./arrivalSpot";
 import { shopWindows, WINDOW_BOX } from "./parkShopWindowLayout";
 import { PLAYER_RADIUS } from "../constants";
+import { isBlocked, resolveCollision } from "../collision";
 
 const inSolid = (x: number, z: number, r = PLAYER_RADIUS) => PARK_SOLIDS.some((b) => x > b.minX - r && x < b.maxX + r && z > b.minZ - r && z < b.maxZ + r);
 
@@ -87,5 +94,41 @@ describe("park layout", () => {
     expect(parkGeometry.id).toBe("park");
     expect(parkGeometry.bounds).toEqual(PARK_BOUNDS);
     expect(parkGeometry.obstacles.length).toBe(PARK_SOLIDS.length);
+  });
+});
+
+describe("the rides' railings and fences are solid (owner 2026-11-21: the characters walked through the moon boat's rails)", () => {
+  // each line: a point on one side, a point on the other, the fence between them (park metres)
+  const M = MOON_BOAT_SITE_AT;
+  const lines: { name: string; ax: number; az: number; bx: number; bz: number }[] = [];
+  for (const sz of [-1, 1]) for (const dx of [8.5, 11, 13, 15]) lines.push({ name: `moon queue fence z${sz} x+${dx}`, ax: M.x + dx, az: M.z + sz * 3.5, bx: M.x + dx, bz: M.z + sz * 1.0 });
+  for (const sz of [-1, 1]) for (const dx of [3.6, 4.5, 6, 7.5]) lines.push({ name: `moon platform rail z${sz} x+${dx}`, ax: M.x + dx, az: M.z + sz * 6, bx: M.x + dx, bz: M.z });
+  lines.push({ name: "moon steps from the pad", ax: M.x + 13, az: M.z, bx: M.x + 9, bz: M.z });
+  for (const sz of [-1, 1]) for (const dx of [8, 10, 12]) lines.push({ name: `drop queue fence z${sz} x+${dx}`, ax: DROP_SITE_AT.x + dx, az: DROP_SITE_AT.z + sz * 3.5, bx: DROP_SITE_AT.x + dx, bz: DROP_SITE_AT.z + sz * 0.8 });
+  for (const a of [0, 1, 2, 3, 4, 5, 6, 7]) lines.push({ name: `carousel fence ${a}`, ax: 110 + Math.sin((a * Math.PI) / 4) * 20, az: -135 - Math.cos((a * Math.PI) / 4) * 20, bx: 110, bz: -135 });
+  lines.push({ name: "wheel steps", ax: 205, az: -140 + 12.5, bx: 205, bz: -140 + 8 });
+  for (const l of lines) {
+    for (const dir of [1]) {
+      it(`${l.name} (${dir > 0 ? "outside in" : "inside out"})`, () => {
+        const [sx, sz, ex, ez] = dir > 0 ? [l.ax, l.az, l.bx, l.bz] : [l.bx, l.bz, l.ax, l.az];
+        // start where the circle is free (walk the start out of any solid first is not needed: the starts are in the open)
+        let x = sx, z = sz;
+        const len = Math.hypot(ex - sx, ez - sz);
+        const n = Math.ceil(len / 0.1);
+        let crossedFree = false;
+        for (let i = 0; i < n; i++) {
+          const r = resolveCollision(x, z, (ex - sx) / n, (ez - sz) / n, PLAYER_RADIUS, PARK_SOLIDS);
+          x = r.x;
+          z = r.z;
+          expect(isBlocked(x, z, PLAYER_RADIUS, PARK_SOLIDS)).toBe(false);
+        }
+        // never got to the far side of the line
+        crossedFree = Math.hypot(x - ex, z - ez) < 0.35;
+        expect(crossedFree).toBe(false);
+      });
+    }
+  }
+  it("every ride's boarding pad centre stays open", () => {
+    for (const p of [MOON_BOAT_PAD, DROP_PAD, WHEEL_PAD, CAROUSEL_PAD, COASTER_PAD]) expect(inSolid(p.x, p.z)).toBe(false);
   });
 });

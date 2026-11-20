@@ -448,19 +448,13 @@ function build(mats: Record<K, Material>): Build {
       c.soft("leather", 0.14, 0.92, 0.68, bk[0], bk[1], bk[2], 0.07, 0, ry, -0.0);
       const hd = P(hip - 0.36, 1.12, z);
       c.soft("leather", 0.13, 0.3, 0.4, hd[0], hd[1], hd[2], 0.05, 0, ry, 0);
-      // the over-the-shoulder harness: two padded arms from the back top, over the shoulders, down the chest to the lap, a gold hinge up top and a buckle
+      // the restraint: a slim low lap bar (owner 2026-11-21: nothing in front of the eyes). Two posts rise from the cushion's sides to a thin bar across the lap,
+      // well below the eye (0.8 m over the hips) and lower than any look-ahead view; no shoulder harness, no chest bar
       for (const s of [-1, 1]) {
         const zz = z + s * 0.3;
-        const path = [P(hip - 0.3, 1.2, zz), P(hip - 0.18, 1.4, zz), P(hip + 0.1, 1.42, zz), P(hip + 0.3, 1.12, zz), P(hip + 0.38, 0.62, zz), P(hip + 0.4, 0.22, zz)];
-        c.tube("indigo", path.map((p) => new Vector3(...p)), 0.042, 10);
-        const h = P(hip - 0.3, 1.2, zz);
-        c.ball("gold", 0.07, h[0], h[1], h[2], 1, 1, 1, 10);
-        const q = P(hip + 0.4, 0.5, zz);
-        c.ball("pad", 0.07, q[0], q[1], q[2], 0.8, 1.5, 0.8, 12);
+        c.rod("gold", P(hip + 0.05, -0.12, zz), P(hip + 0.4, 0.1, zz), 0.022, 0.022, 8);
       }
-      const buckle = P(hip + 0.4, 0.22, z);
-      c.rod("gold", P(hip + 0.4, 0.22, z - 0.2), P(hip + 0.4, 0.22, z + 0.2), 0.03, 0.03, 8);
-      c.ball("gold", 0.045, buckle[0], buckle[1], buckle[2], 1, 1, 1, 10);
+      c.rod("indigo", P(hip + 0.4, 0.1, z - 0.3), P(hip + 0.4, 0.1, z + 0.3), 0.03, 0.03, 10);
       // a gold stud line on the back and a small star badge
       const sp = P(hip - 0.4, 0.42, z);
       c.ball("gold", 0.04, sp[0], sp[1], sp[2], 1, 1, 1, 8);

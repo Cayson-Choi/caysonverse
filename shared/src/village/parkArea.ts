@@ -254,17 +254,28 @@ function buildSolids(): AABB[] {
   // the gate arch's two towers
   out.push(box(29.5, 33, -190, -183), box(47, 50.5, -190, -183));
   out.push(box(PARK_KIOSK.x - PARK_KIOSK.w / 2, PARK_KIOSK.x + PARK_KIOSK.w / 2, PARK_KIOSK.z - PARK_KIOSK.d / 2, PARK_KIOSK.z + PARK_KIOSK.d / 2));
-  out.push(box(110 - 12.8, 110 + 12.8, -135 - 12.8, -135 + 12.8)); // the carousel's platform and its fence (the ride's own pad is outside it)
+  // the carousel's platform and its round iron fence (radius 13.05, CarouselWorld.tsx; the square reaches past it at the four sides; the ride's own pad is outside it) and the two gate posts
+  out.push(box(110 - 13.3, 110 + 13.3, -135 - 13.3, -135 + 13.1));
+  for (const sx of [-1, 1]) out.push(box(110 + sx * 2.6 - 0.25, 110 + sx * 2.6 + 0.25, -135 + 12.5 + 0.55 + 0.2 - 0.25, -135 + 12.5 + 0.55 + 0.2 + 0.25));
   // the wheel: the four feet of its A-frames and the boarding platform's deck
   for (const sx of [-1, 1]) for (const dz of [-2.75, 5.7]) out.push(box(205 + sx * 11 - 1, 205 + sx * 11 + 1, -140 + dz - 1, -140 + dz + 1));
-  out.push(box(205 - 3.5, 205 + 3.5, -140 + 4.45, -140 + 8.8)); // the platform's deck (the steps south of it are walked on)
+  out.push(box(205 - 3.5, 205 + 3.5, -140 + 4.45, -140 + 8.8)); // the platform's deck
+  out.push(box(205 - 1.8, 205 + 1.8, -140 + 8.8, -140 + 11.3)); // its concrete steps (south of the deck: a solid block, the pad lies beyond)
+  for (const sx of [-1, 1]) out.push(box(205 + 7.5 + sx * 2.0 - 0.15, 205 + 7.5 + sx * 2.0 + 0.15, -140 + 9.55 - 0.15, -140 + 9.55 + 0.15)); // the sign's two posts
   // the moon boat: the swing's lane under the hull, the four feet of its A-frames and the boarding deck (the steps east of it are walked on up to the pad)
   const M = MOON_BOAT_SITE_AT;
   out.push(box(M.x - 2.9, M.x + 2.9, M.z - 20, M.z + 20)); // the lane under the swinging hull (it is below 4.6 m only within 26 degrees of the bottom: z within 20 m)
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) out.push(box(M.x + sx * 4.7 - 1.8, M.x + sx * 4.7 + 1.8, M.z + sz * 15 - 1.8, M.z + sz * 15 + 1.8));
   out.push(box(M.x + 3.0, M.x + 7.9, M.z - 4.3, M.z + 4.3));
+  out.push(box(M.x + 7.9, M.x + 11.4, M.z - 1.9, M.z + 1.9)); // the steps (a solid concrete block)
+  // the queue fence along both sides of the steps and the path to the pad (posts and two rails, z = +-2.35, x from the steps' head to 4.2 m past their foot) and the two lamp posts at the steps' foot
+  for (const sz of [-1, 1]) out.push(box(M.x + 7.9, M.x + 15.7, M.z + sz * 2.35 - 0.15, M.z + sz * 2.35 + 0.15));
+  for (const sz of [-1, 1]) out.push(box(M.x + 11.8 - 0.2, M.x + 11.8 + 0.2, M.z + sz * 2.9 - 0.2, M.z + sz * 2.9 + 0.2));
   // the drop tower: its platform (the car's station, a 14.8 m square) is a solid; the boarding pad lies east of it
   out.push(box(DROP_SITE_AT.x - 7.4, DROP_SITE_AT.x + 7.4, DROP_SITE_AT.z - 7.4, DROP_SITE_AT.z + 7.4));
+  out.push(box(DROP_SITE_AT.x + 7.4, DROP_SITE_AT.x + 9.5, DROP_SITE_AT.z - 1.7, DROP_SITE_AT.z + 1.7)); // its five steps (a solid block)
+  // the queue fence along both sides of the steps and the path to the pad (z = +-1.9, DropTowerWorld.tsx)
+  for (const sz of [-1, 1]) out.push(box(DROP_SITE_AT.x + 7.4, DROP_SITE_AT.x + 7.4 + 2.1 + 4.7, DROP_SITE_AT.z + sz * 1.9 - 0.15, DROP_SITE_AT.z + sz * 1.9 + 0.15));
   for (const t of PARK_TROUGHS) out.push(box(t.x0, t.x1, t.z0, t.z1));
   for (const p of PARK_PLANTERS) out.push(box(p.x - p.w / 2, p.x + p.w / 2, p.z - p.d / 2, p.z + p.d / 2));
   for (const b of PARK_BINS) out.push(box(b.x - 0.3, b.x + 0.3, b.z - 0.3, b.z + 0.3));
