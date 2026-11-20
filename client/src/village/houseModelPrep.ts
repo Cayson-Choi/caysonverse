@@ -383,6 +383,7 @@ export function disposeLoadedHouse(scene: Object3D): void {
   const free = (r: { dispose(): void } | null | undefined): void => {
     if (!r || done.has(r)) return;
     done.add(r);
+    if ((r as { userData?: { shared?: boolean } }).userData?.shared) return; // the one mirror material is every house's (houseMirror.ts)
     if ((r as Texture).isTexture) freeTexture(r as Texture);
     else r.dispose();
   };

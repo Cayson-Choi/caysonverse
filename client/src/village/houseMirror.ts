@@ -1,4 +1,4 @@
-import { Color, ShaderMaterial } from "three";
+import { Color, MeshBasicMaterial } from "three";
 import { houseNightUniform } from "./houseNight";
 
 /**
@@ -12,21 +12,13 @@ import { houseNightUniform } from "./houseNight";
  */
 export const HOUSE_MIRROR_MATERIALS: ReadonlySet<string> = new Set(["M_mirror", "E_H_mirror"]);
 
-let shared: ShaderMaterial | null = null;
+let shared: MeshBasicMaterial | null = null;
 
-const VERT = /* glsl */ `
-varying vec3 vWorld;
-void main() {
-  vec4 w = modelMatrix * vec4(position, 1.0);
-  vWorld = w.xyz;
-  gl_Position = projectionMatrix * viewMatrix * w;
-}`;
-
-const FRAG = /* glsl */ `
-uniform float uNight;
-uniform vec3 uTint;
-varying vec3 vWorld;
-vec3 room(vec3 r) {
+const PARS = /* glsl */ `
+uniform float uMirrorNight;
+uniform vec3 uMirrorTint;
+varying vec3 vMirrorWorld;
+vec3 mirrorRoom(vec3 r) {
   float up = r.y;
   vec3 ceil = vec3(0.98, 0.93, 0.84);
   vec3 wall = vec3(0.86, 0.76, 0.62);
@@ -45,32 +37,40 @@ vec3 room(vec3 r) {
   c *= 1.0 - 0.35 * smoothstep(0.18, 0.1, abs(az - 2.0)) * smoothstep(-0.05, -0.12, up) * smoothstep(-0.42, -0.3, up);
   return c;
 }
-void main() {
-  vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
-  vec3 v = normalize(vWorld - cameraPosition);
+vec3 mirrorColor() {
+  vec3 n = normalize(cross(dFdx(vMirrorWorld), dFdy(vMirrorWorld)));
+  vec3 v = normalize(vMirrorWorld - cameraPosition);
   if (dot(n, v) > 0.0) n = -n;
   vec3 r = reflect(v, n);
-  vec3 c = room(r) * uTint;
+  vec3 c = mirrorRoom(r) * uMirrorTint;
   float f = pow(1.0 - clamp(dot(n, -v), 0.0, 1.0), 2.0);
   c *= 1.0 - 0.28 * f;                                   // edge-on: darker (the silvering's fall-off)
   float sheen = smoothstep(0.82, 0.97, dot(r, normalize(vec3(0.55, 0.35, 0.6))));
   c += 0.08 * sheen;                                      // a faint diagonal glint
-  c *= mix(1.0, 0.32, uNight);                            // the room is dim at night: so is its reflection
-  gl_FragColor = vec4(c, 1.0);
-  #include <tonemapping_fragment>
-  #include <colorspace_fragment>
-}`;
+  c *= mix(1.0, 0.32, uMirrorNight);                      // the room is dim at night: so is its reflection
+  return c;
+}
+`;
 
-/** The one shared mirror material (every house, every mirror). */
-export function houseMirrorMaterial(): ShaderMaterial {
+/**
+ * The one shared mirror material (every house, every mirror): a plain MeshBasicMaterial (its program path is the houses' own) whose
+ * fragment colour is replaced by the reflection. (A raw ShaderMaterial drew the same picture but made the page log
+ * `glGetProgramiv: Program object expected` warnings.)
+ */
+export function houseMirrorMaterial(): MeshBasicMaterial {
   if (shared) return shared;
-  const m = new ShaderMaterial({
-    name: "house_mirror",
-    vertexShader: VERT,
-    fragmentShader: FRAG,
-    uniforms: { uNight: houseNightUniform, uTint: { value: new Color(0.84, 0.92, 0.94) } },
-    toneMapped: true,
-  });
+  const m = new MeshBasicMaterial({ name: "house_mirror", color: "#ffffff" });
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uMirrorNight = houseNightUniform;
+    shader.uniforms.uMirrorTint = { value: new Color(0.84, 0.92, 0.94) };
+    shader.vertexShader = shader.vertexShader
+      .replace("void main() {", "varying vec3 vMirrorWorld;\nvoid main() {")
+      .replace("#include <project_vertex>", "#include <project_vertex>\n  vMirrorWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", PARS + "\nvoid main() {")
+      .replace("#include <opaque_fragment>", "outgoingLight = mirrorColor();\n  #include <opaque_fragment>");
+  };
+  m.customProgramCacheKey = () => "house-mirror";
   m.userData.shared = true;
   shared = m;
   return m;
