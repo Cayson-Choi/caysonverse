@@ -44,6 +44,7 @@ import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from ".
 import { clearBusCache, clearVillageCaches, holdVillageFiles, holdsVillageFiles } from "./villageRelease";
 import { LoadBoundary } from "./LoadBoundary";
 import { ParkSkyline } from "./skyline/ParkSkyline";
+import { VillageParkWall } from "./skyline/VillageParkWall";
 import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, useLocalArea } from "./villageArea";
 import {
   BUS_RIDE_TARGET_BOARD,
@@ -219,6 +220,7 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
       {/* 케이슨랜드's skyline behind the south gate (a light distant view of the park; skyline/): after the village is dressed, its own build. */}
       <AfterDressed>
         <ParkSkyline tier={tier} />
+        <VillageParkWall tier={tier} />
       </AfterDressed>
       <LoadBoundary fallback={null} onReset={() => useGLTF.clear(SIGNALS_MODEL_URL)} notice="횡단보도 신호등을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
         <TransitRoadSignals />
