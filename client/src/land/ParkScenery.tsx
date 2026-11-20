@@ -1,3 +1,4 @@
+import { parkAltitude } from "./parkAltitude";
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useLoader, useThree } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
@@ -231,8 +232,12 @@ export function ParkMountains({ tier }: { tier: "high" | "low" }) {
     mesh.updateMatrix();
     return { mesh, material };
   }, [buffer, atlas, tier]);
+  const baseHaze = useMemo(() => (built.material.userData.mountains as MountainUniforms).uHaze.value.clone(), [built]);
   useFrame(({ gl: r }) => {
     applyMountains(built.material, dayNight.applied, null, r.toneMappingExposure);
+    // from a height the far ridges stand in more air: they haze in sooner and over a shorter distance (land/parkAltitude.ts)
+    const a = parkAltitude.a;
+    (built.material.userData.mountains as MountainUniforms).uHaze.value.set(baseHaze.x * (1 - 0.4 * a), baseHaze.y * (1 - 0.3 * a), Math.min(1, baseHaze.z + 0.12 * a), baseHaze.w);
   });
   return <primitive object={built.mesh} dispose={null} />;
 }

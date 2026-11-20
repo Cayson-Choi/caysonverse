@@ -1,3 +1,4 @@
+import { altitudeFogFar, altitudeFogNear, parkAltitude } from "../land/parkAltitude";
 import { useEffect, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
@@ -1395,6 +1396,11 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
       const fogFar = fogRange[1];
       fog.near = lerp(fogNear, Math.max(fogNear, h * 0.6), ovT);
       fog.far = lerp(fogFar, Math.max(fogFar, h * 2.2), ovT);
+      // the park's aerial perspective with height (land/parkAltitude.ts): the far ground hazes sooner, so the haze line falls below the eye
+      if (parkAltitude.a > 0) {
+        fog.near = altitudeFogNear(fog.near, parkAltitude.a);
+        fog.far = altitudeFogFar(fog.far, parkAltitude.a);
+      }
     }
 
     // The far plane rides with the overview too: the whole-map fit height is width-limited

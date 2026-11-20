@@ -13,6 +13,7 @@ import { useLocalArea } from "../village/villageArea";
 import { RIDES, msUntilBoarding, rideById, type RideDef } from "@caysonverse/shared/land/rides";
 import { villageClock } from "../village/villageClock";
 import { boardRide } from "./rideBoardWalk";
+import { rideSchedule } from "./rideSchedule";
 import { wheelSeatPose } from "@caysonverse/shared/land/wheel";
 import "./ridePanel.css";
 
@@ -130,7 +131,10 @@ export function CoasterHud() {
       frac = 1 - waitMs / waitSeen.max;
     }
     let line: string;
-    if (reserved) line = waitSecs !== null ? `자리 맡음 · ${waitSecs}초 뒤 탑승` : "자리 맡음 · 곧 탑승해요";
+    // a reserved seat is NOT a seat: the rider waits on the pad until the vehicle stands in its station and the loading begins (the server seats then)
+    const vehicle = def.key === "coaster" ? "열차가" : def.key === "carousel" ? "회전목마가" : def.key === "wheel" ? "곤돌라가" : def.key === "moonboat" ? "달배가" : "낙하탑이";
+    if (rideSchedule.skew) line = "놀이기구 시간표가 서버와 달라요";
+    else if (reserved) line = now.status === "unloading" ? `자리 맡음 · 내리는 중이에요 · 곧 타요` : waitSecs !== null ? `자리 맡음 · ${vehicle} 도착하면 타요 · ${waitSecs}초 뒤` : "자리 맡음 · 곧 탑승해요";
     else if (boarding) line = `탑승 중 · ${secs}초 뒤 출발`;
     else line = waitSecs !== null ? `다음 탑승까지 ${waitSecs}초` : "잠시 쉬는 중이에요";
     const label = reserved ? "자리 취소" : !near ? "걸어가서 타기" : boarding ? "타기" : "자리 맡기";
@@ -138,7 +142,9 @@ export function CoasterHud() {
     const ddz = def.pad.z - landPose.z;
     // the compass's words: north is -z, east +x
     const dirWord = `${Math.abs(ddz) > Math.abs(ddx) * 0.45 ? (ddz < 0 ? "북" : "남") : ""}${Math.abs(ddx) > Math.abs(ddz) * 0.45 ? (ddx > 0 ? "동" : "서") : ""}`;
-    const hint = reserved
+    const hint = rideSchedule.skew
+      ? "새로고침하거나 잠시 뒤 다시 와 주세요"
+      : reserved
       ? "탑승 위치에서 기다려요"
       : !near
         ? `${dirWord}쪽 ${Math.round(padDist)}m · 놀이기구를 눌러도 가요`
@@ -173,6 +179,7 @@ export function CoasterHud() {
             <button
               type="button"
               data-testid={`ride-go-${def.key}`}
+              disabled={rideSchedule.skew}
               className={"cv-ride-primary" + (reserved ? " is-quiet" : "")}
               onClick={() => {
                 if (reserved) {
@@ -195,7 +202,7 @@ export function CoasterHud() {
                   const od = Math.hypot(landPose.x - r.pad.x, landPose.z - r.pad.z);
                   return (
                     <li key={r.key}>
-                      <button type="button" className="cv-ride-row" data-testid={`ride-go-${r.key}`} onClick={() => boardRide(r.key, landPose.x, landPose.z)}>
+                      <button type="button" className="cv-ride-row" data-testid={`ride-go-${r.key}`} disabled={rideSchedule.skew} onClick={() => boardRide(r.key, landPose.x, landPose.z)}>
                         <span className="cv-ride-ic" aria-hidden="true">{rideIcon(r.key)}</span>
                         <span className="cv-ride-rname">{r.name}</span>
                         <span className="cv-ride-dist">{Math.round(od)}m</span>

@@ -66,3 +66,25 @@ export function msUntilBoarding(ride: RideDef, nowMs: number, maxMs = 360_000): 
   for (let dt = 0; dt <= maxMs; dt += 500) if (ride.statusAt(nowMs + dt).status === "boarding") return dt;
   return null;
 }
+
+/**
+ * A short fingerprint of every ride's timetable (cycle length, the unload / boarding / gate / riding windows, the wheel's steps): the server sends it
+ * with its clock, and a client whose own timetable differs (the server and the page were deployed at different times: a train on a 136 s cycle
+ * against a server on a 130 s one) refuses to board instead of being seated or put off at the wrong moment (owner 2026-11-20: "열차가 도착하기도
+ * 전에 타버린다", "타 끝나기도 전에 내려버린다"). Samples every ride's status every 1.7 s over 10 minutes from a fixed instant.
+ */
+let scheduleKey: string | null = null;
+export function rideScheduleKey(): string {
+  if (scheduleKey !== null) return scheduleKey;
+  let h = 2166136261;
+  const t0 = 1_900_000_000_000;
+  for (const r of RIDES) {
+    for (let dt = 0; dt < 600_000; dt += 1700) {
+      const st = r.statusAt(t0 + dt);
+      const code = `${r.id}${st.status}${st.cycle - r.statusAt(t0).cycle}${Math.round(st.phase / 100)}`;
+      for (let i = 0; i < code.length; i++) h = Math.imul(h ^ code.charCodeAt(i), 16777619) >>> 0;
+    }
+  }
+  scheduleKey = h.toString(16);
+  return scheduleKey;
+}

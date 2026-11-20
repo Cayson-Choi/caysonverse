@@ -14,6 +14,7 @@
 
 import { VillageServerMsg, type ServerTimePayload } from "@caysonverse/shared/village/messages";
 import { parseKstTime } from "@caysonverse/shared/village/sunClock";
+import { noteServerRideSchedule } from "../land/rideSchedule";
 
 /** The slice of a Colyseus room this binding uses. */
 export interface ClockRoom {
@@ -86,6 +87,9 @@ if (import.meta.env.DEV && typeof location !== "undefined") {
  */
 export function bindVillageClock(room: ClockRoom, clock: VillageClock = villageClock): () => void {
   return room.onMessage<ServerTimePayload>(VillageServerMsg.ServerTime, (m) => {
-    if (m && typeof m.serverTimeMs === "number") clock.sync(m.serverTimeMs);
+    if (m && typeof m.serverTimeMs === "number") {
+      clock.sync(m.serverTimeMs);
+      noteServerRideSchedule(m.rideSchedule);
+    }
   });
 }

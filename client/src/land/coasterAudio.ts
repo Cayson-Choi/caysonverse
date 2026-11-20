@@ -3,6 +3,7 @@
  * Started by the boarding press (a user gesture), driven every frame from the camera's probe, stopped on getting off.
  * A mute switch lives in the ride panel. Nothing here touches the village's own music.
  */
+import { altitudeFactor, altitudeWindGain } from "./parkAltitude";
 import { rideProbe } from "./coasterRide";
 import { useSoundStore } from "../stores/soundStore";
 
@@ -106,8 +107,10 @@ export function stepRideAudio(nowMs: number): void {
   const sp = rideProbe.speed;
   const k = Math.min(1, sp / 26);
   v.master.gain.setTargetAtTime(rideMuted() ? 0 : 0.9, t, 0.1); // follows the menu's master switch mid-ride
-  v.wind.gain.setTargetAtTime(0.05 + 0.5 * k * k, t, 0.12);
-  v.windFilter.frequency.setTargetAtTime(350 + 1500 * k, t, 0.12);
+  // the air gets bigger as the lift climbs (land/parkAltitude.ts): a steady rising wind over the slow chain
+  const alt = altitudeFactor(rideProbe.eye[1]);
+  v.wind.gain.setTargetAtTime(0.05 + 0.5 * k * k + altitudeWindGain(alt), t, 0.12);
+  v.windFilter.frequency.setTargetAtTime(350 + 1500 * k + 450 * alt, t, 0.12);
   v.rumble.gain.setTargetAtTime(sp > 0.5 ? 0.06 + 0.4 * k : 0, t, 0.1);
   v.rumbleFilter.frequency.setTargetAtTime(110 + 140 * k, t, 0.1);
   // the chain lift: about 4 clacks a second at 3.4 m/s while on the lift (slow and steep)

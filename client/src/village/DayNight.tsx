@@ -1,3 +1,4 @@
+import { altitudeFogTint, parkAltitude } from "../land/parkAltitude";
 import { useEffect, useMemo } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { AdditiveBlending, CanvasTexture, Color, Sprite, SpriteMaterial, type Camera, type Scene, type WebGLRenderer } from "three";
@@ -144,7 +145,14 @@ export function DayNight({ area, tier }: { area: AreaId; tier: QualityTier }) {
     if (gl.toneMappingExposure !== exposure) gl.toneMappingExposure = exposure;
 
     // Fog and the clear colour.
-    if (scene.fog) scene.fog.color.setRGB(s.sky[0], s.sky[1], s.sky[2]);
+    if (scene.fog) {
+      scene.fog.color.setRGB(s.sky[0], s.sky[1], s.sky[2]);
+      // the park's distance goes bluer with the eye's height (land/parkAltitude.ts)
+      if (parkAltitude.a > 0) {
+        const c = altitudeFogTint([s.sky[0], s.sky[1], s.sky[2]], parkAltitude.a);
+        scene.fog.color.setRGB(c[0], c[1], c[2]);
+      }
+    }
     if (scene.background instanceof Color) {
       if (toneMappedFrame) {
         const c = inverseNeutralToneMap(s.sky, exposure, SKY_CLEAR);
