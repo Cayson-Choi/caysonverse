@@ -68,6 +68,8 @@ export interface GateSpan {
   sag: number;
   flags: number;
 }
+/** How far (rad) the bunting's pennants alternate away from facing across their string (see gateDress). */
+export const GATE_PENNANT_TWIST = 0;
 /** The anchor stubs on the gatehouse's front face (z) and how far they stand out. */
 const FACE_Z = 92.45;
 const BRACKET_OUT = 0.28;
@@ -654,10 +656,13 @@ export function dressGateLot(nodes: LotNodes, low: boolean, mats: GateDressMater
         nx = -nx;
         nz = -nz;
       }
-      const yaw = Math.atan2(nx, nz);
+      const yaw0 = Math.atan2(nx, nz);
       for (let k = 0; k < s.flags; k++) {
         const p = spanPoint(s, (k + 0.5) / s.flags);
         if (n >= flags.instanceMatrix.count) break;
+        // alternate flags twisted +-GATE_PENNANT_TWIST about the vertical: a pennant is a flat triangle, so seen along its string (edge-on) every
+        // flag vanished and the bunting looked bare from the wall side (owner 2026-11-21); twisted, no direction sees them all edge-on
+        const yaw = yaw0 + (k % 2 === 0 ? 1 : -1) * GATE_PENNANT_TWIST;
         flags.setMatrixAt(n++, mm.makeRotationY(yaw).setPosition(p[0], p[1] - 0.01, p[2]));
       }
     }
