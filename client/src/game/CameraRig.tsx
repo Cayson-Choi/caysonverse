@@ -482,7 +482,7 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
       let furniture = inRoom ? map.geometry.obstacles : map.furniture;
       // A tap on a house's stair or front door walks to its pad and uses it there (houseTap.ts): the pad is the destination, the use is armed.
       // (a lot building's door, the village side or a room's way out, the same way: lotDoorTap.ts)
-      const houseTap = pick && !pick.blocker ? (isHouseArea(localArea()) ? houseTapTarget(localArea(), pick.x, pick.y, pick.z) : lotDoorTapTarget(localArea(), pick.x, pick.y, pick.z)) : null;
+      const houseTap = pick && !pick.blocker ? (isHouseArea(localArea()) ? houseTapTarget(localArea(), pick.x, pick.y, pick.z) : lotDoorTapTarget(localArea(), pick.x, pick.y, pick.z, pick.ray, pick.distance)) : null;
       if (houseTap) surface = { x: houseTap.x, y: 0, z: houseTap.z, ny: 1 };
       armHouseUse(houseTap ? houseTap.id : null);
       // A tap on a ride (its platform, queue, station, the wheel's frame) walks to its boarding pad and boards there (rideBoard.ts); any other tap disarms it.

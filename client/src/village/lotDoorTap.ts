@@ -29,8 +29,36 @@ export interface LotDoorTap {
   z: number;
 }
 
-/** What the picked world point (x, y, z) of `area` is: a lot door (the village) or a room's way out, or nothing. */
-export function lotDoorTapTarget(area: string, x: number, y: number, z: number): LotDoorTap | null {
+/** A click's ray (world metres): where it starts and its unit direction. */
+export interface TapRayLike {
+  o: { x: number; y: number; z: number };
+  d: { x: number; y: number; z: number };
+}
+
+/**
+ * The door's leaf is not always what a click hits: an auto door's leaf slides out of the way (and the lots' leaves are not pickable), so a tap
+ * on the door lands on the wall inside. Then the click's RAY decides: it crossed the door's own plane within the opening, at door height
+ * (>= TAP_MIN_Y_M, so never the ground), and what it finally hit lies at or past that plane and is no ground or floor either (a tap on the
+ * floor beyond an open door is a walk). `n` is the plane's unit normal pointing out of the building (horizontal), `u` along it, (cx, cz) the
+ * opening's centre on the plane; `pickN` is the pick's distance past (-) / before (+) the plane along n.
+ */
+function rayThroughOpening(ray: TapRayLike | null | undefined, distance: number, n: { x: number; z: number }, u: { x: number; z: number }, cx: number, cz: number, halfW: number, height: number): boolean {
+  if (!ray || !(distance > 0)) return false;
+  const dn = ray.d.x * n.x + ray.d.z * n.z;
+  if (Math.abs(dn) < 1e-6) return false;
+  const t = ((cx - ray.o.x) * n.x + (cz - ray.o.z) * n.z) / dn;
+  if (!(t > 0) || t > distance + 0.05) return false;
+  const hx = ray.o.x + ray.d.x * t - cx;
+  const hz = ray.o.z + ray.d.z * t - cz;
+  const hy = ray.o.y + ray.d.y * t;
+  return Math.abs(hx * u.x + hz * u.z) <= halfW + TAP_SIDE_M && hy >= TAP_MIN_Y_M && hy <= height + TAP_ABOVE_M;
+}
+
+/**
+ * What the picked world point (x, y, z) of `area` is: a lot door (the village) or a room's way out, or nothing. `ray` / `distance`: the click's
+ * ray and the pick's distance along it, for a door whose leaf the click passed through (see rayThroughOpening).
+ */
+export function lotDoorTapTarget(area: string, x: number, y: number, z: number, ray?: TapRayLike | null, distance = 0): LotDoorTap | null {
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || y < TAP_MIN_Y_M) return null;
   if (area === "village") {
     for (const r of LOT_ROOMS) {
@@ -41,7 +69,10 @@ export function lotDoorTapTarget(area: string, x: number, y: number, z: number):
       const dz = z - p.centre.z;
       const o = dx * out.x + dz * out.z;
       const a = dx * along.x + dz * along.z;
-      if (o < -TAP_IN_M || o > TAP_OUT_M || Math.abs(a) > r.door.width / 2 + TAP_SIDE_M || y > r.door.height + TAP_ABOVE_M) continue;
+      const onLeaf = o >= -TAP_IN_M && o <= TAP_OUT_M && Math.abs(a) <= r.door.width / 2 + TAP_SIDE_M && y <= r.door.height + TAP_ABOVE_M;
+      // through the open / unpickable leaf: the pick lies behind the door's plane (inside the building)
+      const through = o < TAP_OUT_M && rayThroughOpening(ray, distance, out, along, p.centre.x, p.centre.z, r.door.width / 2, r.door.height);
+      if (!onLeaf && !through) continue;
       return { id: `${LOT_ENTER_TARGET_PREFIX}${r.door.id}`, x: p.pad.x, z: p.pad.z };
     }
     return null;
@@ -52,6 +83,9 @@ export function lotDoorTapTarget(area: string, x: number, y: number, z: number):
   // the room's frame: the door on the z = origin wall, +z into the room
   const half = room.spec.doorWidth / 2 + TAP_SIDE_M;
   const dz = z - room.origin.z;
-  if (Math.abs(x - d.exitPad.x) > half || dz > TAP_IN_M || dz < -TAP_OUT_M || y > room.door.height + TAP_ABOVE_M) return null;
+  const onLeaf = Math.abs(x - d.exitPad.x) <= half && dz <= TAP_IN_M && dz >= -TAP_OUT_M && y <= room.door.height + TAP_ABOVE_M;
+  // the room's outward normal is -z (the door's wall is the z = origin wall); along is x
+  const through = dz < TAP_OUT_M && rayThroughOpening(ray, distance, { x: 0, z: -1 }, { x: 1, z: 0 }, d.exitPad.x, room.origin.z, room.spec.doorWidth / 2, room.door.height);
+  if (!onLeaf && !through) return null;
   return { id: `${LOT_EXIT_TARGET_PREFIX}${room.unit.id}`, x: d.exitPad.x, z: d.exitPad.z };
 }
