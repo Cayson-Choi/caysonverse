@@ -146,8 +146,13 @@ export interface ServerTimePayload {
   serverTimeMs: number;
 }
 
-/** How often the server re-sends its clock to everyone in a village room (5 minutes). */
-export const SERVER_TIME_INTERVAL_MS = 5 * 60 * 1000;
+/**
+ * How often the server re-sends its clock to everyone in a village room (30 s; it was 5 minutes). The rides run on this clock to the
+ * hundredth of a second, and a reading that waited in a busy page (the park's scene being built) arrives seconds late: the rides audit
+ * (2026-11-20) measured a client 15 s behind the server, its seat taken away "mid-ride" on its own screen. A fresh reading every 30 s puts
+ * that right within half a minute (client/src/village/villageClock.ts keeps the best of them). One small message per visitor per 30 s.
+ */
+export const SERVER_TIME_INTERVAL_MS = 30 * 1000;
 
 /** Server → hall clients: the cubby whose candle was lit, who lit it (their nickname) and how long ago (ms; 0 for a new one). */
 export interface CandleLitPayload {
