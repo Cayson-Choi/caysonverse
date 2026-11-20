@@ -142,7 +142,9 @@ function Station({ concrete, paving, pine }: { concrete: ReturnType<typeof pickS
     for (let i = 0; i < N; i++) {
       const h = (top * (N - i)) / N;
       const zc = -6.95 - run * (i + 0.5);
-      b.box([2, h / 2, zc], X, Y, half, h / 2, run / 2, [0.74, 0.71, 0.66], 2); // the riser block
+      // the riser block stops inside the tread slab (3.5 cm under the tread's top): its top used to share the tread's plane, and the two
+      // coplanar faces (light tread, dark riser) z-fought over the whole step, crawling as the camera moved (owner 2026-11-21)
+      b.box([2, (h - 0.035) / 2, zc], X, Y, half, (h - 0.035) / 2, run / 2, [0.74, 0.71, 0.66], 2); // the riser block
       b.box([2, h - 0.035, zc - 0.03], X, Y, half + 0.02, 0.035, run / 2 + 0.03, [0.97, 0.95, 0.9], 2); // the tread with its nosing
       for (const sx of [-1, 1]) {
         b.box([2 + sx * (half + 0.3), (h + 0.5) / 2, zc], X, Y, 0.3, (h + 0.5) / 2, run / 2, [0.84, 0.81, 0.76], 2); // a cheek wall
