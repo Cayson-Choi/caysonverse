@@ -239,7 +239,7 @@ export function CoasterHud() {
         ? `곧 출발해요 · ${secs}초`
         : "출발을 기다리는 중이에요";
   return (
-    <section className="cv-ride" data-testid="coaster-ride-hud" aria-label={`${def?.name ?? ""} 탑승 중`}>
+    <section className="cv-ride is-riding" data-testid="coaster-ride-hud" aria-label={`${def?.name ?? ""} 탑승 중`}>
       <header className="cv-ride-head">
         <span className="cv-ride-ic" aria-hidden="true">{rideIcon(def?.key ?? "coaster")}</span>
         <strong className="cv-ride-name">{def?.name}</strong>

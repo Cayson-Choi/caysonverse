@@ -287,3 +287,17 @@
   background: #c9b8ff;
   border-color: transparent;
 }
+
+/* Riding, in a short window (the HUD column under 200 px: a 560 px tall browser): the way off must never be the part that is clipped. The status
+   lines give way first (they shrink and are cut), and under 640 px the drag hint is left out. */
+.cv-ride.is-riding > .cv-ride-status {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (max-height: 640px) {
+  .cv-ride.is-riding .cv-ride-hint {
+    display: none;
+  }
+}
