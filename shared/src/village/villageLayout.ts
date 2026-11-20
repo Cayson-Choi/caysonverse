@@ -1360,7 +1360,7 @@ export const villageGeometry: MapGeometry = withParkWall(buildVillageGeometry(
  * everything else (no earlier obstacle's index moves). They stand beyond the walk bounds (z 95) — the wall's front face at z 95.45 — so
  * they take no walkable ground; they keep the camera out of the stone.
  */
-function withParkWall(g: MapGeometry): MapGeometry {
+export function withParkWall(g: MapGeometry): MapGeometry {
   return { ...g, obstacles: [...g.obstacles, ...VILLAGE_WALL_SOLIDS.obstacles], cameraBoxes: [...g.cameraBoxes, ...VILLAGE_WALL_SOLIDS.cameraBoxes] };
 }
 
