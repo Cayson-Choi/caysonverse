@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
-import { MeshBasicMaterial, RepeatWrapping, type PerspectiveCamera, SRGBColorSpace, type Material, type Mesh, type Texture } from "three";
+import { AdditiveBlending, CanvasTexture, Mesh as ThreeMesh, PlaneGeometry, MeshBasicMaterial, RepeatWrapping, type PerspectiveCamera, SRGBColorSpace, type Material, type Mesh, type Texture } from "three";
 import {
   houseFloorBounds,
   parseHouseFloorArea,
@@ -51,6 +51,7 @@ import {
   resetHouseNight,
 } from "./houseNight";
 import { HouseMirrorRig } from "./houseMirror";
+import type { HouseLamp } from "./houseLampGlow";
 import { hearthFlames, houseFireTime, setHouseHearth } from "./houseFire";
 import { clearHouseCaches, holdHouseFiles, loadHouseTexture, noteHouseRequested } from "./houseRelease";
 
@@ -80,6 +81,52 @@ function HouseRoom({ n, floor }: { n: HouseNumber; floor: HouseFloor }) {
 
 // No ring or disc marks the way out or the stair on the boards (owner 2026-11-16, "집 안 출구 원판도 없애", as the memorial hall's door):
 // the door, the stair, the "나가기 / 2층" button and E are the cue; a tap on the door or the stair still walks there and uses it.
+
+
+/**
+ * The warm pool of light a lit floor lamp throws on the boards at night: one flat additive disc per floor lamp (a soft radial gradient,
+ * fading with the house's night weight) — no light, no shadow, one draw call each, nothing by day.
+ */
+function LampPools({ lamps, n, floor }: { lamps: HouseLamp[]; n: HouseNumber; floor: HouseFloor }) {
+  const mine = useMemo(() => {
+    const b = houseFloorBounds(n, floor);
+    return lamps.filter((l) => l.floor && l.x > b.minX && l.x < b.maxX && l.z > b.minZ && l.z < b.maxZ);
+  }, [lamps, n, floor]);
+  const res = useMemo(() => {
+    if (mine.length === 0) return null;
+    const c = document.createElement("canvas");
+    c.width = c.height = 128;
+    const g = c.getContext("2d")!;
+    const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grad.addColorStop(0, "rgba(255,196,110,0.9)");
+    grad.addColorStop(0.35, "rgba(255,170,80,0.45)");
+    grad.addColorStop(1, "rgba(255,150,60,0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 128, 128);
+    const texture = new CanvasTexture(c);
+    const material = new MeshBasicMaterial({ map: texture, transparent: true, blending: AdditiveBlending, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const geometry = new PlaneGeometry(2.4, 2.4).rotateX(-Math.PI / 2);
+    const meshes = mine.map((l) => {
+      const m = new ThreeMesh(geometry, material);
+      m.position.set(l.x, 0.035, l.z);
+      m.renderOrder = 2;
+      m.frustumCulled = true;
+      return m;
+    });
+    return { texture, material, geometry, meshes };
+  }, [mine]);
+  useEffect(() => () => {
+    res?.texture.dispose();
+    res?.material.dispose();
+    res?.geometry.dispose();
+  }, [res]);
+  useFrame(() => {
+    if (res) res.material.opacity = 0.55 * houseNightUniform.value;
+    if (res) for (const m of res.meshes) m.visible = houseNightUniform.value > 0.01;
+  });
+  if (!res) return null;
+  return <>{res.meshes.map((m, i) => <primitive key={i} object={m} dispose={null} />)}</>;
+}
 
 /** One floor of the dressed house: the model with its light (when it has any), the window panorama. Suspends while loading. */
 function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor; pose: Pose }) {
@@ -224,6 +271,7 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
   }, [flames]);
   return <>
     <primitive object={nodes.root} dispose={null} />
+    <LampPools lamps={(gltf.scene.userData.houseLamps as HouseLamp[] | undefined) ?? []} n={n} floor={floor} />
     {flames && <primitive object={flames} dispose={null} />}
   </>;
 }
