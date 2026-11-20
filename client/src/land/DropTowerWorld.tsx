@@ -27,7 +27,7 @@ import { compileSafely } from "../game/compileSafely";
 import { BulbHalos } from "./nightGlow";
 import { parkMaterial, pickSet } from "./pbr";
 import { Parts, type V3 } from "./artParts";
-import { villageClock } from "../village/villageClock";
+import { rideMs } from "./rideClock";
 import { DROP_CAR, DROP_DECK_Y, DROP_PLATFORM_INNER, DROP_PLATFORM_R, DROP_SEATS_PER_FACE, DROP_SITE, DROP_STATION_Y, DROP_TOWER_H, dropAt, type DropState } from "@caysonverse/shared/land/dropTower";
 import { DROP_BEAM_YS, DROP_CROWN_Y, DROP_FRAME, dropFrameD } from "@caysonverse/shared/land/dropTowerGeometry";
 
@@ -536,7 +536,7 @@ export function DropTowerWorld({ all }: { all: Texture[] }) {
   }, [gl, cam, built]);
 
   useFrame(() => {
-    const st = dropAt(villageClock.liveMs(), ST);
+    const st = dropAt(rideMs(), ST);
     if (carRef.current) carRef.current.position.y = st.y;
   });
 
@@ -548,7 +548,7 @@ export function DropTowerWorld({ all }: { all: Texture[] }) {
         ))}
         <instancedMesh ref={towerBulbRef} args={[bulbGeo, bulbMat, built.towerBulbs.length]} frustumCulled={false} dispose={null} />
         <BulbHalos places={built.towerBulbs} size={0.7} strength={0.7} />
-        <group ref={carRef} position={[0, DROP_STATION_Y, 0]}>
+        <group ref={carRef} name="ride-droptower-car" position={[0, DROP_STATION_Y, 0]}>
           {built.car.map((m, i) => (
             <primitive key={i} object={m} />
           ))}

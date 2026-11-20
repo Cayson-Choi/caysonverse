@@ -13,6 +13,7 @@ import { SERVER_URL } from "./endpoint";
 import { joinErrorNotice } from "./reconnectPolicy";
 import { confirmVillageEntry } from "./resilience";
 import { readyDeviceKey } from "../village/memorial/deviceKey";
+import { moonSeatPref } from "../land/moonSeatPref";
 
 /** Options of a village (케이슨 마을) join: validated server-side against the join contract (no admin code). */
 export interface VillageJoinParams {
@@ -225,7 +226,8 @@ export function waitForSelf(r: SelfWaitable, closed?: AbortSignal): Promise<void
 
 /** 케이슨랜드 별똥별 급행: get on / off (the server picks the seat while boarding is open; docs/designs/caysonland/DESIGN.md). */
 export function sendRideBoard(ride: "coaster" | "carousel" | "wheel" | "moonboat" | "droptower" = "coaster"): void {
-  room?.send(VillageMsg.RideBoard, { ride });
+  // the moon boat carries the rider's seat choice (맨 끝 자리 / 가운데 자리: land/moonSeatPref.ts)
+  room?.send(VillageMsg.RideBoard, ride === "moonboat" ? { ride, pref: moonSeatPref() } : { ride });
 }
 export function sendRideLeave(): void {
   room?.send(VillageMsg.RideLeave, {});

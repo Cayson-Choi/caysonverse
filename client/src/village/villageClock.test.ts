@@ -78,6 +78,26 @@ describe("createVillageClock", () => {
     expect(c.jumps()).toBe(1);
   });
 
+  it("does not believe one late reading that would move the clock back; two in a row that agree are believed (rides audit 2026-11-20)", () => {
+    const d = device(NOON);
+    const c = createVillageClock(d.now);
+    c.sync(NOON + 500);
+    expect(c.offsetMs()).toBe(500);
+    d.advance(30_000);
+    c.sync(NOON + 30_000 + 500 - 15_000); // waited 15 s in a busy page before it was read
+    expect(c.offsetMs()).toBe(500);
+    d.advance(30_000);
+    c.sync(NOON + 60_000 + 520); // the next one is on time again
+    expect(c.offsetMs()).toBe(520);
+    // the device's clock really jumped 2 h forward: the first reading is held, the second agrees, the clock follows
+    d.set(d.now() + 2 * HOUR);
+    c.sync(NOON + 60_000 + 520);
+    expect(c.offsetMs()).toBe(520);
+    d.advance(30_000);
+    c.sync(NOON + 90_000 + 520);
+    expect(c.offsetMs()).toBe(520 - 2 * HOUR);
+  });
+
   it("ignores a time that is not a number", () => {
     const c = createVillageClock(device(NOON).now);
     c.sync(Number.NaN);

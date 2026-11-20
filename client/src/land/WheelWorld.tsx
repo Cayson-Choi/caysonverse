@@ -5,7 +5,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { CanvasTexture, Color, FrontSide, Group, InstancedMesh, Matrix4, MeshStandardMaterial, Quaternion, SphereGeometry, SRGBColorSpace, Texture, Vector3 } from "three";
 import { WHEEL_HUB_Y, WHEEL_N, WHEEL_R, WHEEL_SITE, WHEEL_STEP, wheelAt, wheelPivot, type WheelState } from "@caysonverse/shared/land/wheel";
-import { villageClock } from "../village/villageClock";
+import { rideMs } from "./rideClock";
 import { partsOf } from "./CarouselWorld";
 import { parkMaterial, pickSet } from "./pbr";
 import { projectMetreUV } from "./parkShapes";
@@ -146,7 +146,7 @@ export function WheelWorld({ env, all }: { env: Texture; all: Texture[] }) {
   }, [gl, cam, gondolaParts]);
 
   useFrame(() => {
-    const now = villageClock.liveMs();
+    const now = rideMs();
     wheelAt(now, st);
     // the rotor turns clockwise seen from the south: a negative turn about +z
     if (rotorRef.current) rotorRef.current.rotation.z = -st.angle;
@@ -177,7 +177,7 @@ export function WheelWorld({ env, all }: { env: Texture; all: Texture[] }) {
         <BulbHalos places={bulbs} size={1.0} strength={0.8} />
       </group>
       {gondolaParts.map((p, i) => (
-        <instancedMesh key={`g${i}`} ref={(r) => { gondolaRefs.current[i] = r; }} args={[p.geometry, p.material, WHEEL_N]} frustumCulled={false} dispose={null} castShadow={!p.material.transparent} renderOrder={p.material.transparent ? 2 : 0} />
+        <instancedMesh key={`g${i}`} name={i === 0 ? "ride-wheel-gondola" : undefined} ref={(r) => { gondolaRefs.current[i] = r; }} args={[p.geometry, p.material, WHEEL_N]} frustumCulled={false} dispose={null} castShadow={!p.material.transparent} renderOrder={p.material.transparent ? 2 : 0} />
       ))}
       <mesh position={[WHEEL_SITE.x + 7.5, 2.1, WHEEL_SITE.z + 9.6]} material={signMat}>
         <planeGeometry args={[4.2, 1.05]} />

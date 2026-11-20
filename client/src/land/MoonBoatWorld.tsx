@@ -33,7 +33,7 @@ import { compileSafely } from "../game/compileSafely";
 import { BulbHalos } from "./nightGlow";
 import { parkMaterial, pickSet } from "./pbr";
 import { projectMetreUV } from "./parkShapes";
-import { villageClock } from "../village/villageClock";
+import { rideMs } from "./rideClock";
 import {
   MOON_BOAT_COLS,
   MOON_BOAT_ROWS,
@@ -630,7 +630,7 @@ export function MoonBoatWorld({ all }: { all: Texture[] }) {
   }, [gl, cam, built]);
 
   useFrame(() => {
-    const st = moonBoatAt(villageClock.liveMs(), ST);
+    const st = moonBoatAt(rideMs(), ST);
     // three's rotation about +x by a maps (y, z) -> (y cos a - z sin a, y sin a + z cos a): the boat's swing is its negative
     if (boatRef.current) boatRef.current.rotation.x = -st.angle;
   });
@@ -643,7 +643,7 @@ export function MoonBoatWorld({ all }: { all: Texture[] }) {
         ))}
         <instancedMesh ref={frameBulbRef} args={[bulbGeo, bulbMat, built.frameBulbs.length]} frustumCulled={false} dispose={null} />
         <BulbHalos places={built.frameBulbs} size={0.7} strength={0.8} />
-        <group ref={boatRef} position={[0, MOON_PIVOT_Y, 0]}>
+        <group ref={boatRef} name="ride-moonboat-hull" position={[0, MOON_PIVOT_Y, 0]}>
           {built.boat.map((m, i) => (
             <primitive key={i} object={m} />
           ))}

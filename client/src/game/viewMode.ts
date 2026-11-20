@@ -50,6 +50,15 @@ export const FP_PITCH_MIN = -1.5;
 export const FP_PITCH_MAX = 1.4;
 /** The rides (coaster, carousel, wheel) stop their look at 1.2 themselves (land/coasterRide.ts): the drag stops there too on a ride. */
 export const RIDE_PITCH_MAX = 1.2;
+/**
+ * The rides turn the head at most this far left or right of straight ahead (rad, about 109 degrees: each ride's camera clamps its look there).
+ * The drag and the Z / C keys stop there too: past it the look used to run on unseen, and on past 180 degrees it wrapped round and the
+ * view jumped to the other side (rides audit 2026-11-20).
+ */
+export const RIDE_YAW_MAX = 1.9;
+export function clampRideYaw(yaw: number): number {
+  return Math.max(-RIDE_YAW_MAX, Math.min(RIDE_YAW_MAX, yaw));
+}
 /** While the star finder is open the look reaches (all but) the zenith: 0.7 deg short of straight up, so the camera's up vector never flips. */
 export const SKY_PITCH_MIN = -(Math.PI / 2 - 0.012);
 

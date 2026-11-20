@@ -279,7 +279,7 @@ describe("VillageRoom server time (integration, Task 7A)", () => {
     const toBob = waitForMessage<ServerTimePayload>(bob, VillageServerMsg.ServerTime, () => true);
     room.broadcastServerTime();
     for (const m of await Promise.all([toAlice, toBob])) expect(Math.abs(m.serverTimeMs - (Date.now() + skew))).toBeLessThan(2000);
-    expect(SERVER_TIME_INTERVAL_MS).toBe(5 * 60 * 1000);
+    expect(SERVER_TIME_INTERVAL_MS).toBe(30 * 1000);
   });
 });
 
