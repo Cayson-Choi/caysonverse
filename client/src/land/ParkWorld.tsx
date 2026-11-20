@@ -60,6 +60,8 @@ import { CLICK_PICK_KEY } from "../game/clickPick";
 import { PARK_MARBLE_URL_HI, PARK_MARBLE_URL_LO, PARK_PINE_URL_HI, PARK_PINE_URL_LO, useParkAssets } from "./parkAssets";
 import { dayNight } from "../village/dayNightDriver";
 import { BulbHalos, LampPools } from "./nightGlow";
+import { parkAltitude } from "./parkAltitude";
+import { ParkAltitudeProbe, ParkHighClouds } from "./ParkAltitudeFx";
 
 const MARBLE_URL = isTouchDevice ? PARK_MARBLE_URL_LO : PARK_MARBLE_URL_HI;
 const PINE_URL = isTouchDevice ? PARK_PINE_URL_LO : PARK_PINE_URL_HI;
@@ -74,22 +76,56 @@ const setRepeat = (m: MeshStandardMaterial, rx: number, ry: number): void => {
   for (const t of [m.map, m.normalMap, m.roughnessMap]) t?.repeat.set(rx, ry);
 };
 
-/** A plain daytime sky dome that rides with the camera (the park has no village model to bring one). */
+/**
+ * A plain daytime sky dome that rides with the camera (the park has no village model to bring one). A dome at infinity keeps its horizon at the
+ * eye, which is right; what a height changes is the AIR (land/parkAltitude.ts): with the altitude factor `uAlt` the sky deepens and bluens
+ * overhead and the pale haze band at the horizon thickens (owner 2026-11-20: climbing the lift "하늘이 전혀 변화가 없이 그대로"). At the ground
+ * (uAlt 0) the shader adds exactly nothing.
+ */
+const SKY_PARS = `
+varying vec3 vSkyDir;
+uniform float uAlt;
+uniform vec3 uHazeCol;
+`;
 function ParkSky() {
   const ref = useRef<Mesh>(null);
   const geo = useMemo(() => new SphereGeometry(1450, 48, 24), []);
   const map = useMemo(() => (skyCache ??= parkSkyTexture()), []);
   const mat = useRef<MeshBasicMaterial>(null);
+  const uniforms = useMemo(() => ({ uAlt: { value: 0 }, uHazeCol: { value: new Color(1, 1, 1) } }), []);
+  const onBeforeCompile = useMemo(
+    () => (shader: { uniforms: Record<string, unknown>; vertexShader: string; fragmentShader: string }) => {
+      Object.assign(shader.uniforms, uniforms);
+      shader.vertexShader = shader.vertexShader.replace("#include <common>", `#include <common>\nvarying vec3 vSkyDir;`).replace("#include <begin_vertex>", "#include <begin_vertex>\nvSkyDir = normalize( position );");
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", `#include <common>\n${SKY_PARS}`)
+        .replace(
+          "#include <map_fragment>",
+          `#include <map_fragment>
+          {
+            float up = vSkyDir.y;
+            float zen = smoothstep( 0.04, 0.95, up ) * uAlt;
+            diffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.80, 0.90, 1.03 ), zen );
+            float band = exp( -max( up, 0.0 ) / ( 0.05 + 0.16 * uAlt ) ) * ( 0.12 + 0.5 * uAlt ) * uAlt;
+            diffuseColor.rgb = mix( diffuseColor.rgb, uHazeCol, band );
+          }`,
+        );
+    },
+    [uniforms],
+  );
   useFrame(({ camera }) => {
     ref.current?.position.copy(camera.position);
     // the day's dome painted dark and blue with the clock (night audit 2026-11-18: it stayed a pastel noon sky at midnight); the stars
     // and the moon are drawn over it by the village's sky
     const t = dayNight.applied.domeTint;
     mat.current?.color.setRGB(t[0], t[1], t[2]);
+    uniforms.uAlt.value = parkAltitude.a;
+    // the haze band's colour: the dome's own horizon colour (the texture's pale blue, in linear) under the same tint, a touch bluer with height
+    uniforms.uHazeCol.value.setRGB(0.80 * t[0], 0.87 * t[1], 0.94 * t[2]);
   });
   return (
     <mesh ref={ref} geometry={geo} renderOrder={-10} frustumCulled={false}>
-      <meshBasicMaterial ref={mat} map={map} side={BackSide} depthWrite={false} fog={false} toneMapped={false} />
+      <meshBasicMaterial ref={mat} map={map} side={BackSide} depthWrite={false} fog={false} toneMapped={false} onBeforeCompile={onBeforeCompile} customProgramCacheKey={() => "park-sky-altitude"} />
     </mesh>
   );
 }
@@ -683,7 +719,9 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
   return (
     <group>
       <ParkReadyProbe />
+      <ParkAltitudeProbe />
       <ParkSky />
+      <ParkHighClouds />
       <Ground all={all} />
       <Shops all={all} />
       <GateArch all={all} />
