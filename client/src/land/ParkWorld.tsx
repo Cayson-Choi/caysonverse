@@ -651,21 +651,64 @@ function Beds({ pine, all }: { pine: Texture; all: Texture[] }) {
     const tx = boxwoodTextures();
     return new MeshStandardMaterial({ map: tx.map, bumpMap: tx.bump, bumpScale: 2.2, vertexColors: true, roughness: 0.72, side: DoubleSide });
   }, []);
+  // benches (fix/gate-fountain-park: they were a plank, a board and two blocks): a park bench of five seat slats and three back
+  // slats, rounded at the front, on two cast-iron end frames (a scrolled front leg, a rear leg running up into the back, an arm
+  // with a curled end); length along z, the back toward +x * face, as before
+  const benchSpots = useMemo(() => {
+    const out: Array<[number, number, number]> = [];
+    for (let z = -170; z <= -140; z += 10) out.push([34, z, -1], [46, z, 1]);
+    for (let x = 90; x <= 330; x += 30) out.push([x, -108.2, 1]);
+    return out;
+  }, []);
   const bedGeo = useMemo(() => {
     const b = new GeoBuilder();
-    // benches (a seat plank, a back, two legs) along the avenue and the promenade
-    const bench = (x: number, z: number, face: number) => {
-      b.box([x, 0.5, z], X, Y, 0.35, 0.05, 1.0, [0.72, 0.5, 0.3]);
-      b.box([x + face * 0.3, 0.85, z], X, Y, 0.05, 0.3, 1.0, [0.72, 0.5, 0.3]);
-      for (const dz of [-0.8, 0.8]) b.box([x, 0.25, z + dz], X, Y, 0.3, 0.25, 0.05, [0.15, 0.16, 0.22]);
-    };
-    for (let z = -170; z <= -140; z += 10) {
-      bench(34, z, -1);
-      bench(46, z, 1);
+    const wood: V3 = [0.86, 0.62, 0.42];
+    for (const [x, z, face] of benchSpots) {
+      // seat slats: front (away from the back) to rear, falling 3 cm toward the back
+      for (let i = 0; i < 5; i++) {
+        const d = -0.2 + i * 0.1; // across the seat, + toward the back
+        b.box([x + face * d, 0.455 - 0.006 * i, z], X, Y, 0.042, 0.017, 0.98, wood.map((c) => c * (0.95 + 0.05 * Math.sin(i * 2.1 + x))) as V3);
+      }
+      // back slats, leaning back 14 degrees
+      const lean = 0.24;
+      for (let i = 0; i < 3; i++) {
+        const h = 0.6 + i * 0.13;
+        const ax: V3 = [face * Math.sin(lean), Math.cos(lean), 0];
+        const nx: V3 = [face * Math.cos(lean), -Math.sin(lean), 0];
+        b.box([x + face * (0.26 + (h - 0.5) * Math.tan(lean)), h, z], nx, ax, 0.016, 0.05, 0.98, wood);
+      }
     }
-    for (let x = 90; x <= 330; x += 30) bench(x, -108.2, 1);
     return b.build();
-  }, []);
+  }, [benchSpots]);
+  const benchIronGeo = useMemo(() => {
+    const b = new GeoBuilder();
+    const iron: V3 = [1, 1, 1];
+    for (const [x, z, face] of benchSpots) {
+      for (const dz of [-0.88, 0.88]) {
+        const P = (d: number, y: number): V3 => [x + face * d, y, z + dz];
+        // the rear leg and the back's upright in one sweep
+        b.tube([P(0.3, 0.0), P(0.27, 0.15), P(0.23, 0.32), P(0.22, 0.44), P(0.26, 0.6), P(0.3, 0.75), P(0.33, 0.88), P(0.35, 0.92)], 0.022, 6, iron);
+        // the front leg, curving forward at the foot
+        b.tube([P(-0.27, 0.0), P(-0.24, 0.12), P(-0.22, 0.28), P(-0.21, 0.44)], 0.022, 6, iron);
+        // the seat rail
+        b.tube([P(-0.25, 0.44), P(0.24, 0.43)], 0.018, 6, iron);
+        // the arm: up from the front leg, back to the upright, a curl at the front
+        const arm: V3[] = [P(-0.21, 0.44), P(-0.2, 0.55), P(-0.16, 0.63), P(0.0, 0.66), P(0.18, 0.66), P(0.27, 0.66)];
+        b.tube(arm, 0.017, 6, iron);
+        const curl: V3[] = [];
+        for (let i = 0; i <= 8; i++) {
+          const a = Math.PI * 0.5 + (i / 8) * Math.PI * 1.5;
+          const rr = 0.045 * (1 - i / 14);
+          curl.push(P(-0.2 + rr * Math.cos(a), 0.6 + rr * Math.sin(a)));
+        }
+        b.tube(curl, 0.012, 5, iron);
+        // a stretcher between the legs, low
+        b.tube([P(-0.23, 0.12), P(0.26, 0.13)], 0.012, 5, iron);
+      }
+    }
+    return b.build();
+  }, [benchSpots]);
+  const benchIron = useMemo(() => new MeshStandardMaterial({ name: "park_bench_iron", color: "#24282b", roughness: 0.45, metalness: 0.55 }), []);
   const benchMat = useMemo(() => {
     const t = pine.clone();
     t.wrapS = t.wrapT = RepeatWrapping;
@@ -679,6 +722,7 @@ function Beds({ pine, all }: { pine: Texture; all: Texture[] }) {
       <mesh geometry={troughGeo} material={troughMat} castShadow receiveShadow />
       <mesh geometry={hedgeGeo} material={hedgeMat} castShadow receiveShadow />
       <mesh geometry={bedGeo} material={benchMat} castShadow receiveShadow />
+      <mesh geometry={benchIronGeo} material={benchIron} castShadow />
     </group>
   );
 }
