@@ -228,12 +228,9 @@ function Ground({ all }: { all: Texture[] }) {
 
 // ───────────────────────────────────────── the gate arch, the fountain ─────────────────────────────────────────
 
-/** The gate's tiles and stone come from the houses' scanned sets (Poly Haven clay_roof_tiles_03, mossy_sandstone; see models/village/LICENSE.md). */
+/** The gate's tiles come from the houses' scanned set (Poly Haven clay_roof_tiles_03; see models/village/LICENSE.md); its stone is the library's granite. */
 const GATE_TEX_DIR = "/models/village/houses/";
 const GATE_TEX_URLS = [
-  `${GATE_TEX_DIR}house_sandstone_albedo.webp`,
-  `${GATE_TEX_DIR}house_sandstone_normal${isTouchDevice ? "_512" : ""}.webp`,
-  `${GATE_TEX_DIR}house_sandstone_rough.webp`,
   `${GATE_TEX_DIR}house_tile_albedo.webp`,
   `${GATE_TEX_DIR}house_tile_normal${isTouchDevice ? "_512" : ""}.webp`,
   `${GATE_TEX_DIR}house_tile_rough.webp`,
@@ -260,13 +257,23 @@ function GateArch({ all }: { all: Texture[] }) {
   const tex = once("tex", () => GATE_TEX_URLS.map((u) => new TextureLoader().load(u)));
   const sign = once("sign", () => gateSignTexture());
   const signMat = once("signMat", () => new MeshStandardMaterial({ map: sign, roughness: 0.5, emissive: new Color("#ffffff"), emissiveMap: sign, emissiveIntensity: 0.15 }));
+  // fix/gate-fountain-park: the mossy sandstone scan smeared dark olive under the arch and stretched along the voussoirs (the
+  // owner wants everything brand-new, no weathering): the library's flamed granite, warmed to a clean sandstone, at cut-stone grain
+  const gl = useThree((st) => st.gl);
   const stone = once("stone", () => {
-    const m = parkMaterial({ c: tex[0]!, n: tex[1]!, r: tex[2]! }, 1, { ownedMaps: true, vertexColors: true, color: new Color("#fff2e6"), normalScale: 1.1 });
-    m.name = "gate_stone";
+    const m = new MeshStandardMaterial({ name: "gate_stone", vertexColors: true, color: new Color("#f6e2c6"), roughness: 0.9, metalness: 0, emissive: new Color("#3b2d1e"), emissiveIntensity: 0.4 }); // (the emissive: sky bounce under the arch, which the lawn's green hemisphere light turned olive)
+    getPbrSet("granite_flamed", isTouchDevice ? "1k" : "2k", gl).then((set) => {
+      const t = pbrTextures(set, { repeat: [3, 3] });
+      m.map = t.map;
+      m.normalMap = t.normalMap;
+      m.normalScale.set(0.8, -0.8);
+      m.roughnessMap = t.orm;
+      m.needsUpdate = true;
+    });
     return m;
   });
   const roof = once("roof", () => {
-    const m = parkMaterial({ c: tex[3]!, n: tex[4]!, r: tex[5]! }, 1, { ownedMaps: true, normalScale: 1.4 });
+    const m = parkMaterial({ c: tex[0]!, n: tex[1]!, r: tex[2]! }, 1, { ownedMaps: true, normalScale: 1.4 });
     m.onBeforeCompile = (shader) => {
       shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>", GLAZE_FRAGMENT);
     };
