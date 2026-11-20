@@ -76,7 +76,7 @@ import { PublicAutoDoor } from "./PublicAutoDoor";
 import { VillageLots } from "./lots/VillageLots";
 import { LotRoomArea } from "./lots/LotRoom";
 import { CAFE_ROOM_UNIT, CafeRoomArea, CafeRoomPrefetch } from "./cafe/CafeRoom";
-import { lotDoorNotice, lotDoorPadById, lotWalkInTarget, LOT_DOOR_TARGET_PREFIX } from "./lots/lotTargets";
+import { lotDoorNotice, lotDoorPadById, LOT_DOOR_TARGET_PREFIX } from "./lots/lotTargets";
 import { openKeypad, useKeypad } from "./keypadStore";
 import { VillageKeypad } from "./VillageKeypad";
 import { HouseArea } from "./HouseInterior";
@@ -353,7 +353,6 @@ function VillageDoors({ pose }: { pose: Pose }) {
   }, [pose, boarded, keypadOpen]);
   // A tap on a house's stair or front door armed its use (houseTap.ts): once the walk has brought us into the pad's reach, it is used.
   const lastArea = useRef<string | null>(null);
-  const walkedIn = useRef(false);
   useFrame(() => {
     const area = localArea();
     // Going in, out or up / down: a use armed by an earlier tap is stale (owner 2026-11-20: never climb without the player's own use)
@@ -368,14 +367,6 @@ function VillageDoors({ pose }: { pose: Pose }) {
       return;
     }
     if (area === "village") maybePreloadPark(pose.x, pose.z); // the park's files start loading as the gate comes near
-    // Walking into a lot door (the café's) goes in: the doorstep is the last 0.6 m of the walk to it (lotTargets.ts lotWalkInTarget); used once per arrival
-    if (area === "village") {
-      const step = lotWalkInTarget(pose.x, pose.z);
-      if (step && !walkedIn.current) {
-        walkedIn.current = true;
-        fireTarget(step, "press");
-      } else if (!step) walkedIn.current = false;
-    }
     // a house floor, a lot building's room, or the village with a lot door's use armed by a tap on it (lotDoorTap.ts)
     if (!isHouseArea(area) && !isLotArea(area) && armedHouseUse() === null) return;
     const offered = villageTargets(area, pose.x, pose.z);

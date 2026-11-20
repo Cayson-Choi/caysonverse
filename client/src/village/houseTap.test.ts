@@ -53,6 +53,7 @@ describe("houseTapTarget: a tap on the stair or the front door", () => {
     const door = localToWorld(n, 1, 5.3, 0.1);
     expect(houseTapTarget(houseFloorArea(n, 1), door.x, 1.5, door.z)).toMatchObject({ id: HOUSE_EXIT_TARGET_ID, x: HOUSE_PLACES[n].exitPad.x });
     expect(houseTapTarget(houseFloorArea(n, 1), door.x, 3.3, door.z)).toBeNull(); // above the door
+    expect(houseTapTarget(houseFloorArea(n, 1), door.x, 0, door.z)).toBeNull(); // the floor by the door: a walk, never out
     const door2 = localToWorld(n, 2, 5.3, 0.1);
     expect(houseTapTarget(houseFloorArea(n, 2), door2.x, 1.5, door2.z)).toBeNull();
     const side = localToWorld(n, 1, 2.0, 0.1); // the wall beside the door

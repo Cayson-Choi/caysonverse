@@ -31,8 +31,8 @@ export const HOUSE_TAP_STAIR_MARGIN = 0.2;
  */
 export const HOUSE_TAP_STAIR_BELOW = 0.5;
 export const HOUSE_TAP_STAIR_ABOVE = 1.1;
-/** The front door (local): the glass double door on the z = 0 wall, 2.9 m tall (HOUSE_ROOM.frontDoor), a tap within this much of the wall. */
-const FRONT_DOOR = { minX: 4.4, maxX: 6.2, maxZ: 0.45, height: 3.0 } as const;
+/** The front door (local): the glass double door on the z = 0 wall, 2.9 m tall (HOUSE_ROOM.frontDoor), a tap within this much of the wall, above the floor (a tap on the floor by the door walks, never leaves: owner 2026-11-21). */
+const FRONT_DOOR = { minX: 4.4, maxX: 6.2, maxZ: 0.45, height: 3.0, minY: 0.35 } as const;
 
 export interface HouseTapTarget {
   /** The target id the pad offers (houseTargets.ts). */
@@ -71,7 +71,7 @@ export function houseTapTarget(area: string, x: number, y: number, z: number): H
   }
   if (hit.floor === 1) {
     const l = worldToLocal(hit.n, 1, x, z);
-    if (l.x >= FRONT_DOOR.minX && l.x <= FRONT_DOOR.maxX && l.z <= FRONT_DOOR.maxZ && y <= FRONT_DOOR.height) {
+    if (l.x >= FRONT_DOOR.minX && l.x <= FRONT_DOOR.maxX && l.z <= FRONT_DOOR.maxZ && l.z >= -FRONT_DOOR.maxZ && y >= FRONT_DOOR.minY && y <= FRONT_DOOR.height) {
       return { id: HOUSE_EXIT_TARGET_ID, x: places.exitPad.x, z: places.exitPad.z };
     }
   }

@@ -11,8 +11,13 @@ import { LOT_ENTER_TARGET_PREFIX, LOT_EXIT_TARGET_PREFIX } from "./lots/lotTarge
 /** How much wider (m) than the door the tap region is, each side. */
 const TAP_SIDE_M = 0.3;
 /** How far (m) in front of and behind the door's wall line a tap still counts. */
-const TAP_OUT_M = 0.9;
+const TAP_OUT_M = 0.35;
 const TAP_IN_M = 0.8;
+/**
+ * How high (m) above the floor a tap must be to be on the door's leaf (owner 2026-11-21: "들어가기 버튼 누르지도 않았는데 들어가버려", and the
+ * same going out): a tap on the ground or floor in front of the door is a walk there, never a use of the door.
+ */
+const TAP_MIN_Y_M = 0.35;
 /** How far above the door (m) a tap still counts (its transom). */
 const TAP_ABOVE_M = 0.25;
 
@@ -26,7 +31,7 @@ export interface LotDoorTap {
 
 /** What the picked world point (x, y, z) of `area` is: a lot door (the village) or a room's way out, or nothing. */
 export function lotDoorTapTarget(area: string, x: number, y: number, z: number): LotDoorTap | null {
-  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || y < 0) return null;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || y < TAP_MIN_Y_M) return null;
   if (area === "village") {
     for (const r of LOT_ROOMS) {
       const p = lotDoorPoint(r.lot, r.door);

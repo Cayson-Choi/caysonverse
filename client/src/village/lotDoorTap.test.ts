@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CAFE_LOT, LOT_ROOMS, lotDoorPoint, lotRoomDoor, lotRoomOf } from "@caysonverse/shared/village/villageLots";
 import { lotDoorTapTarget } from "./lotDoorTap";
-import { LOT_ENTER_TARGET_PREFIX, LOT_EXIT_TARGET_PREFIX, lotDoorTarget, lotExitTarget, lotWalkInTarget } from "./lots/lotTargets";
-import { isBlocked } from "@caysonverse/shared/collision";
-import { villageGeometry } from "@caysonverse/shared/village/villageLayout";
-import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
+import { LOT_ENTER_TARGET_PREFIX, LOT_EXIT_TARGET_PREFIX, lotDoorTarget, lotExitTarget } from "./lots/lotTargets";
 
 describe("a tap on a lot building's door (the café's, owner 2026-11-20)", () => {
   const door = lotDoorPoint(CAFE_LOT, CAFE_LOT.doors[0]!);
@@ -47,18 +44,15 @@ describe("a tap on a lot building's door (the café's, owner 2026-11-20)", () =>
     expect(lotDoorTapTarget(room.area, exit.x, 4.2, room.origin.z - 0.12)).toBeNull();
   });
 
-  it("walking into the café's door (its doorstep, a body's width from the wall) goes in; the pad, the terrace and the lane do not", () => {
-    // the closed door's wall stops a body 0.4 m short of it: that spot is the doorstep
-    const step = { x: door.centre.x + Math.sin(door.yaw) * (PLAYER_RADIUS + 0.05), z: door.centre.z + Math.cos(door.yaw) * (PLAYER_RADIUS + 0.05) };
-    expect(isBlocked(step.x, step.z, PLAYER_RADIUS, villageGeometry.obstacles, 0)).toBe(false);
-    const hit = lotWalkInTarget(step.x, step.z);
-    expect(hit?.id).toBe(`${LOT_ENTER_TARGET_PREFIX}lot_cafe_main`);
-    expect(lotWalkInTarget(door.pad.x, door.pad.z)).toBeNull(); // the pad (0.65 m out): the button
-    expect(lotWalkInTarget(door.arrival.x, door.arrival.z)).toBeNull();
-    expect(lotWalkInTarget(step.x, step.z + 2.5)).toBeNull(); // along the façade, beside the door
-    expect(lotWalkInTarget(step.x - 3, step.z)).toBeNull();
-    expect(lotWalkInTarget(Number.NaN, 0)).toBeNull();
-    // the button is offered at the doorstep too: the use is valid there
-    expect(lotDoorTarget(step.x, step.z)?.id).toBe(hit!.id);
+  it("a tap on the ground or floor by a door is a walk, never a use of it (owner 2026-11-21)", () => {
+    for (const r of LOT_ROOMS) {
+      const p = lotDoorPoint(r.lot, r.door);
+      for (const o of [-0.5, 0, 0.2, 0.6]) {
+        expect(lotDoorTapTarget("village", p.centre.x + Math.sin(p.yaw) * o, 0, p.centre.z + Math.cos(p.yaw) * o), r.door.id).toBeNull();
+      }
+    }
+    const room = lotRoomOf("lot:lot_cafe_room")!;
+    const exit = lotRoomDoor(room).exitPad;
+    for (const dz of [-0.3, 0, 0.4, 0.8]) expect(lotDoorTapTarget(room.area, exit.x, 0, room.origin.z + dz)).toBeNull();
   });
 });

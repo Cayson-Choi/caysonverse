@@ -40,6 +40,9 @@ export function takeArmedRide(x: number, z: number, now: number = performance.no
   return key;
 }
 
+/** How high (m) above the ground a tap on a ride's footprint must be to count as a tap on the ride itself. */
+export const RIDE_TAP_MIN_Y_M = 0.6;
+
 /** Which ride a tap at the park point (x, z) means: its footprint, platform or queue. */
 export function rideTapZone(x: number, z: number): RideKey | null {
   if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
@@ -75,8 +78,10 @@ export interface TapRay {
  * ride's body on its way to the ground behind it (a tap between the carousel's horses, on the wheel's open spokes, picks the lawn beyond:
  * first-time-player review). The ray is followed up to `distance` m in 0.5 m steps and tested against each ride's volume.
  */
-export function rideForTap(x: number, z: number, ray?: TapRay | null, distance = 0): RideKey | null {
-  const hit = rideTapZone(x, z);
+export function rideForTap(x: number, z: number, ray?: TapRay | null, distance = 0, y = Number.POSITIVE_INFINITY): RideKey | null {
+  // a tap on the ground of a ride's footprint (its platform, queue, apron) is a walk, never a board (owner 2026-11-21): only a tap on the ride's
+  // own body (raised: seats, frame, cars) or a ray through it does
+  const hit = y >= RIDE_TAP_MIN_Y_M ? rideTapZone(x, z) : null;
   if (hit) return hit;
   if (!ray || !(distance > 0)) return null;
   const n = Math.min(400, Math.ceil(distance / 0.5));

@@ -486,7 +486,7 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
       if (houseTap) surface = { x: houseTap.x, y: 0, z: houseTap.z, ny: 1 };
       armHouseUse(houseTap ? houseTap.id : null);
       // A tap on a ride (its platform, queue, station, the wheel's frame) walks to its boarding pad and boards there (rideBoard.ts); any other tap disarms it.
-      const rideTapKey = pick && !pick.blocker && localArea() === "park" ? rideForTap(pick.x, pick.z, pick.ray, pick.distance) : null;
+      const rideTapKey = pick && !pick.blocker && localArea() === "park" ? rideForTap(pick.x, pick.z, pick.ray, pick.distance, pick.y) : null;
       if (rideTapKey) {
         const spot = rideTapSpot(rideTapKey);
         surface = { x: spot.x, y: 0, z: spot.z, ny: 1 };
