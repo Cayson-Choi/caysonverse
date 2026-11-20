@@ -954,7 +954,10 @@ def run_room(unit_id, kit_mod, viewdef, prefix, tex_dir):
     unit = next(u for u in lot["units"] if u["id"] == unit_id)
     org, size = unit["interior"]["origin"], unit["interior"]["size"]
     LOT, YAW, CX, CZ = unit_id, 0.0, org["x"], org["z"]
-    kit = kit_mod.build(spec, unit, L)
+    # --phone: the room's phone LOD (<unit>_phone.glb, LotRoom's LOT_ROOM_PHONE_FILES), for a kit whose build takes `phone`
+    phone = "--phone" in argv
+    kit = kit_mod.build(spec, unit, L, phone=True) if phone else kit_mod.build(spec, unit, L)
+    fid = unit_id + ("_phone" if phone else "")
     add_letters(kit)
     mats = make_materials(kit.mats)
     objs = []
@@ -1018,16 +1021,16 @@ def run_room(unit_id, kit_mod, viewdef, prefix, tex_dir):
         SUN_DIR = getattr(kit, "sun_dir", None)
         SUN_ELEV = getattr(kit, "sun_elev", 38)
         night_lights(kit)
-        lm = bake_lots.bake_room(kit, objs, unit_id, arg("--lightmap"), setup_world, int(arg("--lm-size", "1024")), int(arg("--lm-samples", "96")))
+        lm = bake_lots.bake_room(kit, objs, unit_id, arg("--lightmap"), setup_world, int(arg("--lm-size", "1024")), int(arg("--lm-samples", "96")), fid)
         if lm:
-            lightmap = {"day": "lots/%s/%s_lm_day.ktx2" % (tex_dir, unit_id), "night": "lots/%s/%s_lm_night.ktx2" % (tex_dir, unit_id),
+            lightmap = {"day": "lots/%s/%s_lm_day.ktx2" % (tex_dir, fid), "night": "lots/%s/%s_lm_night.ktx2" % (tex_dir, fid),
                         "scale": lm["scale"], "channel": 1, "size": lm["size"],
                         "note": "irradiance = (texel in linear) * scale on TEXCOORD_1 of the lotroom__ shell (bake_lots.py)"}
-    out = arg("--out", os.path.join(LOTS, unit_id + ".glb"))
+    out = arg("--out", os.path.join(LOTS, fid + ".glb"))
     if "--no-export" not in argv:
         manifest = os.path.join(LOTS, tex_dir, "%s_textures.json" % unit_id)
         write_manifest(kit, {"id": unit_id}, manifest)
-        export(out, objs, {"caysonverse": "%s (lots v2 B1 room kit)" % unit_id, "textures": "lots/%s/%s_textures.json" % (tex_dir, unit_id),
+        export(out, objs, {"caysonverse": "%s (lots v2 B1 room kit%s)" % (unit_id, ", phone LOD" if phone else ""), "lod": "phone" if phone else "pc", "textures": "lots/%s/%s_textures.json" % (tex_dir, unit_id),
                            "origin": org, "size": size, **({"lightmap": lightmap} if lightmap else {})})
         report["glb"] = glb_stats(out)
         log("wrote", out, report["glb"])

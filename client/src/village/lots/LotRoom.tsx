@@ -69,7 +69,9 @@ import { LotTextureBank, capMips, fetchLotManifest, loadLotOwnMap, manifestPaths
  * its two 1K maps (2.8 MB) fit the same budgets.
  */
 export const ROOM_TEXTURES: Readonly<Record<string, { pcAlbedoOnly: readonly string[]; phoneFull: readonly string[]; pc2k?: readonly string[] }>> = {
-  lot_school_class: { pcAlbedoOnly: ["grass", "cast_iron", "plaster_painted"], phoneFull: ["floor_wood"] },
+  // the classroom (owner 2026-11-20 "학교 내부가 너무 허접하네 좀 실감나게"): the pupils' beech desks and chairs read from a metre —
+  // the oak set's 2048 albedo on a PC; the powder-coated frames, the brushed metal and the grass leaves are small parts: albedo only
+  lot_school_class: { pcAlbedoOnly: ["grass", "cast_iron", "plaster_painted", "steel_painted", "aluminium_brushed"], phoneFull: ["floor_wood"], pc2k: ["wood_oak"] },
   // the reading room (owner 2026-11-20 "고해상도로 선명하게, 흐릿하게 보이는건 없어야 해"): on a PC the oak (bookcases, panelling,
   // tables), the floor and the fireplace's limestone read at eye level from a metre: their 2048 albedo (1100 px/m on the oak's 1.83 m
   // tile, was 560), the rest 1K; the painted wood (book spines before 2026-11-20) is now only frames: albedo only
@@ -90,6 +92,12 @@ export const ROOM_ANISOTROPY = { desktop: 16, mobile: 4 } as const;
 /** A room's own atlases on a phone (the reading room's 2048 books and rugs): colour 1024, normal / ORM 512 (top mips dropped). */
 export const ROOM_OWN_PHONE_MAX = { color: 1024, detail: 512 } as const;
 
+/**
+ * A room's own atlas that keeps more on a phone: the classroom's 4096 atlas of sixteen children's drawings (1024 px a sheet on a
+ * PC) at 2048 — 512 px a 39 cm sheet, still crisp on a phone's screen from a metre (at 1024 the crayon and the names were mush).
+ */
+export const ROOM_OWN_PHONE_MAX_BY_MAT: Readonly<Record<string, number>> = { M_school_art: 2048 };
+
 /** A room's lightmaps on a phone: their top mips dropped to this size (the 2048 bakes; 1024 is still 2 cm a texel). */
 export const ROOM_LIGHTMAP_PHONE_MAX = 1024;
 
@@ -101,7 +109,7 @@ export const WINDOW_VIEW_PHONE_MAX = 1536;
  * reading room's spines, gilt and wood grain at dpr 1 on a 3x phone were a third of the screen's pixels — soft. A room is a small
  * scene (no village behind it), so 1.5 costs little.
  */
-export const ROOM_PHONE_DPR: Readonly<Record<string, number>> = { lot_library_reading: 1.5 };
+export const ROOM_PHONE_DPR: Readonly<Record<string, number>> = { lot_library_reading: 1.5, lot_school_class: 1.5 };
 
 function roomSetFull(unit: string, set: string, phone: boolean): boolean {
   const plan = ROOM_TEXTURES[unit];
@@ -240,8 +248,9 @@ export function isSacredHero(node: string): boolean {
 
 export { capMips } from "./lotTextures";
 
-/** The rooms B2 made a phone file for (`<unit>_phone.glb`, its extras' `phone.file`). */
-export const LOT_ROOM_PHONE_FILES: ReadonlySet<string> = new Set(["lot_chapel_nave", "lot_church_nave"]);
+/** The rooms with a phone file (`<unit>_phone.glb`): B2's chapel and church, and the classroom (b1 `--phone`, 2026-11-20: the same
+ * room and atlases with lighter geometry — 33k triangles, 29 draws). */
+export const LOT_ROOM_PHONE_FILES: ReadonlySet<string> = new Set(["lot_chapel_nave", "lot_church_nave", "lot_school_class"]);
 
 /** How long (ms) a room's files stay after leaving it (a quick look outside and back in reads nothing again). */
 export const LOT_ROOM_KEEP_MS = 60_000;
@@ -598,7 +607,7 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
       // a phone: the room's own atlases at most 1024 (their normal / ORM 512), 4x anisotropy
       for (const [name, t] of Object.entries(own)) {
         t.anisotropy = Math.min(t.anisotropy, ROOM_ANISOTROPY.mobile);
-        capMips(t, specs[name]?.kind === "garden" ? WINDOW_VIEW_PHONE_MAX : ROOM_OWN_PHONE_MAX.color);
+        capMips(t, specs[name]?.kind === "garden" ? WINDOW_VIEW_PHONE_MAX : ROOM_OWN_PHONE_MAX_BY_MAT[name] ?? ROOM_OWN_PHONE_MAX.color);
       }
       for (const x of Object.values(ownExtra))
         for (const t of [x.normal, x.orm]) {

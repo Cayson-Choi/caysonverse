@@ -1150,7 +1150,9 @@ const SCHOOL_IN: LotInteriorSpec = {
     solid("globe_stand", 13.6, 14.3, 2.7, 3.4, 1.25), solid("plant_tall", 11.35, 11.95, 6.35, 6.95, 1.7),
   ],
   seats: [0, 1, 2, 3].flatMap((c) => [0, 1, 2].map((r) => iseat(`lot_school_chair_${c * 3 + r + 1}`, 4 + c * 2.2, 3.6 + r * 1.4, "left", "backed", 0.44, 1, 0.45, 0.22, 0.23))),
-  budget: { pc: { triangles: 60_000, textureMB: 24, draws: 40 }, phone: { triangles: 25_000, textureMB: 8, draws: 25 } },
+  // the realism pass (owner 2026-11-20): real desks / chairs / books / plants and the children's drawings' own atlases. The phone
+  // reads the same file (as the reading room): the phone budget below is what a `_phone` file (LOT_ROOM_PHONE_FILES) should meet.
+  budget: { pc: { triangles: 75_000, textureMB: 72, draws: 40 }, phone: { triangles: 33_000, textureMB: 18, draws: 30 } },
   program: ["복도 사물함(번호판·손잡이)", "유리 칸막이", "칠판(새 칠판)·분필 받침", "교탁·교사 의자", "책상 12 + 의자 12(앉기)", "벽시계", "게시판(그림·시간표)", "창가 화분", "펜던트 조명"],
 };
 
