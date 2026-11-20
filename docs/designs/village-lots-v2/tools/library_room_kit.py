@@ -72,8 +72,20 @@ BOOK_COLS = ["7A2E2E", "2F4B6E", "3E6B4A", "8C6A2E", "5A3A62", "B5502F", "2B5C5E
 
 
 
-def build(spec, unit, layout):
+def build(spec, unit, layout, phone=False):
+    DR.set_phone(phone)
     kit = P.Kit(None)
+    if phone:
+        # the phone: the shelf runs are merged into the goods mesh instead of 16 GPU-instanced kinds (a draw call apiece: the
+        # CPU's cost on a phone is the draws, and the runs' triangles are the same either way); chairs and tables stay instanced
+        place = kit.place
+
+        def place_or_merge(kind, mesh, x, y, z, yaw=0.0):
+            if kind.startswith("books_"):
+                kit.G.extend(G.moved(mesh, x, y, z, yaw))
+            else:
+                place(kind, mesh, x, y, z, yaw)
+        kit.place = place_or_merge
     kit.mats = dict(MATS)
     sol = {s["name"]: s for s in spec["solids"]}
     holes = {

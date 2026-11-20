@@ -25,6 +25,7 @@ RUG = S("M_rugs")
 SPINES = A["spines"]
 BY_KIND = {k: [c["i"] for c in SPINES if c["kind"] == k] for k in ("leather", "cloth", "vellum", "jacket")}
 WHITE = (1.0, 1.0, 1.0, 1.0)
+PHONE = False   # the phone LOD (lot_library_reading_phone.glb): the same atlases and runs, fewer facets a book (set by library_room_kit.build)
 
 
 def uvr(cell, inset=2.0, size=SZ):
@@ -63,6 +64,8 @@ def book(m, xf, w, h, d, cell, page="plain", top=True):
     U0, U1, V0, V1 = uvr((sp["x"], sp["y"], sp["w"], sp["h"]))
     r = min(0.0055, w * 0.16) if w > 0.016 else 0.0012
     n = 3 if w >= 0.045 else 2 if w >= 0.02 else 1
+    if PHONE:
+        n = 1   # (one flat facet for the back: a book's 2-6 cm is 6-18 px on a phone from 3 m, the atlas cell carries the bands and lettering)
     bt = min(0.0028, w * 0.12)
     sq = 0.0025
     sd = r + 0.002
@@ -84,17 +87,19 @@ def book(m, xf, w, h, d, cell, page="plain", top=True):
     if not top:
         return
     # the head of the spine (the cover turned over the top), the boards' edges, the page block 2.5 mm down
+    # (the phone keeps the head cap and the page block, which read from a shelf's front and from above, and drops the 2 mm
+    # board edges and the steps between the boards and the leaves: four faces a book, millimetres wide)
     vh0, vh1 = V1 - 10.0 / SZ, V1 - 3.0 / SZ
     arc = [(xs[i], h, zs[i]) for i in range(n + 1)]
     _face(m, arc + [(w, h, -sd), (0.0, h, -sd)], [(U0 + (U1 - U0) * i / n, vh1) for i in range(n + 1)] + [(U1, vh0), (U0, vh0)], WHITE, xf, (0, 1, 0))
-    for (a, b) in ((0.0, bt), (w - bt, w)):
+    for (a, b) in (() if PHONE else ((0.0, bt), (w - bt, w))):
         _face(m, [(a, h, -sd), (b, h, -sd), (b, h, -d), (a, h, -d)], [(s0, t1), (s0 + 0.004, t1), (s0 + 0.004, t1 - 0.06), (s0, t1 - 0.06)], tint, xf, (0, 1, 0))
     p0, p1, q0, q1 = uvr(A["pages"][page], inset=3.0)
     pw = (p1 - p0) * min(1.0, (w - 2 * bt) / 0.08)
     _face(m, [(bt, h - sq, -sd), (w - bt, h - sq, -sd), (w - bt, h - sq, -(d - sq)), (bt, h - sq, -(d - sq))],
           [(p0, q1), (p0 + pw, q1), (p0 + pw, q0), (p0, q0)], WHITE, xf, (0, 1, 0))
     # the step down from the boards to the leaves (seen along a shelf): the boards' inner faces
-    for (x, nx) in ((bt, 1), (w - bt, -1)):
+    for (x, nx) in (() if PHONE else ((bt, 1), (w - bt, -1))):
         _face(m, [(x, h - sq, -sd), (x, h, -sd), (x, h, -d), (x, h - sq, -d)], [(s0, t1), (s0, t1 - 0.004), (s0 + 0.05, t1 - 0.004), (s0 + 0.05, t1)], tint, xf, (nx, 0, 0))
 
 
