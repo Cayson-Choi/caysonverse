@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { extend, useFrame } from "@react-three/fiber";
-import { AnimationMixer, LoopOnce, Quaternion, Vector3, type AnimationAction, type Camera, type Group, type Object3D, type Plane } from "three";
-import { busCamState } from "./busRide";
+import { AnimationMixer, LoopOnce, Quaternion, Vector3, type AnimationAction, type Group, type Object3D, type Plane } from "three";
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
 import { reuseRestingBoneTexture, setAvatarOpacity } from "./characterAvatar";
 import { clipFor, lookFromAppearance } from "./characterLook";
@@ -35,7 +34,7 @@ import {
 import { decideMixerTick } from "./mixerThrottle";
 import { AVATAR_LOD, RemoteAvatarGroup, avatarTreeCadence, behindCamera, crowdForce, crowdLodOff } from "./avatarLod";
 import { useCrowd } from "./crowdLayer";
-import { setFadeCut } from "./avatarFade";
+import { setFadeCut, setNearFade } from "./avatarFade";
 import { IMPOSTOR_FADE_PER_S, impostorColors, wantsImpostor } from "./crowdImpostor";
 
 /**
@@ -109,25 +108,14 @@ function playOnce(action: AnimationAction | null): number {
  * and unmounted by the roster in RemotePlayers.
  */
 /**
- * Another rider drawn in the way of MY view of the bus (review r1: a rider a step in front filled the whole first-person screen
- * with a head; so did a neighbour on the next seat): while my own bus camera is active, a rider whose head is within 1.5 m of the
- * lens (first person) or 0.9 m (the third-person arm) and in front of it is not drawn. A little hysteresis, no flicker.
- * First person since 2026-11-20 (owner: "1인칭뷰에서 바로 옆에 있는 상대방도 잘 보이도록 해"): a neighbour on the next seat or a step in
- * front is drawn; only a head the lens would be inside (its centre within 0.55 m: the chibi head is about 0.5 m round) is not.
+ * Another player's body right at MY lens (a rider a step behind me on the bus, where the third-person arm passes their head; a
+ * neighbour's hair against a first-person eye): only the part within these distances (m) of the lens thins out (dithered, avatarFade.ts
+ * setNearFade), never the whole body. Until 2026-11-20 a bus rider whose head point was within 1.5 m (first person; later 0.55 m) or
+ * 0.9 m (third person) of the lens AND in front of it was hidden whole — so with the view tilted down (the head off the view axis) the
+ * rider's lower body showed, and tilting the view up onto the head made the whole rider vanish (owner 2026-11-19: "버스에서 상대편이
+ * 하체만 보이는 카메라 뷰에서는 하체가 보이는데 카메라뷰를 위로 올리면 상대가 아예 안보여").
  */
-const wayV = new Vector3();
-const wayD = new Vector3();
-export const RIDER_WAY_REACH_FP = 0.55;
-function riderInTheWay(camera: Camera, x: number, y: number, z: number, wasHidden: boolean): boolean {
-  if (!busCamState.active) return false;
-  const reach = busCamState.firstPerson ? RIDER_WAY_REACH_FP : 0.9;
-  const hidden = !wasHidden;
-  wayV.set(x - camera.position.x, y + 1.6 - camera.position.y, z - camera.position.z);
-  const dist = wayV.length();
-  if (dist > reach + (hidden ? 0.2 : 0)) return false;
-  camera.getWorldDirection(wayD);
-  return dist < 0.05 || wayV.dot(wayD) / dist > (hidden ? 0.35 : 0.5);
-}
+export const REMOTE_NEAR_FADE = { from: 0.3, to: 0.7 } as const;
 
 const AvatarGroup = extend(RemoteAvatarGroup);
 
@@ -167,6 +155,8 @@ export function RemotePlayer({
   const crowdColors = useMemo(() => impostorColors(look), [look]);
   const { avatar, animations } = useAvatar(look, { probeId: sessionId });
   useEffect(() => reuseRestingBoneTexture(avatar, () => groupRef.current?.restingBody === avatar.root), [avatar]);
+  // what touches my lens thins out instead of the whole body being hidden (REMOTE_NEAR_FADE)
+  useEffect(() => setNearFade(avatar.materials, REMOTE_NEAR_FADE.from, REMOTE_NEAR_FADE.to), [avatar]);
   const mixer = useMemo(() => new AnimationMixer(avatar.root), [avatar]);
   // Fishing lake (A10): the rod in this avatar's hand, the fishing clips and the landed fish (lake/fishingRig.ts). A carrier's
   // walk / run / idle have no right arm (Carry_Rod owns it): the base clips are bound again when the rod comes or goes.
@@ -668,7 +658,7 @@ export function RemotePlayer({
       bd.y = bd.init && bd.y > 0 ? bd.y + (targetY - bd.y) * Math.min(1, delta * 12) : targetY;
       group.position.set(p.x, bd.y, p.z);
       group.rotation.y = p.yaw + MODEL_FACING_OFFSET;
-      group.visible = !riderInTheWay(state.camera, p.x, bd.y, p.z, group.visible);
+      group.visible = true; // never hidden whole: only what touches my lens thins out (REMOTE_NEAR_FADE)
       const drawn = drawnRef.current;
       drawn.x = p.x;
       drawn.z = p.z;
