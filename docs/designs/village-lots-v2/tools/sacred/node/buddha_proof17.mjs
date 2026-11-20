@@ -8,15 +8,14 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { NodeBasisEncoder } from "ktx2-encoder";
 import { MeshoptDecoder } from "meshoptimizer";
 import sharp from "sharp";
 
 const revision = "2d9bb4ef";
 const assetPath = "client/public/models/village/lots/sacred";
-const [output, candidate = assetPath] = process.argv.slice(2);
-if (!output) throw Error("Supply a directory for the proof image");
-const fromGit = filename => execFileSync("git", ["show", revision + ":" + assetPath + "/" + filename], {
+const fromGit = (filename, ref = revision) => execFileSync("git", ["show", ref + ":" + assetPath + "/" + filename], {
   maxBuffer: 16 * 1024 * 1024, windowsHide: true,
 });
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");
@@ -257,58 +256,65 @@ function nosePixels(view) {
   return count;
 }
 
-const cell=219, cellH=Math.round(164*cell/134), gutter=14, margin=25;
-const card=2*cell+6, W=2*margin+card*3+gutter*2, H=163+2*(cellH+100);
-const elements=[], layers=[];
-function label(x,y,content,size=17,weight=400,color="#30383C") {
-  elements.push(`<text x="${x}" y="${y}" fill="${color}" font-family="Malgun Gothic, sans-serif" font-size="${size}" font-weight="${weight}">${content}</text>`);
-}
-label(margin,44,"16차와 17차의 변경 영역",33,700);
-label(margin,79,"각 GLB의 색상·발광 텍스처와 정점 법선을 같은 고정광으로 렌더해, RGB 한 채널이라도 다른 픽셀을 셌습니다.",18);
-label(margin,109,"왼쪽은 17차 진단 렌더와 사전 지정한 코 경계입니다. 오른쪽의 주황색은 바뀐 픽셀, 검정은 동일한 픽셀입니다.",16);
-const report={base:revision,fullFrame:[width,height],tiers:{}};
-let totalOutside=0;
-for (const [row,tier] of ["pc","phone"].entries()) {
-  const suffix=tier==="pc"?"":"_phone", filename=baseName+"buddha"+suffix+".glb";
-  const before=parse(fromGit(filename)), after=parse(await fs.readFile(path.join(candidate,filename)));
-  const result=audit(before,after);
-  const bodhi=baseName+"bodhisattva"+suffix+".glb";
-  const bodhiBytes=await fs.readFile(path.join(assetPath,bodhi));
-  assert.ok(bodhiBytes.equals(fromGit(bodhi)), "Bodhisattva changed");
-  const beforeMaps=materialMaps(before), afterMaps=materialMaps(after);
-  result.sha256={before:before.sha256,after:after.sha256,bodhisattva:sha(bodhiBytes)};
-  result.views={};
-  for (const [col,view] of views.entries()) {
-    const a=raster(before,view,beforeMaps), b=raster(after,view,afterMaps), diff=Buffer.alloc(a.length);
-    let changed=0, outside=0;
-    for (let i=0;i<width*height;i++) {
-      const k=3*i;
-      if (a[k]===b[k] && a[k+1]===b[k+1] && a[k+2]===b[k+2]) continue;
-      changed++;
-      if (!inNose(i%width,Math.floor(i/width),view)) outside++;
-      diff[k]=255;diff[k+1]=122;diff[k+2]=54;
-    }
-    const stats={changed,outside,outsideTested:width*height-nosePixels(view),identical:width*height-changed};
-    result.views[view.key]=stats;
-    assert.ok(changed, tier+" "+view.key+" shows no nasal revision");
-    totalOutside+=outside;
-    console.log(tier,view.key,stats);
-    const x=margin+col*(card+gutter), y=167+row*(cellH+100);
-    label(x,y-9,(row?"폰":"PC")+"   ·   "+view.label,21,700);
-    const crop={left:view.headX*scale,top:headY*scale,width:134*scale,height:164*scale};
-    const portrait=await sharp(b,{raw}).extract(crop).resize(cell,cellH).png().toBuffer();
-    const changes=await sharp(diff,{raw}).extract(crop).resize(cell,cellH,{kernel:"nearest"}).png().toBuffer();
-    layers.push({input:portrait,left:x,top:y},{input:changes,left:x+cell+6,top:y});
-    const poly=view.mask.map(([px,py])=>(x+px*cell/134)+","+(y+py*cellH/164)).join(" ");
-    elements.push(`<polygon points="${poly}" fill="none" stroke="#135e6b" stroke-width="1.5"/>`);
-    label(x,y+cellH+27,`변경 ${changed.toLocaleString("en-US")} px   ·   코 밖 ${outside.toLocaleString("en-US")} px`,18,600);
+export { assetPath, baseName, fromGit, sha, parse, inAnatomicalRegion, materialMaps, raster,
+  inNose, nosePixels, views, scale, width, height, headY, raw };
+
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  const [output, candidate = assetPath] = process.argv.slice(2);
+  if (!output) throw Error("Supply a directory for the proof image");
+  const cell=219, cellH=Math.round(164*cell/134), gutter=14, margin=25;
+  const card=2*cell+6, W=2*margin+card*3+gutter*2, H=163+2*(cellH+100);
+  const elements=[], layers=[];
+  function label(x,y,content,size=17,weight=400,color="#30383C") {
+    elements.push(`<text x="${x}" y="${y}" fill="${color}" font-family="Malgun Gothic, sans-serif" font-size="${size}" font-weight="${weight}">${content}</text>`);
   }
-  report.tiers[tier]=result;
+  label(margin,44,"16차와 17차의 변경 영역",33,700);
+  label(margin,79,"각 GLB의 색상·발광 텍스처와 정점 법선을 같은 고정광으로 렌더해, RGB 한 채널이라도 다른 픽셀을 셌습니다.",18);
+  label(margin,109,"왼쪽은 17차 진단 렌더와 사전 지정한 코 경계입니다. 오른쪽의 주황색은 바뀐 픽셀, 검정은 동일한 픽셀입니다.",16);
+  const report={base:revision,fullFrame:[width,height],tiers:{}};
+  let totalOutside=0;
+  for (const [row,tier] of ["pc","phone"].entries()) {
+    const suffix=tier==="pc"?"":"_phone", filename=baseName+"buddha"+suffix+".glb";
+    const before=parse(fromGit(filename)), after=parse(await fs.readFile(path.join(candidate,filename)));
+    const result=audit(before,after);
+    const bodhi=baseName+"bodhisattva"+suffix+".glb";
+    const bodhiBytes=await fs.readFile(path.join(assetPath,bodhi));
+    assert.ok(bodhiBytes.equals(fromGit(bodhi)), "Bodhisattva changed");
+    const beforeMaps=materialMaps(before), afterMaps=materialMaps(after);
+    result.sha256={before:before.sha256,after:after.sha256,bodhisattva:sha(bodhiBytes)};
+    result.views={};
+    for (const [col,view] of views.entries()) {
+      const a=raster(before,view,beforeMaps), b=raster(after,view,afterMaps), diff=Buffer.alloc(a.length);
+      let changed=0, outside=0;
+      for (let i=0;i<width*height;i++) {
+        const k=3*i;
+        if (a[k]===b[k] && a[k+1]===b[k+1] && a[k+2]===b[k+2]) continue;
+        changed++;
+        if (!inNose(i%width,Math.floor(i/width),view)) outside++;
+        diff[k]=255;diff[k+1]=122;diff[k+2]=54;
+      }
+      const stats={changed,outside,outsideTested:width*height-nosePixels(view),identical:width*height-changed};
+      result.views[view.key]=stats;
+      assert.ok(changed, tier+" "+view.key+" shows no nasal revision");
+      totalOutside+=outside;
+      console.log(tier,view.key,stats);
+      const x=margin+col*(card+gutter), y=167+row*(cellH+100);
+      label(x,y-9,(row?"폰":"PC")+"   ·   "+view.label,21,700);
+      const crop={left:view.headX*scale,top:headY*scale,width:134*scale,height:164*scale};
+      const portrait=await sharp(b,{raw}).extract(crop).resize(cell,cellH).png().toBuffer();
+      const changes=await sharp(diff,{raw}).extract(crop).resize(cell,cellH,{kernel:"nearest"}).png().toBuffer();
+      layers.push({input:portrait,left:x,top:y},{input:changes,left:x+cell+6,top:y});
+      const poly=view.mask.map(([px,py])=>(x+px*cell/134)+","+(y+py*cellH/164)).join(" ");
+      elements.push(`<polygon points="${poly}" fill="none" stroke="#135e6b" stroke-width="1.5"/>`);
+      label(x,y+cellH+27,`변경 ${changed.toLocaleString("en-US")} px   ·   코 밖 ${outside.toLocaleString("en-US")} px`,18,600);
+    }
+    report.tiers[tier]=result;
+  }
+  label(margin,H-15,`각 화면 ${width} × ${height} px 전체를 검사했습니다. 그림은 머리 부분을 확대한 것입니다.`,16);
+  const svg=Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${elements.join("")}</svg>`);
+  console.log(JSON.stringify(report,null,2));
+  assert.equal(totalOutside,0,"RGB changes outside fixed nose outlines");
+  await fs.mkdir(output,{recursive:true});
+  await sharp({create:{width:W,height:H,channels:3,background:"#f5f3ec"}})
+    .composite([...layers,{input:svg,left:0,top:0}]).png().toFile(path.join(output,"p16-vs-p17-diff.png"));
 }
-label(margin,H-15,`각 화면 ${width} × ${height} px 전체를 검사했습니다. 그림은 머리 부분을 확대한 것입니다.`,16);
-const svg=Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${elements.join("")}</svg>`);
-console.log(JSON.stringify(report,null,2));
-assert.equal(totalOutside,0,"RGB changes outside fixed nose outlines");
-await fs.mkdir(output,{recursive:true});
-await sharp({create:{width:W,height:H,channels:3,background:"#f5f3ec"}})
-  .composite([...layers,{input:svg,left:0,top:0}]).png().toFile(path.join(output,"p16-vs-p17-diff.png"));
