@@ -16,6 +16,7 @@ import { LotTextureBank } from "./lotTextures";
 import { floraOld } from "../veg/vegMode";
 import { cutOldPines, makeTemplePines, pineGroundY } from "./templePines";
 import { installEntranceGardens } from "./entranceGardens";
+import { dressGateLot } from "./gateDress";
 import { setLotsDrawn } from "./lotsStore";
 import { doorSwingClearance } from "./lotDoorCheck";
 import { viewState } from "../../game/viewState";
@@ -136,8 +137,9 @@ function lotsFor(tier: VillageTier, gl: WebGLRenderer): LotsCache {
   c.ready = loadLots(LOTS_WITH_MODEL, gl, bank, ctl.signal)
     .then((loaded) => {
       const nodes = prepareLots(loaded.lots, loaded.specs, loaded.own);
-      installEntranceGardens(nodes, tier === "low" || isTouchDevice);
+      const garden = installEntranceGardens(nodes, tier === "low" || isTouchDevice);
       dressTempleYard(nodes, tier);
+      dressGateLot(nodes, tier === "low" || isTouchDevice, garden);
       for (const m of nodes.surfaces) applyLotTextures(m, bank);
       bank.takeChanged();
       c.value = { loaded, nodes, loadMs: Math.round(performance.now() - t0) };
