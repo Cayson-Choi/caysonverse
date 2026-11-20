@@ -81,7 +81,7 @@ import { setPreferredSeat } from "./seatPreference";
 import { getLocalLift } from "./jump";
 import { getLocalStepLift } from "../village/houses/houseLift";
 import { useFpCursor } from "./useFpCursor";
-import { CAROUSEL_SIDE, FP_NEAR, fpBodyOff, fpEye } from "./fpBody";
+import { CAROUSEL_SIDE, FP_NEAR, STEADY_MOVING, fpBodyOff, fpEye } from "./fpBody";
 import { RIDE } from "@caysonverse/shared/land/rides";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose } from "../net/transitSync";
@@ -268,6 +268,7 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
   const lastBounds = useRef(activeBounds());
   /** The seated FP eye's weight (0 standing .. 1 seated) and the seat it eases toward or away from (seatedEye.ts). */
   const seatedEyeW = useRef(0);
+  const steadyPrev = useRef({ x: 0, z: 0, v: 0 });
   const seatedEyeSeat = useRef<{ yaw: number; seatY?: number } | null>(null);
   /**
    * A seat clicked (furnitureClick.ts): once the walk to its approach (x, z) has started (`armed`: its ring is the walk's target)
@@ -1469,6 +1470,16 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
         cam.near = wantNear;
         cam.updateProjectionMatrix();
       }
+    }
+    {
+      // on foot (the head's walking bob is held out of the eye: fpBody.ts steadyHead) and walking
+      const sdt = Math.max(1e-3, Math.min(0.1, delta));
+      const sp = Math.hypot(pose.x - steadyPrev.current.x, pose.z - steadyPrev.current.z) / sdt;
+      steadyPrev.current.x = pose.x;
+      steadyPrev.current.z = pose.z;
+      steadyPrev.current.v += (sp - steadyPrev.current.v) * Math.min(1, sdt * 12);
+      fpEye.onFoot = selfRide.slot < 0 && selfBusRide.slot < 0 && seat.index < 0 && seatedEyeW.current < 0.01;
+      fpEye.moving = steadyPrev.current.v > STEADY_MOVING;
     }
     fpEye.side = selfRide.slot >= 0 && selfRide.ride === RIDE.carousel ? CAROUSEL_SIDE : 0;
     fpEye.camera = camera;
