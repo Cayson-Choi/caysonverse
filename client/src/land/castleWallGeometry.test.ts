@@ -30,7 +30,7 @@ describe("castle wall geometry", () => {
     expect(b.min.y).toBeLessThan(-3);
     expect(b.max.y).toBeCloseTo(WALL.top, 5);
     expect(b.max.x - b.min.x).toBeCloseTo(WALL.module, 5);
-    expect(b.max.z).toBeCloseTo(WALL.halfThickness + WALL.parapetOut, 5);
+    expect(b.max.z).toBeCloseTo(WALL.halfThickness + WALL.parapetOut + 0.08, 5); // the merlons' cap stones overhang
     expect(towerGeometry("high").boundingBox!.max.y).toBeCloseTo(WALL.towerTop, 5);
     expect(roofGeometry("high").boundingBox!.max.y).toBeCloseTo(WALL.roofApex, 5);
   });
@@ -57,8 +57,8 @@ describe("castle wall geometry", () => {
     }
   });
 
-  it("stays light: a module under 200 triangles, a tower with its roof under 900, the phone tier lighter", () => {
-    expect(trianglesOf(wallModuleGeometry("high"))).toBeLessThan(200);
+  it("stays light: a module under 240 triangles, a tower with its roof under 900, the phone tier lighter", () => {
+    expect(trianglesOf(wallModuleGeometry("high"))).toBeLessThan(240);
     expect(trianglesOf(wallModuleGeometry("low"))).toBeLessThan(trianglesOf(wallModuleGeometry("high")));
     expect(trianglesOf(towerGeometry("high")) + trianglesOf(roofGeometry("high"))).toBeLessThan(900);
     expect(trianglesOf(towerGeometry("low"))).toBeLessThan(trianglesOf(towerGeometry("high")));

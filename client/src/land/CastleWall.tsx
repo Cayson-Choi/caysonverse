@@ -27,6 +27,7 @@ import { createPbrMaterial, getPbrSet, pbrTierFor, type PbrSet } from "../villag
 import { dayNight } from "../village/dayNightDriver";
 import { compileSafely } from "../game/compileSafely";
 import { BulbHalos } from "./nightGlow";
+import { patchCastleStone } from "./castleStone";
 import {
   bannerGeometry,
   lanternGeometry,
@@ -125,6 +126,7 @@ function make(plan: WallPlan, heightAt: (x: number, z: number) => number, tier: 
   };
   const stone = createPbrMaterial(stoneSet, { repeatMeters: [1, 1], params: { color: new Color().setRGB(...look.stone), vertexColors: true } });
   stone.name = "M_castle_stone";
+  if (stoneMode() === "cut") patchCastleStone(stone, stoneSet.info.tileMeters);
   const roof = createPbrMaterial(roofSet, { repeatMeters: [1, 1], normalStrength: 1.3, params: { color: new Color().setRGB(...look.roof), vertexColors: true } });
   roof.name = "M_castle_roof";
   const gold = new MeshStandardMaterial({ color: "#f2c14e", emissive: new Color("#6b4a08"), emissiveIntensity: 0.5, roughness: 0.32, metalness: 0.65 });
@@ -164,6 +166,12 @@ function make(plan: WallPlan, heightAt: (x: number, z: number) => number, tier: 
       for (const p of parts) p.dispose();
     },
   };
+}
+
+/** Dev switch: `?stone=flat` draws the plain scan without the cut-stone shader (the before / after shots). */
+function stoneMode(): "cut" | "flat" {
+  if (!import.meta.env.DEV || typeof location === "undefined") return "cut";
+  return new URLSearchParams(location.search).get("stone") === "flat" ? "flat" : "cut";
 }
 
 declare global {

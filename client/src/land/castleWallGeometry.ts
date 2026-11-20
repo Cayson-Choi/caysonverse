@@ -79,7 +79,8 @@ class Kit {
       const sa = Math.sin(a);
       const s = inward ? -1 : 1;
       const n: V3 = [ca * nr * s, ny * s, sa * nr * s];
-      const u = (i / sides) * Math.PI * 2 * Math.max(r0, r1);
+      // u in metres round the ring, the circumference rounded to whole 3 m stone tiles so the courses close without a seam
+      const u = (i / sides) * Math.max(3, Math.round((Math.PI * 2 * Math.max(r0, r1)) / 3) * 3);
       this.v([ca * r0, y0, sa * r0], n, u, -y0, c);
       this.v([ca * r1, y1, sa * r1], n, u, -y1, c);
     }
@@ -171,9 +172,15 @@ export function wallModuleGeometry(tier: WallTier): BufferGeometry {
   // (their undersides are kept: the slab and the parapet overhang the face, seen from below between the corbels)
   k.box(-L, L, 8.6, 8.85, -H - 0.12, H + P, 0.9, ["-x", "+x"]);
   k.box(-L, L, 8.85, 9.95, H - 0.32, H + P, 1, ["-x", "+x"]);
-  for (const x of [-2, 0, 2]) k.box(x - 0.6, x + 0.6, 9.95, WALL.top, H - 0.32, H + P, 0.97);
-  // the low inner parapet and a pilaster on the inner face
-  k.box(-L, L, 8.85, 9.75, -H - 0.12, -H + 0.3, 0.95, ["-y", "-x", "+x"]);
+  // the coping along the embrasures, the merlons on it, each under its own cap stone (a slight overhang that throws a shadow line)
+  k.box(-L, L, 9.95, 10.07, H - 0.38, H + P + 0.06, 0.93, ["-x", "+x"]);
+  for (const x of [-2, 0, 2]) {
+    k.box(x - 0.6, x + 0.6, 10.07, WALL.top - 0.15, H - 0.32, H + P, 0.97);
+    k.box(x - 0.68, x + 0.68, WALL.top - 0.15, WALL.top, H - 0.4, H + P + 0.08, 0.92);
+  }
+  // the low inner parapet under its coping, and a pilaster on the inner face
+  k.box(-L, L, 8.85, 9.65, -H - 0.12, -H + 0.3, 0.95, ["-y", "-x", "+x"]);
+  k.box(-L, L, 9.65, 9.77, -H - 0.18, -H + 0.36, 0.9, ["-x", "+x"]);
   k.box(-0.45, 0.45, 0.9, 6.2, -H - 0.5, -H, 0.93);
   k.box(-0.5, 0.5, 6.2, 6.45, -H - 0.6, -H, 0.88);
   return k.build();
@@ -189,7 +196,12 @@ export function towerGeometry(tier: WallTier): BufferGeometry {
   const RP = WALL.towerParapetR;
   k.ring(R + 0.3, FOOT, R + 0.3, 1.0, S, 0.84);
   k.annulus(R, R + 0.3, 1.0, S, 0.86);
-  k.ring(R, 1.0, R, 11.4, S, 1);
+  k.ring(R, 1.0, R, 7.1, S, 1);
+  // a projecting string course half way up (its top weathered back to the shaft)
+  k.ring(R, 7.1, R + 0.13, 7.1, S, 0.9);
+  k.ring(R + 0.13, 7.1, R + 0.13, 7.32, S, 0.92);
+  k.ring(R + 0.13, 7.32, R, 7.45, S, 0.92);
+  k.ring(R, 7.45, R, 11.4, S, 1);
   // the corbelled flare and the parapet ring (outer and inner faces, its top)
   k.ring(R, 11.4, RP, 12.1, S, 0.9);
   k.ring(RP, 12.1, RP, 12.95, S, 1);
@@ -200,7 +212,8 @@ export function towerGeometry(tier: WallTier): BufferGeometry {
   for (let i = 0; i < nm; i++) {
     const a = (i / nm) * Math.PI * 2;
     const rr = RP - 0.2;
-    k.turnedBox(Math.sin(a) * rr, Math.cos(a) * rr, a, 0.5, 12.95, WALL.towerTop, 0.2, 0.97);
+    k.turnedBox(Math.sin(a) * rr, Math.cos(a) * rr, a, 0.5, 12.95, WALL.towerTop - 0.14, 0.2, 0.97);
+    k.turnedBox(Math.sin(a) * rr, Math.cos(a) * rr, a, 0.57, WALL.towerTop - 0.14, WALL.towerTop, 0.27, 0.92); // its cap stone
   }
   // slit windows: one toward the viewer under the banner's rod, two either side of it, and the lamp's stone bracket
   for (const a of [0, 1.15, -1.15]) {

@@ -15,8 +15,12 @@ import { act } from "./lib/village.mjs";
 const phone = process.argv.includes("--phone");
 const night = process.argv.includes("--night");
 const off = process.argv.includes("--off");
+// --real: the stone-texture set (close-up, gate approach, far gate; the park close-up), into <out>/real; --flat: the stone before the
+// cut-stone shader (`?stone=flat`)
+const real = process.argv.includes("--real");
+const flat = process.argv.includes("--flat");
 const outArg = process.argv.find((a) => a.startsWith("--out="));
-const tag = `${phone ? "phone" : "pc"}-${night ? "night" : "day"}${off ? "-before" : ""}`;
+const tag = `${phone ? "phone" : "pc"}-${night ? "night" : "day"}${off ? "-before" : ""}${flat ? "-flat" : ""}`;
 const run = createRun(`park-wall-shots-${tag}`);
 if (outArg) run.evidence = outArg.slice("--out=".length);
 mkdirSync(run.evidence, { recursive: true });
@@ -89,7 +93,7 @@ await A.ctx.addInitScript(() => {
   requestAnimationFrame(tick);
   window.__cvFrameDraws = () => ({ ...last });
 });
-const q = `?time=${encodeURIComponent(TIME)}${off ? "&wall=off" : ""}`;
+const q = `?time=${encodeURIComponent(TIME)}${off ? "&wall=off" : ""}${flat ? "&stone=flat" : ""}`;
 
 await run.step("village: the gate and the wall", async () => {
   await A.page.goto(`${CLIENT_URL}/${q}`, { waitUntil: "domcontentloaded", timeout: 120000 });
@@ -108,11 +112,16 @@ await run.step("village: the gate and the wall", async () => {
     run.check("the village wall is built", ok, await A.page.evaluate(() => window.__cvWall?.village ?? null));
   }
   stats.skyline = await A.page.evaluate(() => window.__cvSkyline?.() ?? null);
+  if (real) {
+    await view(A, "c1-village-wall-close", { x: -58, y: 1.7, z: 92.9, tx: -60.5, ty: 4.2, tz: 96, fov: 62 }, 3000);
+    await view(A, "c2-village-tower-close", { x: -63.5, y: 1.8, z: 92.6, tx: -68, ty: 7, tz: 98.9, fov: 66 });
+    await view(A, "c3-village-merlons", { x: -50, y: 2, z: 91.5, tx: -54, ty: 10.5, tz: 96, fov: 55 });
+  }
   await view(A, "v1-gate-approach", { x: -24, y: 2.4, z: 73, tx: -24, ty: 7, tz: 96, fov: 62 }, 3000);
   await view(A, "v2-gate-far", { x: -18, y: 9, z: 58, tx: -24, ty: 8, tz: 120, fov: 62 });
-  await view(A, "v3-square-south", { x: 4, y: 4.5, z: 8, tx: -6, ty: 16, tz: 160, fov: 62 });
-  await view(A, "v4-gate-west-corner", { x: -62, y: 3, z: 84, tx: -40, ty: 8, tz: 100, fov: 66 });
-  await view(A, "v5-air", { x: -10, y: 110, z: 15, tx: 0, ty: 0, tz: 150, fov: 55 }, 2500);
+  if (!real) await view(A, "v3-square-south", { x: 4, y: 4.5, z: 8, tx: -6, ty: 16, tz: 160, fov: 62 });
+  if (!real) await view(A, "v4-gate-west-corner", { x: -62, y: 3, z: 84, tx: -40, ty: 8, tz: 100, fov: 66 });
+  if (!real) await view(A, "v5-air", { x: -10, y: 110, z: 15, tx: 0, ty: 0, tz: 150, fov: 55 }, 2500);
   await A.page.evaluate(() => { window.__cvShot = null; });
 });
 
@@ -136,6 +145,13 @@ await run.step("park: the wall round the edge", async () => {
     const t = (await window.__imp("/land/coaster.ts")).coasterTrack();
     return [t.pos[3 * t.liftTo], t.pos[3 * t.liftTo + 1], t.pos[3 * t.liftTo + 2]];
   });
+  if (real) {
+    await view(A, "c4-park-wall-close", { x: -167.4, y: 1.7, z: -121, tx: -171, ty: 4, tz: -117.5, fov: 66 }, 2500);
+    await view(A, "p7-wall-close", { x: -150, y: 1.7, z: -160, tx: -171, ty: 8, tz: -186, fov: 70 });
+    await A.page.evaluate(() => { window.__cvShot = null; });
+    stats.walls = await A.page.evaluate(() => window.__cvWall ?? null);
+    return;
+  }
   await view(A, "p1-plaza-north-gate", { x: 40, y: 1.7, z: -128, tx: 40, ty: 7, tz: -190, fov: 70 }, 2500);
   await view(A, "p2-plaza-west", { x: 10, y: 1.7, z: -112, tx: -172, ty: 6, tz: -150, fov: 70 });
   await view(A, "p3-plaza-east", { x: 70, y: 1.7, z: -112, tx: 382, ty: 6, tz: -150, fov: 70 });
