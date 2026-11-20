@@ -176,37 +176,31 @@ def face_patch(kind, x, z, phone=False, half_width=None):
     # rims catch the light. Their high point sits above the tucked apertures.
     flank=spot(.023,1.634,.011,.020)
     lay(.50*flank, (.689,.313,.023), (1.,.68,.85))
-    lay(.71*spot(.0,1.605,.026,.015), (.834,.351,.022), (1.,.69,.83))
-    lay(.71*spot(.029,1.618,.012,.014), (.929,.484,.056), (1.,.69,.83))
-    lay(.50*spot(.025,1.610,.015,.010), (.67,.300,.022), (1.,.70,.79))
+    # The source gilding is warmer where the lobule turns under. The edge
+    # dips below the two lateral recesses, finishing just above the philtrum.
+    underside=1.579+.011*smooth(.006,.029,a)
+    turn=smooth(underside-.0038,underside+.0038,z)*(1.-smooth(1.593,1.622,z))*(1.-smooth(.029,.040,a))
+    lay(.85*turn, (.599,.245,.013), (1.,.72,.79))
     # Each alar groove follows an arc, reaching furthest into the cheek at
     # mid-height. A soft roll inside it separates the bulb from the cheek.
-    wing_t = (z-1.611)/.016
-    groove_x = .0338-.0065*wing_t**2
-    groove = np.exp(-((a-groove_x)/.0071)**2-wing_t**2)
-    lay(.38*groove, (.545,.251,.027), (1.,.70,.78))
-    flank_shade = np.exp(-((x+.027)/.018)**2-((z-1.625)/.017)**2)
-    lay(.74*flank_shade, (.460,.200,.018), (1.,.70,.79))
-    alar_return = spot(.029,1.606,.016,.011)
-    lay(.42*alar_return, (.609,.254,.016), (1.,.69,.82))
-    wing_glint = spot(.027,1.614,.010,.009)
-    lay((.30+.25*smooth(-.012,.014,x))*wing_glint, (.98,.587,.104), (1.,.69,.81))
-    # Each short nostril turns upwards with the contour of its rounded ala.
-    # The two occlusions fade separately over the bottom of the central ball.
-    nostril_z = 1.5903 + .0064*smooth(.016,.035,a)
-    lay(.72*spot(.014,1.591,.028,.010), (.50,.199,.011), (1.,.65,.77))
-    aperture = np.exp(-((a-.0193)/.0101)**2-((z-nostril_z)/.0051)**2)
-    lay((.95-.08*smooth(-.010,.010,x))*aperture, (.198,.056,.003), (1.,.63,.50))
-    lay(.28*spot(.0,1.590,.010,.009), (.81,.348,.018), (1.,.67,.81))
-    right_return = np.exp(-((x-.030)/.012)**2-((z-1.590)/.011)**2)
-    lay(.27*right_return, (.895,.492,.061), (1.,.68,.81))
-    # Follow the opening around the lateral wall below the rounded wing.
-    # Its outer end is visible just behind the tip in profile.
-    lateral_opening=spot(.0335,1.590,.005,.0038)
-    lay(.12*lateral_opening, (.260,.087,.009), (1.,.68,.65))
-    lateral_ala=spot(.0365,1.610,.011,.013)
-    lay(.34*lateral_ala, (.969,.551,.097), (1.,.70,.82))
-    lay(.50*spot(.0,1.578,.014,.007), (.690,.280,.023), (1.,.64,.86))
+    wing_t = (z-1.601)/.017
+    groove_x = .040-.005*np.minimum(4.,wing_t**2)
+    groove = np.exp(-((a-groove_x)/.0056)**2-wing_t**2)
+    lay(.45*groove, (.550,.252,.025), (1.,.69,.79))
+    flank_shade = np.exp(-((x+.024)/.014)**2-((z-1.624)/.015)**2)
+    lay(.58*flank_shade, (.479,.218,.020), (1.,.69,.80))
+    wing_glint = spot(.030,1.607,.012,.012)
+    lay((.30+.18*smooth(-.012,.014,x))*wing_glint, (.958,.540,.076), (1.,.65,.82))
+    # The underside of the ball descends between the apertures. Its soft
+    # return joins the almost level lower edge of the two alae.
+    base_z=underside+.0025
+    base=np.exp(-((z-base_z)/.007)**2)*(1.-smooth(.029,.040,a))
+    lay(.64*base, (.564,.239,.017), (1.,.66,.79))
+    nostril_z = 1.5878 + .0044*smooth(.014,.035,a)
+    aperture = np.exp(-((a-.0198)/.0105)**2-((z-nostril_z)/.0050)**2)
+    lay((.92-.06*smooth(-.010,.010,x))*aperture, (.220,.076,.005), (1.,.64,.56))
+    foot=band(1.573,underside-.0022,.0028)*smooth(.009,.023,a)*(1.-smooth(.032,.049,a))
+    lay(.60*foot, (.942,.522,.071), (1.,.68,.83))
 
     lip_t = np.clip(a/LIP_RADIUS, 0., 1.)
     seam = lip_height(lip_t)

@@ -73,6 +73,7 @@ def local_access(mesh):
 
 def dress(mesh, output, lod):
     from buddha_head import FACE, FACE_AXIS, HEAD_X, URNA_RADII, URNA_Z, profile
+    from buddha_ear_atlas import ear_chart_uv, ear_finish_patch, ear_tangent_basis
 
     access = local_access(mesh)
     tiles = {key:i for i,key in enumerate(KEYS)}
@@ -89,6 +90,11 @@ def dress(mesh, output, lod):
                 u = .5 + (x-HEAD_X)/(2*face_limit)
                 v = min(.997, max(.003, (z-chin)/(crown-chin)))
                 uv.data[k].uv = (.5 + .5*u, v)
+                continue
+            if finish == "Auricular relief":
+                u,v = ear_chart_uv(x-HEAD_X,y,z)
+                tile = tiles["crease"]
+                uv.data[k].uv = ((tile%4+u)/8,(tile//4+v)/2)
                 continue
             tile = tiles[finish]
             if finish == "urna":
@@ -115,6 +121,7 @@ def dress(mesh, output, lod):
             mesh.uv_layers.remove(layer)
     mesh.uv_layers.active = mesh.uv_layers[0]
     mesh.uv_layers[0].active_render = True
+    ear_basis = ear_tangent_basis(mesh, mesh.uv_layers[0])
     for p in mesh.polygons:
         p.material_index = 0
     mesh.materials.clear()
@@ -136,6 +143,9 @@ def dress(mesh, output, lod):
         for i, key in enumerate(KEYS):
             color, rough, metal = FINISHES[key]
             patch = arr[(i//4)*tile_height:(i//4+1)*tile_height,(i%4)*tile_size:(i%4+1)*tile_size]
+            if key == "crease":
+                ear_finish_patch(patch, kind, ear_basis)
+                continue
             if kind == "color":
                 for channel, value in enumerate(color):
                     # Subtle warm reflected light remains in leaf recesses.

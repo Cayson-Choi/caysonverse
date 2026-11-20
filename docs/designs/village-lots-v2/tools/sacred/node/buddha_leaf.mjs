@@ -61,34 +61,51 @@ function atlasSwatch(u, v) {
   return Math.floor(8*u) + 4*Math.floor(2*(1-v));
 }
 
+function isEarRelief([u,v], [x,y,z]) {
+  return u > .375 && u < .5 && v < .5 && Math.abs(x) > .055 && Math.abs(x) < .245 &&
+    y > 1.41 && y < 1.77 && z > -.25 && z < .085;
+}
+
+function earFillUv(u, v) {
+  // Two small islands below the tapered jaw in the spatial lighting atlas.
+  // Each uses its own lateral projection from the relief swatch.
+  const s = 8*u-3;
+  return [.5+((s<.5 ? 4 : 222)+58*(s% .5))/512, (190+58*(2*v))/256];
+}
+
 // An ear graft retains its source finish. Read the shipped chart assignments
 // before rebuilding the vertex buffer (earlier casts have a polished urna).
 function shippedCharts(model) {
   const attributes = model.doc.meshes[0].primitives[0].attributes;
   const paint = elements(model, attributes.TEXCOORD_0);
   const fill = elements(model, attributes.TEXCOORD_1);
+  const positions = elements(model, attributes.POSITION);
   const charts = [...CHART_FOR_SWATCH];
   for (let i=0; i<paint.length; i++) {
     const [u,v] = paint[i];
-    if (u >= .5) continue;
+    if (u >= .5 || isEarRelief(paint[i], positions[i])) continue;
     const [s,t] = fill[i];
     charts[atlasSwatch(u,v)] = Math.floor(4*s/65535) + 2*Math.floor(2*t/65535);
   }
   return charts;
 }
 
-function secondUv(uvs, normals, charts) {
+function secondUv(uvs, normals, positions, charts) {
   const bytes = Buffer.alloc(uvs.length*4);
   for (const [i, [u,v]] of uvs.entries()) {
     let s = u, t = v;
     if (u < .5) {
-      const tile = charts[atlasSwatch(u,v)];
-      if (tile === undefined) throw new Error("Unknown gilt atlas swatch");
-      const [,y,z] = reflectedDirection(normals[i]);
-      // Five percent padding around the lookup keeps each finish inside its
-      // quadrant on the lower mip levels. The spatial face island stays at right.
-      s = ((tile%2)+.5+y/2.1)/4;
-      t = (Math.floor(tile/2)+.5-z/2.1)/2;
+      const swatch = atlasSwatch(u,v);
+      if (isEarRelief(uvs[i], positions[i])) {
+        [s,t] = earFillUv(u,v);
+      } else {
+        const tile = charts[swatch];
+        if (tile === undefined) throw new Error("Unknown gilt atlas swatch");
+        const [,y,z] = reflectedDirection(normals[i]);
+        // Five percent padding keeps each finish inside its chart on lower mips.
+        s = ((tile%2)+.5+y/2.1)/4;
+        t = (Math.floor(tile/2)+.5-z/2.1)/2;
+      }
     }
     bytes.writeUInt16LE(Math.round(65535*clip(s)), 4*i);
     bytes.writeUInt16LE(Math.round(65535*clip(t)), 4*i+2);
@@ -118,7 +135,7 @@ async function priorLightingCharts(model, lod, width, height) {
   }
 }
 
-async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices, chartSource) {
+async function emissiveAtlas(lod, pigmentFile, normals, uvs, positions, indices, chartSource) {
   const phone = lod === "phone", w = phone ? 512 : 1024, h = w/2, side = h/2;
   const pigment = await sharp(pigmentFile).resize(w,h,{fit:"fill"}).removeAlpha().raw().toBuffer();
   const pixels = Buffer.alloc(w*h*4);
@@ -141,8 +158,12 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices, chartSourc
   // albedo masks the original pigment, including the roots, brows and lash.
   for (let i=0; i<indices.length; i+=3) {
     const ids = indices.slice(i,i+3);
-    if (ids.some(k => uvs[k][0] < .5)) continue;
-    const [a,b,c] = ids.map(k => [uvs[k][0]*w-.5, uvs[k][1]*h-.5]);
+    const ear = ids.every(k => isEarRelief(uvs[k],positions[k]));
+    if (!ear && ids.some(k => uvs[k][0] < .5)) continue;
+    const [a,b,c] = ids.map(k => {
+      const [u,v] = ear ? earFillUv(...uvs[k]) : uvs[k];
+      return [u*w-.5,v*h-.5];
+    });
     const dx=b[0]-a[0], dy=b[1]-a[1], ex=c[0]-a[0], ey=c[1]-a[1], det=dx*ey-dy*ex;
     if (Math.abs(det) < 1e-6) continue;
     const x0 = Math.max(w/2, Math.ceil(Math.min(a[0],b[0],c[0])));
@@ -155,8 +176,24 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices, chartSourc
       const n = [0,1,2].map(j => (1-u-v)*normals[ids[0]][j]+u*normals[ids[1]][j]+v*normals[ids[2]][j]);
       const length = Math.hypot(...n);
       const [rx,ry,rz] = reflectedDirection(n.map(k => k/length));
-      const p = y*w+x, rgb = [0,1,2].map(j => linear(pigment[3*p+j]/255));
+      const p = y*w+x;
       const gold = [.94,.529,.074];
+      if (ear) {
+        if (covered[p] === 1) throw new Error("Ear lighting island overlaps the face");
+        const [s,t] = [0,1].map(j => (1-u-v)*uvs[ids[0]][j]+u*uvs[ids[1]][j]+v*uvs[ids[2]][j]);
+        const pixel = Math.floor(t*h)*w+Math.floor(s*w);
+        // Under ambient light, keep the recessed bowl in shadow while the
+        // crest and pendant catch the same reflected gold as the adjacent skin.
+        const response = radiance(ry,rz,0,phone);
+        write(x,y,response.map((value,j) => {
+          const shade = clip(linear(pigment[3*pixel+j]/255)/(.975*gold[j]));
+          return value*shade**2.2;
+        }));
+        covered[p] = 2;
+        continue;
+      }
+      if (covered[p] === 2) throw new Error("Face lighting island overlaps the ear");
+      const rgb = [0,1,2].map(j => linear(pigment[3*p+j]/255));
       const gilded = clip((rgb[0]-.12)/.78)*(.70+.30*clip(rgb[1]/gold[1]));
       // Bare satin leaf has a broad return from the gilded altar below the
       // eyes. The reflected panels on the robes use their original chart.
@@ -166,7 +203,7 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices, chartSourc
       const muzzle = Math.exp(-(((Math.abs(faceX)-.061)/.036)**2+((height-1.586)/.043)**2));
       const temple = Math.exp(-(((Math.abs(faceX)-.102)/.053)**2+((height-1.754)/.037)**2));
       const lowerFace = Math.exp(-((faceX/.113)**4+((height-1.510)/.057)**2));
-      const septum = Math.exp(-((faceX/.008)**2+((height-1.590)/.009)**2));
+      const septum = Math.exp(-((faceX/.009)**2+((height-1.584)/.008)**2));
       const response = radiance(ry,rz,0,phone,rx);
       // The silk catches the upper lid while the lower, left-facing planes
       // turn away from it. Keep the gold under the mouth softer than the lid.
@@ -184,7 +221,7 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices, chartSourc
       response[2] += .181*noseLight;
       // The round outer wing sits behind the frontal bulb and picks up a
       // broader side light above the short aperture.
-      const ala = Math.exp(-(((Math.abs(faceX)-.035)/.015)**2+((height-1.612)/.017)**2));
+      const ala = Math.exp(-(((Math.abs(faceX)-.030)/.012)**2+((height-1.607)/.013)**2));
       response[0] += .075*ala;
       response[1] += .061*ala;
       response[2] += .030*ala;
@@ -235,7 +272,8 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, indices, chartSourc
 export async function dressBuddhaLeaf(model, lod, pigmentFile, replacements, priorFinish, chartSource) {
   const {doc} = model, primitive = doc.meshes[0].primitives[0], material = doc.materials[primitive.material];
   const normals = elements(model, primitive.attributes.NORMAL), uv = elements(model, primitive.attributes.TEXCOORD_0);
-  const bytes = secondUv(uv,normals,priorFinish ? shippedCharts(priorFinish) : CHART_FOR_SWATCH);
+  const positions = elements(model, primitive.attributes.POSITION);
+  const bytes = secondUv(uv,normals,positions,priorFinish ? shippedCharts(priorFinish) : CHART_FOR_SWATCH);
   await Promise.all([MeshoptEncoder.ready,MeshoptDecoder.ready]);
   const packed = Buffer.from(MeshoptEncoder.encodeGltfBuffer(bytes, uv.length, 4, "ATTRIBUTES", 0));
   const check = Buffer.alloc(bytes.length);
@@ -273,7 +311,7 @@ export async function dressBuddhaLeaf(model, lod, pigmentFile, replacements, pri
     return;
   }
   const indices = elements(model, primitive.indices).flat();
-  replacements.set(doc.bufferViews[image.bufferView], await emissiveAtlas(lod,pigmentFile,normals,uv,indices,chartSource));
+  replacements.set(doc.bufferViews[image.bufferView], await emissiveAtlas(lod,pigmentFile,normals,uv,positions,indices,chartSource));
   material.name = "Main Buddha gold leaf";
   material.emissiveFactor = [1,1,1];
   material.pbrMetallicRoughness.baseColorFactor = lod === "phone" ? [.92,.80,.64,1] : [.77,.79,.64,1];
