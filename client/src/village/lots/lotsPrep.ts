@@ -901,6 +901,21 @@ export function prepareLots(
 
   return { root, shells, detail, goods, night, doors, boxes, glow, surfaces, lotSets, own, stats };
 }
+/**
+ * Put out the lots' lamp points within `r` m of (x, z) and under `belowY` (moved far below the ground: the count, and so the
+ * compiled programs, stay as they are). The gate lot's old fountain glow (a light in its water) lit the new fountain's stone
+ * like a floodlight (fix/gate-fountain-park).
+ */
+export function muteLotLampsNear(x: number, z: number, r: number, belowY: number): number {
+  let n = 0;
+  for (const p of lampUniform.value)
+    if (Math.hypot(p.x - x, p.z - z) < r && p.y < belowY) {
+      p.set(0, -100, 0);
+      n++;
+    }
+  return n;
+}
+
 /** Per frame (number writes only): the night's glow, lamps, signs and glass. */
 export function applyLotsDayNight(nodes: LotNodes, s: Pick<DayNightState, "lights" | "night" | "hemiIntensity" | "hemiSky">): void {
   nightUniform.value = s.night * LOT_LOOK.nightDesaturate;
