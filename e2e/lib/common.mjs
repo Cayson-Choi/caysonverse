@@ -40,6 +40,8 @@ const ALLOWED_CONSOLE = [
   // ANGLE/D3D's HLSL compiler (the PC tier's GPU path) notes a gradient in three.js's own shadow-sampling loop the first time a
   // lit program compiles: a driver notice about stock three.js shader code, not an app error (seen in e2e/village-bus-stop.mjs
   // with the bus parked and nobody aboard).
+  // Leaving the park (its scene is torn down while a program is still compiling): a driver notice, the app keeps working.
+  { name: "ANGLE glGetProgramiv notice", re: /glGetProgramiv: Program object expected/ },
   { name: "ANGLE X3595 shader-compile notice", re: /X3595|THREE\.WebGLProgram: Program Info Log/ },
 ];
 
