@@ -1,152 +1,224 @@
-"""Continuous cast pinnae with a rolled helix and a solid pendant lobe."""
-from math import ceil, cos, hypot, pi, sqrt
+"""Reference-traced pinnae, with an unbroken lobe and curls seated at the ear root."""
+from math import cos, pi, sin
 
 import bpy
 import numpy as np
-from mathutils import Vector
-from mathutils.kdtree import KDTree
 
 from buddha_mesh import mat
+from buddha_pigment import smooth
 
 
-# In the registered profile u increases toward the nape and v toward the jaw.
-# Each section gives v, anterior/posterior u, lateral centre and radius (metres).
+# Drawing coordinates on the lateral ear. U increases toward the nape and V
+# toward the jaw. Columns are V, anterior/posterior edges, shell axis and
+# lateral half-thickness. The medial attachment is independent of the latter.
 OUTLINE = [
-    (13, 94, 94, .161, .000), (18, 75, 113, .164, .013),
-    (31, 59, 131, .167, .023), (52, 50, 140, .169, .028),
-    (76, 47, 145, .169, .030), (95, 47, 147, .168, .031),
-    (113, 48, 147, .167, .031), (138, 50, 145, .165, .031),
-    (165, 51, 141, .161, .031), (202, 50, 136, .155, .030),
-    (239, 49, 132, .149, .029), (269, 48, 131, .145, .030),
-    (292, 48, 131, .145, .031), (311, 52, 127, .147, .030),
-    (326, 63, 117, .148, .024), (334, 77, 103, .147, .014),
-    (337, 90, 90, .147, .000),
+    (17, 93, 93, .157, 0), (18, 85, 101, .157, .006),
+    (21, 76, 110, .157990, .011), (29, 63, 122, .159414, .017),
+    (42, 54, 133, .161695, .020), (60, 49, 140, .168394, .022),
+    (84, 47, 145, .172, .0225), (106, 49, 146, .171, .022),
+    (130, 51, 144, .167, .022), (151, 52, 140, .163, .022),
+    (178, 53, 136, .159, .022), (215, 52.5, 131, .154, .020),
+    (249, 52, 129, .150, .019), (273, 51, 130, .148, .020),
+    (293, 52, 130, .148, .023), (307, 55, 128, .149, .024),
+    (320, 61, 122, .149, .023), (330, 71, 112, .149, .0175),
+    (336, 82, 101, .149, .009), (337.5, 91.5, 91.5, .149, 0),
 ]
-YU, ZV = .000923, .000879
-EAR_Y, EAR_Z = .175, 1.751
-TILT = .00031
-FOOT_CURVE = .009/87**2
+YU, ZV = .000923, .000875
+EAR_Y, EAR_Z = .1755, 1.746
+TILT = .00026
 
 
-def ear_height(v):
-    return EAR_Z-ZV*(v-17)-FOOT_CURVE*np.maximum(0.,v-250)**2
+def relief(u, v):
+    """Lateral displacement from the smooth shell, in metres."""
+    # Three soft sweeps on the same continuous surface. The rolled helix
+    # returns over the concha at its anterior end. The inner sweep ends in a
+    # rounded antitragus, with the smaller tragus on the facing bank.
+    helix = [(77,119),(73,111),(64,104),(57,96),(52,83),(53,65),
+             (57,50),(65,39),(78,30),(93,26),(107,30),(120,40),
+             (130,54),(137,76),(139,99),(137,124),(133,148),(129,166)]
+    inner = [(75,76),(83,73),(93,76),(101,85),(106,97),
+             (107,110),(104,124),(98,136),(89,145),(79,147),(73,143)]
+    tragus = [(61,113),(66,116),(70,123),(70,130),(67,134)]
+    u,v = np.broadcast_arrays(u,v)
+    raised = np.zeros_like(u,dtype=float)
+    for path, amplitude, width in [(helix,.019,12.5),(inner,.009,10.7),(tragus,.009,8.8)]:
+        # The overlap of short brush samples forms a smooth rolled edge at
+        # bends. It also avoids the cusps of a nearest-line distance field.
+        p = np.array(path)
+        for a,b in zip(p,p[1:]):
+            dx,dy = b-a
+            length = np.hypot(dx,dy)
+            n = int(np.ceil(length/(.6*width)))
+            for j in range(n):
+                x,y = a+(b-a)*((j+.5)/n)
+                raised += amplitude*length/(n*width*np.sqrt(pi))*np.exp(
+                    -((u-x)**2+(v-y)**2)/width**2)
+    bowl = np.exp(-((u-93)/34)**2-((v-63)/34)**2)
+    concha = np.exp(-((u-81)/15.8)**2-((v-121)/25)**2)
+    # This indentation is blind and tapers at both ends. A thin moving axis
+    # follows the weight of the lobe, widening as the surface turns into the drop.
+    pendant = np.exp(-((u-(88+.045*(v-215)))/15.5)**2-((v-219)/58)**4)
+    return raised-.014*bowl-.019*concha-.007*pendant, (bowl,concha,raised,pendant)
 
 
-def ear_row(z):
-    delta = ear_height(250)-z
-    if delta<=0:
-        return 17+(EAR_Z-z)/ZV
-    return 250+2*delta/(ZV+sqrt(ZV**2+4*FOOT_CURVE*delta))
+def section(v):
+    from buddha_head import profile
+    return np.array([profile(OUTLINE,float(t)) for t in np.asarray(v).ravel()]).T
 
 
-def cartilage(u, v):
-    """Roll the helix around one broad fossa and a small, soft concha."""
-    fossa = np.exp(-((u-92)/31)**2-((v-67)/36)**2)
-    concha = np.exp(-((u-79-.055*(v-121))/15)**2-((v-121)/22)**2)
-    # Two rounded sweeps give the inner ear its shape. The short anterior
-    # return of the helix reaches over the concha and melts into the cheek.
-    helix = [(68,132),(73,128),(75,120),(71,112),(63,104),(56,93),
-             (54,78),(56,61),(62,46),(73,32),(85,24),(97,23),
-             (110,31),(122,42),(131,56),(137,76),(139,99),
-             (137,122),(133,146),(129,161)]
-    antihelix = [(74,146),(83,145),(91,139),(96,129),(98,117),
-                 (96,106),(91,96),(84,89),(76,85),(71,88)]
-    crests = np.zeros(np.broadcast_shapes(u.shape, v.shape))
-    # Integrate a Gaussian brush along the arcs. Its gradient stays smooth at
-    # the ends of each fold as well as where the individual segments meet.
-    for path, amplitude, width in [(helix,.013,12.0),(antihelix,.010,10.)]:
-        for i, ((x,y),(bx,by)) in enumerate(zip(path,path[1:])):
-            dx,dy = bx-x,by-y
-            length = hypot(dx,dy)
-            steps = ceil(length/(width*.5))
-            for j in range(steps):
-                q = (j+.5)/steps
-                d2 = (u-x-q*dx)**2+(v-y-q*dy)**2
-                fade = min(1.,(i+q)/1.4,(len(path)-1-i-q)/1.4)
-                crests += amplitude*length/(steps*width*sqrt(pi))*fade*np.exp(-d2/width**2)
-    # The pendant retains a shallow, wide thumb-shaped hollow in its upper
-    # half. It runs out before the rounded foot, which is solid throughout.
-    hollow = .0029*np.exp(-((u-87)/25)**2-((v-223)/52)**2)
-    return crests-.014*fossa-.016*concha-hollow, (fossa,concha,crests)
+def shell(rows, angles):
+    """Parameterization of the whole casting, including the medial return."""
+    v = np.asarray(rows)[:,None]
+    a = np.asarray(angles)
+    lo,hi,axis,radius = section(v)[:,:,None]
+    radial = np.sin(a)
+    u = (hi+lo)/2-(hi-lo)/2*np.cos(a)
+    tilt = TILT*(u-(hi+lo)/2)
+    foot = np.clip((297-v)/53,0,1)
+    attach = (.015*np.exp(-((v-89)/72)**4)+
+              .033*np.exp(-((v-213)/90)**4)*foot**2*(3-2*foot))
+    sculpt,_ = relief(u,v)
+    x = axis+tilt+radial*(radius+np.where(radial>0,sculpt,attach))
+    y = EAR_Y+YU*(u-92)
+    z = np.broadcast_to(EAR_Z-ZV*(v-17),x.shape)
+    return np.stack((x,y,z),axis=-1)
 
 
 def make_ears(phone):
-    from buddha_head import profile
-
-    top, foot = OUTLINE[0][0], OUTLINE[-1][0]
-    rows = sorted(set([v for v,*_ in OUTLINE]+
-                      [top+(foot-top)*(.5-.5*cos(pi*i/112)) for i in range(113)]))
-    v = np.asarray(rows[1:-1])[:,None]
-    left,right,cx,rx = np.array([profile(OUTLINE,t) for t in rows[1:-1]]).T[:,:,None]
-    # Each ring closes around the posterior edge. The medial return nestles
-    # into the head down to the jaw, underneath the visible pendant.
-    angle = np.linspace(0,2*pi,80,endpoint=False)[None,:]
-    u = .5*(right+left)-.5*(right-left)*np.cos(angle)
-    radial = np.sin(angle)
-    attach = (.022*np.exp(-((v-115)/89)**4)
-              +.043*np.exp(-((v-249)/83)**4)*np.clip((321-v)/47,0,1)**2)
-    sculpt,_ = cartilage(u,v)
-    # The game mesh carries the bowl and its silhouette. The tangent map
-    # supplies the fine return of the helix where it crosses the bowl.
-    detail = np.exp(-((u-80)/35)**4-((v-123)/42)**4)
-    sculpt *= 1.-.45*detail
-    x = cx+TILT*(u-.5*(left+right))+radial*(rx+np.where(radial>0,sculpt,attach))
-    y = EAR_Y+YU*(u-92)
-    z = np.broadcast_to(ear_height(v),x.shape)
-    vertices = np.stack((x,y,z),axis=-1).reshape(-1,3).tolist()
-    count,columns = x.shape
-    first,last = len(vertices),len(vertices)+1
-    for t in [rows[0],rows[-1]]:
-        edge,_,center,_ = profile(OUTLINE,t)
-        vertices.append((center,EAR_Y+YU*(edge-92),ear_height(t)))
-    faces = []
-    for k in range(columns):
-        j = (k+1)%columns
-        faces.append((first,j,k))
-        for i in range(count-1):
-            upper = i*columns
-            lower = upper+columns
-            faces.append((upper+k,upper+j,lower+j,lower+k))
-        faces.append(((count-1)*columns+k,(count-1)*columns+j,last))
-
+    # At each section keep all four silhouette extrema, then subdivide the
+    # cross-section where its actual profile deviates most from each chord.
+    # The foot samples follow its round end all the way to its tangent point.
+    sections = ([(20,5),(31,5),(52,6),(77,6),(103,7),(128,7),
+                 (150,6),(196,5),(249,5),(286,5),(311,5),(327,5),(335,4)]
+                if phone else
+                [(19,6),(23,7),(30,8),(40,9),(52,10),(66,12),(80,13),
+                 (94,13),(109,13),(124,13),(139,12),(155,10),(178,9),
+                 (208,7),(241,7),(264,8),(282,8),(298,8),(310,8),
+                 (320,8),(328,8),(333,7),(336,6)])
+    sampling = 240
+    angles = 2*pi*np.arange(sampling)/sampling
+    rows = np.array([v for v,_ in sections])
+    points = shell(rows,angles)
+    da = shell(rows,angles+.002)-shell(rows,angles-.002)
+    dv = shell(rows+.05,angles)-shell(rows-.05,angles)
+    # Circular sweep is +X counter-clockwise around the vertical section.
+    gradient = np.cross(dv,da)
+    gradient /= np.maximum(1.e-12,np.linalg.norm(gradient,axis=-1,keepdims=True))
+    vertices,normals,faces,lateral = [],[],[],[]
+    rings = []
+    for row,((v,count),ring) in enumerate(zip(sections,points)):
+        chosen = sorted({0,sampling//2,int(np.argmin(ring[:,0])),int(np.argmax(ring[:,0]))})
+        while len(chosen)<count:
+            error,k = -1.,0
+            for a,b in zip(chosen,chosen[1:]+[sampling]):
+                if b==a+1:
+                    continue
+                x,y = ring[a,:2],ring[b%sampling,:2]
+                segment = y-x
+                interior = ring[a+1:b,:2]
+                t = np.clip((interior-x)@segment/max(1e-12,segment@segment),0,1)
+                delta = interior-(x+t[:,None]*segment)
+                deviation = (delta**2).sum(axis=1)
+                at = np.argmax(deviation)
+                if deviation[at]>error:
+                    k,error = a+1+at,deviation[at]
+            chosen.append(k)
+            chosen.sort()
+        ring_indices = []
+        for k in chosen:
+            ring_indices.append((k,len(vertices)))
+            lateral.append(k<=sampling//2)
+            vertices.append(tuple(ring[k]))
+            normals.append(tuple(gradient[row,k]))
+        rings.append(ring_indices)
+    # Connect corresponding meridians around a closed section. A different
+    # number of samples per row spends geometry on the upper cast and foot.
+    for upper,lower in zip(rings,rings[1:]):
+        upper = upper+[(sampling,upper[0][1])]
+        lower = lower+[(sampling,lower[0][1])]
+        i=j=0
+        while i<len(upper)-1 or j<len(lower)-1:
+            a = upper[i][1]
+            b = lower[j][1]
+            if j==len(lower)-1 or (i<len(upper)-1 and upper[i+1][0]<lower[j+1][0]):
+                i+=1
+                faces.append((a,b,upper[i][1]))
+            else:
+                j+=1
+                faces.append((a,b,lower[j][1]))
+    for ring,endpoint,up in [(rings[0],OUTLINE[0],True),(rings[-1],OUTLINE[-1],False)]:
+        v,edge,_,axis,_ = endpoint
+        tip = len(vertices)
+        lateral.append(True)
+        vertices.append((axis,EAR_Y+YU*(edge-92),EAR_Z-ZV*(v-17)))
+        normals.append((0,0,1 if up else -1))
+        for (_,a),(_,b) in zip(ring,ring[1:]+ring[:1]):
+            faces.append((tip,a,b) if up else (tip,b,a))
+    finish = bpy.data.materials.get("Auricular relief")
+    if finish is None:
+        finish = mat("skin").copy()
+        finish.name = "Auricular relief"
+    from buddha_head import surface
     for side in (1,-1):
-        mesh = bpy.data.meshes.new("Cast ear with a solid pendant lobe")
-        mesh.from_pydata([(side*x,y,z) for x,y,z in vertices],[],
-                         [f[::-1] for f in faces] if side>0 else faces)
-        mesh.materials.append(mat("skin"))
-        mesh.update()
-        mesh.polygons.foreach_set("use_smooth",[True]*len(mesh.polygons))
-        obj = bpy.data.objects.new(mesh.name,mesh)
-        bpy.context.collection.objects.link(obj)
-        bpy.context.view_layer.objects.active = obj
-        tree = KDTree(len(mesh.vertices))
-        normals = []
-        for vert in mesh.vertices:
-            tree.insert(vert.co,vert.index)
-            normals.append(vert.normal.copy())
-        tree.balance()
-        decimate = obj.modifiers.new("Retain the rounded helix and lobe","DECIMATE")
-        count = sum(len(p.vertices)-2 for p in mesh.polygons)
-        decimate.ratio = (140 if phone else 425)/count
-        decimate.use_collapse_triangulate = True
-        bpy.ops.object.modifier_apply(modifier=decimate.name)
-        smooth = []
-        for vert in obj.data.vertices:
-            normal = Vector((0.,0.,0.))
-            for _,index,distance in tree.find_n(vert.co,5):
-                normal += normals[index]/(.0007+distance)**2
-            smooth.append(normal.normalized())
-        obj.data.normals_split_custom_set_from_vertices(smooth)
-        ear_finish = bpy.data.materials.get("Auricular relief")
-        if ear_finish is None:
-            ear_finish = mat("skin").copy()
-            ear_finish.name = "Auricular relief"
-        obj.data.materials.append(ear_finish)
-        for polygon in obj.data.polygons:
-            x,y,z = polygon.center
-            u = 92+(y-EAR_Y)/YU
-            lo,hi,mid,_ = profile(OUTLINE,ear_row(z))
-            # The chart covers the entire lateral surface, including the
-            # steep inner face of the helix which folds back over the bowl.
-            if side*x >= mid+TILT*(u-.5*(lo+hi)):
-                polygon.material_index = 1
+        obj = surface("Rounded pinna and pendant",[(side*x,y,z) for x,y,z in vertices],
+                      faces if side>0 else [f[::-1] for f in faces],"skin")
+        obj.data.materials.append(finish)
+        obj.data.normals_split_custom_set_from_vertices([(side*x,y,z) for x,y,z in normals])
+        for p in obj.data.polygons:
+            if all(lateral[k] for k in p.vertices):
+                p.material_index = 1
+
+
+def make_ear_curls(phone):
+    """A continuous folded hem of whorls from the sideburn onto the helix."""
+    from buddha_head import surface
+
+    # z, x centre, y centre, lateral and longitudinal radii. The entire
+    # medial edge is buried in the skull and the previous row of curls.
+    # The bottom of this casting is round from both registered directions.
+    rows = [
+        (1.6585,.159,.117,0,0),
+        (1.6615,.159,.117,.005,.0085), (1.6675,.159,.1175,.0085,.014),
+        (1.681,.161,.120,.0115,.020), (1.693,.163,.125,.014,.023),
+        (1.705,.165,.131,.015,.026), (1.717,.166,.141,.016,.026),
+        (1.729,.167,.150,.017,.027), (1.741,.167,.160,.016,.026),
+        (1.753,.164,.166,.014,.024),
+    ]
+    if phone:
+        rows = [rows[i] for i in (0,2,3,5,7,9)]
+    steps = 3 if phone else 6
+    # The first part of each sweep faces forward, so the front view sees a
+    # rounded shell continuous with the temporal hairline, including the tip.
+    angles = np.linspace(-2.35,2.35,steps+1)
+    for side in (1,-1):
+        vertices = [(side*rows[0][1],rows[0][2],rows[0][0])]
+        faces,coords = [],[]
+        swatch_y = [rows[0][2]]
+        previous = []
+        for ir,(z,x,cy,rx,ry) in enumerate(rows[1:],1):
+            current = []
+            # Place the top whorls in front of the gold rim. Their side
+            # projection stays anterior to the bowl while the frontal view
+            # sees the pinna emerge from behind the temple as it flares.
+            crown = smooth(1.696,1.732,z)*(1-smooth(1.741,1.760,z))
+            for a in angles:
+                y = cy+ry*sin(a)
+                current.append(len(vertices))
+                swatch_y.append(y)
+                vertices.append((side*(x+rx*cos(a)+.013*crown),y-.025*crown,z))
+            strip = ([(0,current[j+1],current[j]) for j in range(steps)] if ir==1
+                     else [(previous[j],previous[j+1],current[j+1],current[j]) for j in range(steps)])
+            band = max(0,int(np.floor(((z+rows[ir-1][0])/2-1.657)/.024)))
+            for indices in strip:
+                indices = indices if side>0 else indices[::-1]
+                faces.append(indices)
+                for k in indices:
+                    zz = vertices[k][2]
+                    u = (swatch_y[k]-.070)/.026+.3*(band%2)
+                    v = np.clip((zz-1.657)/.024-band,0,1)
+                    coords.append((.04+.92*u/7,.04+.92*v))
+            previous = current
+        obj = surface("Lacquered whorls at the helix",vertices,faces,"hair")
+        layer = obj.data.uv_layers.new(name="Curl lattice")
+        for loop in obj.data.loops:
+            layer.data[loop.index].uv = coords[loop.index]

@@ -19,9 +19,10 @@ from mathutils.geometry import delaunay_2d_cdt
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from buddha_head import FACE, bead, fy, profile
+from bodhi_portrait import FACE, bare_leaf_planes, fy
+from buddha_head import bead, profile
 from buddha_pigment import (BROW_INNER, BROW_SPAN, EYE_INNER, EYE_SPAN, FACE_AXIS,
-                            GILT_SKIN, LIP_RADIUS, bare_leaf_planes, brow_height, eyelid_height,
+                            GILT_SKIN, LIP_RADIUS, brow_height, eyelid_height,
                             lip_height, smooth)
 
 
