@@ -4,7 +4,7 @@
  */
 import { PerspectiveCamera } from "three";
 import { wheelAt, wheelSeatPose, type WheelSeatPose, type WheelState } from "@caysonverse/shared/land/wheel";
-import { villageClock } from "../village/villageClock";
+import { rideMs } from "./rideClock";
 import { rideComfort, selfRide } from "./coasterRide";
 
 const P: WheelSeatPose = { x: 0, y: 0, z: 0, fx: 0, fz: 1, sway: 0, gondola: 0, pivotX: 0, pivotY: 0 };
@@ -18,7 +18,7 @@ export function resetWheelCamera(): void {
 }
 
 export function stepWheelCamera(camera: PerspectiveCamera, _dt: number, lookYaw: number, lookPitch: number, baseFov: number): void {
-  const wall = villageClock.liveMs();
+  const wall = rideMs();
   const st = wheelAt(wall, ST);
   wheelSeatPose(Math.max(0, selfRide.slot), wall, P);
   const k = rideComfort() === 0 ? 0 : rideComfort() === 1 ? 0.5 : 1;

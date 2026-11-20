@@ -9,7 +9,7 @@ import { carouselSeatPose, type CarouselSeatPose } from "@caysonverse/shared/lan
 import { wheelSeatPose, type WheelSeatPose } from "@caysonverse/shared/land/wheel";
 import { moonSeatPose, type MoonSeatPose } from "@caysonverse/shared/land/moonBoat";
 import { dropSeatPose, type DropSeatPose } from "@caysonverse/shared/land/dropTower";
-import { villageClock } from "../village/villageClock";
+import { rideMs } from "./rideClock";
 import { carSeatPose, coasterNow } from "./coasterRide";
 
 const cp: CarouselSeatPose = { x: 0, y: 0, z: 0, fx: 0, fz: 1, pitch: 0, theta: 0, ring: 0 };
@@ -61,9 +61,9 @@ export function dropRiderPose(seat: number, nowMs: number, outPos: Vector3, outQ
 
 /** The seat pose of `seat` on ride `rideId` now (the coaster's when `rideId` is 0: an older server). */
 export function rideSeatPose(rideId: number, seat: number, outPos: Vector3, outQuat: Quaternion): void {
-  if (rideId === RIDE.carousel) carouselRiderPose(seat, villageClock.liveMs(), outPos, outQuat);
-  else if (rideId === RIDE.wheel) wheelRiderPose(seat, villageClock.liveMs(), outPos, outQuat);
-  else if (rideId === RIDE.moonboat) moonBoatRiderPose(seat, villageClock.liveMs(), outPos, outQuat);
-  else if (rideId === RIDE.droptower) dropRiderPose(seat, villageClock.liveMs(), outPos, outQuat);
+  if (rideId === RIDE.carousel) carouselRiderPose(seat, rideMs(), outPos, outQuat);
+  else if (rideId === RIDE.wheel) wheelRiderPose(seat, rideMs(), outPos, outQuat);
+  else if (rideId === RIDE.moonboat) moonBoatRiderPose(seat, rideMs(), outPos, outQuat);
+  else if (rideId === RIDE.droptower) dropRiderPose(seat, rideMs(), outPos, outQuat);
   else carSeatPose(coasterNow().s, seat, outPos, outQuat);
 }

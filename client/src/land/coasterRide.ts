@@ -29,7 +29,7 @@ import {
   type CarFrame,
   type CoasterState,
 } from "@caysonverse/shared/land/coaster";
-import { villageClock } from "../village/villageClock";
+import { rideMs } from "./rideClock";
 import { COASTER_SITE } from "./site";
 
 /** My standing place (the scene copies the live pose here every frame: the HUD column has no pose of its own). */
@@ -74,7 +74,7 @@ export function subscribeRideComfort(l: () => void): () => void {
 /** The train's state now, on the village clock (the clock the server sends; the same one everyone's train runs on). */
 const stateNow: CoasterState = { cycle: 0, phase: 0, status: "boarding", s: 0, departsInMs: 0 };
 export function coasterNow(): CoasterState {
-  return coasterAt(villageClock.liveMs(), stateNow);
+  return coasterAt(rideMs(), stateNow);
 }
 
 /** What the camera did last frame (read by the HUD, the audio and the e2e). */

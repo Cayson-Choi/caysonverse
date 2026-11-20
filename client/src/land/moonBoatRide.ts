@@ -1,12 +1,12 @@
 /**
  * The own rider of the 달배: first-person camera on the cushion, facing the bow. The eye sits over the cushion and is carried by the hull: it swings
- * along the arc and pitches with the boat (nose up while the boat climbs the bow side, down on the way back), so the horizon tips +-55 degrees at the
- * turning points. At the top the seat barely presses (about 0.57 g): the eye floats up a little and the view hangs still for a moment. Comfort scales
- * the pitch (low: the view stays level and only the eye moves; medium: half). Free look is the first-person drag. Nothing is allocated per frame.
+ * along the arc and pitches with the boat (nose up while the boat climbs the bow side, down on the way back), so the horizon tips up to 82 degrees at the
+ * turning points. At the top the seat barely presses (about 0.15 g): the eye floats up a little and the view hangs still for a moment. Comfort scales
+ * the pitch (off: a quarter of the hull's tilt, so the bow still reads as rising; gentle: 0.6). Free look is the first-person drag. Nothing is allocated per frame.
  */
 import { PerspectiveCamera } from "three";
 import { MOON_MAX_ANGLE, MOON_SEAT, moonBoatAt, moonGLoad, moonSeatPose, type MoonBoatState, type MoonSeatPose } from "@caysonverse/shared/land/moonBoat";
-import { villageClock } from "../village/villageClock";
+import { rideMs } from "./rideClock";
 import { rideComfort, selfRide } from "./coasterRide";
 
 const P: MoonSeatPose = { x: 0, y: 0, z: 0, fy: 0, fz: 1, uy: 1, uz: 0, angle: 0, gload: 1 };
@@ -19,12 +19,12 @@ export function resetMoonBoatCamera(): void {
 }
 
 export function stepMoonBoatCamera(camera: PerspectiveCamera, _dt: number, lookYaw: number, lookPitch: number, baseFov: number): void {
-  const wall = villageClock.liveMs();
+  const wall = rideMs();
   const st = moonBoatAt(wall, ST);
   moonSeatPose(Math.max(0, selfRide.slot), wall, P);
   const k = rideComfort() === 0 ? 0.25 : rideComfort() === 1 ? 0.6 : 1;
   const g = moonGLoad(st);
-  // weightlessness: the lighter the seat (g under 1), the higher the eye lifts off the cushion (to 0.07 m at the 55 degree turn)
+  // weightlessness: the lighter the seat (g under 1), the higher the eye lifts off the cushion (to 0.14 m at the 82 degree turn)
   const float = Math.max(0, 1 - g) * 0.16 * (st.status === "riding" ? 1 : 0);
   const lift = MOON_SEAT.eye + float;
   // the eye in the boat frame is `lift` above the cushion along the seat's up
