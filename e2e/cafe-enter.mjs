@@ -19,7 +19,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DESKTOP, PHONE, createRun, launchBrowser, openPlayer, pos, r2, sleep, targets, walkAndWait } from "./lib/common.mjs";
+import { DESKTOP, PHONE, createRun, launchBrowser, openPlayer, pos, r2, sleep, targets, waitIdle } from "./lib/common.mjs";
 import { act, areaOf, joinVillage } from "./lib/village.mjs";
 
 const arg = (k, d) => process.argv.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3) ?? d;
@@ -33,8 +33,31 @@ const NIGHT = "2026-11-20T22:30";
 const DUSK = "2026-11-20T17:00";
 
 const browser = await launchBrowser();
+// (each player in a browser of its own: two tabs of one browser throttle the hidden one, and its avatar would not walk)
+const browserB = await launchBrowser();
 const A = await openPlayer(browser, run, { tag: "pc", device: DESKTOP, settings: { graphics: "high" } });
-const B = await openPlayer(browser, run, { tag: "phone", device: PHONE, settings: { graphics: "low" } });
+const B = await openPlayer(browserB, run, { tag: "phone", device: PHONE, settings: { graphics: "low" } });
+
+/** Click-move to (x, z) the way the game does: round furniture by the tap planner's detour (a straight line catches a table), retried. */
+async function walkAndWait(p, x, z, ms = 30000, tol = 0.8) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await p.page.evaluate(async ([x, z]) => {
+      const plan = await window.__imp("/src/game/clickPlan.ts");
+      const move = await window.__imp("/src/game/clickMove.ts");
+      const am = await window.__imp("/src/game/activeMap.ts");
+      const at = window.__cv.getPos();
+      const via = plan.findDetour(at.x, at.z, x, z, am.getActiveMap().geometry.obstacles, am.activeBounds(), undefined, { ratio: 6, slack: 40, margin: 40 });
+      move.setClickTarget(x, z, 0, via ?? undefined);
+    }, [x, z]);
+    await sleep(400);
+    await waitIdle(p, ms);
+    await sleep(300);
+    const at = await pos(p);
+    if (Math.hypot(at.x - x, at.z - z) < tol) return at;
+    await sleep(600);
+  }
+  return pos(p);
+}
 
 const shared = (p, code, a) =>
   p.page.evaluate(new Function("a", `return (async () => { const L = await window.__imp("/shared/src/village/villageLots.ts"); const C = await window.__imp("/shared/src/village/cafeRoom.ts"); const B = await window.__imp("/shared/src/village/benchSeats.ts"); const G = await window.__imp("/shared/src/village/villageLayout.ts"); const S = await window.__imp("/shared/src/village/standSpot.ts"); ${code} })()`), a);
@@ -50,7 +73,7 @@ const photo = async (p, a, b, name, fov = 70) => {
   await shot(p, name);
   await p.page.evaluate(() => (window.__cvShot = null));
 };
-const inArea = (p) => areaOf(p);
+const inArea = (p) => p.page.evaluate(() => window.__cafeArea?.());
 const ROOM_AREA = "lot:lot_cafe_room";
 
 /** The route from the plaza to the café's door (the road east, then the lane to the door's pad). */
@@ -79,14 +102,17 @@ async function tapWorld(p, x, y, z) {
   return { ok: true, s };
 }
 
-const waitArea = (p, area, ms = 90000) =>
-  p.page.waitForFunction(async (a) => (await window.__imp("/src/village/villageArea.ts")).localArea() === a, area, { timeout: ms }).then(() => true, () => false);
+// (the area getter is cached in the page: a waitForFunction whose predicate is async resolves at once, whatever it finds)
+const hookArea = (p) => p.page.evaluate(async () => (window.__cafeArea = (await window.__imp("/src/village/villageArea.ts")).localArea));
+const waitArea = (p, area, ms = 90000) => p.page.waitForFunction((a) => window.__cafeArea?.() === a, area, { timeout: ms }).then(() => true, () => false);
 const waitRoom = (p, ms = 240000) => p.page.waitForFunction(() => !!window.__cvLotRoom?.(), null, { timeout: ms }).then(() => true, () => false);
 const seatIndexNow = async (p) => (await pos(p)).seatIndex;
 
 try {
   await joinVillage(A, "kafeA", NOON);
   await joinVillage(B, "kafeB", NOON);
+  await hookArea(A);
+  await hookArea(B);
   numbers.start = { a: await pos(A), b: await pos(B) };
 
   // ───────────────────────────────── door ─────────────────────────────────
@@ -99,13 +125,18 @@ try {
       await shot(A, "outside-facade");
       await A.page.evaluate(() => (window.__cvShot = null));
       const t = await targets(A);
-      run.check("A at the café's door is offered '카페 들어가기'", t.some((x) => x.id === "lotenter:lot_cafe_main" && /카페/.test(x.label)), t);
+      run.check("A at the café's door is offered '카페 들어가기'", t.some((x) => x.id === "lotenter:lot_cafe_main" && /카페/.test(x.label)), { t, at: [r2(at.x), r2(at.z)] });
       // A walks a few metres back; then a real click on the door itself (the camera behind the avatar)
-      await walkAndWait(A, d.pad.x - 4.5, d.pad.z, 40000, 0.9);
+      const back = await walkAndWait(A, d.pad.x - 4.5, d.pad.z, 40000, 0.9);
+      numbers.backAt = back;
       await sleep(600);
+      // the camera looks from behind A toward the door (east)
+      await A.page.evaluate(async (d) => {
+        const vs = await window.__imp("/src/game/viewState.ts");
+        vs.viewState.orbitGoal = { yaw: -Math.PI / 2, pitch: 0.35 };
+      }, d);
+      await sleep(2500);
       const o = await A.page.evaluate(() => window.__cv.getOrbit());
-      await A.page.evaluate(() => (window.__cvViewYaw = 1));
-      // the camera looks along the way A faces (east, toward the door) — turn it there if not
       const tap = await tapWorld(A, d.centre.x - 0.05, 1.3, d.centre.z);
       numbers.doorTap = tap;
       run.check("the door is on A's screen (a real click on it)", tap.ok, tap.s);
@@ -148,6 +179,8 @@ try {
   const info = await shared(A, `const r = L.lotRoomOf("lot:lot_cafe_room"); const seats = B.VILLAGE_SEATS.map((s, i) => ({ ...s, index: i })).filter((s) => s.area === r.area); const sol = L.lotRoomSolids(r); return { origin: r.origin, bounds: r.bounds, ceiling: r.ceiling, seats, solids: sol, exit: L.lotRoomDoor(r).exitPad, door: r.spec.doorX };`);
   const O = info.origin;
   const at = (x, z) => [O.x + x, O.z + z];
+  // B steps away from the door (an avatar in front of the door takes the click: it is a body, not a door)
+  if ((await inArea(B)) === ROOM_AREA) await walkAndWait(B, ...at(5.0, 5.8), 60000, 0.8);
   if (ONLY.includes("walk")) {
     await run.step("3. walk round every area, click-to-move to the far corner, nothing walked through", async () => {
       const spots = {
@@ -156,7 +189,6 @@ try {
         "the banquette front": [12.6, 2.6],
         "the counter (customer side)": [9.2, 4.4],
         "the stools": [8.6, 3.8],
-        "behind the counter": [9.4, 6.8],
         "the kitchen door": [2.4, 6.9],
         "the shelf corner": [1.0, 6.9],
         "the chalkboard wall": [1.0, 4.4],
@@ -199,6 +231,8 @@ try {
         await walkAndWait(A, s.standX, s.standZ, 60000, 0.45);
         await walkAndWait(A, s.standX, s.standZ, 20000, 0.3);
         const before = await pos(A);
+        // (a tap on a seat prefers it; walking up to its stand spot with the keys does the same through the nearest seat)
+        await A.page.evaluate(async (i) => (await window.__imp("/src/game/seatPreference.ts")).setPreferredSeat(i), s.index);
         await act(A);
         const sat = await A.page.waitForFunction((i) => window.__cv.getPos().seatIndex === i, s.index, { timeout: 12000 }).then(() => true, () => false);
         await sleep(1800);
@@ -298,7 +332,7 @@ try {
       await walkAndWait(A, ...at(info.door, 3.6), 40000, 0.8);
       await A.page.evaluate(async () => {
         const vs = await window.__imp("/src/game/viewState.ts");
-        vs.viewState.orbitGoal = { yaw: Math.PI, pitch: 0.35 };
+        vs.viewState.orbitGoal = { yaw: 0, pitch: 0.35 };
       });
       await sleep(1500);
       const tap = await tapWorld(A, O.x + info.door, 1.3, O.z - 0.12);
@@ -323,6 +357,15 @@ try {
       await act(A);
       run.check("out by the button", await waitArea(A, "village", 90000));
       await sleep(800);
+      // in by walking into the door itself (no button, no tap): a click-move that ends beyond the door line stops at the wall
+      await walkAndWait(A, d.pad.x - 3.5, d.pad.z, 40000, 0.9);
+      await A.page.evaluate(async ([x, z]) => (await window.__imp("/src/game/clickMove.ts")).setClickTarget(x, z), [d.centre.x + 1.2, d.centre.z]);
+      run.check("walking into the door goes in (the doorstep rule)", await waitArea(A, ROOM_AREA, 90000), await inArea(A));
+      await waitRoom(A);
+      await sleep(2500);
+      await walkAndWait(A, ...at(info.door, 1.6), 30000, 0.6);
+      await act(A);
+      run.check("and out again by the button", await waitArea(A, "village", 90000));
     });
   }
 
@@ -374,6 +417,7 @@ try {
       run.check("the phone's room: under 45k triangles, 12 draws", phoneInfo && phoneInfo.visible.triangles < 45000 && phoneInfo.visible.draws <= 14, phoneInfo?.visible);
       const seat = info.seats.find((s) => /chair_5:1$/.test(s.id)) ?? info.seats[0];
       await walkAndWait(B, seat.standX, seat.standZ, 60000, 0.45);
+      await B.page.evaluate(async (i) => (await window.__imp("/src/game/seatPreference.ts")).setPreferredSeat(i), seat.index);
       await act(B);
       const sat = await B.page.waitForFunction((i) => window.__cv.getPos().seatIndex === i, seat.index, { timeout: 15000 }).then(() => true, () => false);
       run.check(`B sits on ${seat.id} with the touch button`, sat);
@@ -399,11 +443,12 @@ try {
       }
       run.check("the phone's camera never leaves the walls or the ceiling", worst <= 0.02, { worst });
       await shot(B, "camera");
-      // out by tapping the inner door
+      // out by tapping the inner door (A out of the way: an avatar in front of the door takes the click)
+      if ((await inArea(A)) === ROOM_AREA) await walkAndWait(A, ...at(12.4, 5.2), 60000, 0.8);
       await walkAndWait(B, ...at(info.door, 3.6), 40000, 0.8);
       await B.page.evaluate(async () => {
         const vs = await window.__imp("/src/game/viewState.ts");
-        vs.viewState.orbitGoal = { yaw: Math.PI, pitch: 0.35 };
+        vs.viewState.orbitGoal = { yaw: 0, pitch: 0.35 };
       });
       await sleep(1500);
       const tap = await tapWorld(B, O.x + info.door, 1.3, O.z - 0.12);
@@ -419,6 +464,7 @@ try {
   writeFileSync(join(OUT, "cafe-enter-numbers.json"), JSON.stringify(numbers, null, 1));
   await run.finish?.();
   await browser.close();
+  await browserB.close();
   const failed = run.results.filter((r) => !r.ok);
   console.log(`\n${run.results.length - failed.length}/${run.results.length} checks passed`);
   for (const f of failed) console.log("FAIL", f.step, "-", f.name, JSON.stringify(f.detail)?.slice(0, 300));

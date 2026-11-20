@@ -137,30 +137,38 @@ function curtain(trim: MeshBuilder, w: Wall, u0: number, u1: number, vTop: numbe
   for (const e of [rod[0]!, rod[1]!]) trim.lathe(e[0], e[2], [[0.0, e[1] - 0.025], [0.025, e[1]], [0.0, e[1] + 0.025]], C.brass, BRASS, 8);
 }
 
-/** The glass double door in the front wall: an oak frame, two leaves with dark stiles and rails, brass bar handles, a stone sill. */
+/**
+ * The glass double door in the front wall: an oak frame, two leaves with dark stiles and rails, brass bar handles, a stone sill. The
+ * leaves hang flush with the wall's face, on the room's side of it (depth -0.07..-0.02): a tap on the door is picked on them, and the
+ * game's pick only meets what stands inside the room's rectangle (a leaf out in the wall's thickness, like the windows' glass, is never hit).
+ */
 function door(trim: MeshBuilder, glass: MeshBuilder, w: Wall): void {
   const [u0, u1, , v1] = DOOR_HOLE;
   const oak = lin("#8A5A3A");
   const dark = lin("#6E4429");
   const jw = 0.1;
+  // the opening's frame: in the wall's thickness, and an architrave on the room's face
   wbox(trim, w, u0, u0 + jw, 0, v1, 0.04, 0.2, oak, WOOD);
   wbox(trim, w, u1 - jw, u1, 0, v1, 0.04, 0.2, oak, WOOD);
   wbox(trim, w, u0, u1, v1 - jw, v1, 0.04, 0.2, oak, WOOD);
+  wbox(trim, w, u0 - 0.06, u0 + jw, 0, v1 + 0.06, -0.012, 0.0, oak, WOOD);
+  wbox(trim, w, u1 - jw, u1 + 0.06, 0, v1 + 0.06, -0.012, 0.0, oak, WOOD);
+  wbox(trim, w, u0 - 0.06, u1 + 0.06, v1 - jw, v1 + 0.06, -0.012, 0.0, oak, WOOD);
   wbox(trim, w, u0, u1, 0, 0.03, -0.1, 0.32, lin("#8C8A86"), POLISH);
   const top = v1 - jw;
+  const d0 = -0.07;
+  const d1 = -0.02;
   for (const [a, b] of [[u0 + jw, -0.005], [0.005, u1 - jw]] as const) {
     const st = 0.1;
-    const d0 = 0.1;
-    const d1 = 0.16;
     wbox(trim, w, a, a + st, 0.03, top, d0, d1, dark, WOOD);
     wbox(trim, w, b - st, b, 0.03, top, d0, d1, dark, WOOD);
     wbox(trim, w, a + st, b - st, top - 0.1, top, d0, d1, dark, WOOD);
     wbox(trim, w, a + st, b - st, 0.03, 0.32, d0, d1, dark, WOOD);
-    wbox(trim, w, a + st, b - st, 1.05, 1.12, d0 + 0.01, d1 - 0.01, dark, WOOD);
-    glass.quad(w.at(a + st, 0.32, 0.13), w.at(b - st, 0.32, 0.13), w.at(b - st, top - 0.1, 0.13), w.at(a + st, top - 0.1, 0.13), [1, 1, 1], MATTE, w.n);
+    wbox(trim, w, a + st, b - st, 1.05, 1.12, d0 - 0.005, d1 + 0.005, dark, WOOD);
+    glass.quad(w.at(a + st, 0.32, -0.045), w.at(b - st, 0.32, -0.045), w.at(b - st, top - 0.1, -0.045), w.at(a + st, top - 0.1, -0.045), [1, 1, 1], MATTE, w.n);
   }
-  for (const u of [-0.17, 0.17]) trim.tube([w.at(u, 0.85, 0.02), w.at(u, 1.55, 0.02)], 0.014, C.brass, BRASS, 6);
-  for (const u of [-0.17, 0.17]) for (const v of [0.85, 1.55]) trim.tube([w.at(u, v, 0.02), w.at(u, v, 0.11)], 0.008, C.brass, BRASS, 4);
+  for (const u of [-0.17, 0.17]) trim.tube([w.at(u, 0.85, -0.16), w.at(u, 1.55, -0.16)], 0.014, C.brass, BRASS, 6);
+  for (const u of [-0.17, 0.17]) for (const v of [0.85, 1.55]) trim.tube([w.at(u, v, -0.16), w.at(u, v, -0.07)], 0.008, C.brass, BRASS, 4);
 }
 
 /** The kitchen door in the partition: a walnut frame, a leaf with a round port light, and the clock's brass over it is in cafeBuild. */

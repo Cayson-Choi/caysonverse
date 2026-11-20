@@ -18,6 +18,9 @@ import type { LotInteriorSeat, LotInteriorSpec, LotRect } from "./villageLots";
 /** The café's centre in the village (the layout's `cafe` house; a test keeps the two equal). */
 export const CAFE_CENTRE_XZ = Object.freeze({ x: 50.6, z: -15.1 });
 
+/** The café room's area id (a lot room: `lot:<unit>`). Emoji go through in it, as in the village and the memorial hall. */
+export const CAFE_ROOM_AREA = "lot:lot_cafe_room";
+
 /** The modelled room (local metres): the inner wall faces, the kitchen partition at the back and the ceiling. */
 export const CAFE_ROOM_LOCAL = Object.freeze({ x0: -6.8, x1: 6.8, zBack: -4.1, zFront: 3.7, ceil: 4.3 });
 /** The room frame's size (m): across, deep. */

@@ -25,6 +25,7 @@ import { validateJoinOptions } from "./joinValidation";
 import { RateWindow } from "./rateLimit";
 import { DOOR_RATE, HOUSE_ENTRY_RESCUE_M, useDoor, useHouseExit, useStair } from "./villageDoor";
 import { useLotDoor } from "@caysonverse/shared/village/villageLots";
+import { CAFE_ROOM_AREA } from "@caysonverse/shared/village/cafeRoom";
 import { candleCubby } from "./villageCandle";
 import { memorial } from "../memorial/service";
 import { MemorialServerMsg } from "@caysonverse/shared/memorial/messages";
@@ -450,10 +451,10 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
   /**
    * Emoji reactions work in the village AND the memorial hall (owner 2026-11-20: "추모관안에서도 이모티콘을 보낼 수 있게"); a house
-   * floor, a lot room and the park stay as before. Jumping stays off in the hall (`isQuiet`).
+   * floor, the other lot rooms and the park stay as before; the café's room (owner 2026-11-20: 카페 안에서도 이모티콘) joins them. Jumping stays off in the hall (`isQuiet`).
    */
   protected override isEmojiQuiet(player: Player): boolean {
-    return player.area !== "village" && player.area !== "hall";
+    return player.area !== "village" && player.area !== "hall" && player.area !== CAFE_ROOM_AREA;
   }
 
   /** Seated on a bench → Move and Jump are dropped silently: getting up is an explicit Stand. */
