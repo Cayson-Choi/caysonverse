@@ -6,6 +6,7 @@ import { PATCH_RATE_MS, PLAYER_RADIUS, VILLAGE_MAX_CLIENTS } from "@caysonverse/
 import { APPEARANCE_FIELDS } from "@caysonverse/shared/appearance";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
 import {
+  CANDLE_OUT_RATE,
   CANDLE_RATE,
   SERVER_TIME_INTERVAL_MS,
   VillageMsg,
@@ -27,7 +28,7 @@ import { useLotDoor } from "@caysonverse/shared/village/villageLots";
 import { candleCubby } from "./villageCandle";
 import { memorial } from "../memorial/service";
 import { MemorialServerMsg } from "@caysonverse/shared/memorial/messages";
-import { CANDLES, type CandleBook } from "./candleBook";
+import { CANDLES, sameLighter, type CandleBook } from "./candleBook";
 import { chooseStandSpot, validateSit } from "./seating";
 import { STAND_BLOCKED } from "@caysonverse/shared/village/standSpot";
 import { VillageFishing } from "./villageFishing";
@@ -71,6 +72,8 @@ interface VillageTracking extends Tracking {
   interiorEntry: { area: string; placed: TransitPoint; nominal: TransitPoint } | null;
   /** Sliding-window rate cap for lighting candles (1 per 5 seconds, Task 9). */
   candleRate: RateWindow;
+  /** Sliding-window rate cap for putting candles out (`CANDLE_OUT_RATE`, owner 2026-11-20). */
+  candleOutRate: RateWindow;
   /** Whether this session has been accepted onto the current scheduled trip. */
   busBoarded: boolean;
   /** Trip id assigned at boarding; a rider is cleared when that trip returns. */
@@ -103,7 +106,8 @@ interface VillageTracking extends Tracking {
  *    no door), the seat freed on Stand and on every permanent leave but kept through a reconnection window;
  *  - `VillageMsg.UseDoor`: the memorial hall's door is a validated teleport (see `handleUseDoor`);
  *  - `VillageMsg.LightCandle` (Task 9): a candle in a cubby, told to everyone in the hall (see `handleLightCandle`);
- *  - the hall is a quiet place (`isQuiet`): Emoji and Jump are dropped there, chat still goes through;
+ *  - the hall is a quiet place (`isQuiet`): Jump is dropped there, chat still goes through; Emoji goes through since
+ *    2026-11-20 (owner: "추모관안에서도 이모티콘을 보낼 수 있게", `isEmojiQuiet`);
  *  - chat is scoped by area (`deliverChat`): a line is heard only by the clients in the sender's area, so what is
  *    said inside the hall stays in the hall and the plaza's talk does not carry in. Emoji, Jump and Typing stay
  *    unscoped (they are the world's, relayed to everyone);
@@ -182,7 +186,12 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
   onCreate(): void {
     // A candle lit in ANY room's hall burns in this room's hall too (the book is shared by every shard).
-    this.offCandles = this.candles.onLit((c) => this.broadcastToArea("hall", VillageServerMsg.CandleLit, c));
+    const offLit = this.candles.onLit((c) => this.broadcastToArea("hall", VillageServerMsg.CandleLit, c));
+    const offOut = this.candles.onOut((c) => this.broadcastToArea("hall", VillageServerMsg.CandleOut, c));
+    this.offCandles = () => {
+      offLit();
+      offOut();
+    };
     // A cubby claimed, edited or given an approved photo in ANY room (or over HTTPS) → every hall refetches that cubby.
     this.offClaims = memorial()?.onClaimUpdated((p) => this.broadcastToArea("hall", MemorialServerMsg.ClaimUpdated, p)) ?? null;
     // Move, Chat, Emoji, Jump, Typing (+ the "*" catch-all for stray types).
@@ -201,6 +210,9 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     });
     this.onMessage(VillageMsg.LightCandle, (client, payload: unknown) => {
       this.handleLightCandle(client, payload);
+    });
+    this.onMessage(VillageMsg.PutOutCandle, (client, payload: unknown) => {
+      this.handlePutOutCandle(client, payload);
     });
     this.onMessage(MessageType.BusRide, (client, payload: unknown) => {
       this.handleBusRide(client, payload);
@@ -262,7 +274,10 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
   /** The candles burning now, to one client (it came into the hall, or came back inside it). */
   private sendCandles(client: Client): void {
-    const msg: CandleStatePayload = { candles: this.candles.snapshot(this.wallClock()) };
+    const track = this.tracking.get(client.sessionId);
+    const msg: CandleStatePayload = {
+      candles: this.candles.snapshot(this.wallClock(), { sessionId: client.sessionId, keyHash: track?.keyHash ?? null, tabId: track?.tabId ?? null }),
+    };
     client.send(VillageServerMsg.CandleState, msg);
   }
 
@@ -368,6 +383,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       doorRate: new RateWindow(DOOR_RATE.count, DOOR_RATE.windowMs),
       interiorEntry: null,
       candleRate: new RateWindow(CANDLE_RATE.count, CANDLE_RATE.windowMs),
+      candleOutRate: new RateWindow(CANDLE_OUT_RATE.count, CANDLE_OUT_RATE.windowMs),
       busBoarded: false,
       busTripId: null,
       keypadRate: initialKeypadRate(),
@@ -430,6 +446,14 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   /** The memorial hall is quiet: no emoji, no jumping there (chat and walking are fine). */
   protected isQuiet(player: Player): boolean {
     return player.area !== "village";
+  }
+
+  /**
+   * Emoji reactions work in the village AND the memorial hall (owner 2026-11-20: "추모관안에서도 이모티콘을 보낼 수 있게"); a house
+   * floor, a lot room and the park stay as before. Jumping stays off in the hall (`isQuiet`).
+   */
+  protected override isEmojiQuiet(player: Player): boolean {
+    return player.area !== "village" && player.area !== "hall";
   }
 
   /** Seated on a bench → Move and Jump are dropped silently: getting up is an explicit Stand. */
@@ -899,7 +923,43 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     if (anchor === null) return;
     if (this.candles.burning(anchor.id, this.wallClock())) return; // already burning: the card shows who lit it
     if (!track.candleRate.tryAccept(this.now())) return;
-    this.candles.light(anchor.id, player.nickname, this.wallClock());
+    this.candles.light(anchor.id, { nickname: player.nickname, sessionId: client.sessionId, keyHash: track.keyHash, tabId: track.tabId }, this.wallClock());
+  }
+
+  /**
+   * Put-out pipeline (owner 2026-11-20): sender must have a seat → in the hall, a real cubby within reach (the same pure rule as
+   * lighting) → a candle burns there → the sender lit it (same device key / tab / session: `sameLighter`) or is of the cubby's
+   * family (their device key belongs to the claim's owner) → per-client cap (`CANDLE_OUT_RATE`) → the book forgets it and
+   * `CandleOut` goes to every hall. A visitor who neither lit it nor is family cannot put out someone else's candle (a memorial:
+   * no griefing). Anything refused is dropped silently; the client shows the button only where it would work.
+   */
+  private handlePutOutCandle(client: Client, payload: unknown): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track) return;
+    const cubby = payload !== null && typeof payload === "object" ? (payload as { cubby?: unknown }).cubby : undefined;
+    const anchor = candleCubby(player.area, player.x, player.z, cubby, undefined, (id) => memorial()?.isClaimed(id) === true);
+    if (anchor === null) return;
+    const now = this.wallClock();
+    const lit = this.candles.lighter(anchor.id, now);
+    if (lit === null) return;
+    const mine = sameLighter(lit, { sessionId: client.sessionId, keyHash: track.keyHash, tabId: track.tabId });
+    if (!mine && !this.isFamilyOf(anchor.id, track.keyHash)) return;
+    if (!track.candleOutRate.tryAccept(this.now())) return;
+    this.candles.putOut(anchor.id, player.nickname, now);
+  }
+
+  /** Is the device `keyHash` one of the family's of the claim in cubby `slotId` (memorial stage B)? */
+  private isFamilyOf(slotId: string, keyHash: string | null): boolean {
+    const m = memorial();
+    if (!m || keyHash === null || !m.isClaimed(slotId)) return false;
+    try {
+      const owner = m.ownerOf(keyHash);
+      const claim = m.store.liveClaimBySlot(slotId);
+      return owner !== null && claim !== undefined && m.store.resolveOwner(claim.owner_id) === owner.ownerId;
+    } catch {
+      return false; // the store is unavailable: nobody but the lighter
+    }
   }
 
   /**

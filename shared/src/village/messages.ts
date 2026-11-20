@@ -23,6 +23,12 @@ export const VillageMsg = {
    * hall, in every room of the village (`VillageServerMsg.CandleLit`). Anything else is dropped silently.
    */
   LightCandle: "LightCandle",
+  /**
+   * Put out a burning candle (owner 2026-11-20: "촛불을 밝힐 수도 있고 끌 수도 있게"). Allowed for whoever lit it (the same device key,
+   * else the same tab, else the same session) and for the family of a claimed cubby; at most `CANDLE_OUT_RATE` per client. The server
+   * forgets the candle and tells every hall (`VillageServerMsg.CandleOut`). Anything else is dropped silently.
+   */
+  PutOutCandle: "PutOutCandle",
   /** Rent the session's one rod (free) within `FISHING.rentReachM` of the rental pad. Empty payload. */
   FishingRentRod: "FishingRentRod",
   /** Give the rod back within `FISHING.returnReachM` of the pad (standing); leaving the lake does it by itself. Empty payload. */
@@ -77,6 +83,7 @@ export interface VillageMsgPayloads {
   [VillageMsg.UseDoor]: UseDoorPayload;
   [VillageMsg.UseStair]: UseStairPayload;
   [VillageMsg.LightCandle]: LightCandlePayload;
+  [VillageMsg.PutOutCandle]: LightCandlePayload;
   [VillageMsg.FishingRentRod]: FishingEmptyPayload;
   [VillageMsg.FishingReturnRod]: FishingEmptyPayload;
   [VillageMsg.FishingSit]: FishingSitPayload;
@@ -106,6 +113,8 @@ export interface FishingHoldPayload {
 export const CANDLE_REACH_M = 20;
 /** Per-client candle cap: at most `count` accepted candles per `windowMs`. */
 export const CANDLE_RATE = { count: 1, windowMs: 5000 } as const;
+/** Per-client cap on putting candles out: at most `count` per `windowMs` (lighting keeps its own 1-per-5-seconds cap). */
+export const CANDLE_OUT_RATE = { count: 2, windowMs: 5000 } as const;
 /**
  * How long a lit candle burns (ms): an hour (owner 2026-11-13: "초를 켜면 1시간 정도 켜졌다가 꺼지게 … 누가 와서 켜고 갔는지 알잖아").
  * The server keeps it (who, when) and tells a visitor who walks into the hall later; a cubby's candle cannot be lit again while
@@ -125,6 +134,8 @@ export const VillageServerMsg = {
   CandleLit: "CandleLit",
   /** Every candle burning now (`CandleStatePayload`): sent to a visitor who comes into the hall, or rejoins inside it. */
   CandleState: "CandleState",
+  /** A candle was put out by the one who lit it or by the cubby's family (`CandleOutPayload`): sent to every client in the hall. */
+  CandleOut: "CandleOut",
   /** The owner's fishing state (a personal message): sent on every stage change, on join/reconnect, and ~4 times a second in a fight. */
   FishingState: "FishingState",
   /** A personal rejection for an invalid fishing action (a reason code; the HUD turns it into a short Korean line). */
@@ -161,6 +172,16 @@ export interface CandleLitPayload {
   cubby: string;
   by: string;
   agoMs: number;
+  /** The lighter's session id (a broadcast `CandleLit`): the lighter's own client knows the candle is its own. Absent from an old server. */
+  sid?: string;
+  /** In a `CandleState` (one client's own copy): true when this client lit the candle (same device key / tab / session). */
+  mine?: boolean;
+}
+
+/** Server → hall clients: the candle of `cubby` was put out, by `by` (a nickname). */
+export interface CandleOutPayload {
+  cubby: string;
+  by: string;
 }
 
 /** Server → one client: the candles burning now. */

@@ -273,6 +273,18 @@ export interface CubbyWall {
  */
 export type CubbyBank = "A" | "B" | "C" | "E";
 
+/**
+ * The letter a visitor sees for a bank (구역 A, B, C, D in walking order, owner 2026-11-20: "A B C D 구역 이름이 순서대로 적히게"): the
+ * north wall west to east is A, C, B and the east wall is E in the ids, which never change (cubby ids, claims and the server's
+ * filled set use them), so the signs, the close-up card and the claim sheet show this letter instead.
+ */
+export const ZONE_LETTER: Readonly<Record<CubbyBank, string>> = Object.freeze({ A: "A", C: "B", B: "C", E: "D" });
+
+/** "A" .. "D" for a bank id (unknown ids are shown as they are). */
+export function zoneLetter(bank: string): string {
+  return (ZONE_LETTER as Record<string, string>)[bank] ?? bank;
+}
+
 /** The memorial hall's id of the hall in cubby ids (`M1-A-r3-c07`): a second hall would be `M2`. */
 export const HALL_ID = "M1";
 

@@ -5,7 +5,7 @@ import { VILLAGE_ROOM } from "@caysonverse/shared/constants";
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
 import { MemorialServerMsg } from "@caysonverse/shared/memorial/messages";
 import type { ClaimUpdatedPayload } from "@caysonverse/shared/memorial/types";
-import { VillageMsg, VillageServerMsg, type CandleLitPayload } from "@caysonverse/shared/village/messages";
+import { VillageMsg, VillageServerMsg, type CandleLitPayload, type CandleOutPayload } from "@caysonverse/shared/village/messages";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { Memorial, setMemorialForTest } from "../memorial/service";
 import { sha256Hex } from "../memorial/store";
@@ -124,5 +124,36 @@ describe("VillageRoom memorial (stage B)", () => {
     inHall.send(VillageMsg.LightCandle, { cubby: SLOT });
     expect(await pollFor(() => lit.length === 1)).toBe(true);
     expect(lit[0]).toMatchObject({ cubby: SLOT, by: "홀손님" });
+  });
+
+  it("the family of a claimed cubby may put out a candle a visitor lit there; another visitor may not (owner 2026-11-20)", async () => {
+    const SLOT2 = "M1-A-r3-c09";
+    const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
+    const familyKey = deviceKey();
+    const kh = sha256Hex(familyKey);
+    const o = m.store.createOwner(kh);
+    m.store.createClaim(o.ownerId, SLOT2, { petName: "보리", species: "dog", born: null, bornPrec: "unknown", passed: null, passedPrec: "unknown", line: "" }, kh);
+    m.emit(SLOT2, ["claimed"]);
+    const visitor = await colyseus.connectTo(room, { nickname: "손님", appearance: DEFAULT_APPEARANCE, deviceKey: deviceKey() });
+    const stranger = await colyseus.connectTo(room, { nickname: "지나가던", appearance: DEFAULT_APPEARANCE, deviceKey: deviceKey() });
+    const family = await colyseus.connectTo(room, { nickname: "가족", appearance: DEFAULT_APPEARANCE, deviceKey: familyKey });
+    for (const c of [visitor, stranger, family]) {
+      const p = room.state.players.get(c.sessionId)!;
+      p.area = "hall";
+      p.x = HALL.x;
+      p.z = HALL.z;
+    }
+    const outs: CandleOutPayload[] = [];
+    visitor.onMessage(VillageServerMsg.CandleOut, (p: CandleOutPayload) => outs.push(p));
+    visitor.send(VillageMsg.LightCandle, { cubby: SLOT2 });
+    expect(await pollFor(() => CANDLES.burning(SLOT2, Date.now()))).toBe(true);
+    stranger.send(VillageMsg.PutOutCandle, { cubby: SLOT2 });
+    await sleep(200);
+    expect(outs).toEqual([]);
+    expect(CANDLES.burning(SLOT2, Date.now())).toBe(true);
+    family.send(VillageMsg.PutOutCandle, { cubby: SLOT2 });
+    expect(await pollFor(() => outs.length === 1)).toBe(true);
+    expect(outs[0]).toEqual({ cubby: SLOT2, by: "가족" });
+    expect(CANDLES.burning(SLOT2, Date.now())).toBe(false);
   });
 });

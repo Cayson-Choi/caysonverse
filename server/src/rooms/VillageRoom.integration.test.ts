@@ -27,6 +27,7 @@ import {
   VillageServerMsg,
   type CandleLitPayload,
   type CandleStatePayload,
+  type CandleOutPayload,
   type ServerTimePayload,
 } from "@caysonverse/shared/village/messages";
 import { VILLAGE_LAYOUT, cubbyAnchors, villageGeometry } from "@caysonverse/shared/village/villageLayout";
@@ -572,7 +573,7 @@ describe("VillageRoom arrivals never stack (integration, fix/arrival-spread)", (
 });
 
 describe("VillageRoom quiet hall (integration)", () => {
-  it("in the village emoji and jump go out; inside the hall they are refused silently, and chat stays in the hall", async () => {
+  it("in the village emoji and jump go out; inside the hall jump is refused silently, emoji goes out (owner 2026-11-20), and chat stays in the hall", async () => {
     const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
     const clock = useClock(room);
     const alice = await colyseus.connectTo(room, JOIN);
@@ -610,15 +611,16 @@ describe("VillageRoom quiet hall (integration)", () => {
     expect(await pollFor(() => a.area === "hall" && c.area === "hall")).toBe(true);
     clock.t += 1000; // past the emoji cap (500 ms) and the jump cap (800 ms) of the control sends
 
-    // Quiet: both are refused silently. The sentinel (typing is unscoped, so it reaches the village and the hall) proves
-    // the server handled them and had nothing to send to bob or carol.
+    // Quiet for jumping: refused silently. The sentinel (typing is unscoped, so it reaches the village and the hall) proves
+    // the server handled it and had nothing to send to bob or carol. An emoji reaction is no longer quiet in the hall (owner
+    // 2026-11-20: "추모관안에서도 이모티콘을 보낼 수 있게"): carol beside her sees it.
     alice.send(MessageType.Emoji, { index: 2 });
     alice.send(MessageType.Jump, {});
+    expect(await pollFor(() => emojis.carol.length === 2)).toBe(true);
+    expect(emojis.carol[1]).toEqual({ sid: alice.sessionId, index: 2 });
     await roundTrip(alice, bob, clock);
     await roundTrip(alice, carol, clock);
-    expect(emojis.bob).toHaveLength(1); // nothing new went out
-    expect(jumps.bob).toHaveLength(1);
-    expect(emojis.carol).toHaveLength(1);
+    expect(jumps.bob).toHaveLength(1); // no jump went out
     expect(jumps.carol).toHaveLength(1);
     expect(aliceNotices).toEqual([]); // and the refusal said nothing to her either
     expect(personal).toEqual([]);
@@ -646,7 +648,7 @@ describe("VillageRoom quiet hall (integration)", () => {
     expect(await pollFor(() => Math.abs(a.z - (HALL_SPAWN.z - 0.3)) < 1e-6)).toBe(true);
   });
 
-  it("coming back out ends the quiet: emoji and jump work again at once, and the refused ones used no cap slot", async () => {
+  it("coming back out ends the quiet: jump works again at once, and the refused one used no cap slot; emoji worked inside too", async () => {
     const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
     const alice = await colyseus.connectTo(room, JOIN);
     const bob = await colyseus.connectTo(room, JOIN_BOB);
@@ -662,17 +664,15 @@ describe("VillageRoom quiet hall (integration)", () => {
     alice.send(MessageType.Emoji, { index: 0 });
     alice.send(MessageType.Jump, {});
     await roundTrip(alice, bob); // the clock stays still: the first typing event is inside its cap
-    expect(emojis).toEqual([]);
+    expect(emojis).toEqual([{ sid: alice.sessionId, index: 0 }]); // the hall takes reactions (owner 2026-11-20)
     expect(jumps).toEqual([]);
 
     alice.send(VillageMsg.UseDoor, {}); // her first door use: no cap to wait out, so the clock does not move
     expect(await pollFor(() => a.area === "village")).toBe(true);
 
-    // The clock has not moved since the refused ones: had they used a cap slot, these would be rate-dropped.
-    alice.send(MessageType.Emoji, { index: 0 });
+    // The clock has not moved since the refused jump: had it used a cap slot, this one would be rate-dropped.
     alice.send(MessageType.Jump, {});
-    expect(await pollFor(() => emojis.length === 1 && jumps.length === 1)).toBe(true);
-    expect(emojis).toEqual([{ sid: alice.sessionId, index: 0 }]);
+    expect(await pollFor(() => jumps.length === 1)).toBe(true);
     expect(jumps).toEqual([{ sid: alice.sessionId }]);
     expect(clock.t).toBeGreaterThan(0);
   });
@@ -703,12 +703,12 @@ describe("VillageRoom reconnection (integration)", () => {
     expect(room.state.players.get(sid)!.x).toBe(HALL_SPAWN.x);
     expect(room.state.players.get(sid)!.z).toBe(HALL_SPAWN.z);
 
-    // Still the quiet hall after the reconnect.
-    const emojis: EmojiBroadcast[] = [];
-    bob.onMessage(MessageType.Emoji, (m: EmojiBroadcast) => emojis.push(m));
-    back.send(MessageType.Emoji, { index: 0 });
+    // Still the quiet hall after the reconnect: no jumping (emoji reactions are allowed in the hall since 2026-11-20).
+    const jumps: JumpBroadcast[] = [];
+    bob.onMessage(MessageType.Jump, (m: JumpBroadcast) => jumps.push(m));
+    back.send(MessageType.Jump, {});
     await roundTrip(back, bob);
-    expect(emojis).toEqual([]);
+    expect(jumps).toEqual([]);
   });
 
   it("a reconnect hears the server's clock again (onJoin does not run on a reconnect; Task 7A review m-c)", async () => {
@@ -859,15 +859,20 @@ describe("VillageRoom candles (integration; server-kept for an hour since 2026-1
     alice.onMessage(VillageServerMsg.CandleLit, (m: CandleLitPayload) => heard.alice.push(m));
     bob.onMessage(VillageServerMsg.CandleLit, (m: CandleLitPayload) => heard.bob.push(m));
     carol.onMessage(VillageServerMsg.CandleLit, (m: CandleLitPayload) => heard.carol.push(m));
-    return { room, clock, alice, bob, carol, a, heard };
+    const out = { alice: [] as CandleOutPayload[], bob: [] as CandleOutPayload[], carol: [] as CandleOutPayload[] };
+    alice.onMessage(VillageServerMsg.CandleOut, (m: CandleOutPayload) => out.alice.push(m));
+    bob.onMessage(VillageServerMsg.CandleOut, (m: CandleOutPayload) => out.bob.push(m));
+    carol.onMessage(VillageServerMsg.CandleOut, (m: CandleOutPayload) => out.carol.push(m));
+    return { room, clock, alice, bob, carol, a, c, heard, out };
   }
 
   it("everyone in the hall hears CandleLit { cubby, by, agoMs: 0 } (the lighter too), nobody on the plaza", async () => {
     const { alice, bob, heard } = await hallParty();
     alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
     expect(await pollFor(() => heard.alice.length === 1 && heard.carol.length === 1)).toBe(true);
-    expect(heard.carol).toEqual([{ cubby: CUBBY.id, by: "케이슨", agoMs: 0 }]);
-    expect(heard.alice).toEqual([{ cubby: CUBBY.id, by: "케이슨", agoMs: 0 }]);
+    // the lighter's session id rides along, so the lighter's own client offers "촛불 끄기" (owner 2026-11-20)
+    expect(heard.carol).toEqual([{ cubby: CUBBY.id, by: "케이슨", agoMs: 0, sid: alice.sessionId }]);
+    expect(heard.alice).toEqual([{ cubby: CUBBY.id, by: "케이슨", agoMs: 0, sid: alice.sessionId }]);
     await roundTrip(alice, bob); // had it gone to bob it would have arrived before this
     expect(heard.bob).toEqual([]);
   });
@@ -918,6 +923,61 @@ describe("VillageRoom candles (integration; server-kept for an hour since 2026-1
     bob.send(VillageMsg.UseDoor, {});
     expect(await pollFor(() => states.length === 1)).toBe(true);
     expect(states[0]).toEqual({ candles: [{ cubby: CUBBY.id, by: "케이슨", agoMs: 32 * 60_000 }] });
+  });
+
+  it("put out (owner 2026-11-20): only by whoever lit it — everyone in the hall hears CandleOut, then anyone may light it again", async () => {
+    const { clock, alice, bob, carol, heard, out } = await hallParty();
+    alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
+    expect(await pollFor(() => heard.carol.length === 1)).toBe(true);
+    // carol did not light it (another visitor, no family): refused silently
+    carol.send(VillageMsg.PutOutCandle, { cubby: CUBBY.id });
+    await roundTrip(carol, alice, clock);
+    expect(out.alice).toEqual([]);
+    expect(CANDLES.burning(CUBBY.id, clock.t)).toBe(true);
+    // bad payloads and an unlit cubby: nothing
+    alice.send(VillageMsg.PutOutCandle, { cubby: EMPTY.id });
+    alice.send(VillageMsg.PutOutCandle, { cubby: 7 });
+    alice.send(VillageMsg.PutOutCandle);
+    await roundTrip(alice, carol, clock);
+    expect(out.carol).toEqual([]);
+    // the lighter puts it out right away (its own cap, not lighting's 5 s): the hall hears it, the plaza does not
+    alice.send(VillageMsg.PutOutCandle, { cubby: CUBBY.id });
+    expect(await pollFor(() => out.carol.length === 1 && out.alice.length === 1)).toBe(true);
+    expect(out.carol).toEqual([{ cubby: CUBBY.id, by: "케이슨" }]);
+    await roundTrip(alice, bob, clock);
+    expect(out.bob).toEqual([]);
+    expect(CANDLES.burning(CUBBY.id, clock.t)).toBe(false);
+    // and now carol may light it (her name goes on it)
+    carol.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
+    expect(await pollFor(() => heard.alice.length === 2)).toBe(true);
+    expect(heard.alice[1]).toMatchObject({ cubby: CUBBY.id, by: "캐럴", sid: carol.sessionId });
+  });
+
+  it("put out: the lighter's other sessions on the same tab count as the lighter; a snapshot marks the viewer's own candle as mine", async () => {
+    const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
+    const clock = useClock(room);
+    (room as unknown as { wallClock: () => number }).wallClock = () => clock.t;
+    const TAB = "tab-candle-0123456789";
+    const first = await colyseus.connectTo(room, { ...JOIN, tabId: TAB });
+    const p1 = room.state.players.get(first.sessionId)!;
+    p1.area = "hall";
+    placeAt(p1, FRONT.x, FRONT.z);
+    first.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
+    expect(await pollFor(() => CANDLES.burning(CUBBY.id, clock.t))).toBe(true);
+    // the same tab joins again (a reload): the old session is replaced, the new one is still the lighter
+    const again = await colyseus.connectTo(room, { ...JOIN, tabId: TAB });
+    const p2 = room.state.players.get(again.sessionId)!;
+    p2.area = "hall";
+    placeAt(p2, FRONT.x, FRONT.z);
+    const states: CandleStatePayload[] = [];
+    again.onMessage(VillageServerMsg.CandleState, (m: CandleStatePayload) => states.push(m));
+    const viewer = { sessionId: again.sessionId, keyHash: null, tabId: TAB };
+    expect(CANDLES.snapshot(clock.t, viewer)).toEqual([{ cubby: CUBBY.id, by: "케이슨", agoMs: 0, mine: true }]);
+    expect(CANDLES.snapshot(clock.t, { sessionId: "someone", keyHash: null, tabId: "tab-other-0123456789" })).toEqual([
+      { cubby: CUBBY.id, by: "케이슨", agoMs: 0 },
+    ]);
+    again.send(VillageMsg.PutOutCandle, { cubby: CUBBY.id });
+    expect(await pollFor(() => !CANDLES.burning(CUBBY.id, clock.t))).toBe(true);
   });
 
   it("a candle lit in one room burns in the hall of another room too (the shards share one book)", async () => {

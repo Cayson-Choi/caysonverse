@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { MessageType } from "../messages";
-import { CANDLE_BURN_MS, CANDLE_RATE, CANDLE_REACH_M, SERVER_TIME_INTERVAL_MS, VillageMsg, VillageServerMsg } from "./messages";
+import { CANDLE_BURN_MS, CANDLE_OUT_RATE, CANDLE_RATE, CANDLE_REACH_M, SERVER_TIME_INTERVAL_MS, VillageMsg, VillageServerMsg } from "./messages";
 
 describe("VillageMsg", () => {
   it("keeps village action wire names stable and collision-free", () => {
@@ -8,6 +8,7 @@ describe("VillageMsg", () => {
       UseDoor: "UseDoor",
       UseStair: "UseStair",
       LightCandle: "LightCandle",
+      PutOutCandle: "PutOutCandle",
       FishingRentRod: "FishingRentRod",
       FishingReturnRod: "FishingReturnRod",
       FishingSit: "FishingSit",
@@ -32,6 +33,7 @@ describe("VillageMsg", () => {
       ServerTime: "ServerTime",
       CandleLit: "CandleLit",
       CandleState: "CandleState",
+      CandleOut: "CandleOut",
       FishingState: "FishingState",
       FishingRejected: "FishingRejected",
       FishingTrophy: "FishingTrophy",
@@ -51,5 +53,7 @@ describe("VillageMsg", () => {
     expect(CANDLE_REACH_M).toBe(20);
     expect(CANDLE_RATE).toEqual({ count: 1, windowMs: 5000 });
     expect(CANDLE_BURN_MS).toBe(3_600_000);
+    // putting one out (owner 2026-11-20) has its own small cap, so "켜고 바로 끄기" works but a flood does not
+    expect(CANDLE_OUT_RATE).toEqual({ count: 2, windowMs: 5000 });
   });
 });
