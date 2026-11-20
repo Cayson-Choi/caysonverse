@@ -211,7 +211,11 @@ async function shotPair(p, name) {
 
 function checkFp(label, s) {
   run.check(`${label}: the own body is drawn in first person, headless`, s.groupVisible && s.active && s.collapsed && s.headScale < 0.01, s);
-  run.check(`${label}: the eye is on the head's eye point (< 3 cm)`, s.eyeGap !== null && s.eyeGap < 0.03, s.eyeGap);
+  // Walking holds the eye steady on the body (fix/fp-walk-sway: owner wants no step bob in first person), so the head
+  // bone sways under it by a few cm; standing / seated the eye stays on the head's eye point.
+  const walking = /walking|running/.test(label);
+  const lim = walking ? 0.08 : 0.03;
+  run.check(`${label}: the eye is ${walking ? "held steady near" : "on"} the head's eye point (< ${lim * 100} cm)`, s.eyeGap !== null && s.eyeGap < lim, s.eyeGap);
   run.check(`${label}: no own label drawn`, s.labelsDrawn === 0, s.labelsDrawn);
 }
 
