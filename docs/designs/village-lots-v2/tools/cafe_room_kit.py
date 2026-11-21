@@ -272,13 +272,14 @@ def ground(kit, spec):
             C.curtain(D, f, a, b, v1 + 0.08, v0 + 0.15, 0.09, tie=True)
     # the glass double door (the leaves seen from inside, the village through their glass), oak frame, brass push bars
     f = W["door"]
-    for (a, b) in ((5.62, 6.79), (6.81, 7.98)):
+    for (a, b) in ((5.62, 6.8), (6.8, 7.98)):  # (the meeting stiles close up: a tap at the door's middle meets a leaf)
         # each leaf a frame of stiles and rails round its glass (the village through it), a kick plate below
         # (the leaves hang just on the room's side of the wall line, as the old room's did: a tap on the door is picked on them — the game's pick
         # only meets what stands inside the room's rectangle)
         for (ua, ub, va, vb) in ((a, a + 0.1, 0.0, 2.92), (b - 0.1, b, 0.0, 2.92), (a + 0.1, b - 0.1, 0.0, 0.3), (a + 0.1, b - 0.1, 2.75, 2.92)):
             f.box(D, ua, ub, va, vb, 0.02, 0.07, C.DARK, c=0.006 if not PHONE else 0.0)
-        f.quad(S_, a + 0.1, b - 0.1, 0.3, 2.75, 0.045, C.GARDEN)
+        ga, gb = (5.72, 6.69) if a < 6.8 else (6.91, 7.88)   # (the glass as baked: the shell's lightmap unwrap keeps it)
+        f.quad(S_, ga, gb, 0.3, 2.75, 0.045, C.GARDEN)
         f.box(D, a + 0.1, b - 0.1, 0.12, 0.3, 0.07, 0.078, C.BRASS)
         hx = b - 0.12 if a < 6.8 else a + 0.12
         D.tube([f.p(hx, 0.95, 0.15), f.p(hx, 1.45, 0.15)], 0.014, 8, C.BRASS)

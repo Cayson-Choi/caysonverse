@@ -17,6 +17,7 @@ import {
 import { CAFE_CENTRE_XZ, CAFE_STOREY } from "@caysonverse/shared/village/cafeRoom";
 import { lotRoomOf } from "@caysonverse/shared/village/villageLots";
 import { useQualityTier } from "../../game/QualityEffects";
+import { PICK_SOLID_KEY } from "../../game/clickPick";
 import { dayNight } from "../dayNightDriver";
 import { trimMesh } from "../street/streetTrim";
 import { driveRoomLights, holdLotRoom, lotRoomLoaded, showcaseMaterial, type LoadedRoom } from "../lots/LotRoom";
@@ -80,8 +81,9 @@ const up = (c: number) => [c - 0.8, c + 0.8] as const;
 export const CAFE_OPENINGS: readonly Opening[] = Object.freeze([
   { wall: "front", a: -5.25, b: -1.85, y0: 0.45, y1: 3.35, d: 0.15 },
   { wall: "front", a: 1.85, b: 5.25, y0: 0.45, y1: 3.35, d: 0.15 },
-  { wall: "front", a: -1.08, b: -0.11, y0: 0.3, y1: 2.75, d: -0.045 },
-  { wall: "front", a: 0.11, b: 1.08, y0: 0.3, y1: 2.75, d: -0.045 },
+  // the door: one pane over its whole opening, just inside the wall line, its leaves' stiles and rails in front of it (the room's GLB) —
+  // one pickable face for a tap on the door, as village.glb's leaves were (lotDoorTap.ts)
+  { wall: "front", a: -1.2, b: 1.2, y0: 0.0, y1: 3.0, d: -0.045 },
   ...(["left", "right"] as const).flatMap((wall) => [
     { wall, a: -4.0, b: -1.6, y0: 0.9, y1: 2.7, d: 0.15 },
     { wall, a: 0.2, b: 2.6, y0: 0.9, y1: 2.7, d: 0.15 },
@@ -91,7 +93,7 @@ export const CAFE_OPENINGS: readonly Opening[] = Object.freeze([
 ]);
 /** The openings of the walls that village.glb glazes (the door's whole opening: its leaves are rebuilt by the room). */
 const STRIP_OPENINGS: readonly Opening[] = [
-  ...CAFE_OPENINGS.filter((o) => !(o.wall === "front" && o.d < 0.1)),
+  ...CAFE_OPENINGS.filter((o) => !(o.wall === "front" && o.d < 0)),
   { wall: "front", a: -1.2, b: 1.2, y0: 0.0, y1: 3.0, d: 0.15 },
 ];
 
@@ -422,6 +424,7 @@ export function CafeShowcase({ root }: { root: Object3D }) {
   const night = useMemo(() => ({ value: 0 }), []);
   const glass = useMemo(() => {
     const mat = facadeGlassMaterial();
+    mat.userData[PICK_SOLID_KEY] = true; // (a see-through material is never picked: the glass is the door's and the wall's face for a tap)
     const mesh = new Mesh(facadeGlassGeometry(), mat);
     mesh.name = "cafe_facade_glass";
     mesh.renderOrder = 4;

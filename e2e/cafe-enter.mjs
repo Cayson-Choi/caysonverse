@@ -139,6 +139,8 @@ try {
       const o = await A.page.evaluate(() => window.__cv.getOrbit());
       const tap = await tapWorld(A, d.centre.x - 0.05, 1.3, d.centre.z);
       numbers.doorTap = tap;
+      await sleep(800);
+      numbers.doorPick = await A.page.evaluate(() => window.__cvClickPick?.());
       run.check("the door is on A's screen (a real click on it)", tap.ok, tap.s);
       const went = await waitArea(A, ROOM_AREA, 120000);
       run.check("a click on the door: A walks up and goes in (the café's room)", went, { area: await inArea(A), orbit: o });
@@ -180,7 +182,7 @@ try {
   const O = info.origin;
   const at = (x, z) => [O.x + x, O.z + z];
   // B steps away from the door (an avatar in front of the door takes the click: it is a body, not a door)
-  if ((await inArea(B)) === ROOM_AREA) await walkAndWait(B, ...at(9.0, 6.65), 60000, 0.8); // (behind the counter, the barista's aisle: out of every walk)
+  if ((await inArea(B)) === ROOM_AREA) await walkAndWait(B, ...at(3.05, 7.35), 60000, 0.8); // (the dead-end corner between the stair and the kitchen wall: out of every walk)
   if (ONLY.includes("walk")) {
     await run.step("3. walk round every area, click-to-move to the far corner, nothing walked through", async () => {
       const spots = {
@@ -258,7 +260,7 @@ try {
   if (ONLY.includes("camera")) {
     await run.step("5. the follow camera never leaves the walls or the ceiling", async () => {
       const b = info.bounds;
-      const spots = [[6.8, 1.6], [12.6, 0.8], [0.8, 0.8], [12.8, 7.0], [3.0, 6.8], [6.8, 4.2], [9.4, 6.5], [3.2, 5.4]];
+      const spots = [[6.8, 1.6], [12.6, 0.8], [0.8, 0.8], [12.8, 7.0], [5.3, 6.8], [6.8, 4.2], [9.4, 6.5], [3.2, 5.4]];
       let worst = { out: 0, up: 0 };
       let samples = 0;
       for (const [x, z] of spots) {
