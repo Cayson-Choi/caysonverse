@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { serverRefused } from "../game/sentMoves";
 import { isTouchDevice } from "../device";
 import { getRoom, sendRideLeave } from "../net/connection";
 import { VillageServerMsg, type RideNoticePayload } from "@caysonverse/shared/village/messages";
@@ -32,6 +33,9 @@ const RIDE_ICON: Record<string, string> = { coaster: "🎢", carousel: "🎠", w
 export const rideIcon = (key: string): string => RIDE_ICON[key] ?? "🎢";
 
 /** Re-render ~4 times a second (the countdown). */
+/** How long (ms) a first press of 비상 내리기 waits for the second that gets off. */
+export const LEAVE_CONFIRM_MS = 3000;
+
 function useTick(ms = 250): void {
   const [, set] = useState(0);
   useEffect(() => {
@@ -65,6 +69,7 @@ export function CoasterHud() {
     return r.onMessage(VillageServerMsg.RideNotice, (m: RideNoticePayload) => {
       rideNotice.reason = m.reason;
       rideNotice.at = performance.now();
+      if (m.reason === "far") serverRefused(); // the server has me off the pad (fix/net-sync): bring my position back in step
       if (m.reason === "reserved") {
         // the ride I stand at: the nearest boarding pad
         let best = Infinity;
@@ -88,6 +93,8 @@ export function CoasterHud() {
   // a phone keeps the card small (it lies over the ground a thumb taps): the whole card folds to its title and status, and the other rides sit behind one row
   const [more, setMore] = useState(false);
   const [folded, setFolded] = useState(false);
+  /** When (performance.now) 비상 내리기 was pressed once: a second press within LEAVE_CONFIRM_MS gets off (0: not pressed). */
+  const [leaveArmedAt, setLeaveArmedAt] = useState(0);
   const riding = selfRide.slot >= 0;
   // the ride in question: the one I sit on, else the nearest whose boarding pad is within sight (the whole park: the nearest ride is always shown, with the way to it)
   const wall = villageClock.liveMs();
@@ -244,6 +251,8 @@ export function CoasterHud() {
       : now.status === "gate"
         ? `곧 출발해요 · ${secs}초`
         : "출발을 기다리는 중이에요";
+  const emergency = !aloft && !isWheel && now.status === "riding" && !(def?.key === "droptower" && dropAt(wall).stage === "rest");
+  const leaveArmed = leaveArmedAt > 0 && performance.now() - leaveArmedAt < LEAVE_CONFIRM_MS;
   return (
     <section className="cv-ride is-riding" data-testid="coaster-ride-hud" aria-label={`${def?.name ?? ""} 탑승 중`}>
       <header className="cv-ride-head">
@@ -275,8 +284,24 @@ export function CoasterHud() {
           {muted ? "소리 켜기" : "소리 끄기"}
         </button>
       </div>
-      <button type="button" data-testid="coaster-leave" disabled={aloft} className={"cv-ride-primary" + (aloft ? "" : " is-danger")} onClick={() => sendRideLeave()}>
-        {aloft ? "높이 떠 있어요" : isWheel ? "내리기" : now.status === "riding" && !(def?.key === "droptower" && dropAt(wall).stage === "rest") ? "비상 내리기" : "내리기"}
+      <button
+        type="button"
+        data-testid="coaster-leave"
+        data-armed={emergency && leaveArmed ? "1" : undefined}
+        disabled={aloft}
+        className={"cv-ride-primary" + (aloft ? "" : " is-danger") + (emergency && leaveArmed ? " is-armed" : "")}
+        onClick={() => {
+          // 비상 내리기 (the ride is moving) asks once more: a phone's thumb dragging the view brushes it easily (2026-11-22). The first
+          // press only arms it; a second within LEAVE_CONFIRM_MS gets off. A plain 내리기 (standing still) is one press, as before.
+          if (emergency && !leaveArmed) {
+            setLeaveArmedAt(performance.now());
+            return;
+          }
+          setLeaveArmedAt(0);
+          sendRideLeave();
+        }}
+      >
+        {aloft ? "높이 떠 있어요" : isWheel ? "내리기" : emergency ? (leaveArmed ? "한 번 더 누르면 내려요" : "비상 내리기") : "내리기"}
       </button>
     </section>
   );
