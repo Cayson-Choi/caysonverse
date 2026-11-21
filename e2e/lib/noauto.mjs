@@ -47,8 +47,37 @@ export async function walkPlanned(p, x, z, tol = 0.8) {
   return false;
 }
 
-/** A long walk (across the park, round a house's furniture): the detour search with wide limits, halving the way when it gives up. */
+/** Where the server has this player (its own, authoritative position), and how far that is from where the client stands. */
+export const serverPos = (p) =>
+  p.page.evaluate(async () => {
+    const r = (await window.__imp("/src/net/connection.ts")).getRoom();
+    const me = r?.state?.players?.get(r.sessionId);
+    const c = window.__cv.getPos();
+    return me ? { x: me.x, z: me.z, gap: Math.hypot(me.x - c.x, me.z - c.z) } : null;
+  });
+
+/**
+ * A long walk (across the park, round a house's furniture): the detour search with wide limits, halving the way when it gives up. If the
+ * server did not follow (see `inStep`: it is left standing somewhere along the way and takes no move from farther on), the walk goes back
+ * to where the server has the player and comes again, in two halves.
+ */
 export async function walkFar(p, x, z, tol = 1.5, depth = 0) {
+  const ok = await walkFarOnce(p, x, z, tol, depth);
+  if (depth > 0) return ok;
+  for (let round = 0; round < 2; round++) {
+    await sleep(400);
+    const sv = await serverPos(p);
+    if (!sv || sv.gap <= 1) return ok;
+    console.log(`      (server desync: the server has this player at ${sv.x.toFixed(2)}, ${sv.z.toFixed(2)}, ${sv.gap.toFixed(1)} m from where the client stands after a walk to ${x.toFixed(1)}, ${z.toFixed(1)}: walking back and again)`);
+    await walkFarOnce(p, sv.x, sv.z, 1.0, 2);
+    await sleep(800);
+    await walkFarOnce(p, (sv.x + x) / 2, (sv.z + z) / 2, 2, 2);
+    await sleep(400);
+    await walkFarOnce(p, x, z, tol, 1);
+  }
+  return ok;
+}
+async function walkFarOnce(p, x, z, tol = 1.5, depth = 0) {
   for (let i = 0; i < 3; i++) {
     await p.page.evaluate(async ([x, z]) => {
       const am = await window.__imp("/src/game/activeMap.ts");
@@ -67,8 +96,8 @@ export async function walkFar(p, x, z, tol = 1.5, depth = 0) {
   }
   const r = await pos(p);
   if (depth >= 3 || Math.hypot(r.x - x, r.z - z) < 4) return Math.hypot(r.x - x, r.z - z) <= tol;
-  await walkFar(p, (r.x + x) / 2, (r.z + z) / 2, 2, depth + 1);
-  return walkFar(p, x, z, tol, depth + 1);
+  await walkFarOnce(p, (r.x + x) / 2, (r.z + z) / 2, 2, depth + 1);
+  return walkFarOnce(p, x, z, tol, depth + 1);
 }
 
 /** Where the world point (x, y, z) shows on the screen now, or null when it is off it or behind the camera. */
@@ -104,16 +133,19 @@ export async function tapWorld(p, x, y, z) {
 
 /** Hold W for `ms` with the camera yaw tried each way round until "forward" is toward (tx, tz); returns the yaw that worked, or null. */
 export async function keysToward(p, tx, tz, yaws, ms) {
-  for (const yaw of yaws) {
+  // (the two given first, then the other two axis ways: a yaw that is off by a quarter turn still finds the door)
+  const all = [...yaws, ...yaws.map((y) => y + Math.PI / 2), ...yaws.map((y) => y - Math.PI / 2)];
+  for (const yaw of all) {
     await setView(p, yaw);
     await sleep(1500);
     const a = await pos(p);
     const d0 = Math.hypot(a.x - tx, a.z - tz);
     await p.page.keyboard.down("KeyW");
-    await sleep(500);
+    await sleep(700);
     await p.page.keyboard.up("KeyW");
+    await sleep(150);
     const b = await pos(p);
-    if (Math.hypot(b.x - tx, b.z - tz) < d0 - 0.15) {
+    if (Math.hypot(b.x - tx, b.z - tz) < d0 - 0.12) {
       await p.page.keyboard.down("KeyW");
       await sleep(ms);
       await p.page.keyboard.up("KeyW");
@@ -177,6 +209,36 @@ export async function tapDoor(p, points, yaw, done, pitches = [0.35, 0.12]) {
     }
   }
   return { ok: false, tries };
+}
+
+/**
+ * How far (m) the server's own position of this player is from where the client stands. On an overloaded machine (several browsers, the
+ * CPU at 100 %) the server now and then drops the last moves of a walk, and then drops a door / keypad / ride press made "at the pad" without
+ * a word (seen 2026-11-21: the phone at the park gate, the keypad of house 10). Not what these scripts test: `inStep` waits it out, and
+ * takes a step to send a fresh position if it does not close by itself.
+ */
+export const serverGap = (p) =>
+  p.page.evaluate(async () => {
+    const r = (await window.__imp("/src/net/connection.ts")).getRoom();
+    const me = r?.state?.players?.get(r.sessionId);
+    const c = window.__cv.getPos();
+    return me ? Math.hypot(me.x - c.x, me.z - c.z) : -1;
+  });
+export async function inStep(p, label = "") {
+  for (let i = 0; i < 6; i++) {
+    const gap = await serverGap(p);
+    if (gap >= 0 && gap <= 0.25) return gap;
+    if (i === 0) console.log(`      (the server has this player ${Math.round(gap * 100) / 100} m from where the client stands${label ? `: ${label}` : ""})`);
+    await sleep(800);
+    if (i >= 1) {
+      const at = await pos(p);
+      await walkTo(p, at.x + (i % 2 ? 0.5 : -0.5), at.z);
+      await sleep(900);
+      await walkTo(p, at.x, at.z);
+      await sleep(900);
+    }
+  }
+  return serverGap(p);
 }
 
 /** The usual end of a script: the totals, the failures again, the exit code. */

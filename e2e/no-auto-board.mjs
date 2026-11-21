@@ -16,7 +16,7 @@
 import { mkdirSync } from "node:fs";
 import { DESKTOP, PHONE, createRun, launchBrowser, openPlayer, pos, r2, sleep, targets, waitIdle, walkTo } from "./lib/common.mjs";
 import { act, joinVillage } from "./lib/village.mjs";
-import { arg, areaOf as area, canvasAt, faceWorld, finishRun, keysToward, pickInfo, setView, tapScreen, tapWorld, until, waitArea, walkFar, walkPlanned } from "./lib/noauto.mjs";
+import { arg, areaOf as area, canvasAt, faceWorld, finishRun, inStep, keysToward, pickInfo, setView, tapScreen, tapWorld, until, waitArea, walkFar, walkPlanned } from "./lib/noauto.mjs";
 
 const ONLY = arg("only", "pc,phone").split(",");
 const RIDES_ = arg("rides", "coaster,carousel,wheel,moonboat,droptower").split(",").filter((r) => r && r !== "none");
@@ -97,6 +97,7 @@ async function gate(p, tag) {
   await notIn(`standing at the gate ${IDLE_MS / 1000} s`);
   const t = await targets(p);
   run.check(`${L}: the 들어가기 button is offered at the gate`, t.some((x) => x.id === "park_door"), t);
+  await inStep(p, "before the gate's button");
   await act(p);
   const ok = await waitArea(p, "park", 60000);
   run.check(`${L}: the button goes into the park`, ok, await area(p));
@@ -131,6 +132,7 @@ async function gateOut(p, tag) {
   await walkPlanned(p, ex.x, ex.z, 1.0);
   await sleep(IDLE_MS);
   await notOut(`standing at the way out ${IDLE_MS / 1000} s`);
+  await inStep(p, "before the way out's button");
   await act(p);
   const ok = await waitArea(p, "village", 60000);
   run.check(`${L}: the 나가기 button leaves the park`, ok, await area(p));
@@ -229,6 +231,7 @@ async function oneRide(p, key, tag) {
     // the button says this ride's 타기 (the nearest target): press it
     const tt = await targets(p);
     if (!tt.some((x) => x.id === `ride_board:${key}`)) return false;
+    await inStep(p, "before the 타기 button");
     await act(p);
     return until(async () => (await rideState(p, key)).slot >= 0, 400000, 400);
   };
@@ -383,8 +386,10 @@ async function profile(tag, device) {
           await p.page.waitForFunction(() => document.querySelectorAll("[data-testid=park-loading]").length === 0, null, { timeout: 240000 }).catch(() => {});
           await sleep(3000);
         });
-      for (const k of RIDES_) await run.step(`${tag}: ${k}`, () => oneRide(p, k, tag));
-      if (GATE) await run.step(`${tag}: the park's way out`, () => gateOut(p, tag));
+      const inPark = (await area(p)) === "park";
+      if (RIDES_.length) run.check(`${tag}: in the park for the rides`, inPark, await area(p));
+      if (inPark) for (const k of RIDES_) await run.step(`${tag}: ${k}`, () => oneRide(p, k, tag));
+      if (GATE && inPark) await run.step(`${tag}: the park's way out`, () => gateOut(p, tag));
     }
     if (BUS && (await area(p)) === "village") await run.step(`${tag}: the bus`, () => bus(p, tag));
   } finally {

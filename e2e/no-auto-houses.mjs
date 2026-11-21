@@ -12,7 +12,7 @@
 import { mkdirSync } from "node:fs";
 import { DESKTOP, PHONE, createRun, launchBrowser, openPlayer, pos, press, sleep, targets, waitIdle, walkTo } from "./lib/common.mjs";
 import { act, joinVillage } from "./lib/village.mjs";
-import { arg, areaOf as area, finishRun, keysToward, pickInfo, setView, tapDoor, tapWorld, waitArea, walkFar, walkPlanned } from "./lib/noauto.mjs";
+import { arg, areaOf as area, finishRun, inStep, keysToward, pickInfo, setView, tapDoor, tapWorld, waitArea, walkFar, walkPlanned } from "./lib/noauto.mjs";
 
 const ONLY = arg("only", "pc,phone").split(",");
 const HOUSES = arg("houses", "1,2,3,4,5,6,7,8,9,10").split(",").map(Number);
@@ -50,14 +50,31 @@ async function oneHouse(p, n, tag, data) {
     run.check(`${L}: ${what} does NOT ${verb}`, a === want && !pad, detail ? { area: a, keypad: pad, pick: detail } : { area: a, keypad: pad });
     if (pad) await p.page.keyboard.press("Escape").catch(() => {});
   };
+  /** In by the keypad: the button opens it, the code is typed (each digit seen in the dots before the next), 확인. Twice at most. */
   const enter = async () => {
-    await walkPlanned(p, kp.pad.x, kp.pad.z, 0.9);
-    await sleep(400);
-    await act(p);
-    await p.page.locator(".cv-keypad").waitFor({ state: "visible", timeout: 10000 });
-    for (const c of "1004") await press(p, p.page.locator(`.cv-keypad button[data-key="${c}"]`));
-    await press(p, p.page.locator(`.cv-keypad button[data-key="ok"]`));
-    const ok = await waitArea(p, F1, 40000);
+    let ok = false;
+    for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+      await walkPlanned(p, kp.pad.x, kp.pad.z, 0.9);
+      await sleep(600);
+      await inStep(p, "before the keypad");
+      if (!(await keypadOpen(p))) await act(p);
+      await p.page.locator(".cv-keypad").waitFor({ state: "visible", timeout: 15000 });
+      const dots = () => p.page.evaluate(() => Number(document.querySelector(".cv-keypad-dots")?.getAttribute("data-length") ?? -1));
+      for (let k = 0; k < 4; k++) {
+        for (let t = 0; t < 4 && (await dots()) <= k; t++) {
+          await press(p, p.page.locator(`.cv-keypad button[data-key="${"1004"[k]}"]`));
+          await sleep(250);
+        }
+      }
+      await press(p, p.page.locator(`.cv-keypad button[data-key="ok"]`));
+      ok = await waitArea(p, F1, 40000);
+      if (!ok) {
+        const why = await p.page.evaluate(() => { const r = document.querySelector(".cv-keypad-result"); return r ? `${r.getAttribute("data-reason")} | ${r.textContent}` : "(the keypad is gone)"; });
+        console.log(`      (the keypad did not let us in: ${why}; at ${JSON.stringify(await pos(p))})`);
+        await p.page.locator(".cv-keypad-close").click({ timeout: 3000 }).catch(() => {});
+        await sleep(6000);
+      }
+    }
     await coverGone(p);
     await sleep(1500);
     return ok;
@@ -104,7 +121,9 @@ async function oneHouse(p, n, tag, data) {
   await notIn(`standing at the front door ${IDLE_MS / 1000} s`);
   const t0 = await targets(p);
   run.check(`${L}: the keypad button is offered at the door`, t0.some((x) => x.id === `keypad:house_${n}`), t0);
-  run.check(`${L}: the button and the code go in`, await enter(), await area(p));
+  const cameIn = await enter();
+  run.check(`${L}: the button and the code go in`, cameIn, await area(p));
+  if (!cameIn) return;
 
   // ── floor 1 ──
   const notOut = stay(F1, "leave or climb");

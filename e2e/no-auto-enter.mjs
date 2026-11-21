@@ -20,7 +20,7 @@
 import { mkdirSync } from "node:fs";
 import { DESKTOP, PHONE, createRun, launchBrowser, openPlayer, pos, r2, sleep, targets, waitIdle, walkAndWait, walkTo } from "./lib/common.mjs";
 import { DOOR_ROUTE, act, joinVillage } from "./lib/village.mjs";
-import { arg, areaOf as area, finishRun, keysToward, pickInfo, setView, tapDoor, tapWorld, waitArea, walkPlanned } from "./lib/noauto.mjs";
+import { arg, areaOf as area, finishRun, inStep, keysToward, pickInfo, setView, tapDoor, tapWorld, waitArea, walkPlanned } from "./lib/noauto.mjs";
 
 const ONLY = arg("only", "pc,phone").split(",");
 const ROOMS = arg("rooms", "lot_school_class,lot_library_reading,lot_chapel_nave,lot_church_nave,lot_temple_hall,lot_cafe_room").split(",").filter((r) => r && r !== "none");
@@ -150,7 +150,9 @@ async function oneRoom(p, unit, tag) {
     }
   }
   // 4. idle at the door
-  await walkPlanned(p, pad.x, pad.z, 0.8);
+  const atPad = await walkPlanned(p, pad.x, pad.z, 0.6);
+  const padAt = await pos(p);
+  run.check(`${L}: stood at the door (${r2(Math.hypot(padAt.x - pad.x, padAt.z - pad.z))} m from its pad)`, atPad, padAt);
   await sleep(IDLE_MS);
   await notIn(`standing at the door ${IDLE_MS / 1000} s`);
   await backOut();
@@ -158,6 +160,7 @@ async function oneRoom(p, unit, tag) {
   await walkPlanned(p, pad.x, pad.z, 0.8);
   const t2 = await targets(p);
   run.check(`${L}: the button is offered at the pad`, t2.some((x) => x.id === `lotenter:${info.door}`), t2);
+  await inStep(p, "before the door's button");
   await act(p);
   const inside = await waitArea(p, info.area, 120000);
   run.check(`${L}: the button goes in`, inside, await area(p));
@@ -197,13 +200,16 @@ async function oneRoom(p, unit, tag) {
     }
   }
   const ex = inAt(0.7);
-  await walkPlanned(p, ex.x, ex.z, 0.8);
+  const atEx = await walkPlanned(p, ex.x, ex.z, 0.6);
+  const exAt = await pos(p);
+  run.check(`${L}: stood at the inner door (${r2(Math.hypot(exAt.x - ex.x, exAt.z - ex.z))} m from its pad)`, atEx, exAt);
   await sleep(IDLE_MS);
   await notOut(`standing at the inner door ${IDLE_MS / 1000} s`);
   await backIn();
-  await walkPlanned(p, ex.x, ex.z, 0.8);
+  await walkPlanned(p, ex.x, ex.z, 0.5);
+  await sleep(500);
   const t3 = await targets(p);
-  run.check(`${L}: the exit button is offered at the inner door`, t3.some((x) => x.id.startsWith("lotexit:")), t3);
+  run.check(`${L}: the exit button is offered at the inner door`, t3.some((x) => x.id.startsWith("lotexit:")), { targets: t3, me: await pos(p), pad: ex });
   if (NEG_ONLY) {
     await act(p);
     await waitArea(p, "village", 60000);
@@ -232,16 +238,19 @@ async function oneRoom(p, unit, tag) {
   if (await walkPlanned(p, farOut.x, farOut.z, 2)) {
     await setView(p, yawKey ?? info.yaw, 0.2);
     await sleep(2500);
-    if (await tapWorld(p, info.centre.x, 0.9, info.centre.z)) {
+    const me0 = await pos(p);
+    const d0 = Math.hypot(me0.x - pad.x, me0.z - pad.z);
+    // (only from past the 12 m of a tap's use: a walk that stopped short of the far spot is a near tap, which goes in)
+    if (d0 > 12.6 && (await tapWorld(p, info.centre.x, 0.9, info.centre.z))) {
       const pk = await pickInfo(p);
       await sleep(1500);
       await waitIdle(p, 30000);
       await sleep(4000);
       const a = await area(p);
       const me = await pos(p);
-      run.check(`${L}: a tap on the door from 16 m away does NOT go in (it walks there: ${r2(Math.hypot(me.x - pad.x, me.z - pad.z))} m from the pad)`, a === "village", { area: a, pick: pk });
+      run.check(`${L}: a tap on the door from ${r2(d0)} m away does NOT go in (it walks there: ${r2(Math.hypot(me.x - pad.x, me.z - pad.z))} m from the pad)`, a === "village", { area: a, from: me0, pick: pk });
       await backOut();
-    }
+    } else console.log(`      (the far tap was not made: stood ${r2(d0)} m from the pad)`);
   }
   // a tap on the outer door from near goes in again
   let inBy = { ok: false, tries: [] };
@@ -262,6 +271,7 @@ async function oneRoom(p, unit, tag) {
   const ex2 = inAt(0.7);
   await walkPlanned(p, ex2.x, ex2.z, 0.9);
   await sleep(600);
+  await inStep(p, "before the exit button");
   await act(p);
   const out2 = await waitArea(p, "village", 90000);
   run.check(`${L}: the exit button leaves`, out2, await area(p));
