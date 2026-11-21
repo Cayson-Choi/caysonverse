@@ -7,7 +7,8 @@ import { DRACO_PATH } from "../../game/hub/hubModelPrep";
 import { dayNight } from "../dayNightDriver";
 import { hallNightReady, hallNightUniform, hallNightWeight, loadHallNight } from "../hallNight";
 import { MEMORIAL_LIGHTMAP_URLS, MEMORIAL_MODEL_URL, disposeMemorial, prepareMemorial } from "../memorialModelPrep";
-import { holdMemorialFiles, noteMemorialRequested } from "../memorialRelease";
+import { holdMemorialFiles, noteMemorialRequested, setMemorialTier } from "../memorialRelease";
+import { SAMPLE_PHOTO_ATLAS } from "../sampleCubbies";
 import { localArea } from "../villageArea";
 import { applyClearGlassDayNight, clearGlassMaterial, memorialCardHide, showcaseRooms, type ClearGlass } from "./clearGlass";
 import { isHallGlass } from "../hallGlass";
@@ -37,7 +38,10 @@ function HallRoom({ onShown }: { onShown: (on: boolean) => void }) {
   noteMemorialRequested();
   const tier = useQualityTier();
   const hall = useGLTF(MEMORIAL_MODEL_URL, DRACO_PATH);
-  const lightmap = useTexture(MEMORIAL_LIGHTMAP_URLS[tier]);
+  // read exactly as the hall reads them (one cache entry: the light map with the portrait atlas), so the hall's release clears and frees
+  // the same entry — a light map read alone would be freed with the pair yet stay cached, and the next look would upload a freed image
+  setMemorialTier(tier);
+  const [lightmap] = useTexture([MEMORIAL_LIGHTMAP_URLS[tier], SAMPLE_PHOTO_ATLAS.url]);
   // held from the first render (a release pending from the hall's own exit is cancelled before anything frees the files); let go on
   // unmount unless the player is walking INTO the hall, whose own hold takes the files over (memorialRelease keeps one flag, not a count)
   const [release] = useState(() => holdMemorialFiles());

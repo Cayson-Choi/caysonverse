@@ -47,12 +47,15 @@ function HouseRooms({ n, onShown }: { n: HouseNumber; onShown: (n: HouseNumber |
   const gltf = useGLTF(urls.glb, DRACO_PATH);
   const [day, setDay] = useState<Texture | null>(null);
   const wantsLightmap = useMemo(() => houseWantsLightmap(gltf.scene), [gltf]);
-  // held from the first render; let go on unmount unless the player is walking INTO this house, whose own hold takes the files over
-  // (houseRelease keeps a set of held houses, not a count: our release would let the inside's files go)
-  const [release] = useState(() => holdHouseFiles(n));
-  useEffect(() => () => {
-    if (!localArea().startsWith(`house:house_${n}:`)) release();
-  }, [release, n]);
+  // held once drawn (an effect: holding frees every other house at once, and the house drawn before must be gone first); let go on
+  // unmount unless the player is walking INTO this house, whose own hold takes the files over (houseRelease keeps a set of held
+  // houses, not a count: our release would let the inside's files go)
+  useEffect(() => {
+    const release = holdHouseFiles(n);
+    return () => {
+      if (!localArea().startsWith(`house:house_${n}:`)) release();
+    };
+  }, [n]);
   useEffect(() => {
     if (!wantsLightmap) return;
     let live = true;
