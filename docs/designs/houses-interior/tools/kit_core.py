@@ -364,15 +364,25 @@ def gface(F, pts, m, grain=(1, 0, 0), tile=1.0, hint=None, uv=None, tn=None, smo
         uvs = list(uv)
     elif grain is not None:
         gv = Vector(V(*F.d(*grain)) - V(0, 0, 0)).normalized()
-        n = (V(*g[1]) - V(*g[0])).cross(V(*g[2]) - V(*g[1]))
-        if n.length < 1e-12 and len(g) > 3:
-            n = (V(*g[2]) - V(*g[1])).cross(V(*g[3]) - V(*g[2]))
+        # houses-real pass (owner 2026-11-21: smeared fabric on cushion and arm edges): the face normal by Newell's method over ALL the
+        # points. The old normal came from the first three points; on the n-gons a subdivided top leaves next to a bevel those three are
+        # often collinear, the near-zero cross product gave a random normal and the projection axes collapsed (the texture smeared).
+        pv = [V(*q) for q in g]
+        n = Vector((0.0, 0.0, 0.0))
+        for i in range(len(pv)):
+            a, b = pv[i], pv[(i + 1) % len(pv)]
+            n.x += (a.y - b.y) * (a.z + b.z)
+            n.y += (a.z - b.z) * (a.x + b.x)
+            n.z += (a.x - b.x) * (a.y + b.y)
+        if n.length < 1e-12:
+            n = Vector((0.0, 0.0, 1.0))
         n.normalize()
         g2 = n.cross(gv)
         if g2.length < 0.35:          # grain (nearly) along the normal: pick a stable in-plane axis
             gv = Vector((1, 0, 0)) if abs(n.x) < 0.9 else Vector((0, 1, 0))
             g2 = n.cross(gv)
         g2.normalize()
+        gv = g2.cross(n).normalized()     # houses-real: the grain axis laid INTO the face plane (true scale on slanted bevels, no squash)
         uvs = [(V(*q).dot(gv) / tile, V(*q).dot(g2) / tile) for q in g]
     else:
         uvs = None

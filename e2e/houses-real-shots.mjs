@@ -105,6 +105,7 @@ const places = await page.evaluate(async () => (await window.__imp("/shared/src/
 for (const n of houses) {
   const kp = keypads.find((k) => k.buildingId === `house_${n}`);
   await goto(kp.pad.x, kp.pad.z, 0.9);
+  await goto(kp.pad.x, kp.pad.z, 0.3); // a long walk can stop just out of the keypad's reach
   await act();
   await page.locator(".cv-keypad").waitFor({ state: "visible", timeout: 8000 });
   for (const c of "1004") await press(p, page.locator(`.cv-keypad button[data-key="${c}"]`));

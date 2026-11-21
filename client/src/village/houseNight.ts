@@ -45,7 +45,7 @@ const DRAPE_TEXEL_TO = TEXEL_TO.replace("* uHouseNight, 1.0 );", "* uHouseNight,
 const FIRE_LIGHT = /* glsl */ `
 	float houseFireD = length( vHouseFireW - uHouseFire.xyz );
 	float houseFireK = uHouseFire.w * pow( max( 0.0, 1.0 - houseFireD / 2.6 ), 2.2 );
-	lightMapTexel.rgb += vec3( 1.0, 0.5, 0.18 ) * houseFireK * 0.55;`;
+	lightMapTexel.rgb += vec3( 1.0, 0.5, 0.18 ) * houseFireK * 0.4;`;
 
 const FIRE_WORLD = /* glsl */ `#include <project_vertex>
 	vec4 houseFireP = vec4( transformed, 1.0 );

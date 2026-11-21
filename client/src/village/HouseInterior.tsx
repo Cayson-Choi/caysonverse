@@ -207,7 +207,11 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
   }, [gltf, n, floor, day]);
   useEffect(() => () => disposeHouse(nodes), [nodes]);
   useEffect(() => {
-    for (const m of nodes.lightmapped) patchHouseLightmapMaterial(m);
+    for (const m of nodes.lightmapped) {
+      patchHouseLightmapMaterial(m);
+      // houses-real pass: the firebox lining a shade deeper than its bake, so the flames read against it by day (the brick is new, not sooty)
+      if (m.name.endsWith("firebrick")) (m as MeshBasicMaterial).color.setScalar(0.74);
+    }
     for (const m of nodes.glows) patchHouseGlowMaterial(m);
   }, [nodes]);
   // The mirrors draw the real room live while they are on screen and near (houseMirror.ts HouseMirrorRig).
