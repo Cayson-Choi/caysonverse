@@ -215,7 +215,8 @@ async function oneRide(p, key, tag) {
       await sleep(1500);
     }
   }
-  run.check(`${L}: the screen grid over the ride was tapped (${grid} points)`, grid >= 4, grid);
+  // (a phone's ride card and buttons lie over part of the grid: fewer of its points are the view's)
+  run.check(`${L}: the screen grid over the ride was tapped (${grid} points)`, grid >= (p.touch ? 2 : 4), grid);
   // 3. standing at the pad idle
   await walkFar(p, d.pad.x, d.pad.z, 1.5);
   await sleep(IDLE_MS);
