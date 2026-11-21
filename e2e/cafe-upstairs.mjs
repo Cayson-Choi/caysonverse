@@ -295,9 +295,20 @@ try {
       // B: a tap on the stairwell's balustrade
       if ((await inArea(B)) === UP) {
         await walkAndWait(B, ...at(U, 3.6, 3.0), 40000, 0.7);
-        await orbit(B, -Math.PI * 0.75, 0.45);
-        await sleep(2200);
-        const tap = await tapWorld(B, U.origin.x + 2.45, 0.95, U.origin.z + 5.5);
+        // the balustrade's rail over the stairwell: turn the view until it is on the screen, then a real tap on it
+        let tap = { ok: false };
+        for (let k = 0; k < 8 && !tap.ok; k++) {
+          await orbit(B, (k * Math.PI) / 4, 0.45);
+          await sleep(1800);
+          const s = await B.page.evaluate(async ([x, y, z]) => {
+            const THREE = await window.__imp("/deps/three.js");
+            const { camera } = window.__cvThree();
+            camera.updateMatrixWorld();
+            const v = new THREE.Vector3(x, y, z).project(camera);
+            return Math.abs(v.x) < 0.8 && Math.abs(v.y) < 0.8 && v.z < 1;
+          }, [U.origin.x + 2.48, 0.95, U.origin.z + 5.5]);
+          if (s) tap = await tapWorld(B, U.origin.x + 2.48, 0.95, U.origin.z + 5.5);
+        }
         run.check("the balustrade is on B's screen (a real tap)", tap.ok, tap.s);
         run.check("a tap on the stairwell: B walks to it and goes down", await waitArea(B, GROUND, 90000), await inArea(B));
       }

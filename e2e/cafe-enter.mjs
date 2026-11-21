@@ -180,7 +180,7 @@ try {
   const O = info.origin;
   const at = (x, z) => [O.x + x, O.z + z];
   // B steps away from the door (an avatar in front of the door takes the click: it is a body, not a door)
-  if ((await inArea(B)) === ROOM_AREA) await walkAndWait(B, ...at(5.0, 5.8), 60000, 0.8);
+  if ((await inArea(B)) === ROOM_AREA) await walkAndWait(B, ...at(9.0, 6.65), 60000, 0.8); // (behind the counter, the barista's aisle: out of every walk)
   if (ONLY.includes("walk")) {
     await run.step("3. walk round every area, click-to-move to the far corner, nothing walked through", async () => {
       const spots = {
@@ -398,7 +398,7 @@ try {
         await sleep(3500);
         for (const [n, a, b] of views) await photo(A, a, b, `${label}-${n}`);
         const w = await A.page.evaluate(() => window.__cvLotRoom());
-        run.check(`${label}: the windows show the village (the baked view is on the glass)`, !!w?.glass, w?.glass);
+        run.check(`${label}: the windows show the village (the baked view is on the glass)`, (w?.screens ?? 0) >= 1, w?.screens);
       }
       await setTime(NOON);
       await sleep(1500);

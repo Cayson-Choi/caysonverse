@@ -218,8 +218,8 @@ def stair(kit, yb, enclose_under=True, ceiling=None):
         y = yl + (k + 1) * r
         for q in ((0.25, ), (0.75, )) if not PHONE else ((0.5, ),):
             zz = z1 - t * q[0]
-            if ceiling is not None and y + 0.9 > ceiling and yb == 0:
-                continue
+            if y + 0.86 > yb + STOREY - 0.02:
+                continue  # (the top of flight B: the upper floor's own balustrade stands there; these would poke up through the opening)
             D.lathe([(bal * 0.5, 0.0), (bal * 0.5, 0.06), (bal * 0.65, 0.09), (bal * 0.4, 0.2), (bal * 0.35, 0.65), (bal * 0.55, 0.78), (bal * 0.5, 0.84), (bal * 0.5, 0.86)], C.seg(8, 5), C.PAINT, xo - 0.02, zz, y)
     rail = []
     for k in range(11):
@@ -274,14 +274,16 @@ def ground(kit, spec):
     f = W["door"]
     for (a, b) in ((5.62, 6.79), (6.81, 7.98)):
         # each leaf a frame of stiles and rails round its glass (the village through it), a kick plate below
+        # (the leaves hang just on the room's side of the wall line, as the old room's did: a tap on the door is picked on them — the game's pick
+        # only meets what stands inside the room's rectangle)
         for (ua, ub, va, vb) in ((a, a + 0.1, 0.0, 2.92), (b - 0.1, b, 0.0, 2.92), (a + 0.1, b - 0.1, 0.0, 0.3), (a + 0.1, b - 0.1, 2.75, 2.92)):
-            f.box(D, ua, ub, va, vb, -0.07, -0.02, C.DARK, c=0.006 if not PHONE else 0.0)
-        f.quad(S_, a + 0.1, b - 0.1, 0.3, 2.75, -0.045, C.GARDEN)
-        f.box(D, a + 0.1, b - 0.1, 0.12, 0.3, -0.02, -0.012, C.BRASS)
+            f.box(D, ua, ub, va, vb, 0.02, 0.07, C.DARK, c=0.006 if not PHONE else 0.0)
+        f.quad(S_, a + 0.1, b - 0.1, 0.3, 2.75, 0.045, C.GARDEN)
+        f.box(D, a + 0.1, b - 0.1, 0.12, 0.3, 0.07, 0.078, C.BRASS)
         hx = b - 0.12 if a < 6.8 else a + 0.12
-        D.tube([f.p(hx, 0.95, 0.06), f.p(hx, 1.45, 0.06)], 0.014, 8, C.BRASS)
+        D.tube([f.p(hx, 0.95, 0.15), f.p(hx, 1.45, 0.15)], 0.014, 8, C.BRASS)
         for v in (0.95, 1.45):
-            D.tube([f.p(hx, v, -0.02), f.p(hx, v, 0.06)], 0.008, 6, C.BRASS)
+            D.tube([f.p(hx, v, 0.07), f.p(hx, v, 0.15)], 0.008, 6, C.BRASS)
     f.box(D, 5.45, 5.6, 0.0, 3.15, 0.0, 0.05, C.OAK_DK, skip=("-w",))
     f.box(D, 8.0, 8.15, 0.0, 3.15, 0.0, 0.05, C.OAK_DK, skip=("-w",))
     f.box(D, 5.45, 8.15, 3.0, 3.15, 0.0, 0.05, C.OAK_DK, skip=("-w",))

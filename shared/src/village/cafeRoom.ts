@@ -20,6 +20,8 @@ export const CAFE_CENTRE_XZ = Object.freeze({ x: 50.6, z: -15.1 });
 
 /** The café room's area id (a lot room: `lot:<unit>`). Emoji go through in it, as in the village and the memorial hall. */
 export const CAFE_ROOM_AREA = "lot:lot_cafe_room";
+/** The salon upstairs (2026-11-21): emoji go through there too, as in the café below. */
+export const CAFE_UP_AREA = "lot:lot_cafe_upstairs";
 
 /** The modelled room (local metres): the inner wall faces, the kitchen partition at the back and the ceiling. */
 export const CAFE_ROOM_LOCAL = Object.freeze({ x0: -6.8, x1: 6.8, zBack: -4.1, zFront: 3.7, ceil: 4.3 });
@@ -206,8 +208,8 @@ export const CAFE_UP_TABLES: readonly { x: number; z: number; chairs: readonly n
   { x: 6.4, z: 5.0, chairs: [-PI / 2, PI / 2] },
   { x: 8.8, z: 7.6, chairs: [-PI / 2, PI / 2] },
   { x: 5.6, z: 9.4, chairs: [-PI / 2, PI / 2] },
-  { x: 11.95, z: 3.9, chairs: [PI] }, // the sofa's two tables: a chair on the room side, the sofa on the wall side
-  { x: 11.95, z: 6.0, chairs: [PI] },
+  { x: 11.55, z: 3.9, chairs: [PI] }, // the sofa's two tables: a chair on the room side, the sofa on the wall side
+  { x: 11.55, z: 6.0, chairs: [PI] },
 ]);
 /** The velvet sofa along the right wall (room x 13.0..13.6), facing into the room (-x): three places. */
 export const CAFE_UP_SOFA = Object.freeze({ x0: 13.0, x1: 13.6, z0: 3.0, z1: 6.9 });

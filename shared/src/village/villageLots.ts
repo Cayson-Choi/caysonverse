@@ -685,7 +685,7 @@ export const CAFE_LOT: VillageLot = {
     {
       // the upstairs salon (owner 2026-11-21): reached by the café's stair only (its spec has no way out; the door is the café's)
       id: "lot_cafe_upstairs", name: "카페 2층", sign: "카페", x0: -7.1, x1: 7.1, door: "lot_cafe_main",
-      interior: interior("lot_cafe_upstairs", { x: 590, z: 40 }, { x: CAFE_UP_SIZE.x, z: CAFE_UP_SIZE.z }, CAFE_UP_CEIL, 1),
+      interior: interior("lot_cafe_upstairs", { x: 560, z: 60 }, { x: CAFE_UP_SIZE.x, z: CAFE_UP_SIZE.z }, CAFE_UP_CEIL, 1),
     },
   ],
   colliders: [],

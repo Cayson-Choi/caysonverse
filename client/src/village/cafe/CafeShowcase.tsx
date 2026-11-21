@@ -80,8 +80,8 @@ const up = (c: number) => [c - 0.8, c + 0.8] as const;
 export const CAFE_OPENINGS: readonly Opening[] = Object.freeze([
   { wall: "front", a: -5.25, b: -1.85, y0: 0.45, y1: 3.35, d: 0.15 },
   { wall: "front", a: 1.85, b: 5.25, y0: 0.45, y1: 3.35, d: 0.15 },
-  { wall: "front", a: -1.08, b: -0.11, y0: 0.3, y1: 2.75, d: 0.045 },
-  { wall: "front", a: 0.11, b: 1.08, y0: 0.3, y1: 2.75, d: 0.045 },
+  { wall: "front", a: -1.08, b: -0.11, y0: 0.3, y1: 2.75, d: -0.045 },
+  { wall: "front", a: 0.11, b: 1.08, y0: 0.3, y1: 2.75, d: -0.045 },
   ...(["left", "right"] as const).flatMap((wall) => [
     { wall, a: -4.0, b: -1.6, y0: 0.9, y1: 2.7, d: 0.15 },
     { wall, a: 0.2, b: 2.6, y0: 0.9, y1: 2.7, d: 0.15 },
@@ -425,7 +425,7 @@ export function CafeShowcase({ root }: { root: Object3D }) {
     const mesh = new Mesh(facadeGlassGeometry(), mat);
     mesh.name = "cafe_facade_glass";
     mesh.renderOrder = 4;
-    mesh.raycast = () => {};
+    // (pickable, as village.glb's glass was: a tap on the door's glass is a tap on the door, lotDoorTap.ts)
     return { mesh, mat };
   }, []);
   const kitchen = useMemo(() => {
