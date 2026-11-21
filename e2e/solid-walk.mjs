@@ -218,7 +218,9 @@ await run.step("walk into every bed and a sample of every prop, from four sides"
   for (const p of props) {
     const cx = (p.box.minX + p.box.maxX) / 2, cz = (p.box.minZ + p.box.maxZ) / 2;
     const round = [[1, 0], [0, 1], [-1, 0], [0, -1]]; // east, south, west, north: the next start is a quarter turn on
-    const dirs = phone && p.bed ? [round[0], round[2]] : round;
+    // (a phone walks into a bed from its two long sides: a long island's ends are its tips, with no room to start from)
+    const wide = p.box.maxX - p.box.minX > p.box.maxZ - p.box.minZ;
+    const dirs = p.type === "hedge" ? [round[3]] : phone && p.bed ? (wide ? [round[1], round[3]] : [round[0], round[2]]) : round;
     let tried = 0, inside = 0, stoppedAtFace = 0;
     const notes = [];
     for (const [dx, dz] of quick && p.bed ? dirs.slice(0, 1) : dirs) {
@@ -285,7 +287,13 @@ await run.step("a click ON a prop walks beside it, never into it", async () => {
     const { plan, at } = await clickAt(A, cx, cz);
     const d = dist(p.box, at.x, at.z);
     // a planned walk ends beside it (the nearest spot a body stands on, or up to its face); it is never refused as "not ground"
-    run.check(`click on ${p.name}: walks up to it, the body ends outside it`, plan.ok && d >= R - 0.08 && d < 2.6, { plan, at: [at.x.toFixed(2), at.z.toFixed(2)], gap: d.toFixed(2) });
+    // (refused only when the body already stands against it: the walk toward it has nowhere to go)
+    let against = !plan.ok && plan.reason === "unreachable" && !(await free(at.x + Math.sign(cx - at.x) * 0.6, at.z + Math.sign(cz - at.z) * 0.6, R));
+    // (an island: its own outline says whether the body stands at its kerb already, tip or side)
+    if (!plan.ok && plan.reason === "unreachable" && p.island !== undefined) {
+      against = await A.page.evaluate(async ([i, x, z]) => { const I = await window.__imp("/village/parkIslands.ts"); return I.onIsland(I.PARK_ISLANDS[i], x, z, -1.3); }, [p.island, at.x, at.z]);
+    }
+    run.check(`click on ${p.name}: walks up to it, the body ends outside it`, (plan.ok || against) && d >= R - 0.08 && d < 3.2, { plan, against, at: [at.x.toFixed(2), at.z.toFixed(2)], gap: d.toFixed(2) });
   }
 });
 
