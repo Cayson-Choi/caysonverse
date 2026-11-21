@@ -149,8 +149,13 @@ const boatPhoto = async (p, name, aheadMs = 400) => {
 const b = await launchBrowser();
 const R = await openPlayer(b, run, { tag: phone ? "R-phone" : "R-pc", device: phone ? PHONE : DESKTOP });
 await run.step("join", async () => {
-  await joinLand(R, "Vw");
-  run.check("in the park", await enterPark(R));
+  // (an overloaded machine: a visitor whose first steps the server refused cannot use the gate's door: join again, at most twice)
+  let inPark = false;
+  for (let attempt = 0; attempt < 3 && !inPark; attempt++) {
+    await joinLand(R, "Vw");
+    inPark = await enterPark(R);
+  }
+  run.check("in the park", inPark);
 });
 
 if (only !== "moon")

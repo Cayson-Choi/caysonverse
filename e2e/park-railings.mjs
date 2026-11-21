@@ -10,7 +10,7 @@
  *     through the open end and arrives, again without one step across.
  *  3. 타기: from the lawn beside each ride, off the entrance's axis, presses the ride card's 타기 button: the walk reaches the boarding pad between
  *     the fences (nothing in the way of the real entrance) and the rider is seated (or the seat held until the ride loads) and can get off.
- *   CV_CLIENT_URL=http://localhost:5661 CV_E2E_SLOW=6 node e2e/park-railings.mjs [--phone] [--out=<folder>] [--shots] [--skip-board]
+ *   CV_CLIENT_URL=http://localhost:5661 CV_E2E_SLOW=6 node e2e/park-railings.mjs [--phone] [--out=<folder>] [--shots] [--skip-board | --only-board]
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -20,6 +20,7 @@ import { act } from "./lib/village.mjs";
 const phone = process.argv.includes("--phone");
 const shots = process.argv.includes("--shots");
 const skipBoard = process.argv.includes("--skip-board");
+const onlyBoard = process.argv.includes("--only-board");
 const outArg = process.argv.find((a) => a.startsWith("--out="));
 const run = createRun(`park-railings-${phone ? "phone" : "pc"}`);
 if (outArg) run.evidence = outArg.slice("--out=".length);
@@ -198,8 +199,14 @@ const report = [];
 let rideBoxes = [];
 let allBoxes = [];
 await run.step("join", async () => {
-  await joinLand(P, "Ra");
-  run.check("enters the park", await enterPark(P), { area: await areaOf(P) });
+  // on an overloaded machine a visitor's first steps can be refused by the server: the page then stays out of step with it and the gate's door does
+  // nothing. That is not what this script measures: such a visitor joins again (at most twice)
+  let inPark = false;
+  for (let attempt = 0; attempt < 3 && !inPark; attempt++) {
+    await joinLand(P, "Ra");
+    inPark = await enterPark(P);
+  }
+  run.check("enters the park", inPark, { area: await areaOf(P) });
   await sleep(2500);
   rideBoxes = await P.page.evaluate(async () => (await window.__imp("/village/parkRideSolids.ts")).parkRideSolids().map((b) => ({ ...b })));
   allBoxes = await P.page.evaluate(async () => (await window.__imp("/village/parkArea.ts")).PARK_SOLIDS.map((b) => ({ ...b })));
@@ -232,7 +239,7 @@ async function recorded(to, straight) {
 }
 
 await run.step("push: a straight walk into every barrier", async () => {
-  for (const [name, from, to, kind] of CASES) {
+  for (const [name, from, to, kind] of onlyBoard ? [] : CASES) {
     for (const dir of kind === "two" ? [0, 1] : [0]) {
       const a = dir === 0 ? from : to;
       const z = dir === 0 ? to : from;
@@ -249,7 +256,7 @@ await run.step("push: a straight walk into every barrier", async () => {
 });
 
 await run.step("click: a tap on the far side goes round, never through", async () => {
-  for (const [name, from, to, kind] of CASES) {
+  for (const [name, from, to, kind] of onlyBoard ? [] : CASES) {
     if (kind !== "two") continue;
     for (const dir of [0, 1]) {
       const a = dir === 0 ? from : to;
@@ -289,8 +296,9 @@ if (!skipBoard)
       const crossed = [];
       const walked = [trail[0] ?? [at.x, at.z]];
       for (let i = 1; i < trail.length; i++) {
-        // the moment of boarding the body is lifted from the pad into the seat: that jump is not a walk
-        if (Math.hypot(trail[i][0] - trail[i - 1][0], trail[i][1] - trail[i - 1][1]) > 1.5) break;
+        // the moment of boarding the body is lifted from the pad into the seat: that jump is not a walk (4 m: a slow phone's long frame is a step of a
+        // metre or two and still part of the walk, checked like any other step)
+        if (Math.hypot(trail[i][0] - trail[i - 1][0], trail[i][1] - trail[i - 1][1]) > 4) break;
         walked.push(trail[i]);
         for (const box of rideBoxes) if (crosses(trail[i - 1], trail[i], box)) crossed.push({ at: trail[i].map(r2), box });
       }
