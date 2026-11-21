@@ -77,7 +77,7 @@ const W = (lx, y, lz) => [C.x - lz, y, C.z + lx];
 
 try {
   await joinVillage(P, `kafeShot${tag}`, T.day);
-  await hideHud(P);
+  if (!phone) await hideHud(P); // (the phone keeps its touch buttons: act() presses the visible one)
   const d = await shared(P, `const r = L.lotRoomOf("lot:lot_cafe_room"); return L.lotDoorPoint(r.lot, r.door);`);
   for (const [x, z] of [[20, -8], [36, -12], [40.5, -15.1]]) await walkAndWait(P, x, z, 80000, 1.3);
   await sleep(6000);

@@ -187,7 +187,7 @@ export const CAFE_IN: LotInteriorSpec = {
   ],
   seats: [...chairSeats, ...stoolSeats, banquetteSeat],
   stair: { pad: { x: 0.6, z: 3.3, radius: 0.5 }, faces: "in", to: "lot_cafe_upstairs", arrival: { x: 0.65, z: 2.6, faces: "right" } },
-  budget: { pc: { triangles: 120_000, textureMB: 48, draws: 40 }, phone: { triangles: 48_000, textureMB: 14, draws: 30 } },
+  budget: { pc: { triangles: 120_000, textureMB: 64, draws: 40 }, phone: { triangles: 48_000, textureMB: 16, draws: 30 } }, // (measured 2026-11-21: PC 110k / 28 draws / ~53 MB, phone 41k / ~15 MB)
   program: ["참나무 바닥·회벽·징두리 판벽", "노출 참나무 들보·펜던트 등", "카운터(에스프레소 머신·그라인더·유리 진열장의 크루아상·타르트·케이크)와 뒤 선반", "대리석 비스트로 테이블·벤트우드 의자 10(앉기)", "카운터 스툴 3(앉기)", "켈쉬 체크 벤치 3자리(앉기)", "2층으로 가는 참나무 계단(올라가기)", "창밖은 실제 마을(낮·저녁·밤)", "칠판 메뉴·법랑 간판·액자·화분"],
 };
 
@@ -253,6 +253,6 @@ export const CAFE_UP: LotInteriorSpec = {
   ],
   seats: [...upChairSeats, upSofa, ...upArm],
   stair: { pad: { x: 1.8, z: 3.35, radius: 0.5 }, faces: "in", to: "lot_cafe_room", arrival: { x: 1.8, z: 2.65, faces: "right" } },
-  budget: { pc: { triangles: 110_000, textureMB: 48, draws: 40 }, phone: { triangles: 45_000, textureMB: 14, draws: 30 } },
+  budget: { pc: { triangles: 110_000, textureMB: 64, draws: 40 }, phone: { triangles: 45_000, textureMB: 16, draws: 30 } }, // (measured: PC 62k / 25 draws / ~61 MB, phone 29k / ~15 MB)
   program: ["2층 살롱: 사방의 창(앞 4·옆 4+4·뒤 4), 리넨 커튼", "계단참과 난간(1층으로 내려가기)", "대리석 원형 테이블 7·벤트우드 의자(앉기)", "벨벳 소파 3자리(앉기)", "윙체어 2와 낮은 탁자(앉기)", "케이크 돔을 올린 사이드보드", "책장·액자·거울·화분", "황동 샹들리에·벽등"],
 };
