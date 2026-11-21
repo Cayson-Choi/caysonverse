@@ -136,6 +136,8 @@ export function memorialPortalRoom(): PortalRoom {
     min: [r.minX, 0, r.minZ],
     max: [r.maxX, hall.ceilingHeight, r.maxZ],
     eye: [(r.minX + r.maxX) / 2, PORTAL_EYE_Y, (r.minZ + r.maxZ) / 2],
+    // the hall's door wall from its inner face out (its white outer surround and reveals): the porch's own wall and shop front stand there
+    cut: [{ min: [r.minX - 5, -1, r.maxZ + 0.02], max: [r.maxX + 5, hall.ceilingHeight + 2, r.maxZ + 5] }],
   };
 }
 

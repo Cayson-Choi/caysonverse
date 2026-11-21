@@ -295,7 +295,7 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       {/* The café's real rooms (both floors) behind real glass, village.glb's café interior taken out of the clone (cafe/CafeShowcase.tsx). */}
       <CafeShowcase root={nodes.root} />
       {/* The memorial hall behind the porch's clear shop front while the camera is near (portal/MemorialShowcase.tsx). */}
-      <MemorialShowcase glass={nodes.glass} />
+      <MemorialShowcase root={nodes.root} glass={nodes.glass} />
       {veg && <primitive object={veg.group} dispose={null} />}
       {mountains && (
         <Suspense fallback={null}>

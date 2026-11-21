@@ -9,10 +9,12 @@ import { hallNightReady, hallNightUniform, hallNightWeight, loadHallNight } from
 import { MEMORIAL_LIGHTMAP_URLS, MEMORIAL_MODEL_URL, disposeMemorial, prepareMemorial } from "../memorialModelPrep";
 import { holdMemorialFiles, noteMemorialRequested } from "../memorialRelease";
 import { localArea } from "../villageArea";
-import { applyClearGlassDayNight, memorialCardHide, showcaseRooms, type ClearGlass } from "./clearGlass";
+import { applyClearGlassDayNight, clearGlassMaterial, memorialCardHide, showcaseRooms, type ClearGlass } from "./clearGlass";
+import { isHallGlass } from "../hallGlass";
 
 const ROOMS_ON = showcaseRooms();
-import { memorialPortalRoom } from "./portalRooms";
+import { MEMORIAL_PORCH, memorialPortalRoom, toVillage } from "./portalRooms";
+import { trimMesh, type Footprint } from "../street/streetTrim";
 import { frameToVillage, insideRect } from "./RoomShowcase";
 
 /**
@@ -47,15 +49,20 @@ function HallRoom({ onShown }: { onShown: (on: boolean) => void }) {
     const room = memorialPortalRoom();
     const rect = { minX: room.min[0], maxX: room.max[0], minZ: room.min[2], maxZ: room.max[2] };
     const own: Array<{ dispose(): void }> = [];
+    // the hall's own door and window glass, seen from the porch: plain clear glass (its inside sheens are for a visitor in the hall)
+    const clear = clearGlassMaterial("M_hall_glass_outside");
+    clear.setShown([[-1e5, -1e5, 1e5, 1e5]]);
+    own.push(clear.material);
     nodes.root.updateMatrixWorld(true);
     nodes.root.traverse((o: Object3D) => {
       const m = o as Mesh;
       if (!m.isMesh) return;
       m.raycast = () => {};
+      if (!Array.isArray(m.material) && isHallGlass(m.material.name)) m.material = clear.material;
       m.castShadow = false;
       m.receiveShadow = false;
       if (!(m as { isInstancedMesh?: boolean }).isInstancedMesh) {
-        const g = insideRect(m.geometry, m.matrixWorld, rect);
+        const g = insideRect(m.geometry, m.matrixWorld, rect, room.cut);
         if (g) {
           m.geometry = g;
           own.push(g);
@@ -93,21 +100,55 @@ function HallRoom({ onShown }: { onShown: (on: boolean) => void }) {
   return <primitive object={shown.group} dispose={null} />;
 }
 
-/** The memorial hall behind the porch's glass (mounted with the village model: `glass` is the village's pane material). */
-export function MemorialShowcase({ glass }: { glass: ClearGlass | null }) {
+/**
+ * The village model's stand-in behind the shop front (a shallow vestibule: a rendered back wall 3 m in, its painted card), inside the
+ * hall's volume: taken out of the clone while the hall is drawn there. The porch, the building's outer walls and its roof stay.
+ */
+function trimVestibule(root: Object3D): () => void {
+  const pr = memorialPortalRoom();
+  const a = toVillage(pr.frame, pr.min[0], 0, pr.min[2]);
+  const b = toVillage(pr.frame, pr.max[0], 0, pr.max[2]);
+  const minX = Math.min(a[0], b[0]) + 0.3, maxX = Math.max(a[0], b[0]) - 0.3;
+  const minZ = Math.min(a[2], b[2]) + 0.3, maxZ = MEMORIAL_PORCH.backZ - 0.2;
+  const y0 = MEMORIAL_PORCH.floorY - 0.1, y1 = MEMORIAL_PORCH.floorY + pr.max[1];
+  const feet: Footprint[] = [{ minX, maxX, minZ, maxZ, maxY: y1, minTop: -1, inside: (x, y, z) => x > minX && x < maxX && z > minZ && z < maxZ && y > y0 && y < y1 }];
+  const undo: Array<() => void> = [];
+  root.updateMatrixWorld(true);
+  root.traverse((o) => {
+    const mesh = o as Mesh;
+    if (!mesh.isMesh || (mesh as { isInstancedMesh?: boolean }).isInstancedMesh) return;
+    for (let p: Object3D | null = mesh; p; p = p.parent) if (p.name === "memorial_showcase") return;
+    const t = trimMesh(mesh, feet);
+    if (!t) return;
+    const original = mesh.geometry;
+    mesh.geometry = t.geometry;
+    undo.push(() => {
+      if (mesh.geometry !== t.geometry) return;
+      mesh.geometry = original;
+      t.geometry.dispose();
+    });
+  });
+  return () => undo.reverse().forEach((u) => u());
+}
+
+/** The memorial hall behind the porch's glass (mounted with the village model: `root` its clone, `glass` the village's pane material). */
+export function MemorialShowcase({ root, glass }: { root: Object3D; glass: ClearGlass | null }) {
   const camera = useThree((s) => s.camera);
   const tier = useQualityTier();
   const phone = tier !== "high";
   const [near, setNear] = useState(false);
   const nearRef = useRef(false);
+  const untrim = useRef<(() => void) | null>(null);
   const onShown = useMemo(
     () => (on: boolean) => {
+      untrim.current?.();
+      untrim.current = on ? trimVestibule(root) : null;
       glass?.setShown(on ? [BUILDING] : []);
       if (on) memorialCardHide.uCardHide.value.set(...BUILDING);
       else memorialCardHide.uCardHide.value.set(0, 0, -1, -1);
       if (import.meta.env.DEV) (window as unknown as { __cvMemorialShown?: boolean }).__cvMemorialShown = on;
     },
-    [glass],
+    [glass, root],
   );
   useFrame(() => {
     const p = camera.position;

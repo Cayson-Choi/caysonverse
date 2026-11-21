@@ -35,6 +35,7 @@ const SHOTS = [
   { room: "lot_church_nave", id: "church_door", door: "lot_church_main", x: 0, y: 1.7, z: 46, tx: 0, ty: 2.4, tz: 55 },
   { room: "lot_chapel_nave", id: "chapel_door", door: "lot_chapel_main", x: 35, y: 1.7, z: -37, tx: 43, ty: 2.4, tz: -37 },
   { hall: true, id: "memorial_door", x: 0, y: 1.7, z: -44, tx: 0, ty: 1.8, tz: -53 },
+  { hall: true, id: "memorial_close", x: 1.2, y: 1.6, z: -50, tx: -0.5, ty: 1.5, tz: -60 },
   { house: 1, id: "house1", x: 18, y: 1.7, z: -30, tx: 21, ty: 2.6, tz: -38 },
   { house: 4, id: "house4", x: -27, y: 1.7, z: 30, tx: -32.4, ty: 2.6, tz: 35.2 },
   { house: 5, id: "house5", x: -33, y: 1.7, z: -11, tx: -41.2, ty: 2.6, tz: -8 },
@@ -49,7 +50,7 @@ const P = await openPlayer(browser, run, { tag: phone ? "ph" : "pc", device: pho
 const page = P.page;
 const report = {};
 
-async function join(time) {
+async function enterVillage(time) {
   await page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(time)}${Q ? "&" + Q : ""}`, { waitUntil: "domcontentloaded", timeout: 120000 });
   await entryReady(P);
   await page.locator("input.cv-input").first().fill(`gls${Math.floor(Math.random() * 9000 + 1000)}`);
@@ -60,7 +61,7 @@ async function join(time) {
 }
 
 for (const key of KEYS) {
-  await join(TIMES[key]);
+  await enterVillage(TIMES[key]);
   await page.waitForFunction(() => window.__cvLots?.()?.ready && window.__cvBus, null, { timeout: 120000 }).catch(() => {});
   await hideHud(P);
   for (const s of SHOTS) {
