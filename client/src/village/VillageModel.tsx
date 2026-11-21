@@ -34,7 +34,7 @@ import { LakeVillagePatch } from "../lake/PatchVillage";
 import { FallsModel } from "./falls/FallsModel";
 import { LotsVillagePatch } from "./lots/LotsVillagePatch";
 import { ExteriorDress } from "./ExteriorDress";
-import { CafeInterior, cafeInteriorMode } from "./cafe/CafeInterior";
+import { CafeShowcase } from "./cafe/CafeShowcase";
 import { fallsMode, fallsRuntimeFor } from "./falls/fallsConfig";
 import { fallsModelBuilt } from "./falls/fallsLoader";
 import { StreetFurniture } from "./street/StreetFurniture";
@@ -291,8 +291,8 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       <LotsVillagePatch root={nodes.root} />
       {/* The memorial roof, the cafe parasols, the pavilion roof, the plaza seats and the fountain crescent get real surfaces (exteriorDress.ts). */}
       <ExteriorDress root={nodes.root} tier={tier} />
-      {/* The café's furniture, seen through its glass (cafe/): chairs and tables instanced, the rest merged, lit by the room's own model. */}
-      {cafeInteriorMode() === "on" && <CafeInterior />}
+      {/* The café's real rooms (both floors) behind real glass, village.glb's café interior taken out of the clone (cafe/CafeShowcase.tsx). */}
+      <CafeShowcase root={nodes.root} />
       {veg && <primitive object={veg.group} dispose={null} />}
       {mountains && (
         <Suspense fallback={null}>

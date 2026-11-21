@@ -75,7 +75,6 @@ import { SIGNALS_MODEL_URL, TransitRoadSignals } from "./TransitRoadSignals";
 import { PublicAutoDoor } from "./PublicAutoDoor";
 import { VillageLots } from "./lots/VillageLots";
 import { LotRoomArea } from "./lots/LotRoom";
-import { CAFE_ROOM_UNIT, CafeRoomArea, CafeRoomPrefetch } from "./cafe/CafeRoom";
 import { lotDoorNotice, lotDoorPadById, lotWalkInTarget, LOT_DOOR_TARGET_PREFIX } from "./lots/lotTargets";
 import { openKeypad, useKeypad } from "./keypadStore";
 import { VillageKeypad } from "./VillageKeypad";
@@ -185,7 +184,7 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
   if (area === "park") return <ParkArea tier={tier} />;
   if (area === "hall") return <HallArea pose={pose} />;
   if (isHouseArea(area)) return <HouseArea area={area} pose={pose} />;
-  if (isLotArea(area)) return area === `lot:${CAFE_ROOM_UNIT}` ? <CafeRoomArea area={area} pose={pose} /> : <LotRoomArea area={area} pose={pose} />;
+  if (isLotArea(area)) return <LotRoomArea area={area} pose={pose} />;
   return (
     <>
       {/* A failed download shows a plain ground and tries again, instead of the crash screen (final review m2). */}
@@ -230,8 +229,6 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
       <PublicAutoDoor area="village" pose={pose} />
       {/* The six lot buildings (마을 부지 건물, L5): their own loader, never waited for; a failed one is just not there. */}
       <VillageLots pose={pose} tier={tier} />
-      {/* The café's walk-in room starts to build when the avatar comes near its door (cafe/CafeRoom.tsx). */}
-      <CafeRoomPrefetch pose={pose} />
     </>
   );
 }
