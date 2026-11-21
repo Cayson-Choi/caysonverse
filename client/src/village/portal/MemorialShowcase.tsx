@@ -8,6 +8,7 @@ import { dayNight } from "../dayNightDriver";
 import { hallNightReady, hallNightUniform, hallNightWeight, loadHallNight } from "../hallNight";
 import { MEMORIAL_LIGHTMAP_URLS, MEMORIAL_MODEL_URL, disposeMemorial, prepareMemorial } from "../memorialModelPrep";
 import { holdMemorialFiles, noteMemorialRequested } from "../memorialRelease";
+import { localArea } from "../villageArea";
 import { applyClearGlassDayNight, memorialCardHide, showcaseRooms, type ClearGlass } from "./clearGlass";
 
 const ROOMS_ON = showcaseRooms();
@@ -35,7 +36,12 @@ function HallRoom({ onShown }: { onShown: (on: boolean) => void }) {
   const tier = useQualityTier();
   const hall = useGLTF(MEMORIAL_MODEL_URL, DRACO_PATH);
   const lightmap = useTexture(MEMORIAL_LIGHTMAP_URLS[tier]);
-  useEffect(() => holdMemorialFiles(), []);
+  // held from the first render (a release pending from the hall's own exit is cancelled before anything frees the files); let go on
+  // unmount unless the player is walking INTO the hall, whose own hold takes the files over (memorialRelease keeps one flag, not a count)
+  const [release] = useState(() => holdMemorialFiles());
+  useEffect(() => () => {
+    if (localArea() !== "hall") release();
+  }, [release]);
   const shown = useMemo(() => {
     const nodes = prepareMemorial(hall.scene, lightmap);
     const room = memorialPortalRoom();

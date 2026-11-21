@@ -11,6 +11,7 @@ import { hallNightWeight } from "../hallNight";
 import { HOUSE_VIEW_MATERIAL, dressLoadedHouse, houseUrls, houseWantsLightmap, prepareHouse, type HouseNodes } from "../houseModelPrep";
 import { houseNightMapUniform, houseNightUniform, patchHouseGlowMaterial, patchHouseLightmapMaterial, resetHouseNight } from "../houseNight";
 import { holdHouseFiles, loadHouseTexture, noteHouseRequested } from "../houseRelease";
+import { localArea } from "../villageArea";
 import { applyClearGlassDayNight, houseCardHide, showcaseRooms, type ClearGlass, type GlassBox } from "./clearGlass";
 
 const ROOMS_ON = showcaseRooms();
@@ -46,7 +47,12 @@ function HouseRooms({ n, onShown }: { n: HouseNumber; onShown: (n: HouseNumber |
   const gltf = useGLTF(urls.glb, DRACO_PATH);
   const [day, setDay] = useState<Texture | null>(null);
   const wantsLightmap = useMemo(() => houseWantsLightmap(gltf.scene), [gltf]);
-  useEffect(() => holdHouseFiles(n), [n]);
+  // held from the first render; let go on unmount unless the player is walking INTO this house, whose own hold takes the files over
+  // (houseRelease keeps a set of held houses, not a count: our release would let the inside's files go)
+  const [release] = useState(() => holdHouseFiles(n));
+  useEffect(() => () => {
+    if (!localArea().startsWith(`house:house_${n}:`)) release();
+  }, [release, n]);
   useEffect(() => {
     if (!wantsLightmap) return;
     let live = true;

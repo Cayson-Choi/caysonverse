@@ -36,7 +36,7 @@ const SHOTS = [
   { room: "lot_chapel_nave", id: "chapel_door", door: "lot_chapel_main", x: 35, y: 1.7, z: -37, tx: 43, ty: 2.4, tz: -37 },
   { hall: true, id: "memorial_door", x: 0, y: 1.7, z: -44, tx: 0, ty: 1.8, tz: -53 },
   { house: 1, id: "house1", x: 18, y: 1.7, z: -30, tx: 21, ty: 2.6, tz: -38 },
-  { house: 4, id: "house4", x: -29, y: 1.7, z: 28, tx: -32.4, ty: 2.6, tz: 35.2 },
+  { house: 4, id: "house4", x: -27, y: 1.7, z: 30, tx: -32.4, ty: 2.6, tz: 35.2 },
   { house: 5, id: "house5", x: -33, y: 1.7, z: -11, tx: -41.2, ty: 2.6, tz: -8 },
   { id: "cafe", x: 42, y: 1.7, z: -18, tx: 47.8, ty: 2.0, tz: -15 },
   { id: "bus_out" },
@@ -77,8 +77,9 @@ for (const key of KEYS) {
         const o = [e[12], e[14]];
         const at = (lx, lz) => [o[0] + ax[0] * lx + az[0] * lz, o[1] + ax[1] * lx + az[1] * lz];
         if (seat) {
-          const p = at(0.3, 0.5), t = at(-3, 1.5);
-          return { x: p[0], y: 1.75, z: p[1], tx: t[0], ty: 1.6, tz: t[1], fov: 60 };
+          // a seated rider's eye by the aisle, looking out of the kerb-side windows (local −x)
+          const p = at(0.5, 1.0), t = at(-4, 1.4);
+          return { x: p[0], y: 1.6, z: p[1], tx: t[0], ty: 1.45, tz: t[1], fov: 65 };
         }
         const p = at(-7, -2.5), t = at(0, 0);
         return { x: p[0], y: 1.8, z: p[1], tx: t[0], ty: 1.6, tz: t[1] };
