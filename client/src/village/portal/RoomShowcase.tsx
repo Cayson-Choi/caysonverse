@@ -19,7 +19,9 @@ import { LOT_ROOM_PLACE, PORTAL_LOT_UNITS, lotPortalRoom, type PortalFrame, type
  * place (portalRooms.ts: the room frame → the village, door on door), with its own baked light by day and night and its lamps
  * (`showcaseMaterial`, `driveRoomLights`), the village's live sun turned down (it would reach the floor through the walls).
  *
- *  - Drawn only near the camera: PC within SHOW_M.pc of a lot, every such lot; a phone within SHOW_M.phone, the nearest PHONE_MAX.
+ *  - Drawn only near the camera: within SHOW_M of a lot, the nearest PC_MAX (PC) / PHONE_MAX (phone); read one at a time (a room's
+ *    files are a few MB to decode and upload: never several at once), and not in the first seconds after the village is drawn (coming
+ *    out of a room or a house, the village itself goes first).
  *  - The room's own window glass (its village panorama, `M_garden`) and screens are left out: from outside the building's glass stands
  *    there (clearGlass.ts) — clear over a drawn room, a dark reflective pane with a lit room's glow elsewhere.
  *  - Triangles wholly outside the room's floor rectangle (window reveals, sills, the porch the room models) are dropped: they would poke
@@ -31,6 +33,10 @@ import { LOT_ROOM_PLACE, PORTAL_LOT_UNITS, lotPortalRoom, type PortalFrame, type
 export const SHOW_M = { pc: 70, phone: 45 } as const;
 /** On a phone, at most this many rooms at once (nearest first). */
 export const PHONE_MAX = 2;
+/** On a PC, at most this many. */
+export const PC_MAX = 3;
+/** Nothing is read in the first this-many seconds after the village is drawn. */
+export const SHOW_AFTER_S = 4;
 /** How much of the village's live sun and sky reaches a room seen from outside (its bake carries its light). */
 export const SHOW_DIRECT = 0.18;
 /** The re-check's hysteresis (m). */
@@ -274,6 +280,8 @@ export function LotRoomShowcase({ root, glass }: { root: Object3D; glass: ClearG
     return g;
   }, []);
   const active = useRef(new Map<string, Active>());
+  const clockNow = useThree((s) => s.clock);
+  const mountedAt = useRef(clockNow.elapsedTime);
 
   const untrim = useRef<() => void>(() => {});
   /** The glass clear over the drawn rooms, and the lots' stand-ins out of them (all at once: the shells are merged across lots). */
@@ -296,7 +304,15 @@ export function LotRoomShowcase({ root, glass }: { root: Object3D; glass: ClearG
         holder.add(a.shown.group);
         sync();
       })
-      .catch((err: unknown) => console.warn(`[portal] room ${e.id}`, err));
+      .catch((err: unknown) => {
+        // (a failed read must not hold the queue: the next look tries again)
+        console.warn(`[portal] room ${e.id}`, err);
+        if (active.current.get(e.id) === a) {
+          a.live = false;
+          a.release();
+          active.current.delete(e.id);
+        }
+      });
   };
   const stop = (id: string) => {
     const a = active.current.get(id);
@@ -342,10 +358,14 @@ export function LotRoomShowcase({ root, glass }: { root: Object3D; glass: ClearG
       })
       .filter((x) => x.d < lim && ROOMS_ON)
       .sort((a, b) => a.d - b.d)
-      .slice(0, phone ? PHONE_MAX : entries.length);
+      .slice(0, phone ? PHONE_MAX : PC_MAX);
     const want = new Set(near.map((x) => x.e.id));
     for (const id of [...act.keys()]) if (!want.has(id)) stop(id);
-    for (const x of near) if (!act.has(x.e.id)) start(x.e);
+    // one read at a time, nearest first, once the village has settled
+    if (clock.elapsedTime - mountedAt.current > SHOW_AFTER_S && ![...act.values()].some((a) => !a.shown)) {
+      const next = near.find((x) => !act.has(x.e.id));
+      if (next) start(next.e);
+    }
     const o = dayNight.outdoor;
     applyClearGlassDayNight(o);
     const day = Math.max(0, Math.min(1, 1 - o.night));
