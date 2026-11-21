@@ -24,7 +24,7 @@ import { versionedUrl } from "../modelUrl";
  * (`isOldGateMap`) and the real guide map takes their place: client/public/textures/park/park_guide_map.webp, composed from photos of the
  * park itself (tools/park-guide-map.py - every ride at its true place, numbered, with the in-game names, the compass and "현재 위치").
  *
- *   - on each pier's inner face: a notice case - a navy frame with a gilt slip, the print behind a pane (a faint sheen across it), 2.0 m wide
+ *   - on each pier's inner face: a notice case - a navy frame with a gilt slip, the print behind a pane (a faint sheen across it), 1.9 m wide
  *     at eye level, lit a little from behind at night so it reads after dark;
  *   - in each ticket window: the same print, small, where the cartoon was.
  *
@@ -32,10 +32,11 @@ import { versionedUrl } from "../modelUrl";
  */
 export const GATE_MAP = Object.freeze({
   /** The print's size (16:9, the texture's) and its centre on a pier's face. */
-  width: 2.0,
-  height: 1.125,
+  width: 1.9,
+  height: 1.06875,
   y: 1.72,
-  z: 93.78,
+  // (clear of the iron leaf's hinge at z 94.8: the case ends at z 94.68, so the leaf swings past it)
+  z: 93.66,
   /** The piers' inner faces (x) and which way each looks (+1 east, -1 west). */
   faces: [
     { x: -27, out: 1 },

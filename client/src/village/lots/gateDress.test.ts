@@ -76,7 +76,7 @@ describe("gateDress: 케이슨랜드 안내도", () => {
   });
   it("the notice cases fit the piers' inner faces and hang at eye level; the print is in the client in both sizes", () => {
     expect(GATE_MAP.z - GATE_MAP.width / 2 - 0.07).toBeGreaterThan(92.6);
-    expect(GATE_MAP.z + GATE_MAP.width / 2 + 0.07).toBeLessThan(95);
+    expect(GATE_MAP.z + GATE_MAP.width / 2 + 0.07).toBeLessThan(94.7); // short of the leaf's hinge (z 94.8): the leaf sweeps clear of the case
     expect(GATE_MAP.y).toBeGreaterThan(1.5);
     expect(GATE_MAP.y).toBeLessThan(1.9);
     expect(GATE_MAP.width / GATE_MAP.height).toBeCloseTo(16 / 9, 2);
