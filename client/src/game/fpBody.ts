@@ -54,6 +54,9 @@ export const STEADY_MOVING = 0.15;
 /** How long the body must stand still (s) before its head's resting place is taken as the one to hold while walking. */
 export const STEADY_REST_S = 1.2;
 const STEADY_EASE_S = 0.25;
+/** Standing still: a head offset change under this (m) is the idle breathing; the rest follows it with STEADY_IDLE_TAU (s). */
+const STEADY_REST_NEAR = 0.05;
+const STEADY_IDLE_TAU = 6;
 
 /** The own body's first-person state (written by LocalPlayer every frame). */
 export const fpBody = {
@@ -213,16 +216,17 @@ function steadyHead(head: Bone, dt: number, fix: typeof fpEye): void {
     b.stillFor = 0;
     if (b.hasRest) b.hold.lerp(b.rest, k(STEADY_EASE_S));
   } else {
+    // standing still on foot: the eye holds as steady as in the walk. `rest` settles on the idle pose for STEADY_REST_S, then
+    // follows the head bone only slowly (the idle animation's breathing / sway is a few mm and must not reach the camera) and
+    // quickly again only when the head really went to a new pose (an emote, a crouch).
     b.stillFor += dt;
-    if (b.stillFor < STEADY_REST_S) b.hold.lerp(rawV, k(0.15));
-    else {
-      if (!b.hasRest) {
-        b.rest.copy(b.hold);
-        b.hasRest = true;
-      }
-      b.rest.lerp(rawV, k(0.5));
-      b.hold.copy(b.rest);
+    if (!b.hasRest) {
+      b.rest.copy(b.hold);
+      b.hasRest = true;
     }
+    const far = b.rest.distanceTo(rawV) > STEADY_REST_NEAR;
+    b.rest.lerp(rawV, k(far ? 0.3 : b.stillFor < STEADY_REST_S ? 0.4 : STEADY_IDLE_TAU));
+    b.hold.lerp(b.rest, k(STEADY_EASE_S));
   }
   // eye = live eye - the bone's raw offset + the held one (both turned with the body)
   rawV.sub(b.hold).applyQuaternion(qBody);
