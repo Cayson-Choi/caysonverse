@@ -146,12 +146,14 @@ def lightmap_uv(objs, margin=0.0014):
                              scale_to_bounds=False)
     bpy.ops.uv.select_all(action="SELECT")
     bpy.ops.uv.average_islands_scale()
+    import uv_compact    # houses-real pass: furniture islands get twice the light-map density of walls and floors
+    log("lm islands boosted", uv_compact.boost_small_lm_islands(objs))
     bpy.ops.uv.pack_islands(rotate=True, margin_method="FRACTION", margin=margin, shape_method="CONCAVE")
     bpy.ops.object.mode_set(mode="OBJECT")
 
 
-KIND_DAY = {"downlight": 0.5, "lamp": 3.0, "sconce": 3.0, "pendant": 1.6, "fire": 2.5, "led": 1.5}
-KIND_NIGHT = {"downlight": 0.55, "lamp": 1.5, "sconce": 1.5, "pendant": 1.2, "fire": 1.4}
+KIND_DAY = {"downlight": 0.5, "lamp": 3.0, "sconce": 3.0, "pendant": 1.6, "fire": 1.2, "led": 1.5}
+KIND_NIGHT = {"downlight": 0.55, "lamp": 1.5, "sconce": 1.5, "pendant": 1.2, "fire": 0.45}   # houses-real: the fire a warm local pool, not a wash (was 1.4)
 
 
 def setup_lights(scene, night):

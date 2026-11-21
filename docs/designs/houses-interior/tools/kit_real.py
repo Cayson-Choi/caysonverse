@@ -319,7 +319,8 @@ def stone_fireplace(F, w=1.9, d=0.55, h=3.7, firebox_w=0.85, firebox_h=0.75, hea
             lr = rl.uniform(0.038, 0.048)
             if abs(px) + lr > br * 0.98:
                 continue
-            split_log(G, (px, -br * 0.8, hearth_y + py), (px + rl.uniform(-0.01, 0.01), br * 0.85, hearth_y + py + rl.uniform(-0.01, 0.01)), lr,
+            half = math.sqrt(max(br * br - (abs(px) + lr) ** 2, 0.0)) * 0.95 + 0.02   # inside the round basket's chord, ends just proud of the rim
+            split_log(G, (px, -half, hearth_y + py), (px + rl.uniform(-0.01, 0.01), half, hearth_y + py + rl.uniform(-0.01, 0.01)), lr,
                       seed=10 + k, split=(k % 3 == 2))
     col(F, -hw - 0.08, hw + 0.08, 0.0, d + hearth_d, h, name="fireplace")
 

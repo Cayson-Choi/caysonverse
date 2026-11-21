@@ -63,3 +63,46 @@ def compact_uv0(objs, layer="UVMap"):
         bm.to_mesh(ob.data)
         bm.free()
     return moved
+
+
+def boost_small_lm_islands(objs, layer="UV_LM", max_area=1.0, factor=2.0):
+    """Houses-real pass (owner 2026-11-21: a dark step on a sofa cushion, a flat dark-brown arm): one 2048 light map holds both floors,
+    so at an even texel density a cushion front 7 cm tall got 2-3 texels and its light was a smear of its neighbours. Every light-map
+    island under `max_area` m2 (furniture, fittings) is scaled by `factor` before the final pack; walls, floors and ceilings keep the
+    base density (their light changes slowly). Called in edit mode on the selected objects, before uv.pack_islands."""
+    n = 0
+    for ob in objs:
+        bm = bmesh.from_edit_mesh(ob.data)
+        uvl = bm.loops.layers.uv[layer]
+        bm.faces.ensure_lookup_table()
+        seen = set()
+        mw = ob.matrix_world
+        for f0 in bm.faces:
+            if f0.index in seen:
+                continue
+            island, stack = [], [f0]
+            seen.add(f0.index)
+            while stack:
+                f = stack.pop()
+                island.append(f)
+                for lp in f.loops:
+                    a0, a1 = lp[uvl].uv, lp.link_loop_next[uvl].uv
+                    for lo in lp.edge.link_loops:
+                        g = lo.face
+                        if g.index in seen:
+                            continue
+                        if lo.vert == lp.vert:
+                            b0, b1 = lo[uvl].uv, lo.link_loop_next[uvl].uv
+                        else:
+                            b0, b1 = lo.link_loop_next[uvl].uv, lo[uvl].uv
+                        if (a0 - b0).length < 1e-6 and (a1 - b1).length < 1e-6:
+                            seen.add(g.index)
+                            stack.append(g)
+            area = sum(f.calc_area() for f in island) * abs(mw.determinant()) ** (2 / 3)
+            if area < max_area:
+                n += 1
+                for f in island:
+                    for lp in f.loops:
+                        lp[uvl].uv *= factor
+        bmesh.update_edit_mesh(ob.data)
+    return n

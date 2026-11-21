@@ -34,7 +34,7 @@ def welt(F, pts, tn, r=0.006, m="H_fabric"):
     tube(F, pts, r, m, 6, tn=tn, caps=False)
 
 
-def cushion_seat(F, x0, x1, z0, z1, y0, y1, m, tn, puff=0.012, sag=0.012, r=0.04):
+def cushion_seat(F, x0, x1, z0, z1, y0, y1, m, tn, puff=0.012, sag=0.012, r=0.05):
     """a loose seat cushion. houses-real pass (owner 2026-11-21, "is this really a new house?"): brand-new cushions — a gently crowned top,
     no sat-in dip (sag is ignored) and no separate welt tube (it cut through the crowned top, the light bake turned those cuts into dark
     scallops along every seat front and the thin tube into a hard dark line)."""

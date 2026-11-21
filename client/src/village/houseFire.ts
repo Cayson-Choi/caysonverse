@@ -90,7 +90,7 @@ export const FLAME_GLSL = /* glsl */ `
 		float hfp = 0.82 + 0.18 * sin( uHouseFireTime * 3.1 + vHouseWorld.x * 9.0 ) * sin( uHouseFireTime * 1.7 + vHouseWorld.z * 7.0 );
 		float hfh = smoothstep( 0.5, 0.85, hfn ) * hfp;
 		float hfl = smoothstep( uEmberY - 0.05, uEmberY + 0.005, vHouseWorld.y );
-		diffuseColor.rgb = mix( vec3( 0.06, 0.018, 0.008 ), mix( vec3( 1.25, 0.22, 0.02 ), vec3( 2.1, 0.95, 0.22 ), hfh * hfh ), clamp( hfh * ( 0.6 + 0.6 * hfl ), 0.0, 1.0 ) );
+		diffuseColor.rgb = mix( vec3( 0.07, 0.02, 0.008 ), mix( vec3( 1.5, 0.3, 0.02 ), vec3( 2.3, 1.05, 0.25 ), hfh * hfh ), clamp( hfh * ( 0.8 + 0.6 * hfl ) + 0.12, 0.0, 1.0 ) );
 	}`;
 
 const FIRE_VERT = /* glsl */ `
@@ -157,10 +157,10 @@ void main() {
     float base = smoothstep(0.0, 0.08, y);
     float i = body * tongues * base;
     float core = smoothstep(0.35, 0.95, i) * (1.0 - smoothstep(0.25, 0.7, y));
-    col = mix(vec3(0.6, 0.07, 0.005), vec3(1.0, 0.36, 0.03), smoothstep(0.08, 0.6, i));
-    col = mix(col, vec3(1.0, 0.72, 0.3), core);
-    col *= 1.45;
-    a = clamp(i * 1.25, 0.0, 1.0) * (0.85 + 0.15 * sin(uTime * 11.0 + vSeed * 30.0));
+    col = mix(vec3(0.75, 0.1, 0.0), vec3(1.0, 0.34, 0.0), smoothstep(0.06, 0.5, i));
+    col = mix(col, vec3(1.0, 0.66, 0.16), core);
+    col *= 1.6;
+    a = clamp(i * 1.5, 0.0, 1.0) * (0.85 + 0.15 * sin(uTime * 11.0 + vSeed * 30.0));
   } else if (vKind < 1.5) {
     // the warm light on the back bricks behind the flames
     vec2 d = vec2(vUv.x * 1.6, (vUv.y - 0.25) * 1.3);
@@ -203,8 +203,8 @@ export function hearthFlames(n: number) {
   // flames: [x, z, width, height] — a tall pair over the middle where the logs cross, smaller licks along the logs
   const sheets = [
     // (refs: real log fires — thin licking tongues 2-3x the log stack's height, several overlapping)
-    [-0.03, -0.02, 0.2, 0.5], [0.09, 0.02, 0.18, 0.44], [-0.13, 0.0, 0.17, 0.36], [0.18, -0.03, 0.14, 0.28],
-    [-0.21, 0.03, 0.13, 0.24], [0.03, 0.06, 0.24, 0.3], [-0.07, -0.05, 0.15, 0.46], [0.13, 0.05, 0.12, 0.34],
+    [-0.03, -0.02, 0.24, 0.62], [0.09, 0.02, 0.21, 0.55], [-0.13, 0.0, 0.2, 0.46], [0.18, -0.03, 0.16, 0.36],
+    [-0.21, 0.03, 0.15, 0.3], [0.03, 0.06, 0.28, 0.4], [-0.07, -0.05, 0.17, 0.58], [0.13, 0.05, 0.14, 0.44],
   ] as const;
   for (const [i, [x, z, w, h]] of sheets.entries()) quad(x, 0.07, z, w, h, 0.137 * (i + 1), 0);
   quad(0, 0.0, -0.11, 0.62, 0.6, 0.5, 1);                    // the back-brick glow, just off the firebox's back wall
