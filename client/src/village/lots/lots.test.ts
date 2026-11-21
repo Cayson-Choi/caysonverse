@@ -57,8 +57,8 @@ describe("lot LOD (one pool, nearest first)", () => {
 });
 
 describe("the v2 models and their manifests", () => {
-  // (the café's room has no GLB: it is built at run time, cafe/CafeRoom.tsx)
-  const models = [...VILLAGE_LOTS.map((l) => l.id as string), ...LOT_INTERIORS.filter((i) => i.unit !== "lot_cafe_room").map((i) => i.unit)];
+  // (the café's hall and salon are baked GLB rooms too since 2026-11-21: cafe_room_kit.py)
+  const models = [...VILLAGE_LOTS.map((l) => l.id as string), ...LOT_INTERIORS.map((i) => i.unit)];
   it("every model names its texture manifest, and every material it has is in it (a library set that exists, or a kind)", () => {
     for (const m of models) {
       const j = glbJson(join(LOTS_DIR, `${m}.glb`));
@@ -82,7 +82,7 @@ describe("the v2 models and their manifests", () => {
   });
   it("the rooms' sacred pieces resolve to files that exist (both builders' extras shapes), phone files where the phone draws them", () => {
     let n = 0;
-    for (const i of LOT_INTERIORS.filter((q) => q.unit !== "lot_cafe_room")) {
+    for (const i of LOT_INTERIORS) {
       const sacred = (glbJson(join(LOTS_DIR, `${i.unit}.glb`)).asset.extras?.sacred ?? []) as Array<{ node: string; file: string; phone?: boolean | string; phoneFile?: string }>;
       for (const s of sacred) {
         for (const phone of [false, true]) {
@@ -169,6 +169,12 @@ describe("lot doors, the rooms' ways out, the slots", () => {
   });
   it("inside, the way out is offered on its pad and straight in front of the door, not from the side or deeper in", () => {
     for (const r of LOT_ROOMS) {
+      if (r.spec.noExit) {
+        // the café's salon upstairs: no way out of its own (its stair is the way), nothing offered where a door would be
+        const d = lotRoomDoor(r);
+        expect(lotExitTarget(r.area, d.exitPad.x, d.exitPad.z)).toBeNull();
+        continue;
+      }
       const d = lotRoomDoor(r);
       expect(lotExitTarget(r.area, d.exitPad.x, d.exitPad.z)).toMatchObject({ kind: "door", label: "밖으로 나가기" });
       expect(lotExitTarget(r.area, d.arrival.x, d.arrival.z)).not.toBeNull();

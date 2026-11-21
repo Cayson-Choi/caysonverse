@@ -1071,6 +1071,42 @@ export function driveRoomLights(loaded: LoadedRoom, t: number): void {
   }
 }
 
+/**
+ * A room material drawn from OUTSIDE the room (the café's facade shows its rooms through the glass, cafe/CafeShowcase.tsx): a copy with the
+ * room's own light (the bake's day / night mix, the lamps) and the village's live sun and sky scaled by `direct` (they would reach the counter
+ * through the walls: the room has no shadow of its own walls). Materials of other kinds (the night glow) are shared as they are.
+ */
+export function showcaseMaterial(src: Material, loaded: LoadedRoom, direct: { value: number }, nightGain: { value: number } = { value: 0 }): Material {
+  const m = src as MeshStandardMaterial;
+  if (!m.isMeshStandardMaterial) return src;
+  // (Material.copy deep-copies userData through JSON: its night lightmap, a Texture, would be serialised — and warn — for nothing)
+  const ud = m.userData;
+  m.userData = {};
+  const c = m.clone();
+  m.userData = ud;
+  c.userData = { ...ud, lightmapMix: false, roomLamps: false };
+  const night = m.userData.lmNight as Texture | undefined;
+  if (night && loaded.lightmap && m.lightMap) patchLightmapMix(c, night, loaded.lightmap.mix);
+  patchRoomLamps(c, loaded.lamps);
+  const prev = c.onBeforeCompile;
+  c.onBeforeCompile = (shader, r) => {
+    prev?.call(c, shader, r);
+    shader.uniforms.uShowDirect = direct;
+    shader.uniforms.uShowNight = nightGain;
+    // (at night a lit room seen from the dark street: its own light warm and strong — the village's blue night fill is not the room's)
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", "uniform float uShowDirect;\nuniform float uShowNight;\nvoid main() {")
+      .replace(
+        "#include <lights_fragment_end>",
+        "#include <lights_fragment_end>\nreflectedLight.directDiffuse *= uShowDirect;\nreflectedLight.directSpecular *= uShowDirect;\nreflectedLight.indirectDiffuse *= mix(vec3(1.0), vec3(3.2, 2.5, 1.7), uShowNight);",
+      );
+  };
+  const key = c.customProgramCacheKey.bind(c);
+  c.customProgramCacheKey = () => `${key()}|showcase`;
+  c.needsUpdate = true;
+  return c;
+}
+
 /** Start reading a room's files (the player is at its door). Held for LOT_ROOM_KEEP_MS. */
 export function prefetchLotRoom(area: string, gl: WebGLRenderer, phone: boolean): void {
   const room = lotRoomOf(area);

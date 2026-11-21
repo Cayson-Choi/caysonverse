@@ -44,12 +44,12 @@ OAK_DK = S("LM_cafe_oak", hx("9C6E48"))         # stained oak (beams, frames, th
 BEECH = S("LM_cafe_oak", hx("7A4A2C"))          # bentwood: steam-bent beech in a walnut stain
 PAINT = S("LM_cafe_paint", hx("F3EEE3"))        # cream painted joinery (risers, window frames inside, skirting)
 SAGE = S("LM_cafe_paint", hx("7E9A86"))         # the wainscot
-GREEN = S("LM_cafe_paint", hx("2E4D40"))        # the counter's panelled front, the sign's frame
+GREEN = S("LM_cafe_paint", hx("3D6A55"))        # the counter's panelled front, the sign's frame
 DARK = S("LM_cafe_paint", hx("2A2C2E"))         # window frames, toe kicks
 CHROME = S("LM_cafe_metal", hx("E9ECEF"))       # stainless / chrome (aluminium_brushed, metal)
 STEEL_DK = S("LM_cafe_metal", hx("7B8085"))
-BRASS = S("LM_cafe_iron", hx("D8B46A"))         # brass (cast_iron set, metal, tinted)
-GILT = S("LM_cafe_iron", hx("E6C27A"))
+BRASS = S("LM_cafe_metal", hx("E2BE72"))        # brass: the brushed set (metal) tinted gold, it takes the room's reflection
+GILT = S("LM_cafe_metal", hx("F0CF86"))
 IRON = S("LM_cafe_iron", hx("2F3133"))          # black cast iron
 BLACK = S("LM_cafe_paint", hx("1C1C1E"))
 TILE = S("LM_cafe_tile", hx("FAF8F2"))          # metro tiles behind the back bar
@@ -72,7 +72,7 @@ MATS = {
     "LM_cafe_plaster": {"set": "plaster_painted"},
     "LM_cafe_oak": {"set": "wood_oak", "rough": 0.6},
     "LM_cafe_paint": {"set": "wood_painted", "normal": 0.4, "rough": 0.7},
-    "LM_cafe_metal": {"set": "aluminium_brushed", "metal": True, "rough": 0.35},
+    "LM_cafe_metal": {"set": "aluminium_brushed", "metal": True, "rough": 0.28},
     "LM_cafe_iron": {"set": "cast_iron", "metal": True, "rough": 0.55},
     "LM_cafe_tile": {"set": "tile_white", "rough": 0.5},
     "LM_cafe_fabric": {"set": "fabric_upholstery", "gain": (2.6, 2.6, 2.6)},

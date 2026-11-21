@@ -273,9 +273,11 @@ def ground(kit, spec):
     # the glass double door (the leaves seen from inside, the village through their glass), oak frame, brass push bars
     f = W["door"]
     for (a, b) in ((5.62, 6.79), (6.81, 7.98)):
-        f.box(D, a, b, 0.0, 2.92, -0.07, -0.02, C.DARK, skip=("-w",))
-        f.quad(S_, a + 0.1, b - 0.1, 0.3, 2.75, -0.03, C.GARDEN)
-        f.box(D, a + 0.1, b - 0.1, 0.12, 0.3, -0.02, -0.01, C.DARK)
+        # each leaf a frame of stiles and rails round its glass (the village through it), a kick plate below
+        for (ua, ub, va, vb) in ((a, a + 0.1, 0.0, 2.92), (b - 0.1, b, 0.0, 2.92), (a + 0.1, b - 0.1, 0.0, 0.3), (a + 0.1, b - 0.1, 2.75, 2.92)):
+            f.box(D, ua, ub, va, vb, -0.07, -0.02, C.DARK, c=0.006 if not PHONE else 0.0)
+        f.quad(S_, a + 0.1, b - 0.1, 0.3, 2.75, -0.045, C.GARDEN)
+        f.box(D, a + 0.1, b - 0.1, 0.12, 0.3, -0.02, -0.012, C.BRASS)
         hx = b - 0.12 if a < 6.8 else a + 0.12
         D.tube([f.p(hx, 0.95, 0.06), f.p(hx, 1.45, 0.06)], 0.014, 8, C.BRASS)
         for v in (0.95, 1.45):
@@ -612,8 +614,10 @@ def sign(kit, f, uc, vc):
     f.box(D, u0 - 0.06, u1 + 0.06, v0 - 0.06, v1 + 0.06, 0.0, 0.03, C.OAK_DK, c=0.01 if not PHONE else 0.0, skip=("-w",))
     C.card(D, f.p(u0, v0, 0.031), f.p(u1, v0, 0.031), f.p(u1, v1, 0.031), f.p(u0, v1, 0.031), "sign")
     out = f.W
-    kit.letters.append(("CAFÉ · PÂTISSERIE", f.p(uc, vc - 0.05, 0.031), out, 0.21, 0.014, C.GILT, "D", {"font": "C:/Windows/Fonts/georgiab.ttf", "capital": True}))
-    kit.letters.append(("케이슨 카페 · 마을 빵집", f.p(uc, v0 + 0.07, 0.031), out, 0.055, 0.006, C.GILT, "D"))
+    # (the letters in a warm gold leaf paint: a polished metal reads dark against the enamel from most of the room)
+    leaf = S("LM_cafe_paint", G.hexc("F2CE7C"))
+    kit.letters.append(("CAFÉ · PÂTISSERIE", f.p(uc, vc - 0.05, 0.031), out, 0.21, 0.016, leaf, "D", {"font": "C:/Windows/Fonts/georgiab.ttf", "capital": True}))
+    kit.letters.append(("케이슨 카페 · 마을 빵집", f.p(uc, v0 + 0.065, 0.031), out, 0.06, 0.006, leaf, "D"))
     for du in (-1.0, 1.0):
         base = f.p(uc + du, v1 + 0.12, 0.0)
         D.tube([base, f.p(uc + du, v1 + 0.16, 0.2), f.p(uc + du, v1 + 0.1, 0.3)], 0.008, 5, C.BRASS)

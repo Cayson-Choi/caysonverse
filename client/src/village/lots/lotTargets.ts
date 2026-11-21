@@ -102,7 +102,8 @@ export function lotDoorTarget(x: number, z: number): InteractTarget | null {
  * The pad stands 0.65 m out of the wall, the doorstep is the last 0.2..0.6 m before it, so a click to the pad, a pass along the terrace
  * or a stop in front of the door never uses it; only walking up to the door itself does.
  */
-export const LOT_WALK_IN_DOORS: ReadonlySet<string> = new Set(["lot_cafe_main"]);
+// (owner 2026-11-21 "버튼 누르지도 않았는데 … 들어가버리잖아": no door is entered by walking into it any more — fix/no-auto-enter removes the rule)
+export const LOT_WALK_IN_DOORS: ReadonlySet<string> = new Set<string>([]);
 const DOORSTEPS = LOT_ROOMS.filter((r) => LOT_WALK_IN_DOORS.has(r.door.id)).map((r) => {
   const p = lotDoorPoint(r.lot, r.door);
   return { door: r.door.id, p, half: r.door.width / 2 - 0.25 };

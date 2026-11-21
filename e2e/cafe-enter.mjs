@@ -152,7 +152,7 @@ try {
       await sleep(3000);
       const info = await A.page.evaluate(() => window.__cvLotRoom());
       numbers.roomPc = info;
-      run.check("the room is drawn: 12 draws, under 60k triangles (PC)", info && info.visible.draws <= 14 && info.visible.triangles < 60000, info?.visible);
+      run.check("the room is drawn: at most 45 draws, under 160k triangles (PC: the baked GLB room, 2026-11-21)", info && info.visible.draws <= 45 && info.visible.triangles < 160000, info?.visible);
       await shot(A, "enter-arrival");
     });
 
@@ -189,10 +189,10 @@ try {
         "the banquette front": [12.6, 2.6],
         "the counter (customer side)": [9.2, 4.4],
         "the stools": [8.6, 3.8],
-        "the kitchen door": [2.4, 6.9],
-        "the shelf corner": [1.0, 6.9],
-        "the chalkboard wall": [1.0, 4.4],
-        "the table row (baked tables)": [2.6, 2.4],
+        "the kitchen door": [5.4, 7.2],
+        "the stair's foot": [0.6, 2.9],
+        "the aisle by the stair": [3.0, 5.0],
+        "the table row by the stair": [3.0, 2.4],
         "the far corner": [0.8, 0.9],
       };
       for (const [name, [x, z]] of Object.entries(spots)) {
@@ -258,7 +258,7 @@ try {
   if (ONLY.includes("camera")) {
     await run.step("5. the follow camera never leaves the walls or the ceiling", async () => {
       const b = info.bounds;
-      const spots = [[6.8, 1.6], [12.6, 0.8], [0.8, 0.8], [12.8, 7.0], [1.0, 7.0], [6.8, 4.2], [9.4, 6.5], [3.2, 5.4]];
+      const spots = [[6.8, 1.6], [12.6, 0.8], [0.8, 0.8], [12.8, 7.0], [3.0, 6.8], [6.8, 4.2], [9.4, 6.5], [3.2, 5.4]];
       let worst = { out: 0, up: 0 };
       let samples = 0;
       for (const [x, z] of spots) {
@@ -357,15 +357,17 @@ try {
       await act(A);
       run.check("out by the button", await waitArea(A, "village", 90000));
       await sleep(800);
-      // in by walking into the door itself (no button, no tap): a click-move that ends beyond the door line stops at the wall
+      // walking into the door itself does NOT go in (owner 2026-11-21: "버튼 누르지도 않았는데 … 들어가버리잖아": the button, E or a tap on the door only)
       await walkAndWait(A, d.pad.x - 3.5, d.pad.z, 40000, 0.9);
       await A.page.evaluate(async ([x, z]) => (await window.__imp("/src/game/clickMove.ts")).setClickTarget(x, z), [d.centre.x + 1.2, d.centre.z]);
-      run.check("walking into the door goes in (the doorstep rule)", await waitArea(A, ROOM_AREA, 90000), await inArea(A));
-      await waitRoom(A);
-      await sleep(2500);
-      await walkAndWait(A, ...at(info.door, 1.6), 30000, 0.6);
-      await act(A);
-      run.check("and out again by the button", await waitArea(A, "village", 90000));
+      const walkedIn = await waitArea(A, ROOM_AREA, 12000);
+      run.check("walking into the door does not go in (button / E / door tap only)", !walkedIn, await inArea(A));
+      if (walkedIn) {
+        await waitRoom(A);
+        await walkAndWait(A, ...at(info.door, 1.6), 30000, 0.6);
+        await act(A);
+        await waitArea(A, "village", 90000);
+      }
     });
   }
 
@@ -414,7 +416,7 @@ try {
         await sleep(3000);
       }
       const phoneInfo = await B.page.evaluate(() => window.__cvLotRoom());
-      run.check("the phone's room: under 45k triangles, 12 draws", phoneInfo && phoneInfo.visible.triangles < 45000 && phoneInfo.visible.draws <= 14, phoneInfo?.visible);
+      run.check("the phone's room: under 70k triangles, at most 36 draws (its _phone GLB)", phoneInfo && phoneInfo.visible.triangles < 70000 && phoneInfo.visible.draws <= 36, phoneInfo?.visible);
       const seat = info.seats.find((s) => /chair_5:1$/.test(s.id)) ?? info.seats[0];
       await walkAndWait(B, seat.standX, seat.standZ, 60000, 0.45);
       await B.page.evaluate(async (i) => (await window.__imp("/src/game/seatPreference.ts")).setPreferredSeat(i), seat.index);
@@ -427,7 +429,7 @@ try {
       await B.page.waitForFunction(() => window.__cv.getPos().seatIndex === -1, null, { timeout: 15000 }).catch(() => {});
       const b = info.bounds;
       let worst = 0;
-      for (const [x, z] of [[6.8, 1.6], [12.6, 0.8], [1.0, 7.0]]) {
+      for (const [x, z] of [[6.8, 1.6], [12.6, 0.8], [3.0, 6.8]]) {
         await walkAndWait(B, ...at(x, z), 60000, 0.8);
         for (const pitch of [0.1, 1.0]) {
           for (let k = 0; k < 8; k++) {

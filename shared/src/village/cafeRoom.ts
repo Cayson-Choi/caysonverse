@@ -211,10 +211,10 @@ export const CAFE_UP_TABLES: readonly { x: number; z: number; chairs: readonly n
 ]);
 /** The velvet sofa along the right wall (room x 13.0..13.6), facing into the room (-x): three places. */
 export const CAFE_UP_SOFA = Object.freeze({ x0: 13.0, x1: 13.6, z0: 3.0, z1: 6.9 });
-/** Two wing armchairs by the back windows round a low table (facing each other across it). */
+/** Two wing armchairs against the back wall with a low table between them, facing into the room (sat on and stood up from in front). */
 export const CAFE_UP_ARMCHAIRS: readonly { x: number; z: number; faces: LotInteriorSeat["faces"] }[] = Object.freeze([
-  { x: 9.55, z: 11.2, faces: "right" },
-  { x: 12.05, z: 11.2, faces: "left" },
+  { x: 10.0, z: 11.4, faces: "out" },
+  { x: 11.6, z: 11.4, faces: "out" },
 ]);
 const UP_TABLE_BOX = 0.35;
 
@@ -242,7 +242,7 @@ export const CAFE_UP: LotInteriorSpec = {
     { name: "stairwell", rect: { ...CAFE_STAIR.rect }, height: 1.0 },
     { name: "sideboard", rect: { x0: 4.2, x1: 8.4, z0: 12.45, z1: 13.0 }, height: 1.0 },
     { name: "bookcase", rect: { x0: 0.0, x1: 0.42, z0: 9.6, z1: 12.4 }, height: 2.4 },
-    { name: "lowtable", rect: { x0: 10.45, x1: 11.15, z0: 10.85, z1: 11.55 }, height: 0.48 },
+    { name: "lowtable", rect: { x0: 10.45, x1: 11.15, z0: 11.15, z1: 11.65 }, height: 0.48 },
     { name: "seatfurn_sofa", rect: { x0: SO.x0, x1: SO.x1, z0: SO.z0, z1: SO.z1 }, height: 0.85 },
     ...CAFE_UP_TABLES.map((t, i) => ({ name: `uptable_${i + 1}`, rect: { x0: R4(t.x - UP_TABLE_BOX), x1: R4(t.x + UP_TABLE_BOX), z0: R4(t.z - UP_TABLE_BOX), z1: R4(t.z + UP_TABLE_BOX) }, height: 0.78 })),
     { name: "plant_up_1", rect: { x0: 0.15, x1: 0.75, z0: 0.15, z1: 0.75 }, height: 1.9 },
