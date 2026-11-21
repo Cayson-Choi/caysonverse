@@ -107,11 +107,13 @@ describe("the files and the night", () => {
     const hook = m.onBeforeCompile;
     patchHouseLightmapMaterial(m); // idempotent
     expect(m.onBeforeCompile).toBe(hook);
-    const shader = { uniforms: {} as Record<string, unknown>, fragmentShader: "vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );\nvoid main() {" };
+    const shader = { uniforms: {} as Record<string, unknown>, vertexShader: "#include <common>\n#include <project_vertex>", fragmentShader: "vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );\nvoid main() {" };
     (m.onBeforeCompile as unknown as (s: typeof shader) => void)(shader);
     expect(shader.uniforms.uHouseNight).toBe(houseNightUniform);
     expect(shader.uniforms.uHouseNightMap).toBe(houseNightMapUniform);
     expect(shader.fragmentShader).toContain("uHouseNightMap");
+    expect(shader.fragmentShader).toContain("uHouseFire"); // the fireplace's flickering light (houses-real pass)
+    expect(shader.vertexShader).toContain("vHouseFireW");
     houseNightUniform.value = 0.7;
     resetHouseNight();
     expect(houseNightUniform.value).toBe(0);

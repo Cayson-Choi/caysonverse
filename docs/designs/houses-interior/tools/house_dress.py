@@ -176,7 +176,7 @@ def _tv_to_fireplace(H, floor):
     not a television) when the floor in front stays as reachable as before"""
     stands = [p for p in getattr(H, "placed", []) if p["floor"] == floor and p["fn"] in ("tv_stand", "tv_cabinet_audio")]
     for st in stands:
-        tvs = [p for p in H.placed if p["floor"] == floor and p["fn"] in ("tv_wall", "soundbar", "settop") and math.hypot(p["lx"] - st["lx"], p["lz"] - st["lz"]) < 0.6]
+        tvs = [p for p in H.placed if p["floor"] == floor and p["fn"] in ("tv_wall", "soundbar", "settop", "turntable") and math.hypot(p["lx"] - st["lx"], p["lz"] - st["lz"]) < 0.6]
         yaw = st["yaw"]
         fx, fz = math.sin(yaw), math.cos(yaw)
         rx, rz = math.cos(yaw), -math.sin(yaw)
