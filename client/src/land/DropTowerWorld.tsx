@@ -352,7 +352,7 @@ function build(mats: Record<K, Material>): Build {
     const h = DROP_DECK_Y * ((nSteps - i) / (nSteps + 1)) + 0.05;
     const x = R + run * (i + 0.5);
     t.box("concrete", run, h, 3.2, x, h / 2, 0);
-    t.box("deck", 0.06, 0.05, 3.3, x + run / 2 - 0.03, h, 0);
+    t.box("deck", 0.06, 0.05, 3.3, x + run / 2 - 0.02, h, 0); // nosing: stands 1 cm proud of the riser (flush it z-fought the step's face)
   }
   const stepEnd = R + run * nSteps;
   for (const z of [-1.9, 1.9]) {

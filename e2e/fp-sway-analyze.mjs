@@ -37,6 +37,12 @@ for (const file of process.argv.slice(2)) {
   for (const [name, sc] of Object.entries(data)) {
     const rows = sc.rows.slice(Math.floor(sc.rows.length * 0.3), Math.floor(sc.rows.length * 0.85)); // skip the start-up
     if (rows.length < 20) { console.log(name, "too few frames", rows.length); continue; }
+    if (name === "idle") {
+      // standing still: raw peak-to-peak of the camera (no detrend), mm and degrees; target < 2 mm and < 0.05 deg
+      const pp = (c, m) => { const v = sc.rows.slice(Math.floor(sc.rows.length * 0.1)).map((r) => r[c] * m); return Math.max(...v) - Math.min(...v); };
+      console.log(`idle: pos p2p x ${pp(1, 1000).toFixed(2)} y ${pp(2, 1000).toFixed(2)} z ${pp(3, 1000).toFixed(2)} mm; yaw ${pp(4, DEG).toFixed(3)} pitch ${pp(5, DEG).toFixed(3)} roll ${pp(6, DEG).toFixed(3)} deg`);
+      continue;
+    }
     const t = rows.map((r) => (r[0] - rows[0][0]) / 1000);
     const fps = (rows.length / t.at(-1)).toFixed(1);
     // heading frame: the walk is along one axis, so the lateral / forward split is x / z
