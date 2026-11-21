@@ -110,7 +110,8 @@ describe("a tap on a lot building's door (the café's, owner 2026-11-20)", () =>
       const room = lotRoomOf(r.area)!;
       const exit = lotRoomDoor(room).exitPad;
       const out = `${LOT_EXIT_TARGET_PREFIX}${room.unit.id}`;
-      expect(lotDoorTapTarget(room.area, NaN, NaN, NaN, ray({ x: exit.x, y: 3, z: room.origin.z + 5 }, { x: exit.x, y: 1.2, z: room.origin.z }), 0)?.id, room.area).toBe(out);
+      // (a room with no way out of its own, the café's upstairs: nothing there is a door)
+      expect(lotDoorTapTarget(room.area, NaN, NaN, NaN, ray({ x: exit.x, y: 3, z: room.origin.z + 5 }, { x: exit.x, y: 1.2, z: room.origin.z }), 0)?.id, room.area).toBe(room.spec.noExit ? undefined : out);
       expect(lotDoorTapTarget(room.area, NaN, NaN, NaN, ray({ x: exit.x, y: 3, z: room.origin.z + 5 }, { x: exit.x, y: 0.05, z: room.origin.z }), 0), `${room.area} foot`).toBeNull();
       expect(lotDoorTapTarget(room.area, NaN, NaN, NaN, ray({ x: exit.x, y: 3, z: room.origin.z + 5 }, { x: exit.x + room.spec.doorWidth / 2 + 1.2, y: 1.2, z: room.origin.z }), 0), `${room.area} beside`).toBeNull();
     }

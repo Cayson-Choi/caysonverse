@@ -1,4 +1,5 @@
-import { LOT_ROOMS, lotDoorPoint, lotRoomDoor, lotRoomOf } from "@caysonverse/shared/village/villageLots";
+import { LOT_ROOMS, lotDoorPoint, lotRoomDoor, lotRoomOf, lotRoomStair } from "@caysonverse/shared/village/villageLots";
+import { HOUSE_STAIR_DOWN_TARGET_ID, HOUSE_STAIR_UP_TARGET_ID } from "@caysonverse/shared/village/houseTargets";
 import { LOT_ENTER_TARGET_PREFIX, LOT_EXIT_TARGET_PREFIX } from "./lots/lotTargets";
 
 /**
@@ -90,6 +91,7 @@ export function lotDoorTapTarget(area: string, x: number, y: number, z: number, 
   if (!picked) distance = RAY_ONLY_MAX_M;
   if (area === "village") {
     for (const r of LOT_ROOMS) {
+      if (r.spec.noExit) continue;
       const p = lotDoorPoint(r.lot, r.door);
       const out = { x: Math.sin(p.yaw), z: Math.cos(p.yaw) };
       const along = { x: Math.cos(p.yaw), z: -Math.sin(p.yaw) };
@@ -107,6 +109,17 @@ export function lotDoorTapTarget(area: string, x: number, y: number, z: number, 
   }
   const room = lotRoomOf(area);
   if (!room) return null;
+  // a building's own stair (the café's): a tap on its steps, rail or the stairwell's balustrade walks to its pad (the houses' stair tap)
+  const st = lotRoomStair(room);
+  if (st) {
+    const f = st.footprint;
+    const m = 0.2;
+    const top = st.dir === "up" ? room.ceiling + 0.2 : 1.3;
+    if (x >= f.minX - m && x <= f.maxX + m && z >= f.minZ - m && z <= f.maxZ + m && y <= top) {
+      return { id: st.dir === "up" ? HOUSE_STAIR_UP_TARGET_ID : HOUSE_STAIR_DOWN_TARGET_ID, x: st.pad.x, z: st.pad.z };
+    }
+  }
+  if (room.spec.noExit) return null;
   const d = lotRoomDoor(room);
   // the room's frame: the door on the z = origin wall, +z into the room
   const half = room.spec.doorWidth / 2 + TAP_SIDE_M;

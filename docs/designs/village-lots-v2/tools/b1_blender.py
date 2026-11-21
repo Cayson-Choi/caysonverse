@@ -316,8 +316,10 @@ def add_letters(kit):
         opts = L[7] if len(L) > 7 else {}
         cu = bpy.data.curves.new("txt", "FONT")
         cu.body = text
-        cu.font = font
-        cu.size = size / 0.72  # Blender's size is the em; a Hangul glyph is ~0.72 em tall
+        f_ = opts.get("font")
+        cu.font = bpy.data.fonts.load(f_, check_existing=True) if f_ and os.path.exists(f_) else font
+        # Blender's size is the em; a Hangul glyph is ~0.72 em tall, a Latin capital ~0.69 (`capital`: size is the cap height)
+        cu.size = size / (0.69 if opts.get("capital") else 0.72)
         cu.extrude = depth / 2
         cu.align_x = opts.get("align", "CENTER")
         cu.align_y = "BOTTOM_BASELINE"
