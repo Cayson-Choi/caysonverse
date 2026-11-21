@@ -83,11 +83,11 @@ export const CAFE_TABLES: readonly CafeTableSpot[] = Object.freeze([
 
 /**
  * The two tables on the stair's side of the room (the bake's two by the left window until 2026-11-21; owner "2층까지 만들어서 계단도
- * 만들어": the staircase took their corner, so they stand one behind the other between the stair and the door, room x 4.0).
+ * 만들어": the staircase took their corner, so they stand one behind the other between the stair and the door, room x 4.4: a body-wide aisle to the stair beside them).
  */
 export const CAFE_BAKED_TABLES: readonly CafeTableSpot[] = Object.freeze([
-  { x: 2.8, z: 0.7, chairs: [-PI / 2, PI / 2], lamp: "dome" },
-  { x: 2.8, z: -1.7, chairs: [-PI / 2, PI / 2], lamp: "globe" },
+  { x: 2.4, z: 0.7, chairs: [-PI / 2, PI / 2], lamp: "dome" },
+  { x: 2.4, z: -1.7, chairs: [-PI / 2, PI / 2], lamp: "globe" },
 ]);
 
 /** Every table of the room (the new ones, then the bake's two). */
