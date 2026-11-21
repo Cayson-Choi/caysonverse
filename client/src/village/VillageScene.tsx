@@ -5,7 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { PlayShell } from "../game/PlayShell";
 import { villageActiveMap } from "../game/activeMap";
-import { clearClickTarget } from "../game/clickMove";
+import { clearClickTarget, peekClickTarget } from "../game/clickMove";
 import { fireTarget, setTargetHandler, setTargetSource } from "../game/interactTargets";
 import { armedHouseUse, disarmHouseUse, takeArmedHouseUse } from "./houseTap";
 import type { PlayersRoom } from "../game/remoteSync";
@@ -93,7 +93,7 @@ import { sendRideBoard } from "../net/connection";
 import { landPose } from "../land/coasterRide";
 import { startRideAudio } from "../land/coasterAudio";
 import { boardRide } from "../land/rideBoardWalk";
-import { takeArmedRide } from "../land/rideBoard";
+import { armRide, armedRide, takeArmedRide } from "../land/rideBoard";
 import { maybePreloadPark } from "../land/parkAssets";
 
 /**
@@ -359,11 +359,14 @@ function VillageDoors({ pose }: { pose: Pose }) {
     if (lastArea.current !== area) {
       lastArea.current = area;
       disarmHouseUse();
+      armRide(null); // ... and so is a board armed in the park before leaving it
     }
-    // A tap on a ride, or a press of its 타기 from afar, walked to the pad: the board is sent on arrival (rideBoard.ts)
+    // A press of a ride's 타기 from afar walked to the pad: the board is sent on arrival (rideBoard.ts). The board lives only as long as
+    // that walk: once it has ended short of the pad (blocked, given up) nothing boards later by passing the pad (owner 2026-11-21).
     if (area === "park") {
       const key = takeArmedRide(pose.x, pose.z);
       if (key) sendRideBoard(key);
+      else if (armedRide() !== null && peekClickTarget() === null) armRide(null);
       return;
     }
     if (area === "village") maybePreloadPark(pose.x, pose.z); // the park's files start loading as the gate comes near

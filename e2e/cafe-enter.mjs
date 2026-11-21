@@ -357,10 +357,15 @@ try {
       await act(A);
       run.check("out by the button", await waitArea(A, "village", 90000));
       await sleep(800);
-      // in by walking into the door itself (no button, no tap): a click-move that ends beyond the door line stops at the wall
+      // walking into the door itself (no button, no tap) does NOT go in (owner 2026-11-21: "들어가기 버튼 누르지도 않았는데 들어가버리잖아"; the
+      // doorstep rule of 2026-11-20 is gone): a click-move that ends beyond the door line stops at the wall, and the button is there
       await walkAndWait(A, d.pad.x - 3.5, d.pad.z, 40000, 0.9);
       await A.page.evaluate(async ([x, z]) => (await window.__imp("/src/game/clickMove.ts")).setClickTarget(x, z), [d.centre.x + 1.2, d.centre.z]);
-      run.check("walking into the door goes in (the doorstep rule)", await waitArea(A, ROOM_AREA, 90000), await inArea(A));
+      run.check("walking into the door does NOT go in (no walk-in entry)", !(await waitArea(A, ROOM_AREA, 12000)), await inArea(A));
+      const t3 = await targets(A);
+      run.check("standing at the door after walking into it, the button says '카페 들어가기'", t3.some((x) => /들어가기/.test(x.label)), t3);
+      await act(A);
+      run.check("and the button goes in", await waitArea(A, ROOM_AREA, 90000), await inArea(A));
       await waitRoom(A);
       await sleep(2500);
       await walkAndWait(A, ...at(info.door, 1.6), 30000, 0.6);

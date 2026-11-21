@@ -98,7 +98,7 @@ import { busFloorUnderRay, busSeatUnderRay } from "../village/busSeatPick";
 import { VILLAGE_LAYOUT, cubbyAtPoint, isHouseArea, isLotArea } from "@caysonverse/shared/village/villageLayout";
 import { localArea } from "../village/villageArea";
 import { armHouseUse, houseTapTarget } from "../village/houseTap";
-import { lotDoorTapTarget } from "../village/lotDoorTap";
+import { DOOR_TAP_USE_RANGE_M, lotDoorTapTarget } from "../village/lotDoorTap";
 import { armRide, rideForTap, rideTapSpot } from "../land/rideBoard";
 import { openCubbyAt } from "../village/cubbyCard";
 import { cubbyFocusAnchor, stepCubbyFocus, type FocusPose } from "../village/cubbyFocus";
@@ -361,6 +361,8 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
     let secondTouchGeneration = -1;
     // A mouse click's (or a stick-half tap's) plan still looking for its way round (planClick): a newer click drops it.
     const clickWork = new HeldWork();
+    /** The ray of the last click that picked nothing (pickAt), for a tap on a glass door a click passes through (houseTap.ts, lotDoorTap.ts). */
+    let missRay: NonNullable<ScenePick["ray"]> | null = null;
     /** What a click at a screen point lands on: the first visible surface under it (clickPick.ts). Once per click. */
     const pickAt = (clientX: number, clientY: number, cam = camera as PerspectiveCamera): ScenePick | null => {
       const rect = el.getBoundingClientRect();
@@ -373,10 +375,11 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
       raycaster.far = cam.far;
       raycaster.layers.mask = cam.layers.mask;
       const pick = pickSurface(raycaster, scene, { area: activePickBounds() });
-      if (pick) {
-        const { origin: o, direction: d } = raycaster.ray;
-        pick.ray = { o: { x: o.x, y: o.y, z: o.z }, d: { x: d.x, y: d.y, z: d.z } };
-      }
+      const { origin: o, direction: d } = raycaster.ray;
+      const ray = { o: { x: o.x, y: o.y, z: o.z }, d: { x: d.x, y: d.y, z: d.z } };
+      if (pick) pick.ray = ray;
+      // nothing picked (the sky, or through a glass door and out of the area): the ray is kept for the door's own test (planClick)
+      missRay = pick ? null : ray;
       return pick;
     };
     /**
@@ -481,17 +484,26 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
       const inRoom = localArea() === "hall" || isHouseArea(localArea()) || isLotArea(localArea());
       let furniture = inRoom ? map.geometry.obstacles : map.furniture;
       // A tap on a house's stair or front door walks to its pad and uses it there (houseTap.ts): the pad is the destination, the use is armed.
-      // (a lot building's door, the village side or a room's way out, the same way: lotDoorTap.ts)
-      const houseTap = pick && !pick.blocker ? (isHouseArea(localArea()) ? houseTapTarget(localArea(), pick.x, pick.y, pick.z) : lotDoorTapTarget(localArea(), pick.x, pick.y, pick.z, pick.ray, pick.distance)) : null;
+      // (a lot building's door, the village side or a room's way out, the same way: lotDoorTap.ts). Only the door / stair ITSELF: a tap on
+      // the ground or floor by it is a plain walk (owner 2026-11-21), and a tap made from far off walks to the door without using it.
+      // (nothing picked: a glass leaf lets the click through and out of the area; then its ray alone says whether it crossed the door)
+      const tapRay = pick ? pick.ray : missRay;
+      const houseTap = pick?.blocker
+        ? null
+        : isHouseArea(localArea())
+          ? houseTapTarget(localArea(), pick?.x ?? NaN, pick?.y ?? NaN, pick?.z ?? NaN, pick?.ny, tapRay, pick?.distance ?? 0)
+          : lotDoorTapTarget(localArea(), pick?.x ?? NaN, pick?.y ?? NaN, pick?.z ?? NaN, tapRay, pick?.distance ?? 0, pick?.ny);
       if (houseTap) surface = { x: houseTap.x, y: 0, z: houseTap.z, ny: 1 };
-      armHouseUse(houseTap ? houseTap.id : null);
-      // A tap on a ride (its platform, queue, station, the wheel's frame) walks to its boarding pad and boards there (rideBoard.ts); any other tap disarms it.
-      const rideTapKey = pick && !pick.blocker && localArea() === "park" ? rideForTap(pick.x, pick.z, pick.ray, pick.distance, pick.y) : null;
+      armHouseUse(houseTap && Math.hypot(from.x - houseTap.x, from.z - houseTap.z) <= DOOR_TAP_USE_RANGE_M ? houseTap.id : null);
+      // A tap on a ride's own body (its frame, cars, seats, a raised platform) walks to its boarding pad, where its 타기 button is; it never
+      // boards (owner 2026-11-21: "타기 버튼을 눌러야만 타도록"). A tap on the ground is a walk to that spot. Any tap drops a board armed by an
+      // earlier press of 타기 from afar (rideBoardWalk.ts): the player chose to go somewhere else.
+      const rideTapKey = pick && !pick.blocker && localArea() === "park" ? rideForTap(pick.x, pick.z, pick.ray, pick.distance, pick.y, pick.ny) : null;
       if (rideTapKey) {
         const spot = rideTapSpot(rideTapKey);
         surface = { x: spot.x, y: 0, z: spot.z, ny: 1 };
       }
-      armRide(rideTapKey);
+      armRide(null);
       // A click on a seat or (in the hall) on other furniture is no ground, yet means something (round 8 review: a tap on the
       // sofa did nothing): the seat's approach, to sit on arrival, or the floor next to the piece (furnitureClick.ts).
       let sitOn: number | null = seatGoal ? seatTapped : null;

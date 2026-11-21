@@ -153,8 +153,8 @@ export function CoasterHud() {
         : !boarding
           ? "자리를 맡으면 열릴 때 자동으로 타요"
           : isTouchDevice
-            ? "놀이기구나 타기 버튼을 눌러요"
-            : "놀이기구를 누르거나 E 키를 눌러요";
+            ? "타기 버튼을 눌러야 타요"
+            : "타기 버튼이나 E 키를 눌러야 타요";
     // a refused board: one toast, once (a reservation is the status line's business)
     const fresh = rideNotice.reason !== null && rideNotice.reason !== "reserved" && performance.now() - rideNotice.at < 4500;
     const others = RIDES.filter((r) => r.seats > 0 && r.key !== def!.key);

@@ -54,6 +54,20 @@ describe("houseTapTarget: a tap on the stair or the front door", () => {
     expect(houseTapTarget(houseFloorArea(n, 1), door.x, 1.5, door.z)).toMatchObject({ id: HOUSE_EXIT_TARGET_ID, x: HOUSE_PLACES[n].exitPad.x });
     expect(houseTapTarget(houseFloorArea(n, 1), door.x, 3.3, door.z)).toBeNull(); // above the door
     expect(houseTapTarget(houseFloorArea(n, 1), door.x, 0, door.z)).toBeNull(); // the floor by the door: a walk, never out
+    // the glass leaf lets a click through: nothing picked (NaN), the ray alone says it crossed the door; at its foot, past its jamb, upstairs: not
+    const eye = localToWorld(n, 1, 5.3, 4);
+    const rayTo = (lx: number, y: number) => {
+      const to = localToWorld(n, 1, lx, 0);
+      const l = Math.hypot(to.x - eye.x, y - 2.8, to.z - eye.z);
+      return { o: { x: eye.x, y: 2.8, z: eye.z }, d: { x: (to.x - eye.x) / l, y: (y - 2.8) / l, z: (to.z - eye.z) / l } };
+    };
+    expect(houseTapTarget(houseFloorArea(n, 1), NaN, NaN, NaN, undefined, rayTo(5.3, 1.4))).toMatchObject({ id: HOUSE_EXIT_TARGET_ID });
+    expect(houseTapTarget(houseFloorArea(n, 1), NaN, NaN, NaN, undefined, rayTo(5.3, 0.1))).toBeNull();
+    expect(houseTapTarget(houseFloorArea(n, 1), NaN, NaN, NaN, undefined, rayTo(2.0, 1.4))).toBeNull();
+    expect(houseTapTarget(houseFloorArea(n, 1), NaN, NaN, NaN, undefined, null)).toBeNull();
+    expect(houseTapTarget(houseFloorArea(n, 2), NaN, NaN, NaN, undefined, rayTo(5.3, 1.4))).toBeNull();
+    // a floor click whose ray would cross the door plane lower down is still the floor
+    expect(houseTapTarget(houseFloorArea(n, 1), door.x, 0, door.z, 1, rayTo(5.3, 1.4), 5)).toBeNull();
     const door2 = localToWorld(n, 2, 5.3, 0.1);
     expect(houseTapTarget(houseFloorArea(n, 2), door2.x, 1.5, door2.z)).toBeNull();
     const side = localToWorld(n, 1, 2.0, 0.1); // the wall beside the door
