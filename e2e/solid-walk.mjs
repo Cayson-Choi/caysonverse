@@ -158,7 +158,10 @@ const props = await A.page.evaluate(
       [-135, -65, 75, 140].forEach((d) => add("plaza planter", `square planter ${d}`, sq(24.5 * Math.cos(rad(d)), 24.5 * Math.sin(rad(d)), 1.0), true));
       add("fountain", "the plaza fountain and its corner beds", sq(0, 0, 5.6), true);
       // a house's raised vegetable bed (col__garden_house_1) and the kiosk's planters
-      add("house bed", "house 1 vegetable bed", { minX: 18, maxX: 24, minZ: -49.2, maxZ: -46.6 }, true);
+      for (const id of ["garden_house_1", "garden_house_6"]) {
+        const g = L.greyboxColliders(L.VILLAGE_LAYOUT).find((c) => c.id === id);
+        if (g) add("house bed", `${id} (the vegetable bed)`, g.box, true);
+      }
       add("kiosk planter", "kiosk planter 1", { minX: 46.1, maxX: 48, minZ: -5.85, maxZ: -5.45 }, true);
       // a sample of every other type
       const lamps = SP.lampSpots(L.VILLAGE_LAYOUT);

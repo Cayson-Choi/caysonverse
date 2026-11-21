@@ -1,11 +1,15 @@
 /**
  * Plants the baked village.glb stands ON a path (owner 2026-11-21: "절로 가는 입구에 나무가 왜 도로에 있는거야 꽃들도 그렇고").
  * The model's street trees and shrubs were placed along the old straight lanes; the ground paths later redrew the lanes
- * (client/src/village/ground/groundPaths.ts) and a tree trunk, four shrubs and a sidewalk cherry stayed where the paving is now.
- * They are moved here, at runtime, to the nearest grass: the game grows the trees and bushes at the new spots
+ * (client/src/village/ground/groundPaths.ts) and two lane trees and a sidewalk cherry stayed where the paving is now.
+ * They are moved here, at runtime, to the nearest grass: the game grows the trees at the new spots
  * (client veg/villageVegetation.ts reads `pathPlantShift`) and plays on the moved colliders (`stagePathPlants`), the same way
  * a8Staging.ts hands the A8 houses' moved trees over until the model is rebuilt. Once the model holds a moved box, the swap
- * leaves it alone. The sweep that found them: client/src/village/veg/vegOffPaths.test.ts.
+ * leaves it alone. The sweeps that found them: client/src/village/veg/vegOffPaths.test.ts.
+ *
+ * (The four shrubs the model has on the two lanes' cobbles, col__shrub_1 / 3 / 14 / 16, are not grown at all since the lanes were
+ * redrawn; only their BOXES were left, invisible, on the temple's and the chapel's lanes. They are not moved: the boxes go with the
+ * other plant boxes nothing is drawn in, generated/villageVegColliders.ts VILLAGE_VEG_GHOSTS.)
  */
 
 import type { AABB, CameraBox } from "../collision";

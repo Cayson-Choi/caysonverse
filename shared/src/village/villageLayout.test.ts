@@ -10,7 +10,7 @@ import { PLAYER_RADIUS } from "../worldMap";
 import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { guideColliders } from "./guides";
-import { stagePathPlants } from "./pathPlants";
+import { PATH_PLANT_MOVES, movedBox, stagePathPlants } from "./pathPlants";
 import { VILLAGE_VEG_COLLIDERS, VILLAGE_VEG_GHOSTS } from "./generated/villageVegColliders";
 import { A7_MODEL_HOUSE_BOXES, A8_TREE_MOVES, modelHasA8Houses, stageA8Colliders } from "./a8Staging";
 import { houseFootprintSize } from "./houseExterior";
@@ -908,7 +908,10 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
     expect(VILLAGE_STAGED_COLLIDERS.obstacles).toHaveLength(VILLAGE_COLLIDERS.length - legacy - a7Count + added);
     expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toHaveLength(VILLAGE_CAMERA_BOXES.length - VILLAGE_CAMERA_BOXES.filter((b) => sameBox(b, MODEL_LEGACY_BUS_BOX)).length - VILLAGE_CAMERA_BOXES.filter(a7).length + 10);
     const ghost = (b: AABB) => VILLAGE_VEG_GHOSTS.some((g) => sameBox(g, b));
-    for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles.some((o) => sameBox(o, b))).toBe(!sameBox(b, MODEL_LEGACY_BUS_BOX) && !a7(b) && !ghost(b));
+    // (the three trees moved off the paths stand at their new spots, pathPlants.ts: their old boxes are swapped out)
+    const offPath = (b: AABB) => PATH_PLANT_MOVES.some((m) => sameBox(m.box, b));
+    for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles.some((o) => sameBox(o, b)), JSON.stringify(b)).toBe(!sameBox(b, MODEL_LEGACY_BUS_BOX) && !a7(b) && !ghost(b) && !offPath(b));
+    for (const m of PATH_PLANT_MOVES) expect(villageGeometry.obstacles.some((o) => sameBox(o, movedBox(m))), m.id).toBe(true);
     for (const b of VILLAGE_CAMERA_BOXES) if (!sameBox(b, MODEL_LEGACY_BUS_BOX) && !a7(b)) expect(villageGeometry.cameraBoxes).toContainEqual(b);
     for (const b of busParkedColliders(L)) expect(villageGeometry.cameraBoxes).not.toContainEqual(b);
   });

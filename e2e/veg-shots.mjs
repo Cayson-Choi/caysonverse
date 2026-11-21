@@ -4,7 +4,7 @@
  *
  *   CV_CLIENT_URL=http://localhost:5581 node e2e/veg-shots.mjs <views.json> <prefix> [--park] [--phone] [--out=<folder>]
  *
- * views.json: [{ name, cam: [x, y, z, tx, ty, tz, fov?], walk?: [x, z], area?: "park" | "village" }]
+ * views.json: [{ name, cam: [x, y, z, tx, ty, tz, fov?], walk?: [x, z] (a planned walk to a free spot), into?: [x, z] (then a straight walk AT a prop) }]
  */
 import { mkdirSync, readFileSync } from "node:fs";
 import { CLIENT_URL, DESKTOP, PHONE, SLOW, createRun, entryReady, launchBrowser, openPlayer, press, sleep, pos } from "./lib/common.mjs";
@@ -76,6 +76,19 @@ for (const v of views) {
   if (v.walk) {
     const at = await goTo(A, v.walk[0], v.walk[1], v.tol ?? 1.2);
     console.log(`${v.name}: walked to (${at.x.toFixed(2)}, ${at.z.toFixed(2)}) for (${v.walk[0]}, ${v.walk[1]})`);
+  }
+  if (v.into) {
+    // a straight walk AT the thing (no plan: what holding a key toward it does), until the body rests
+    await A.page.evaluate(async ([x, z]) => (await window.__imp("/src/game/clickMove.ts")).setClickTarget(x, z, 0), v.into);
+    let last = await pos(A), still = 0;
+    for (let i = 0; i < 60 && still < 4; i++) {
+      await sleep(150);
+      const at = await pos(A);
+      still = Math.hypot(at.x - last.x, at.z - last.z) < 0.01 ? still + 1 : 0;
+      last = at;
+    }
+    await A.page.evaluate(async () => (await window.__imp("/src/game/clickMove.ts")).clearClickTarget());
+    console.log(`${v.name}: walked straight at (${v.into[0]}, ${v.into[1]}), came to rest at (${last.x.toFixed(2)}, ${last.z.toFixed(2)})`);
   }
   const [x, y, z, tx, ty, tz, fov] = v.cam;
   await A.page.evaluate((c) => { window.__cvShot = c; }, { x, y, z, tx, ty, tz, fov: fov ?? 55 });

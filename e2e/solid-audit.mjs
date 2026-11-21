@@ -1,15 +1,33 @@
 /**
- * e2e/solid-audit.mjs — "is everything you can see at body height also solid?" (owner 2026-11-21: trees, flowerbeds, lamp posts,
- * hedges and benches were walked through, one report after another: "뭐 이렇게 문제가 많은거야"). Instead of a list of props somebody
- * remembered, this looks at what the game DRAWS: the scene is rendered from straight above with an orthographic camera whose near and
- * far planes cut the slab 0.5 .. 1.3 m above the ground (a walker's shins to chest), tile by tile at 5 cm a pixel. A drawn pixel
- * where the body's centre may stand (inside the bounds, no collider within the player's radius) is something you can walk through.
- * The flagged pixels are clustered and each cluster is named by a ray cast down into the scene (object / material names).
+ * e2e/solid-audit.mjs — "is everything you can see at body height also solid, and is every solid something you can see?"
+ * (owner 2026-11-21: trees on a path, flowerbeds, lamp posts, a hedge and benches were walked through, one report after another:
+ * "뭐 이렇게 문제가 많은거야"). Instead of a list of props somebody remembered, this looks at what the game DRAWS.
  *
- *   CV_CLIENT_URL=http://localhost:5581 node e2e/solid-audit.mjs [--park] [--phone] [--out=<folder>]
+ * The running scene is rendered from straight above with an orthographic camera whose near and far planes cut a slab out of it,
+ * tile by tile (51.2 m, 5 cm a pixel):
  *
- * Output: <out>/solid-audit-<area>.json (the clusters, named). The run FAILS when a cluster of MIN_AREA or more remains that is not
- * on the allow list (ALLOW below: things that are meant to be walked under or through, each with its reason).
+ *  1. WALKED THROUGH: the slab 0.5 .. 1.3 m over the ground (a walker's shins to chest). A drawn pixel where the body's centre may
+ *     stand (inside the bounds, no collider within the player's radius) is something you can walk through. The pixels are
+ *     clustered and each cluster is named (a ray cast down into the scene; what no ray names is found by hiding the scene's
+ *     drawables one at a time). A cluster of MIN_AREA or more that is not on the allow list (ALLOW: what is meant to be walked
+ *     under or through, each with its reason) FAILS the run.
+ *  2. INVISIBLE WALLS: the slab 0.04 .. 2.5 m. Every collider up to 60 m2 is measured: the share of its box that holds anything
+ *     drawn. Under 15 % is listed (a thin post or a fence line is expected there; a whole empty box is a collider with no prop).
+ *
+ * Two things make "what the game draws" hold still:
+ *  - each tile is drawn as the game draws it AND once more with a plain two-sided material on everything but the plants: a closed
+ *    volume that stands right through the slab (a wall, a post, a booth) shows a camera inside it nothing at all otherwise;
+ *  - the game's own camera is parked over each tile first, twice (close by: the nearest level of detail of everything; and high
+ *    above with the whole tile in view: instanced props are culled one by one against the game camera's frustum), and the lot
+ *    buildings are held at their nearest level. What either view shows counts.
+ *
+ *   CV_CLIENT_URL=http://localhost:5581 node e2e/solid-audit.mjs [--park] [--phone] [--out=<folder>] [--report] [--tiles]
+ *     --report            list only, never fail
+ *     --ybot= --ytop=     another slab (e.g. 0.12 .. 0.5: kerbs and low beds); always a report
+ *     --tiles [--tile=64] also save plan photographs of the ground with everything over 1.6 m cut away (paths, trunks, beds in plan)
+ *
+ * Output: <out>/solid-audit-<area>[-phone].json (the clusters with their names and verdicts, the colliders with nothing drawn).
+ * The plants' own colliders come from the same idea, asked of the game directly: e2e/veg-colliders.mjs.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -40,6 +58,7 @@ const ALLOW = [
   [/veg_leaf|M_veg_leaves|M_veg_blossom|M_veg_twigs|veg_(village|plaza|young|street|orchard)[a-z_]*_\d|_mid\b|_near\b|_far\b/, "a tree's leaves and twigs where a low branch hangs to shoulder height"],
   [/veg_flowers|M_veg_flowers|park_planting_blooms/, "flowers and grass on the ground (no kerb: lawn one walks on)"],
   [/not drawn a second time/, "leaves the shader bends away from the camera (seen from the audit's camera only)"],
+  [/lake_grass|M_lake_tall/, "the reeds at the lake's edge: grass one wades through"],
   [/fishing_chair/, "the lake's folding chairs: the seat's box is the collider, the armrest tips reach 5 cm past it (seat approach, lakeLayout.ts)"],
 ];
 /** The rides' own ground (fix/moonboat-seats owns their structures and railings): reported, not judged here. [x, z, radius, name] */
@@ -50,7 +69,7 @@ const verdict = (c) => {
   if (zone) return `ride: ${zone[3]}`;
   const hit = ALLOW.find(([re]) => re.test(what));
   if (hit) return `allowed: ${hit[1]}`;
-  if (/veg_bush|M_veg_bush|veg_bark|M_veg_bark/.test(what) && c.area < FRINGE_AREA) return "fringe: leaf tips / bark flare past the box";
+  if (/veg_bush|M_veg_bush|veg_bark|M_veg_bark|lakehi_shrub|M_leaf_green/.test(what) && c.area < FRINGE_AREA) return "fringe: leaf tips / bark flare past the box";
   return "FAIL";
 };
 
@@ -229,6 +248,13 @@ await run.step("audit", async () => {
       // every level-of-detail rule judges from the camera of the game: it is parked over each tile first (the photo camera,
       // __cvShot in CameraRig), and the lot buildings are held at their nearest level, so what a walker THERE sees is what is audited
       window.__cvLotsForce?.(2);
+      // after the game camera moves: the game's own frames must run (its culling and level-of-detail rules act in them); counted
+      // in frames, not seconds (a loaded machine draws one in 300 ms)
+      const settle = async () => {
+        for (let f = 0; f < 14; f++) await new Promise((r) => requestAnimationFrame(r));
+        await new Promise((r) => setTimeout(r, 500));
+        for (let f = 0; f < 4; f++) await new Promise((r) => requestAnimationFrame(r));
+      };
       const clusters = [];
       let drawn = 0, total = 0, tiles = 0, flaggedPixels = 0;
       try {
@@ -244,14 +270,18 @@ await run.step("audit", async () => {
             const covG = new Uint8Array(N * N); // drawn anywhere from the ground to 2.5 m
             for (const view of [NEAR, OVER]) {
               window.__cvShot = view;
-              await new Promise((r) => setTimeout(r, 1500));
+              await settle();
               quiet();
+              // (the plants are judged from close by only: from 46 m up their far level of detail is drawn, fuller than the bush a walker meets)
+              const shown = plants.map((o) => o.visible);
+              if (view === OVER) plants.forEach((o) => { o.visible = false; });
               shoot(camG, rt, px, N, cx, cz, GH_TOP);
               shootSolid(camG, rt, px2, N, cx, cz, GH_TOP);
-              for (let k = 0; k < N * N; k++) if (px[k * 4 + 3] > 8 || px2[k * 4 + 3] > 8) covG[k] = 1;
+              for (let k = 0; k < N * N; k++) if (px[k * 4 + 3] > 8 || px2[k * 4 + 3] > 8) covG[k] |= view === NEAR ? 1 : 2;
               shoot(cam, rt, px, N, cx, cz);
               shootSolid(cam, rt, px2, N, cx, cz);
               for (let k = 0; k < N * N; k++) if (!cov[k] && (px[k * 4 + 3] > 8 || px2[k * 4 + 3] > 8)) cov[k] = view === NEAR ? 1 : 2;
+              plants.forEach((o, i) => { o.visible = shown[i]; });
             }
             // (the game camera is over the tile now: what only that view drew is named first, then the close view comes back)
             const flag = new Uint8Array(N * N);
@@ -315,7 +345,7 @@ await run.step("audit", async () => {
             if (!pass) {
               if (!mine.some((c) => !c.over && c.area >= 0.015)) break;
               window.__cvShot = NEAR;
-              await new Promise((r) => setTimeout(r, 1500));
+              await settle();
               quiet();
             }
             for (const c of mine) {
@@ -354,13 +384,15 @@ await run.step("audit", async () => {
               if ((o.maxX - o.minX) * (o.maxZ - o.minZ) > 60) continue;
               const i0 = Math.max(0, Math.floor((o.minX - tx) / CELL)), i1 = Math.min(N - 1, Math.ceil((o.maxX - tx) / CELL) - 1);
               const j0 = Math.max(0, Math.floor((tz + TILE - o.maxZ) / CELL)), j1 = Math.min(N - 1, Math.ceil((tz + TILE - o.minZ) / CELL) - 1);
-              let n = 0, c = 0;
+              let n = 0, c = 0, cNear = 0, cOver = 0;
               for (let j = j0; j <= j1; j++)
                 for (let i = i0; i <= i1; i++) {
                   n++;
                   if (covG[j * N + i]) c++;
+                  if (covG[j * N + i] & 1) cNear++;
+                  if (covG[j * N + i] & 2) cOver++;
                 }
-              if (n > 0 && c / n < 0.15) empty.push({ box: o, cover: Math.round((c / n) * 100) / 100 });
+              if (n > 0 && c / n < 0.15) empty.push({ box: o, cover: Math.round((c / n) * 100) / 100, near: cNear, over: cOver, n });
             }
           }
       } finally {
@@ -396,7 +428,7 @@ await run.step("audit", async () => {
   for (const [k, v] of Object.entries(byWhat).sort((a, b) => b[1].area - a[1].area)) console.log(`  ${v.count} x ${k}: ${v.area.toFixed(2)} m2  e.g. ${v.eg.join("; ")}`);
   writeFileSync(join(run.evidence, `solid-audit-${area}${phone ? "-phone" : ""}${sfx}.json`), JSON.stringify(result, null, 1));
   console.log(`colliders with next to nothing drawn in them (under 15 % of the box): ${result.empty.length}`);
-  for (const e of result.empty.slice(0, 60)) console.log(`  ${JSON.stringify(e.box)} drawn ${Math.round(e.cover * 100)} %`);
+  for (const e of result.empty.slice(0, 60)) console.log(`  ${JSON.stringify(e.box)} drawn ${Math.round(e.cover * 100)} % (${e.near} / ${e.over} of ${e.n} px: close view / from above)`);
   const judged = {};
   for (const c of big) {
     c.verdict = verdict(c);
