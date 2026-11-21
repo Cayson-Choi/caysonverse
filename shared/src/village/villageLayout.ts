@@ -63,6 +63,7 @@ import {
 import { designExteriorWindowTable } from "./exteriorWindows";
 import { stageA8Colliders } from "./a8Staging";
 import { stagePathPlants } from "./pathPlants";
+import { VILLAGE_VEG_COLLIDERS, VILLAGE_VEG_GHOSTS } from "./generated/villageVegColliders";
 import { cameraWallBoxes, villageWalkArea, waterfallObstacles } from "./fallsWalk";
 import { LOT_ROOMS, carveBlockers, isLotArea, lotGeometryColliders, lotRoomColliders, lotRoomOuter, lotRoomWalls, replacedByLot, type LotAreaId } from "./villageLots";
 import type { Bounds, MapGeometry } from "../school/geometry";
@@ -1336,9 +1337,20 @@ export function withoutLegacyBus(g: GeneratedColliders): GeneratedColliders {
 }
 
 /** The village area's colliders generated from village.glb (Task 7): the layout's boxes plus the model's own. */
-export const VILLAGE_MODEL_COLLIDERS: GeneratedColliders = withoutLotReplaced(
+export const VILLAGE_STAGED_COLLIDERS: GeneratedColliders = withoutLotReplaced(
   stagePathPlants(stageA8Colliders(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES }), VILLAGE_LAYOUT.sceneryHouses)),
 );
+
+/**
+ * ... with the plants where the game DRAWS them (owner 2026-11-21: bushes and trunks were walked through): the model's plant boxes
+ * nothing is drawn in go (VILLAGE_VEG_GHOSTS) and every drawn trunk / ground bush the model has no box for gets one
+ * (VILLAGE_VEG_COLLIDERS, appended last). The table is written from the running game by e2e/veg-colliders.mjs.
+ */
+export function withDrawnPlants(g: GeneratedColliders): GeneratedColliders {
+  const ghost = (b: AABB) => VILLAGE_VEG_GHOSTS.some((o) => sameAabb(o, b));
+  return { obstacles: [...g.obstacles.filter((b) => !ghost(b)), ...VILLAGE_VEG_COLLIDERS], cameraBoxes: g.cameraBoxes };
+}
+export const VILLAGE_MODEL_COLLIDERS: GeneratedColliders = withDrawnPlants(VILLAGE_STAGED_COLLIDERS);
 
 /** The generated colliders without what a built lot replaces (villageLots.ts LOT_REPLACED_MODEL_BOXES: plot_w's scaffold, L5). */
 export function withoutLotReplaced(g: GeneratedColliders): GeneratedColliders {

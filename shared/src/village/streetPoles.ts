@@ -58,8 +58,6 @@ export function lampSpots(layout: Pick<VillageLayout, "plaza" | "lanes">): PoleS
       laneAngles.push(Math.atan2(b.z, b.x));
     }
   }
-  // the two lane lamps (light__lamp_42 beside the memorial's lane, light__lamp_43 on the bridge lane): they had no collider
-  pts.push(...LANE_LAMPS);
   const limit = (7 * Math.PI) / 180;
   for (let k = 0; k < 18; k++) {
     const a = (2 * Math.PI * (k + 0.5)) / 18;
@@ -69,6 +67,9 @@ export function lampSpots(layout: Pick<VillageLayout, "plaza" | "lanes">): PoleS
     if (Math.abs(x - 38) < 3 && z > -11 && z < -1) continue;
     pts.push({ x, z });
   }
+  // the two lane lamps last (light__lamp_42 beside the memorial's lane, light__lamp_43 on the bridge lane): they had no collider
+  // (owner 2026-11-21: "조명이랑 그냥 통과해버리네")
+  pts.push(...LANE_LAMPS);
   return pts;
 }
 

@@ -29,23 +29,46 @@ export function islandPoint(island: (typeof PARK_ISLANDS)[number], u: number, v:
 
 const r2 = (v: number): number => Math.round(v * 100) / 100;
 
-/** The boxes under every island: slices 0.8 m long of the outline, each box the slice's own corners (kerb to kerb, 4 cm in). */
+/** Whether (x, z) lies on an island's bed, `inset` m inside its outline (the kerb's own width). */
+export function onIsland(island: (typeof PARK_ISLANDS)[number], x: number, z: number, inset = 0): boolean {
+  const [cx, cz, degrees, length, width, bow] = island;
+  const yaw = (degrees * Math.PI) / 180;
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  const dx = x - cx;
+  const dz = z - cz;
+  const along = dx * c + dz * s;
+  const across = -dx * s + dz * c;
+  const u = along / (length - inset);
+  if (Math.abs(u) >= 1) return false;
+  const half = (1 + 0.12 * u) * (width - inset) * Math.sqrt(1 - u * u);
+  return Math.abs(across - bow * (1 - u * u)) <= half;
+}
+
+/** Rows this deep (m) and cells this wide make an island's boxes. */
+const ROW = 0.4;
+const CELL = 0.1;
+
+/**
+ * The boxes under every island: the bed cut into rows 0.4 m deep, each row one box per run of bed (the outline is followed to 10 cm
+ * along a row, so the turned islands by the plaza get no box corner standing out on the lawn). The kerb's outer 4 cm are left free.
+ */
 export function islandSolids(): AABB[] {
   const out: AABB[] = [];
   for (const island of PARK_ISLANDS) {
-    const slices = Math.ceil((2 * island[3]) / 0.8);
-    for (let k = 0; k < slices; k++) {
-      const pts: Array<{ x: number; z: number }> = [];
-      for (const u of [-1 + (2 * k) / slices, -1 + (2 * (k + 1)) / slices]) {
-        // the slice's ends sit at the ellipse's own width there (sqrt(1 - u^2)), so the ends taper like the bed
-        const w = Math.sqrt(Math.max(0, 1 - u * u));
-        pts.push(islandPoint(island, u, -w), islandPoint(island, u, w));
+    const reach = island[3] + island[4] + Math.abs(island[5]) + 0.5;
+    const z0 = Math.floor((island[1] - reach) / ROW) * ROW;
+    for (let z = z0; z < island[1] + reach; z += ROW) {
+      let start: number | null = null;
+      for (let x = island[0] - reach; x <= island[0] + reach + CELL; x += CELL) {
+        // a cell is bed when the row's two edges and its middle are (the tapering ends stay inside the outline)
+        const inside = onIsland(island, x, z + ROW / 2, 0.04) && (onIsland(island, x, z + 0.02, 0.04) || onIsland(island, x, z + ROW - 0.02, 0.04));
+        if (inside && start === null) start = x;
+        if (!inside && start !== null) {
+          if (x - CELL - start >= 0.2) out.push({ minX: r2(start), maxX: r2(x - CELL), minZ: r2(z), maxZ: r2(z + ROW) });
+          start = null;
+        }
       }
-      // mid-slice width is the larger of the ends' (the widest part of the slice): keep to the narrower so a box never over-reaches
-      const xs = pts.map((p) => p.x);
-      const zs = pts.map((p) => p.z);
-      const b = { minX: r2(Math.min(...xs) + 0.04), maxX: r2(Math.max(...xs) - 0.04), minZ: r2(Math.min(...zs) + 0.04), maxZ: r2(Math.max(...zs) - 0.04) };
-      if (b.maxX > b.minX && b.maxZ > b.minZ) out.push(b);
     }
   }
   return out;

@@ -11,6 +11,7 @@ import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColl
 import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { guideColliders } from "./guides";
 import { stagePathPlants } from "./pathPlants";
+import { VILLAGE_VEG_COLLIDERS, VILLAGE_VEG_GHOSTS } from "./generated/villageVegColliders";
 import { A7_MODEL_HOUSE_BOXES, A8_TREE_MOVES, modelHasA8Houses, stageA8Colliders } from "./a8Staging";
 import { houseFootprintSize } from "./houseExterior";
 import { HOUSE_FLOORS, HOUSE_NUMBERS, houseFloorBounds } from "./houseAreas";
@@ -23,6 +24,8 @@ import {
   VILLAGE_EAST_EDGE,
   VILLAGE_LAYOUT,
   VILLAGE_MODEL_COLLIDERS,
+  VILLAGE_STAGED_COLLIDERS,
+  withDrawnPlants,
   areaGapBlockers,
   houseBlockBlockers,
   BUS_MIRROR_REACH,
@@ -890,7 +893,11 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
     // A8 hand-over: the A7 houses' boxes swapped for the contract's until village.glb is rebuilt with the new houses (a8Staging.ts);
     // vrb2's rebuild (release 4) has no col__bus box any more (the filter stays for older models)
     // ...and what a lot building replaces (plot_w's scaffold, L5): vrb2's rebuild has none left, so nothing is taken out
-    expect(VILLAGE_MODEL_COLLIDERS).toEqual(withoutLotReplaced(stagePathPlants(stageA8Colliders(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES }), L.sceneryHouses))));
+    // ...and the plants where the game draws them (2026-11-21): the model's plant boxes nothing is drawn in go, the drawn ones it lacks are added
+    expect(VILLAGE_STAGED_COLLIDERS).toEqual(withoutLotReplaced(stagePathPlants(stageA8Colliders(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES }), L.sceneryHouses))));
+    expect(VILLAGE_MODEL_COLLIDERS).toEqual(withDrawnPlants(VILLAGE_STAGED_COLLIDERS));
+    expect(VILLAGE_MODEL_COLLIDERS.obstacles).toHaveLength(VILLAGE_STAGED_COLLIDERS.obstacles.length - VILLAGE_VEG_GHOSTS.length + VILLAGE_VEG_COLLIDERS.length);
+    for (const g of VILLAGE_VEG_GHOSTS) expect(VILLAGE_STAGED_COLLIDERS.obstacles, JSON.stringify(g)).toContainEqual(g); // every ghost is a box the model has
     expect(VILLAGE_COLLIDERS.filter((b) => replacedByLot(b))).toHaveLength(0);
     const legacy = VILLAGE_COLLIDERS.filter((b) => sameBox(b, MODEL_LEGACY_BUS_BOX)).length;
     expect(legacy).toBe(0);
@@ -898,9 +905,10 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
     const a7Count = VILLAGE_COLLIDERS.filter(a7).length;
     expect(a7Count).toBe(A7_MODEL_HOUSE_BOXES.length); // every A7 box is still in the model (vrb2 rebuilt the village with the A7 houses)
     const added = greyboxColliders(L).filter((c) => /^(house_\d+(_porch_\d+|_lpg)?|garden_house_\d+)$/.test(c.id)).length + A8_TREE_MOVES.length;
-    expect(VILLAGE_MODEL_COLLIDERS.obstacles).toHaveLength(VILLAGE_COLLIDERS.length - legacy - a7Count + added);
+    expect(VILLAGE_STAGED_COLLIDERS.obstacles).toHaveLength(VILLAGE_COLLIDERS.length - legacy - a7Count + added);
     expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toHaveLength(VILLAGE_CAMERA_BOXES.length - VILLAGE_CAMERA_BOXES.filter((b) => sameBox(b, MODEL_LEGACY_BUS_BOX)).length - VILLAGE_CAMERA_BOXES.filter(a7).length + 10);
-    for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles.some((o) => sameBox(o, b))).toBe(!sameBox(b, MODEL_LEGACY_BUS_BOX) && !a7(b));
+    const ghost = (b: AABB) => VILLAGE_VEG_GHOSTS.some((g) => sameBox(g, b));
+    for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles.some((o) => sameBox(o, b))).toBe(!sameBox(b, MODEL_LEGACY_BUS_BOX) && !a7(b) && !ghost(b));
     for (const b of VILLAGE_CAMERA_BOXES) if (!sameBox(b, MODEL_LEGACY_BUS_BOX) && !a7(b)) expect(villageGeometry.cameraBoxes).toContainEqual(b);
     for (const b of busParkedColliders(L)) expect(villageGeometry.cameraBoxes).not.toContainEqual(b);
   });

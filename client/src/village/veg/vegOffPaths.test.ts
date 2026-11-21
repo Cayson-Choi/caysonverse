@@ -12,6 +12,13 @@ import { LANES, laneShape } from "../ground/groundPaths";
 import { PLAZA_BEDS, bedAt, placeFlowers } from "./flowerPlacement";
 import { CARD_TRIGGER_M, GROUND_FLOOR_MAX, cardsOffPaving } from "./floraOffPaving";
 import { PLANT_CLEAR_M, TRUNK_CLEAR_M, pavedClearance } from "./pavedGround";
+import { VILLAGE_VEG_COLLIDERS, VILLAGE_VEG_GHOSTS } from "@caysonverse/shared/village/generated/villageVegColliders";
+import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
+import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
+import { treeSkeleton } from "./treeSkeleton";
+import { shiftSkeleton } from "./villageVegetation";
+import DRAWN from "./drawnPlants.generated.json";
 import { LOT_TREE_SPECS, VILLAGE_TREE_SPECS, WILLOW_SPECS, YOUNG_SPECS } from "./treeSkeleton";
 import { readCards, type Card } from "./vegCards";
 
@@ -109,6 +116,8 @@ function plantSpots(): Array<{ what: string; x: number; z: number; need: number 
     if (n.translation && /^col__(tree|shrub|bush)_/.test(n.name)) {
       const kind = n.name.startsWith("col__tree") ? "tree" : "shrub";
       const [x, z] = moved(n.translation[0], n.translation[2], kind);
+      // (a box of the model nothing is grown in is no plant: the lane shrubs the redrawn lanes left out, VILLAGE_VEG_GHOSTS)
+      if (VILLAGE_VEG_GHOSTS.some((g) => Math.abs((g.minX + g.maxX) / 2 - x) < 0.06 && Math.abs((g.minZ + g.maxZ) / 2 - z) < 0.06)) continue;
       out.push({ what: n.name, x, z, need: kind === "tree" ? TRUNK_CLEAR_M : PLANT_CLEAR_M });
     }
     const inst = n.extensions?.EXT_mesh_gpu_instancing;
@@ -145,8 +154,8 @@ describe("nothing grows on a paved surface (lanes, ring road and sidewalk, bus p
     expect(bad).toEqual([]);
   });
 
-  it("the plants that stood on a path were moved (the model's six street plants and the sidewalk cherry)", () => {
-    expect(PATH_PLANT_MOVES.map((m) => m.id).sort()).toEqual(["shrub_1", "shrub_14", "shrub_16", "shrub_3", "tree_11", "tree_37", "tree_44"]);
+  it("the trees that stood on a path were moved: the two lane trees and the sidewalk cherry (the four lane shrubs were never grown: their boxes go, VILLAGE_VEG_GHOSTS)", () => {
+    expect(PATH_PLANT_MOVES.map((m) => m.id).sort()).toEqual(["tree_11", "tree_37", "tree_44"]);
     for (const m of PATH_PLANT_MOVES) {
       expect(pavedClearance(m.from.x, m.from.z), `${m.id} stood on paving`).toBeLessThan(m.kind === "tree" ? TRUNK_CLEAR_M : 0);
       expect(pavedClearance(m.to.x, m.to.z), `${m.id} now`).toBeGreaterThanOrEqual(m.kind === "tree" ? 1 : 0.8);
@@ -209,5 +218,93 @@ describe("nothing grows on a paved surface (lanes, ring road and sidewalk, bus p
     const bad: string[] = [];
     for (const s of seats) for (const p of plants) if (Math.hypot(p.x - s.x, p.z - s.z) < 0.9) bad.push(`${p.what} (${p.x.toFixed(1)}, ${p.z.toFixed(1)}) by ${s.id}`);
     expect(bad).toEqual([]);
+  });
+});
+
+
+// ───────────────────────────── the plants AS DRAWN (e2e/veg-colliders.mjs asks the running game) ─────────────────────────────
+// The sweep above replays the art script's placements; the game then varies, moves and regrows them, so the list the game itself
+// reports is the truth a walker meets: every trunk (where it passes the waist) and every bush on the ground.
+describe("every plant the village draws: off the paving, and solid (owner 2026-11-21)", () => {
+  const o = villageGeometry.obstacles;
+  const walk = (x: number, z: number) => Math.abs(x) < 95 && Math.abs(z) < 95;
+
+  it("the game's list is whole: over a hundred trunks and thirty ground bushes", () => {
+    expect(DRAWN.trunks.length).toBeGreaterThan(100);
+    expect(DRAWN.bushes.length).toBeGreaterThan(30);
+  });
+
+  it("every drawn trunk keeps 0.8 m off every paved surface (the plaza's own tree pits apart)", () => {
+    // (the spot is measured 0.9 m up a trunk that may lean; the rule is for its foot: its girth and 12 cm of lean are allowed for)
+    const bad = DRAWN.trunks
+      .filter((t) => !inPlaza(t.x, t.z) && pavedClearance(t.x, t.z) < TRUNK_CLEAR_M - t.r - 0.12)
+      .map((t) => `${t.kind} (${t.x}, ${t.z}) clear ${pavedClearance(t.x, t.z).toFixed(2)}`);
+    expect(bad).toEqual([]);
+  });
+
+  it("every drawn bush on the ground stands off the paving: its mound's middle never over a lane, the road or a doorstep", () => {
+    const bad = DRAWN.bushes
+      .filter((b) => !inPlaza(b.x, b.z) && pavedClearance(b.x, b.z) < b.r * 0.5)
+      .map((b) => `bush (${b.x}, ${b.z}) r ${b.r} clear ${pavedClearance(b.x, b.z).toFixed(2)}`);
+    expect(bad).toEqual([]);
+  });
+
+  it("every drawn trunk and ground bush in the village is solid: a body's centre never reaches the trunk or the mound's middle", () => {
+    const loose: string[] = [];
+    for (const t of DRAWN.trunks) if (walk(t.x, t.z) && !isBlocked(t.x, t.z, t.r + PLAYER_RADIUS - 0.05, o)) loose.push(`trunk ${t.kind} (${t.x}, ${t.z})`);
+    for (const b of DRAWN.bushes) {
+      if (!walk(b.x, b.z)) continue;
+      // from four sides: a body 0.25 m inside the mound's radius is stopped
+      for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const d = Math.max(0, b.r - 0.25);
+        if (!isBlocked(b.x + dx * d, b.z + dz * d, PLAYER_RADIUS, o)) loose.push(`bush (${b.x}, ${b.z}) r ${b.r} from ${dx},${dz}`);
+      }
+    }
+    expect(loose).toEqual([]);
+  });
+
+  it("no plant box stands where nothing is drawn: the ghosts are out of the colliders (the invisible boxes on the temple and chapel lanes)", () => {
+    expect(VILLAGE_VEG_GHOSTS.length).toBeGreaterThan(0);
+    for (const g of VILLAGE_VEG_GHOSTS) {
+      expect(o.some((b) => same(b, g)), `ghost ${JSON.stringify(g)} still a collider`).toBe(false);
+      const cx = (g.minX + g.maxX) / 2;
+      const cz = (g.minZ + g.maxZ) / 2;
+      const near = [...DRAWN.trunks, ...DRAWN.bushes].some((p) => Math.abs(p.x - cx) <= (g.maxX - g.minX) / 2 + 0.2 && Math.abs(p.z - cz) <= (g.maxZ - g.minZ) / 2 + 0.2);
+      expect(near, `ghost ${JSON.stringify(g)} has a plant in it`).toBe(false);
+    }
+    // the two lanes' cobbles: a body walks their centre line end to end
+    for (const id of ["nw", "ne"]) {
+      for (const p of laneShape(LANES.find((l) => l.id === id)!).centre) {
+        expect(isBlocked(p.x, p.z, PLAYER_RADIUS, VILLAGE_MODEL_COLLIDERS.obstacles), `lane ${id} at (${p.x.toFixed(1)}, ${p.z.toFixed(1)})`).toBe(false);
+      }
+    }
+  });
+
+  it("the added plant boxes block no lane, no doorstep and no seat's standing spot", () => {
+    const boxes = VILLAGE_VEG_COLLIDERS;
+    expect(boxes.length).toBeLessThan(80);
+    for (const l of LANES) for (const p of laneShape(l).centre) expect(isBlocked(p.x, p.z, PLAYER_RADIUS + 0.3, boxes), `lane ${l.id} (${p.x.toFixed(1)}, ${p.z.toFixed(1)})`).toBe(false);
+    for (const h of VILLAGE_LAYOUT.sceneryHouses) {
+      const hw = h.size.x / 2 + 1;
+      const hd = h.size.z / 2 + 1;
+      const door = h.doorSide === "n" ? { x: h.centre.x, z: h.centre.z - hd } : h.doorSide === "s" ? { x: h.centre.x, z: h.centre.z + hd } : h.doorSide === "e" ? { x: h.centre.x + hw, z: h.centre.z } : { x: h.centre.x - hw, z: h.centre.z };
+      expect(isBlocked(door.x, door.z, PLAYER_RADIUS + 0.4, boxes), `doorstep of ${h.id}`).toBe(false);
+    }
+    for (const s of VILLAGE_SEATS) if (s.area === "village") expect(isBlocked(s.standX, s.standZ, PLAYER_RADIUS + 0.2, boxes), `seat ${s.bench} stand spot`).toBe(false);
+  });
+
+  it("a moved tree moves on the ground, not into it (shiftSkeleton added -dz to the HEIGHT until 2026-11-21: the A8 houses' trees sank up to 2.3 m)", () => {
+    const sk = treeSkeleton(VILLAGE_TREE_SPECS[0]!);
+    const moved = shiftSkeleton(sk, 1.5, 2.3);
+    expect(moved.base[0]).toBeCloseTo(sk.base[0] + 1.5, 6);
+    expect(moved.base[1]).toBeCloseTo(sk.base[1], 6); // the height is untouched
+    expect(moved.base[2]).toBeCloseTo(sk.base[2] + 2.3, 6);
+    for (const [a, b] of [[sk.trunk, moved.trunk], [sk.limbs[0]!, moved.limbs[0]!], [sk.sides[0]!, moved.sides[0]!]] as const) {
+      a.pts.forEach((p, i) => {
+        expect(b.pts[i]![1]).toBeCloseTo(p[1], 6);
+        expect(b.pts[i]![2]).toBeCloseTo(p[2] + 2.3, 6);
+      });
+    }
+    expect(moved.crownC[1]).toBeCloseTo(sk.crownC[1], 6);
   });
 });
