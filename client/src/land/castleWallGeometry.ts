@@ -146,6 +146,8 @@ class Kit {
 export type WallTier = "high" | "low";
 
 const DARK = 0.13; // the slits' shadowed depth
+/** The curtain wall's arrow slit: half width at the face and at the back of its splay, its foot and head (m), the embrasure's depth. */
+export const SLIT = Object.freeze({ half: 0.15, back: 0.045, y0: 4.6, y1: 6.4, depth: 0.35 });
 const FOOT = -3.6; // how far the footings reach under the ground (the wall steps down slopes)
 
 /** 6 m of curtain wall (see the file's head). */
@@ -156,11 +158,37 @@ export function wallModuleGeometry(tier: WallTier): BufferGeometry {
   const P = WALL.parapetOut;
   // the footing (a battered plinth, a little wider) and the body
   k.box(-L, L, FOOT, 0.9, -H - 0.25, H + 0.25, 0.84, ["-y", "-x", "+x"]);
-  k.box(-L, L, 0.9, 8.6, -H, H, 1, ["-y", "-x", "+x"]);
+  k.box(-L, L, 0.9, 8.6, -H, H, 1, ["-y", "-x", "+x", "+z"]);
+  // the outer face, with the arrow slit CUT INTO it: a splayed embrasure 35 cm deep (stone cheeks narrowing to a dark slot). It used to be
+  // a dark slab standing 3 cm proud of the wall, which from the side read as a black bar floating off the stone (owner 2026-11-21)
+  {
+    const S = SLIT;
+    const outer = (x0: number, x1: number, y0: number, y1: number) => {
+      const ids = ([[x0, y0], [x1, y0], [x1, y1], [x0, y1]] as const).map(([x, y]) => k.v([x, y, H], [0, 0, 1], x, -y, 1));
+      k.quad(ids[0]!, ids[1]!, ids[2]!, ids[3]!);
+    };
+    outer(-L, -S.half, 0.9, 8.6);
+    outer(S.half, L, 0.9, 8.6);
+    outer(-S.half, S.half, 0.9, S.y0);
+    outer(-S.half, S.half, S.y1, 8.6);
+    const zb = H - S.depth;
+    // the cheeks (their normals turned into the opening), the sill and the head, then the dark slot at the back
+    const quadOf = (pts: V3[], n: V3, shade: number | number[]) => {
+      const len = Math.hypot(n[0], n[1], n[2]) || 1;
+      const nn: V3 = [n[0] / len, n[1] / len, n[2] / len];
+      const ids = pts.map((p, i) => k.v(p, nn, p[0] + p[2], -p[1], typeof shade === "number" ? shade : shade[i]!));
+      k.quad(ids[0]!, ids[1]!, ids[2]!, ids[3]!);
+    };
+    const deep = 0.34; // the cheeks fall into shadow toward the slot
+    quadOf([[-S.half, S.y0, H], [-S.back, S.y0, zb], [-S.back, S.y1, zb], [-S.half, S.y1, H]], [S.depth, 0, S.half - S.back], [0.8, deep, deep, 0.8]);
+    quadOf([[S.back, S.y0, zb], [S.half, S.y0, H], [S.half, S.y1, H], [S.back, S.y1, zb]], [-S.depth, 0, S.half - S.back], [deep, 0.8, 0.8, deep]);
+    quadOf([[-S.half, S.y0, H], [S.half, S.y0, H], [S.back, S.y0, zb], [-S.back, S.y0, zb]], [0, 1, 0], [0.86, 0.86, deep, deep]);
+    quadOf([[-S.back, S.y1, zb], [S.back, S.y1, zb], [S.half, S.y1, H], [-S.half, S.y1, H]], [0, -1, 0], [deep, deep, 0.6, 0.6]);
+    quadOf([[-S.back, S.y0, zb], [S.back, S.y0, zb], [S.back, S.y1, zb], [-S.back, S.y1, zb]], [0, 0, 1], DARK);
+  }
   // a weathered offset where the body meets the plinth
   k.box(-L, L, 0.9, 1.12, H, H + 0.13, 0.9, ["-y", "-x", "+x"]);
-  // the arrow slit on the outer face, a sill under it
-  k.box(-0.13, 0.13, 4.6, 6.4, H, H + 0.03, DARK);
+  // the slit's sill
   k.box(-0.3, 0.3, 4.48, 4.6, H, H + 0.12, 0.9);
   // the corbel table under the overhanging parapet
   const corbels = tier === "high" ? 6 : 3;
@@ -183,6 +211,36 @@ export function wallModuleGeometry(tier: WallTier): BufferGeometry {
   k.box(-L, L, 9.65, 9.77, -H - 0.18, -H + 0.36, 0.9, ["-x", "+x"]);
   k.box(-0.45, 0.45, 0.9, 6.2, -H - 0.5, -H, 0.93);
   k.box(-0.5, 0.5, 6.2, 6.45, -H - 0.6, -H, 0.88);
+  return k.build();
+}
+
+/**
+ * A run's end face (where a run stops against nothing of its own: the village wall at the gatehouse's passage): the wall's section closed
+ * with stone, in the plane x = 0 of the module's frame, drawn on both sides (whichever end of the run it stands at, one of them looks out).
+ * Without it the modules are open tubes: from the gateway one looked into the hollow wall, its walk slab hanging in the air.
+ */
+export function wallEndGeometry(): BufferGeometry {
+  const k = new Kit();
+  const H = WALL.halfThickness;
+  const P = WALL.parapetOut;
+  const plates: [number, number, number, number, number][] = [
+    // z0, z1, y0, y1, shade (the module's own section, part by part)
+    [-H - 0.25, H + 0.25, FOOT, 0.9, 0.84],
+    [-H, H, 0.9, 8.6, 1],
+    [H, H + 0.13, 0.9, 1.12, 0.9],
+    [-H - 0.12, H + P, 8.6, 8.85, 0.9],
+    [H - 0.32, H + P, 8.85, 9.95, 1],
+    [H - 0.38, H + P + 0.06, 9.95, 10.07, 0.93],
+    [-H - 0.12, -H + 0.3, 8.85, 9.65, 0.95],
+    [-H - 0.18, -H + 0.36, 9.65, 9.77, 0.9],
+  ];
+  for (const [z0, z1, y0, y1, c] of plates) {
+    for (const s of [1, -1]) {
+      const pts: V3[] = s > 0 ? [[0, y0, z1], [0, y0, z0], [0, y1, z0], [0, y1, z1]] : [[0, y0, z0], [0, y0, z1], [0, y1, z1], [0, y1, z0]];
+      const ids = pts.map((p) => k.v(p, [s, 0, 0], -p[2] * s, -p[1], c));
+      k.quad(ids[0]!, ids[1]!, ids[2]!, ids[3]!);
+    }
+  }
   return k.build();
 }
 
@@ -216,9 +274,23 @@ export function towerGeometry(tier: WallTier): BufferGeometry {
     k.turnedBox(Math.sin(a) * rr, Math.cos(a) * rr, a, 0.57, WALL.towerTop - 0.14, WALL.towerTop, 0.27, 0.92); // its cap stone
   }
   // slit windows: one toward the viewer under the banner's rod, two either side of it, and the lamp's stone bracket
+  // each in a dressed stone surround (jambs, lintel, sill) that stands proud of the shaft, the dark opening sunk inside it: a bare dark
+  // slab on the round shaft read from the side as a bar floating off the tower (owner 2026-11-21)
   for (const a of [0, 1.15, -1.15]) {
-    const r = R + 0.02;
-    k.turnedBox(Math.sin(a) * r, Math.cos(a) * r, a, 0.17, a === 0 ? 2.6 : 6.2, a === 0 ? 4.0 : 8.2, 0.03, DARK);
+    const y0 = a === 0 ? 2.6 : 6.2;
+    const y1 = a === 0 ? 4.0 : 8.2;
+    const at = (r: number): [number, number] => [Math.sin(a) * r, Math.cos(a) * r];
+    const dark = at(R - 0.02);
+    k.turnedBox(dark[0], dark[1], a, 0.17, y0, y1, 0.05, DARK);
+    const fr = at(R + 0.02);
+    for (const sx of [-1, 1]) {
+      // the jambs stand either side of the opening (the box's local x is the tangent)
+      const jx = fr[0] + Math.cos(a) * sx * 0.215;
+      const jz = fr[1] - Math.sin(a) * sx * 0.215;
+      k.turnedBox(jx, jz, a, 0.055, y0 - 0.1, y1 + 0.1, 0.1, 0.9);
+    }
+    k.turnedBox(fr[0], fr[1], a, 0.3, y1, y1 + 0.14, 0.12, 0.92); // the lintel
+    k.turnedBox(fr[0], fr[1], a, 0.32, y0 - 0.12, y0, 0.14, 0.88); // the sill
   }
   k.turnedBox(0.95, R + 0.18, 0, 0.16, 4.3, 4.75, 0.2, 0.88);
   k.turnedBox(-0.95, R + 0.18, 0, 0.16, 4.3, 4.75, 0.2, 0.88);
@@ -305,6 +377,8 @@ export function lanternGeometry(): BufferGeometry {
 
 export interface WallInstances {
   modules: Matrix4[];
+  /** The end faces of the runs the plan closes (`capA` / `capB`). */
+  ends: Matrix4[];
   towers: Matrix4[];
   /** Wall lanterns (on the viewer's face) and tower lanterns, as matrices; their glow centres for the halos. */
   lanterns: Matrix4[];
@@ -326,6 +400,7 @@ function placed(x: number, y: number, z: number, yaw: number, sx = 1): Matrix4 {
  */
 export function wallInstances(plan: WallPlan, heightAt: (x: number, z: number) => number, lampsOn: "inner" | "outer", lampEvery = lampsOn === "inner" ? 4 : 2): WallInstances {
   const modules: Matrix4[] = [];
+  const ends: Matrix4[] = [];
   const towers: Matrix4[] = [];
   const lanterns: Matrix4[] = [];
   const glows: V3[] = [];
@@ -340,6 +415,12 @@ export function wallInstances(plan: WallPlan, heightAt: (x: number, z: number) =
     const uz = dz / len;
     // the module's local +z is `out` (R(yaw) * (0, 0, 1) = (sin yaw, cos yaw)); its local x then lies along the run (it is symmetric in x)
     const yawOut = Math.atan2(r.out[0], r.out[1]);
+    for (const [cap, ex, ez] of [[r.capA, r.ax, r.az], [r.capB, r.bx, r.bz]] as const) {
+      if (!cap) continue;
+      let g = Infinity;
+      for (const b of [-H, 0, H]) g = Math.min(g, heightAt(ex + r.out[0] * b, ez + r.out[1] * b));
+      ends.push(placed(ex, (Number.isFinite(g) ? g : 0) - 0.08, ez, yawOut));
+    }
     const facesViewer = r.out[0] * (plan.facing.x - (r.ax + r.bx) / 2) + r.out[1] * (plan.facing.z - (r.az + r.bz) / 2) > 0;
     for (let i = 0; i < n; i++) {
       const t = (i + 0.5) / n;
@@ -387,7 +468,7 @@ export function wallInstances(plan: WallPlan, heightAt: (x: number, z: number) =
       glows.push([lx + ox + Math.sin(yaw) * 0.05, y + 5.0, lz + oz + Math.cos(yaw) * 0.05]);
     }
   }
-  return { modules, towers, lanterns, glows, triangles: 0 };
+  return { modules, ends, towers, lanterns, glows, triangles: 0 };
 }
 
 /** Triangles of a geometry (indexed). */
