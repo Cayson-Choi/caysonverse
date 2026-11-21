@@ -1168,7 +1168,7 @@ export interface LotInteriorSpec {
   doorX: number;
   doorWidth: number;
   /** Fixed furniture boxes (pews, altar, 수미단, desks, stacks): interior frame rects, `col__<unit>_<name>` in the model. */
-  solids: readonly { name: string; rect: LotRect; height: number }[];
+  solids: readonly { name: string; rect: LotRect; height: number; cameraHeight?: number }[];
   seats: readonly LotInteriorSeat[];
   /** Triangles (all drawn at once inside; statues and scans at their game LOD), GPU texture MB (KTX2), draws: PC and phone. */
   budget: { pc: { triangles: number; textureMB: number; draws: number }; phone: { triangles: number; textureMB: number; draws: number } };
@@ -1189,7 +1189,8 @@ export const LOT_INTERIOR_FRONT_CLEAR = 0.6;
 
 const iseat = (id: string, x: number, z: number, faces: LotInteriorSeat["faces"], kind: LotInteriorSeat["kind"], length: number, places: number, seatTop = 0.45, frontEdge = 0.25, backDepth = 0.35): LotInteriorSeat =>
   ({ id, x, z, faces, kind, seatTop, length, frontEdge, backDepth, places });
-const solid = (name: string, x0: number, x1: number, z0: number, z1: number, height: number) => ({ name, rect: rect(x0, x1, z0, z1), height });
+const solid = (name: string, x0: number, x1: number, z0: number, z1: number, height: number, cameraHeight?: number) =>
+  cameraHeight === undefined ? { name, rect: rect(x0, x1, z0, z1), height } : { name, rect: rect(x0, x1, z0, z1), height, cameraHeight };
 
 /** 교실 + 복도: lockers along the corridor (z 0..2.4), a glazed partition, 12 pupils' desks facing the blackboard on the left wall. */
 const SCHOOL_IN: LotInteriorSpec = {
@@ -1299,7 +1300,10 @@ const TEMPLE_IN: LotInteriorSpec = {
   doorX: 5.7,
   doorWidth: 3,
   solids: [
-    solid("sumidan", 2.5, 8.9, 5.6, 7.4, 1.1), // 수미단 with the three figures
+    // 수미단 with the three figures: a 1.1 m platform to walk round, but for the camera the figures, their halos and the 닫집 over them fill it
+    // to the ceiling (2026-11-22: in the middle aisle facing the door, the follow camera sat behind the main figure, 0.25 m from its halo
+    // — every tap hit the halo, the view was a gold blur)
+    solid("sumidan", 2.5, 8.9, 5.6, 7.4, 1.1, 6),
     solid("offering", 4.2, 7.2, 4.9, 5.4, 0.85), // 공양상: candles, incense burner, flowers, fruit
     solid("bell_small", 0.3, 0.9, 5.8, 6.6, 1.2), solid("drum", 10.5, 11.1, 5.8, 6.6, 1.2),
     // B3 (2026-11-17), appended: the hall's ten 배흘림 wall columns (r 0.24, half in the walls; the bays 3.8 m as outside)
@@ -1446,11 +1450,11 @@ export function lotRoomOuter(r: LotRoom, thickness = LOT_ROOM_WALL): AABB {
 }
 
 /** One room's fixed furniture (`LOT_INTERIORS` solids, the model's `col__<unit>_<name>`) in the world. */
-export function lotRoomSolids(r: LotRoom): Array<AABB & { name: string; height: number }> {
+export function lotRoomSolids(r: LotRoom): Array<AABB & { name: string; height: number; cameraHeight: number }> {
   return r.spec.solids.map((s) => {
     const a = lotRoomPoint(r, s.rect.x0, s.rect.z0);
     const b = lotRoomPoint(r, s.rect.x1, s.rect.z1);
-    return { name: s.name, minX: a.x, maxX: b.x, minZ: a.z, maxZ: b.z, height: s.height };
+    return { name: s.name, minX: a.x, maxX: b.x, minZ: a.z, maxZ: b.z, height: s.height, cameraHeight: s.cameraHeight ?? s.height };
   });
 }
 
@@ -1470,7 +1474,8 @@ export function lotRoomColliders(): { obstacles: AABB[]; cameraBoxes: CameraBox[
       // a pew's walk box stops LOT_PEW_KNEE short of its seat's front edge (the pews face +z): a standing body's knees reach over the
       // seat's lip, so the 0.9 m between a pew and the back of the next one is the 1.0 m a body (radius 0.4) stands and walks in
       obstacles.push(s.name.startsWith("pew_") ? { ...box, maxZ: R6(box.maxZ - LOT_PEW_KNEE) } : box);
-      if (s.height >= 1.6) cameraBoxes.push({ ...box, height: s.height });
+      // (what stands on a low solid, as tall as a wall for the camera — the temple's figures on their 수미단 — counts by its own height)
+      if (s.cameraHeight >= 1.6) cameraBoxes.push({ ...box, height: s.cameraHeight });
     }
     const o = lotRoomOuter(r);
     cameraBoxes.push({ ...o, minY: R6(r.ceiling - 0.1), height: R6(r.ceiling + 0.1) });
