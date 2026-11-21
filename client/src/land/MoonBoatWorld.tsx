@@ -686,7 +686,7 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
     const h = MOON_DECK_Y * ((nSteps - i) / (nSteps + 1)) + 0.05;
     const x = MOON_STEPS.x0 + run * (i + 0.5);
     frame.box("stone", run, h, stepsW, x, h / 2, 0);
-    frame.box("deck", 0.06, 0.05, stepsW + 0.1, x + run / 2 - 0.03, h, 0); // the wooden nosing
+    frame.box("deck", 0.06, 0.05, stepsW + 0.1, x + run / 2 - 0.02, h, 0); // the wooden nosing (1 cm proud of the riser: flush it z-fought the step's face)
   }
   const railY = MOON_DECK_Y + 1.0;
   const baluster = (x: number, z: number): void => {

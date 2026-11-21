@@ -27,6 +27,7 @@ import { arc, buildFountainStone, createStoneFountainWater, profile, type Founta
 import { GATE_FOUNTAIN } from "../fountain/fountainDesigns";
 import { drawnTris, lotSurfaceMaterial, muteLotLampsNear, patchLotLight, type LotNodes } from "./lotsPrep";
 import { tintForecourt } from "./entranceGardens";
+import { buildGateBoard, isOldGateBarrier } from "./gateBoard";
 
 /**
  * 케이슨랜드's gate lot, dressed again (fix/gate-fountain-park). The owner, on the forecourt: "케이슨 랜드 입구에 이거
@@ -68,6 +69,14 @@ export interface GateSpan {
   sag: number;
   flags: number;
 }
+/**
+ * How far (rad) the bunting's pennants alternate away from facing across their string, as flags in a light breeze do: a pennant is a flat
+ * triangle, so with every flag square to its string a view along the string saw all of them edge-on at once (the two lamp-to-lamp strings
+ * run straight away from someone walking up to the gate).
+ */
+export const GATE_PENNANT_TWIST = 0.55;
+/** The iron leaves stand open (the park is open: owner 2026-11-21), swung this far into the park about their hinges (rad; a little short of the piers' faces). */
+export const GATE_LEAF_OPEN = (84 * Math.PI) / 180;
 /** The anchor stubs on the gatehouse's front face (z) and how far they stand out. */
 const FACE_Z = 92.45;
 const BRACKET_OUT = 0.28;
@@ -108,6 +117,8 @@ export function isOldGatePiece(x: number, y: number, z: number, material: string
   // stood there: half of each is inside the wall's footing (z >= 95.45) and its plant squeezes out of the stone
   if (/granite|goods/i.test(material) && z > 94.6 && y < 1.4)
     for (const px of [-14.9, -33.1]) if (Math.abs(x - px) < 1.5) return true;
+  // the belt barrier and the "곧 문을 열어요" stand across the gateway: the park is open (gateBoard.ts)
+  if (isOldGateBarrier(x, y, z, material)) return true;
   return false;
 }
 
@@ -604,6 +615,25 @@ export function dressGateLot(nodes: LotNodes, low: boolean, mats: GateDressMater
     }
     nodes.own.geometries.push(ballGeo, stemGeo, mulchGeo);
   }
+  // ── the park is open: the leaves swung back, the welcome board beside the way in (the barrier and the old stand went with cutGateOld) ──
+  for (const [side, turn] of [["l", 1], ["r", -1]] as const) {
+    const leaf = nodes.root.getObjectByName(`door__lot_gate_main_${side}`);
+    if (leaf) leaf.rotation.y = turn * GATE_LEAF_OPEN;
+  }
+  const board = buildGateBoard(low, patchLotLight);
+  detail.add(board.group);
+  nodes.own.geometries.push(...board.geometries);
+  for (const m of board.materials) own(m);
+  // thin ironwork casts no live sun shadow: the shadow map cannot hold a 2 cm bar or a flagpole, and smeared them over the piers' inner
+  // faces as long streaks whenever the low sun shone through the gateway (owner 2026-11-21: "기둥에 문양이 왜 이렇게 길게 늘어서서")
+  nodes.root.traverse((o) => {
+    if (!isMesh(o)) return;
+    const name = (Array.isArray(o.material) ? o.material[0] : o.material)?.name ?? "";
+    if (!/^LM_martgate_(steel|metal)$/.test(name)) return;
+    let mine = false;
+    for (let q: Object3D | null = o; q; q = q.parent) if (q === detail || q.name.startsWith("door__lot_gate")) mine = true;
+    if (mine) o.castShadow = false;
+  });
   // the landmark pieces leave the detail group for their own, which the lots' LOD shows far beyond the detail's reach (farDressShown)
   const farGroup = new Group();
   farGroup.name = "gate_far_dress";
@@ -654,20 +684,34 @@ export function dressGateLot(nodes: LotNodes, low: boolean, mats: GateDressMater
         nx = -nx;
         nz = -nz;
       }
-      const yaw = Math.atan2(nx, nz);
+      const yaw0 = Math.atan2(nx, nz);
       for (let k = 0; k < s.flags; k++) {
         const p = spanPoint(s, (k + 0.5) / s.flags);
         if (n >= flags.instanceMatrix.count) break;
+        // alternate flags twisted +-GATE_PENNANT_TWIST about the vertical: a pennant is a flat triangle, so seen along its string (edge-on) every
+        // flag vanished and the bunting looked bare from the wall side (owner 2026-11-21); twisted, no direction sees them all edge-on
+        const yaw = yaw0 + (k % 2 === 0 ? 1 : -1) * GATE_PENNANT_TWIST;
         flags.setMatrixAt(n++, mm.makeRotationY(yaw).setPosition(p[0], p[1] - 0.01, p[2]));
       }
     }
     flags.count = n;
     flags.instanceMatrix.needsUpdate = true;
     flags.computeBoundingSphere();
+    // a pennant is one triangle drawn on its front only: from behind (the lawn side of a string, the wall side) the whole bunting was
+    // bare strings (owner 2026-11-21: "깃발이 어느 방향에서든지 다 보여야지"). Cloth shows on both faces: its own two-sided material.
+    const cloth = (flags.material as Material).clone();
+    cloth.onBeforeCompile = (flags.material as Material).onBeforeCompile;
+    cloth.customProgramCacheKey = (flags.material as Material).customProgramCacheKey;
+    cloth.name = "M_gate_pennant";
+    cloth.side = DoubleSide;
+    flags.material = cloth;
+    own(cloth);
   }
   // the budget sheet's numbers: what was cut, what came in (the water's draws counted as the renderer draws them)
   let added = 0;
   let draws = 0;
+  added += board.triangles;
+  draws += 2;
   for (const o of [fountain, lamps, bulbs, globes, ...detail.children.filter((c) => c.name.startsWith("gate_topiary"))])
     o.traverse((c) => {
       if (!isMesh(c)) return;
