@@ -101,94 +101,157 @@ def normal_map(h, strength):
     return np.stack([nx / l, ny / l, nz / l], -1) * 0.5 + 0.5
 
 
+def value_noise(rng, freq_x, freq_y=None):
+    """Periodic value noise (a random lattice, wrapped, smoothstep-interpolated): -1..1."""
+    fy = freq_y or freq_x
+    g = rng.random((fy, freq_x)).astype(np.float32) * 2 - 1
+    X = xx * freq_x
+    Y = yy * fy
+    x0 = np.floor(X).astype(int)
+    y0 = np.floor(Y).astype(int)
+    tx = X - x0
+    ty = Y - y0
+    tx = tx * tx * (3 - 2 * tx)
+    ty = ty * ty * (3 - 2 * ty)
+    x1 = (x0 + 1) % freq_x
+    y1 = (y0 + 1) % fy
+    x0 %= freq_x
+    y0 %= fy
+    a = g[y0, x0] * (1 - tx) + g[y0, x1] * tx
+    b = g[y1, x0] * (1 - tx) + g[y1, x1] * tx
+    return a * (1 - ty) + b * ty
+
+
+def fbm(rng, f, octaves, gain=0.5, stretch=1):
+    """Fractal value noise; `stretch` > 1 runs the features up the trunk (fibres, streaks)."""
+    out = np.zeros((N, N), np.float32)
+    a = 1.0
+    tot = 0.0
+    for _ in range(octaves):
+        out += a * value_noise(rng, f, max(1, f // stretch))
+        tot += a
+        a *= gain
+        f *= 2
+    return out / tot
+
+
+def relief(h, strength):
+    """The light a surface of height `h` catches from the upper left (soft, baked: the bark reads at a distance too)."""
+    n = normal_map(h, strength) * 2 - 1
+    l = np.array([-0.45, 0.55, 0.7], np.float32)
+    l /= np.linalg.norm(l)
+    return np.clip(n @ l, 0, 1)
+
+
 def upper(rng):
-    """Thin flaky orange plates."""
-    wx = periodic_noise(rng, 3, 2, 0.022) + periodic_noise(rng, 2, 16, 0.004)
-    wy = periodic_noise(rng, 3, 2, 0.03) + periodic_noise(rng, 2, 16, 0.004)
+    """Thin flaky plates of the upper trunk: orange-red under a patchy grey-brown outer layer, ragged edges, fibrous."""
+    wx = 0.03 * fbm(rng, 4, 3) + 0.006 * fbm(rng, 32, 3)
+    wy = 0.04 * fbm(rng, 4, 3) + 0.006 * fbm(rng, 32, 3)
     f1, f2, cid = voronoi(rng, 15, 8, wx, wy, 0.5)
-    edge = f2 - f1
-    crack = 1 - smooth(0.0, 0.07, edge)  # thin dark cracks between plates
-    lip = smooth(0.0, 0.22, edge)  # a plate's edge curls a little up from the crack, then flattens
-    # the peeling layers: a finer Voronoi, each of its cells one layer deep (0 outer .. 2 fresh), cut by the plates
-    g1, g2, sid = voronoi(rng, 38, 22, wx * 1.6 + periodic_noise(rng, 2, 8, 0.006), wy * 1.3, 0.62, 0.95)
-    lay_r = rng.random(38 * 22 + 1).astype(np.float32)
+    edge = f2 - f1 + 0.03 * fbm(rng, 64, 2)
+    crack = 1 - smooth(0.0, 0.05, edge)
+    lip = smooth(0.0, 0.3, edge)
+    # the peeling scales: a finer, ragged Voronoi; each scale one layer of the bark (0 the outer grey .. 2 fresh orange)
+    sx = wx * 1.5 + 0.004 * fbm(rng, 64, 2)
+    sy = wy * 1.3 + 0.004 * fbm(rng, 64, 2)
+    g1, g2, sid = voronoi(rng, 40, 24, sx, sy, 0.6, 0.95)
+    sedge = g2 - g1 + 0.025 * fbm(rng, 96, 2)
+    lay_r = rng.random(40 * 24 + 1).astype(np.float32)
     plate_r = rng.random(15 * 8 + 1).astype(np.float32)
-    layer = np.floor(lay_r[sid] * 3.0)  # 0, 1, 2
-    plate_age = plate_r[cid]
-    # a weathered plate keeps more of its outer layer
-    layer = np.where(plate_age > 0.62, np.minimum(layer, 1), layer)
-    flake_edge = 1 - smooth(0.0, 0.05, g2 - g1)
-    grain = periodic_noise(rng, 3, 32, 1.0)
-    fine = periodic_noise(rng, 2, 96, 1.0)
-    h = 0.55 * lip + 0.22 * (2 - layer) / 2 + 0.05 * grain + 0.025 * fine - 0.08 * flake_edge * (layer < 2) - 0.6 * crack
-    h = np.clip(h, -0.6, 1.2)
-    # colours: fresh (layer 2) salmon / cinnamon, middle orange, outer duller brown-orange with a grey bloom
-    fresh, mid, outer, bloom, crackc = srgb(["#D4875C", "#B8603A", "#8E5038", "#8F8780", "#2C1D17"])
+    # vertical bands where the grey outer scales still cling (the reference trunks: grey scaly streaks on orange)
+    band = smooth(-0.15, 0.35, fbm(rng, 6, 3, 0.55, 3) + 0.25 * (plate_r[cid] - 0.5))
+    layer_f = lay_r[sid] * 2.2 + 0.9 * (1 - band) + 0.05
+    layer = np.clip(np.floor(layer_f), 0, 2)
+    scale_edge = 1 - smooth(0.0, 0.035, sedge)
+    fibre = fbm(rng, 48, 3, 0.55, 6)
+    grain = fbm(rng, 96, 3)
+    h = 0.5 * lip + 0.2 * (2 - layer) / 2 + 0.05 * fibre + 0.03 * grain - 0.06 * scale_edge * (layer < 2) - 0.5 * crack
+    # colours: fresh (layer 2) cinnamon / salmon orange, middle rusty orange, outer grey-brown scales
+    fresh = srgb(["#C9714A"])[0]
+    mid = srgb(["#A8583A"])[0]
+    outer = srgb(["#8C6A58"])[0]
+    crackc = srgb(["#3B241B"])[0]
     c = np.where((layer == 2)[..., None], fresh, np.where((layer == 1)[..., None], mid, outer))
-    bloom_k = np.clip((plate_age - 0.45) * 1.4, 0, 0.55) * (layer == 0) * smooth(-0.3, 0.6, grain)
-    c = c * (1 - bloom_k[..., None]) + bloom * bloom_k[..., None]
-    # per-plate tone, the grain, a darker line at the flake edges (their shadow) and in the cracks
-    tone = 0.88 + 0.24 * plate_r[cid]
-    c = c * tone[..., None] * (1 + 0.1 * grain[..., None] + 0.06 * fine[..., None])
-    c = c * (1 - 0.35 * flake_edge * (layer < 2))[..., None]
-    c = c * (1 - crack[..., None]) + crackc * crack[..., None]
-    # cavity: the lower the surface, the darker
-    cav = smooth(-0.4, 0.6, h - blur(h, 6))
-    c = c * (0.78 + 0.22 * cav)[..., None]
+    # within a scale: the colour drifts (no flat cells), streaky along the fibres
+    drift = 0.5 * fbm(rng, 24, 3) + 0.5 * fibre
+    c = c * (1 + 0.16 * drift[..., None])
+    warm = srgb(["#D48A5E"])[0]
+    wk = np.clip(0.35 * (fbm(rng, 12, 3) + 0.3), 0, 0.5)[..., None] * (layer > 0)[..., None]
+    c = c * (1 - wk) + warm * wk
+    c = c * (0.9 + 0.2 * plate_r[cid])[..., None] * (1 + 0.07 * grain[..., None])
+    c = c * (0.86 + 0.28 * ((lay_r[sid] * 7.31) % 1.0))[..., None]
+    # the edge of an outer scale: a thin light rim (lifted), its shadow on the layer below
+    c = c * (1 - 0.28 * scale_edge * (layer < 2))[..., None]
+    c = c * (1 - 0.85 * crack[..., None]) + crackc * (0.85 * crack[..., None])
+    lit = relief(h, 26.0)
+    c = c * (0.72 + 0.38 * lit)[..., None]
+    cav = smooth(-0.4, 0.5, h - blur(h, 6))
+    c = c * (0.8 + 0.2 * cav)[..., None]
     return np.clip(c, 0, 1), h
 
 
 def base(rng):
-    """Thick grey-brown blocky plates, deep fissures."""
-    wx = periodic_noise(rng, 3, 2, 0.03) + periodic_noise(rng, 2, 12, 0.006)
-    wy = periodic_noise(rng, 2, 2, 0.02)
+    """The old lower trunk: thick grey-brown scaly plates, blocky, deep reddish-brown fissures."""
+    wx = 0.035 * fbm(rng, 4, 3) + 0.008 * fbm(rng, 24, 3)
+    wy = 0.02 * fbm(rng, 3, 3) + 0.006 * fbm(rng, 24, 3)
     f1, f2, cid = voronoi(rng, 7, 3, wx, wy, 0.38, 0.8)
-    edge = f2 - f1
-    fissure = 1 - smooth(0.0, 0.32, edge)  # wide V-shaped furrows
-    deep = 1 - smooth(0.0, 0.1, edge)
-    # cross splits: the plates broken into blocks (a coarse horizontal Voronoi), shallower than the furrows
-    g1, g2, sid = voronoi(rng, 12, 9, wx * 1.3, wy + periodic_noise(rng, 2, 6, 0.01), 1.6, 0.9)
-    split = (1 - smooth(0.0, 0.07, g2 - g1)) * smooth(0.1, 0.35, edge)
-    flakes1, flakes2, fid = voronoi(rng, 40, 26, wx * 2.0, wy * 2.0, 0.7, 0.95)
-    fl_r = rng.random(40 * 26 + 1).astype(np.float32)
-    flake_edge = 1 - smooth(0.0, 0.05, flakes2 - flakes1)
+    edge = f2 - f1 + 0.05 * fbm(rng, 48, 3)
+    fissure = 1 - smooth(0.0, 0.28, edge)
+    deep = 1 - smooth(0.0, 0.08, edge)
+    g1, g2, sid = voronoi(rng, 12, 9, wx * 1.3, wy + 0.01 * fbm(rng, 6, 2), 1.6, 0.9)
+    split = (1 - smooth(0.0, 0.06, g2 - g1 + 0.03 * fbm(rng, 64, 2))) * smooth(0.1, 0.35, edge)
+    k1, k2, fid = voronoi(rng, 44, 28, wx * 2.0 + 0.004 * fbm(rng, 96, 2), wy * 2.0, 0.7, 0.95)
+    fl_r = rng.random(44 * 28 + 1).astype(np.float32)
+    flake_edge = 1 - smooth(0.0, 0.04, k2 - k1 + 0.02 * fbm(rng, 128, 2))
     plate_r = rng.random(7 * 3 + 1).astype(np.float32)
     block_r = rng.random(12 * 9 + 1).astype(np.float32)
-    grain = periodic_noise(rng, 3, 24, 1.0)
-    fine = periodic_noise(rng, 2, 80, 1.0)
-    h = 1.0 - 1.1 * fissure ** 1.4 - 0.35 * split + 0.08 * (fl_r[fid] - 0.5) - 0.05 * flake_edge + 0.06 * grain + 0.03 * fine
-    top, top2, warm, furrow, deepc = srgb(["#7E736A", "#6A5D53", "#8A5A42", "#5A3526", "#22150F"])
-    k = block_r[sid][..., None]
-    c = top * (1 - k * 0.6) + top2 * (k * 0.6)
-    # where a flake fell off, the reddish under-bark shows; more of it toward the furrow
-    warm_k = (np.clip((fl_r[fid] - 0.72) * 3.0, 0, 1) * 0.7 + 0.5 * fissure * (1 - deep))[..., None]
+    grain = fbm(rng, 64, 4)
+    fibre = fbm(rng, 32, 3, 0.55, 5)
+    h = 1.0 - 1.05 * fissure ** 1.3 - 0.3 * split + 0.18 * (fl_r[fid] - 0.5) - 0.1 * flake_edge + 0.07 * grain + 0.04 * fibre
+    top = srgb(["#8A8077"])[0]
+    top2 = srgb(["#6E6258"])[0]
+    warm = srgb(["#8E5840"])[0]
+    furrow = srgb(["#5E3A2A"])[0]
+    deepc = srgb(["#2A1913"])[0]
+    k = (0.5 * block_r[sid] + 0.5 * smooth(-0.5, 0.5, fbm(rng, 16, 3)))[..., None]
+    c = top * (1 - k) + top2 * k
+    warm_k = (np.clip((fl_r[fid] - 0.74) * 3.0, 0, 1) * 0.65 + 0.55 * fissure * (1 - deep))[..., None]
     c = c * (1 - warm_k) + warm * warm_k
-    c = c * (1 - fissure[..., None] * 0.55) + furrow * (fissure[..., None] * 0.55)
-    c = c * (1 - deep[..., None]) + deepc * deep[..., None]
-    c = c * (0.9 + 0.2 * plate_r[cid])[..., None] * (1 + 0.12 * grain[..., None] + 0.07 * fine[..., None])
-    c = c * (1 - 0.25 * flake_edge - 0.3 * split)[..., None]
+    c = c * (1 - fissure[..., None] * 0.5) + furrow * (fissure[..., None] * 0.5)
+    c = c * (1 - 0.9 * deep[..., None]) + deepc * (0.9 * deep[..., None])
+    c = c * (0.9 + 0.2 * plate_r[cid])[..., None] * (1 + 0.13 * grain[..., None] + 0.06 * fibre[..., None])
+    c = c * (0.84 + 0.3 * fl_r[fid])[..., None] * (1 - 0.3 * flake_edge - 0.25 * split)[..., None]
+    lit = relief(h, 30.0)
+    c = c * (0.7 + 0.4 * lit)[..., None]
     cav = smooth(-0.5, 0.5, h - blur(h, 8))
-    c = c * (0.75 + 0.25 * cav)[..., None]
+    c = c * (0.78 + 0.22 * cav)[..., None]
     return np.clip(c, 0, 1), h
 
 
 def save(out: Path, name: str, col, h, strength):
-    img = Image.fromarray((col * 255 + 0.5).astype(np.uint8), "RGB")
-    img.save(out / f"{name}_c1024.jpg", quality=86, optimize=True)
-    img.resize((512, 512), Image.LANCZOS).save(out / f"{name}_c512.jpg", quality=86, optimize=True)
+    """The village's bark-photo convention (make_veg_textures.py): linear values relative to the tile's own mean, x 0.5 (the
+    vertex colour, the bark's mean colour / 0.5, carries the colour; the texture the pattern). Prints the mean (sRGB)."""
+    lin = np.where(col <= 0.04045, col / 12.92, ((col + 0.055) / 1.055) ** 2.4)
+    m = lin.reshape(-1, 3).mean(0)
+    rel = np.clip(lin / m * 0.5, 0, 1)
+    img = Image.fromarray((rel * 255 + 0.5).astype(np.uint8), "RGB")
+    img.save(out / f"{name}_c1024.jpg", quality=88, optimize=True)
+    img.resize((512, 512), Image.LANCZOS).save(out / f"{name}_c512.jpg", quality=88, optimize=True)
     nrm = normal_map(h, strength)
     nimg = Image.fromarray((nrm * 255 + 0.5).astype(np.uint8), "RGB")
     nimg.resize((512, 512), Image.LANCZOS).save(out / f"{name}_n512.jpg", quality=88, optimize=True)
     nimg.resize((256, 256), Image.LANCZOS).save(out / f"{name}_n256.jpg", quality=88, optimize=True)
-    mean = col.reshape(-1, 3).mean(0)
-    print(name, "mean", "#%02X%02X%02X" % tuple(int(v * 255 + 0.5) for v in mean))
+    # a preview in colour (not shipped)
+    Image.fromarray((col * 255 + 0.5).astype(np.uint8), "RGB").save(out / f"preview_{name}.jpg", quality=88)
+    srgb_m = np.where(m <= 0.0031308, m * 12.92, 1.055 * m ** (1 / 2.4) - 0.055)
+    print(name, "mean", "#%02X%02X%02X" % tuple(int(v * 255 + 0.5) for v in srgb_m))
 
 
 def main():
     out = Path(sys.argv[1])
     out.mkdir(parents=True, exist_ok=True)
     c, h = upper(np.random.default_rng(1127))
-    save(out, "pine_bark", c, h, 30.0)
+    save(out, "pine_bark", c, h, 26.0)
     c, h = base(np.random.default_rng(2045))
     save(out, "pine_base", c, h, 40.0)
 

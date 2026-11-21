@@ -123,6 +123,7 @@ function dressTempleYard(nodes: LotNodes, tier: VillageTier): void {
     }
   });
   detail.add(made.group);
+  if (import.meta.env.DEV) (window as unknown as { __cvTemplePines?: () => unknown }).__cvTemplePines = () => ({ ...made.stats });
   nodes.own.geometries.push(...made.geometries);
   nodes.own.materials.push(...(made.disposables as unknown as Material[]));
 }

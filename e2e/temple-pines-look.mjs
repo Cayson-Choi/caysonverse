@@ -34,6 +34,7 @@ const POSES = {
   // the owner's screenshot: the pine beside the lotus pond, the yard's stone wall behind it, looking a little up
   owner: { eye: [-40.6, 1.9, -38.4], target: [-41.1, 4.6, -45.6], fov: 60 },
   owner2: { eye: [-44.0, 1.9, -38.0], target: [-41.1, 4.6, -45.6], fov: 60 },
+  ownerB: { eye: [-47.0, 1.7, -39.0], target: [-41.6, 4.2, -45.8], fov: 60 },
   // the whole yard from its entrance side, above head height
   yard: { eye: [-34.0, 7.5, -20.0], target: [-49.5, 3.5, -38.0], fov: 60 },
   yard2: { eye: [-62.0, 6.0, -20.0], target: [-49.0, 3.5, -38.0], fov: 60 },
@@ -145,7 +146,7 @@ const pineStats = (page) =>
       if (u?.width) tex.set(`n${o.material.uuid}`, u.width * u.height * 4 * (4 / 3));
     });
     const info = window.__cvRenderInfo?.() ?? null;
-    return { tris, draws, shown, texMB: Math.round(([...tex.values()].reduce((a, b) => a + b, 0) / 1048576) * 10) / 10, frame: info };
+    return { pines: window.__cvTemplePines?.() ?? null, tris, draws, shown, texMB: Math.round(([...tex.values()].reduce((a, b) => a + b, 0) / 1048576) * 10) / 10, frame: info };
   });
 
 const browser = await chromium.launch({ headless: true, channel: "chrome", args: ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"] });
