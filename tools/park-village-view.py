@@ -12,6 +12,11 @@ import numpy as np
 from PIL import Image
 
 R, H0, H1, SPAN_DEG = 60.0, 0.0, 15.0, 180.0
+# --portal: the PARK seen from the village through the gate (village/skyline/VillageParkPortal.tsx): taller, narrower, no fade at the top
+OPAQUE = "--portal" in sys.argv
+if OPAQUE:
+    sys.argv.remove("--portal")
+    H1, SPAN_DEG = 40.0, 120.0
 
 d, tag, out = sys.argv[1], sys.argv[2], sys.argv[3]
 W = int(sys.argv[4]) if len(sys.argv) > 4 else 2048
@@ -48,6 +53,9 @@ for i in range(n):
 key = shots[n // 2][2:10, 2:10].reshape(-1, 3).mean(0)
 dist = np.sqrt(((rgb - key) ** 2).sum(-1))
 alpha = np.clip((dist - 28.0) / 40.0, 0, 1)
+# the sun's glare lightens the clear colour to pink: anything plainly magenta (red and blue far over green) is key too
+mag = np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1]
+alpha = np.minimum(alpha, np.clip((70.0 - mag) / 30.0, 0, 1))
 # the outline's half-covered pixels keep a magenta tint whatever is done to them: the cover shrinks by a pixel
 from PIL import ImageFilter
 alpha = np.asarray(Image.fromarray((alpha * 255).astype(np.uint8)).filter(ImageFilter.MinFilter(3)), dtype=np.float32) / 255
@@ -57,7 +65,8 @@ grey = rgb.mean(-1, keepdims=True)
 rgb = rgb * (1 - spill * 0.6) + grey * spill * 0.6
 # the top fades out over its last 12 %
 fade = np.clip((np.arange(H) + 0.5) / (H * 0.12), 0, 1)[:, None]
-alpha *= fade
+if not OPAQUE:
+    alpha *= fade
 im = Image.fromarray(np.dstack([np.clip(rgb, 0, 255), alpha * 255]).astype(np.uint8), "RGBA")
 os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
 im.save(out, quality=86, method=6)

@@ -36,6 +36,13 @@ export const PARK_EXIT_PAD = Object.freeze({ x: 40, z: -181, radius: 1.8 });
 // arrived staring back at the arch they had just come through - owner 2026-11-21 "반대방향을 보도록".)
 export const PARK_ARRIVAL = Object.freeze({ x: 40, z: -171, yaw: 0 });
 
+/**
+ * The gate is ONE gate with two sides: the village's gatehouse (lot_gate, world metres, its line z 94 on the avenue x -24) stands in the
+ * park's north wall at x 40, z -186.5. A village point + this offset is the same point of the gate in the park's frame (the client draws
+ * the village's gatehouse there, and the village's picture beyond the arch by the same mapping).
+ */
+export const PARK_GATE_FROM_VILLAGE = Object.freeze({ dx: 64, dz: -280.5 });
+
 /** The star plaza and its fountain. */
 export const PARK_PLAZA = Object.freeze({ x: 40, z: -112, radius: 26, fountainHalf: 4 });
 
@@ -190,8 +197,7 @@ export const PARK_KIOSK = Object.freeze({ x: 55, z: -177, w: 4.2, d: 3.4 });
 export const PARK_PLANTERS: readonly { x: number; z: number; w: number; d: number }[] = Object.freeze([
   { x: 33.5, z: -137, w: 3, d: 1.6 },
   { x: 46.5, z: -137, w: 3, d: 1.6 },
-  { x: 33.5, z: -182, w: 3, d: 1.6 },
-  { x: 46.5, z: -182, w: 3, d: 1.6 },
+  // (the two that flanked the old arch at z -182 went: the gatehouse's own turnstile canopy and planters stand there now)
   // flower beds flanking the station apron (where the queue hall stood)
   { x: -8.5, z: -20, w: 3, d: 1.6 },
   { x: 12.5, z: -20, w: 3, d: 1.6 },
@@ -253,8 +259,10 @@ function buildSolids(): AABB[] {
   // the fountain and its ring
   const f = PARK_PLAZA.fountainHalf;
   out.push(box(PARK_PLAZA.x - f, PARK_PLAZA.x + f, PARK_PLAZA.z - f, PARK_PLAZA.z + f));
-  // the gate arch's two towers
-  out.push(box(29.5, 33, -190, -183), box(47, 50.5, -190, -183));
+  // the gatehouse (the village's, seen from behind: PARK_GATE_FROM_VILLAGE): its wings and piers either side of the 6 m passage (x 37 .. 43),
+  // and the back planters under its flags
+  out.push(box(29.5, 37, -190, -185.3), box(43, 50.5, -190, -185.3));
+  out.push(box(31.9, 33.7, -184, -182.2), box(46.3, 48.1, -184, -182.2));
   out.push(box(PARK_KIOSK.x - PARK_KIOSK.w / 2, PARK_KIOSK.x + PARK_KIOSK.w / 2, PARK_KIOSK.z - PARK_KIOSK.d / 2, PARK_KIOSK.z + PARK_KIOSK.d / 2));
   out.push(box(110 - 12.8, 110 + 12.8, -135 - 12.8, -135 + 12.8)); // the carousel's platform and its fence (the ride's own pad is outside it)
   // the wheel: the four feet of its A-frames and the boarding platform's deck
