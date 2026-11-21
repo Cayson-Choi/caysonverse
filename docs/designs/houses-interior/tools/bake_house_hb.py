@@ -519,7 +519,7 @@ def main():
         ov = (mask, (0.30, 0.215, 0.12) if night else (1.2, 1.15, 1.02)) if mask is not None else None
         stats = bake_lightmap(scene, lm_list, size, samples, lm_png, LM_LIFT_NIGHT if night else LM_LIFT_DAY, arg("--passes", 1, int), override=ov)
         log("light map", "night" if night else "day", stats)
-    if night:
+    if night and not arg("--reexport"):     # --reexport (houses-real pass): the lmprep's meshes and UVs exported again, no bake
         return
     for o in hidden:
         o.hide_render = False
@@ -531,6 +531,8 @@ def main():
             o.data.uv_layers.remove(o.data.uv_layers["UV_LM"])
         if "Col" in o.data.color_attributes:
             o.data.color_attributes.active_color = o.data.color_attributes["Col"]
+    import uv_compact    # houses-real pass: albedo UV islands next to the origin, so Draco's 14-bit texcoords don't smear them
+    log("uv0 islands moved", uv_compact.compact_uv0(lm_list))
     for o in bpy.data.objects:
         if o.name.startswith(K.COL_PREFIX):
             o.hide_render = False

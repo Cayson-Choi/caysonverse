@@ -52,7 +52,7 @@ import {
 } from "./houseNight";
 import { HouseMirrorRig } from "./houseMirror";
 import type { HouseLamp } from "./houseLampGlow";
-import { hearthFlames, houseFireTime, setHouseHearth } from "./houseFire";
+import { hearthFlames, setHouseHearth, updateHouseFire } from "./houseFire";
 import { clearHouseCaches, holdHouseFiles, loadHouseTexture, noteHouseRequested } from "./houseRelease";
 
 /**
@@ -272,9 +272,9 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
 
   useFrame(() => mirrorRig.current?.beginFrame(), -1000);
   useFrame(() => {
-    houseFireTime.value = performance.now() / 1000;
     const night = wantsLightmap || nodes.views.length > 0 || nodes.glows.length > 0 ? hallNightWeight(dayNight.outdoor.night, houseNightMapUniform.value !== null) : 0;
     if (houseNightUniform.value !== night) houseNightUniform.value = night;
+    updateHouseFire(performance.now() / 1000, night, floor === 1); // flames, coals, the flickering fire light on the room (houseFire.ts)
   });
 
   const flames = useMemo(() => floor === 1 ? hearthFlames(n) : null, [n, floor]);

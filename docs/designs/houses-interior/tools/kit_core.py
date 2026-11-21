@@ -114,6 +114,9 @@ MATS = {
     "H_logwall": dict(tex="T_h_logwall.png", rough=0.8, tint=True),   # log cabin walls (10번 집): realism pass
     "H_rock": dict(tex="T_h_stone.png", rough=0.9, tint=True),      # fieldstone (fireplace, chimney breast): realism pass
     "H_check": dict(tex="T_h_check.png", rough=1.0, tint=True),     # layered pass: woven gingham / check linen (armchairs, cushions, curtains)
+    "H_firebrick": dict(tex="T_h_firebrick.png", rough=0.9, tint=True),   # houses-real: new firebrick lining + red facing slips (fireplaces)
+    "H_bark": dict(tex="T_h_bark.png", rough=0.95, tint=True),            # houses-real: firewood bark
+    "H_endgrain": dict(tex="T_h_endgrain.png", rough=0.9, tint=True),     # houses-real: sawn log ends (disc UVs)
 }
 _M = {}
 
@@ -405,13 +408,16 @@ def rbox(F, x0, x1, z0, z1, y0, y1, m, r=0.01, seg=2, grain=(1, 0, 0), tile=1.0,
         es = list({e for f in top for e in f.edges})
         bmesh.ops.subdivide_edges(bm, edges=es, cuts=cuts, use_grid_fill=True)
     if puff or sag:
+        # houses-real pass (owner 2026-11-21: dark blotches along every sofa seat front): only the flat top's inner grid is crowned, falling
+        # to zero on the top's rim. Before, the rim and the bevel's first row rose too while the bevel strip next to them (not
+        # subdivided) stayed put: those strips became twisted n-gons, and the light bake shaded their fan triangles as dark scallops.
+        ix, iz = max(sx / 2 - r, 1e-4), max(sz / 2 - r, 1e-4)
         for v in bm.verts:
-            if v.co.z > sy / 2 - r * 1.5:
-                kx = 1 - (2 * v.co.x / sx) ** 2
-                kz = 1 - (2 * v.co.y / sz) ** 2
+            if v.co.z > sy / 2 - 1e-5:
+                kx = 1 - (v.co.x / ix) ** 2
+                kz = 1 - (v.co.y / iz) ** 2
                 k = max(0.0, kx) * max(0.0, kz)
-                # puffy edges, a dip in the middle: seat cushions that have been sat on
-                v.co.z += puff * (1 - k) ** 0.5 * 0.0 + puff * min(1.0, k * 1.5) - sag * k ** 2
+                v.co.z += puff * min(1.0, k * 1.5) - sag * k ** 2
     if taper:       # narrower top (taper = fraction of the half-width removed at the top), for pillows / trays
         for v in bm.verts:
             k = (v.co.z + sy / 2) / sy

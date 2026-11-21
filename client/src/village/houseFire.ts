@@ -1,4 +1,18 @@
-import { BufferGeometry, Float32BufferAttribute, Mesh, ShaderMaterial, Vector3 } from "three";
+import { AdditiveBlending, BufferGeometry, Float32BufferAttribute, Mesh, ShaderMaterial, Vector3, Vector4 } from "three";
+
+/**
+ * The house fireplaces' live fire (houses 1, 2, 7, 10). Houses-real pass (owner 2026-11-21: "is this supposed to be realistic? are you
+ * kidding?" — five orange cones on box logs, a checkered ember patch). Built after real wood fires (firebrick firebox, cast-iron grate,
+ * split logs, glowing coals, layered translucent flames, a flickering warm light on the room):
+ *
+ *  - the model (houses-interior kit `stone_fireplace`) has the firebrick firebox, the grate, the barked logs and a bed of ember chunks
+ *    drawn with the lamp material; FLAME_GLSL turns those chunks into glowing coals (a slow-crawling hot/crust noise, pulsing);
+ *  - `hearthFlames` is ONE mesh, one draw call: seven flame sheets (camera-facing about the vertical, each a domain-warped noise flame
+ *    that licks upward, white-yellow at its root to deep red at its tips, additive), a soft glow on the firebox's back bricks and a
+ *    dozen rising sparks;
+ *  - `houseFireLight` is a fake warm point light the light-mapped room materials add (houseNight.ts): it flickers with the flames and
+ *    falls off over ~2.6 m, so the hearth, the floor and the sofa front breathe with the fire, more at night.
+ */
 
 /** Isolates the coals and original flame cards from other fixtures sharing the baked room's lamp material. */
 export interface HearthBox {
@@ -17,94 +31,199 @@ export const HOUSE_HEARTHS: Readonly<Record<number, HearthBox>> = {
 export const houseHearthMin = { value: new Vector3(1, 1, 1) };
 export const houseHearthMax = { value: new Vector3(0, 0, 0) };
 export const houseFireTime = { value: 0 };
-/** Centre of the glowing ember bed and the direction its log faces in the four exported rooms. */
+/** Centre of the glowing ember bed and the direction its fireplace faces (local +z = into the room) in the four rooms. */
 const EMBERS: Readonly<Record<number, readonly [number, number, number, number]>> = {
   1: [362.40, 0.18, -7.44, 0], 2: [393.30, 0.18, -7.44, 0],
   7: [504.35, 0.18, -2.20, Math.PI / 2], 10: [576.31, 0.26, -5.90, Math.PI / 2],
 };
 export const houseEmberY = { value: 0 };
+/** The fake fire light: xyz its world position, w its strength (0 = no fire in this house). Written by setHouseHearth / updateHouseFire. */
+export const houseFireLight = { value: new Vector4(0, 0, 0, 0) };
 
 export function setHouseHearth(n: number): void {
   const b = HOUSE_HEARTHS[n];
-  if (b) {
-    houseEmberY.value = EMBERS[n]![1];
+  const e = EMBERS[n];
+  if (b && e) {
+    houseEmberY.value = e[1];
     houseHearthMin.value.set(...b.min);
     houseHearthMax.value.set(...b.max);
+    // the light sits just above the logs, a little out of the firebox (so the floor in front gets it, the chimney breast's sides less)
+    houseFireLight.value.set(e[0] + Math.sin(e[3]) * 0.22, e[1] + 0.22, e[2] + Math.cos(e[3]) * 0.22, 0);
   } else {
     houseHearthMin.value.set(1, 1, 1);
     houseHearthMax.value.set(0, 0, 0);
+    houseFireLight.value.set(0, 0, 0, 0);
   }
 }
 
+/** The fire's flicker at time t (s): a few incommensurate waves and a quick crackle, about 0.8 .. 1.2. Pure, for the light and the tests. */
+export function fireFlicker(t: number): number {
+  const slow = 0.5 * Math.sin(t * 1.7) + 0.32 * Math.sin(t * 2.9 + 1.3) + 0.18 * Math.sin(t * 5.3 + 0.4);
+  const crackle = Math.max(0, Math.sin(t * 13.1) * Math.sin(t * 7.7 + 2.0)) ** 3;
+  return 0.93 + 0.13 * slow + 0.14 * crackle;
+}
+
+/** Per frame: the time, and the light's strength from the flicker, a little stronger at night (the day light map is already bright). */
+export function updateHouseFire(t: number, night: number, onFloorWithFire: boolean): void {
+  houseFireTime.value = t;
+  const on = onFloorWithFire && houseHearthMin.value.x <= houseHearthMax.value.x;
+  houseFireLight.value.w = on ? fireFlicker(t) * (0.55 + 0.75 * night) : 0;
+  houseFireGlow.value = 0.6 + 0.4 * night;
+}
+
+/**
+ * The glowing coals: the lamp material's faces inside the hearth box below the ember line (the kit's ember chunks). A value noise
+ * crawls slowly over them — bright orange-yellow cracks between darker crust — and the bed breathes.
+ */
 export const FLAME_GLSL = /* glsl */ `
 	if ( all( greaterThanEqual( vHouseWorld, uHearthMin ) ) && all( lessThanEqual( vHouseWorld, uHearthMax ) ) ) {
-		if (vHouseWorld.y > uEmberY + 0.01) discard; // the old triangular cards above the grate
-		vec2 p = (vHouseWorld.xz - uHearthMin.xz) * 64.0;
-		float coal = 0.5 + 0.5 * sin(p.x + 0.7 * sin(p.y)) * cos(p.y * 1.3);
-		float glow = smoothstep(0.28, 0.84, coal + 0.08 * sin(uHouseFireTime * 2.6 + p.x));
-		diffuseColor.rgb = mix(vec3(0.08, 0.012, 0.003), vec3(1.8, 0.29, 0.014), glow);
+		if (vHouseWorld.y > uEmberY + 0.01) discard; // nothing of the lamp material above the coals (old flame cards)
+		vec3 hfq = vHouseWorld * 38.0 + vec3( 0.0, uHouseFireTime * 0.35, uHouseFireTime * 0.21 );
+		vec3 hfi = floor( hfq ); vec3 hff = fract( hfq ); hff = hff * hff * ( 3.0 - 2.0 * hff );
+		#define HF_H(o) fract( sin( dot( hfi + o, vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 )
+		float hfn = mix( mix( mix( HF_H(vec3(0,0,0)), HF_H(vec3(1,0,0)), hff.x ), mix( HF_H(vec3(0,1,0)), HF_H(vec3(1,1,0)), hff.x ), hff.y ),
+		                 mix( mix( HF_H(vec3(0,0,1)), HF_H(vec3(1,0,1)), hff.x ), mix( HF_H(vec3(0,1,1)), HF_H(vec3(1,1,1)), hff.x ), hff.y ), hff.z );
+		#undef HF_H
+		float hfp = 0.82 + 0.18 * sin( uHouseFireTime * 3.1 + vHouseWorld.x * 9.0 ) * sin( uHouseFireTime * 1.7 + vHouseWorld.z * 7.0 );
+		float hfh = smoothstep( 0.35, 0.8, hfn ) * hfp;
+		float hfl = smoothstep( uEmberY - 0.05, uEmberY + 0.005, vHouseWorld.y );
+		diffuseColor.rgb = mix( vec3( 0.06, 0.018, 0.008 ), mix( vec3( 1.25, 0.22, 0.02 ), vec3( 2.1, 0.95, 0.22 ), hfh * hfh ), clamp( hfh * ( 0.6 + 0.6 * hfl ), 0.0, 1.0 ) );
 	}`;
 
-/** Tapered, curved flame volumes over the coals; each tongue has its own depth, lean and flicker phase. */
+const FIRE_VERT = /* glsl */ `
+uniform float uTime;
+attribute vec3 aCenter;     // the sheet's root (local)
+attribute vec4 aShape;      // corner x (-0.5..0.5), corner y (0..1), width, height
+attribute vec2 aSeed;       // seed, kind (0 flame, 1 back glow, 2 spark)
+varying vec2 vUv;
+varying float vSeed;
+varying float vKind;
+varying float vLife;
+void main() {
+  vSeed = aSeed.x;
+  vKind = aSeed.y;
+  vUv = aShape.xy;
+  vec3 c = aCenter;
+  float w = aShape.z, h = aShape.w;
+  vLife = 0.0;
+  if (vKind > 1.5) {          // a spark: rises, drifts, fades, starts again
+    float life = fract(uTime * (0.45 + 0.3 * fract(vSeed * 7.3)) + vSeed);
+    vLife = life;
+    c.y += life * (0.55 + 0.35 * fract(vSeed * 3.1));
+    c.x += 0.05 * sin(life * 9.0 + vSeed * 20.0);
+    c.z += 0.03 * sin(life * 7.0 + vSeed * 11.0);
+  }
+  vec4 wc = modelMatrix * vec4(c, 1.0);
+  vec3 up = vec3(0.0, 1.0, 0.0);
+  vec3 toCam = cameraPosition - wc.xyz;
+  toCam.y = 0.0;
+  vec3 right = normalize(cross(up, normalize(toCam + vec3(1e-4, 0.0, 0.0))));
+  if (vKind > 0.5 && vKind < 1.5) right = (modelMatrix * vec4(1.0, 0.0, 0.0, 0.0)).xyz;   // the glow lies flat on the back bricks
+  float sway = vKind < 0.5 ? (0.05 * sin(uTime * 3.3 + vSeed * 6.0) + 0.025 * sin(uTime * 7.1 + vSeed * 3.0)) * vUv.y * vUv.y : 0.0;
+  vec3 p = wc.xyz + right * (vUv.x * w + sway) + up * (vUv.y * h);
+  gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+}`;
+
+const FIRE_FRAG = /* glsl */ `
+uniform float uTime;
+uniform float uGlow;
+varying vec2 vUv;
+varying float vSeed;
+varying float vKind;
+varying float vLife;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float fbm(vec2 p) { return 0.55 * vnoise(p) + 0.3 * vnoise(p * 2.03 + 1.7) + 0.15 * vnoise(p * 4.01 + 3.1); }
+void main() {
+  vec3 col;
+  float a;
+  if (vKind < 0.5) {
+    // a flame: noise rising through a teardrop; the warp makes it lick and split, the top breaks into loose tongues
+    float y = vUv.y;
+    vec2 q = vec2(vUv.x * 2.6 + vSeed * 13.0, y * 1.9 - uTime * (1.9 + 0.5 * fract(vSeed * 5.0)));
+    float warp = fbm(q * 1.3) - 0.5;
+    float n = fbm(q + vec2(warp * 1.4, 0.0));
+    float x = vUv.x + warp * 0.38 * y;
+    float width = 0.5 * pow(1.0 - y, 0.75) * (0.55 + 1.2 * sqrt(y) * (1.0 - y));
+    float body = 1.0 - smoothstep(width * 0.35, width, abs(x));
+    float tongues = smoothstep(0.15, 0.75, n + 0.55 - y * 1.05);
+    float base = smoothstep(0.0, 0.08, y);
+    float i = body * tongues * base;
+    float core = smoothstep(0.35, 0.95, i) * (1.0 - smoothstep(0.25, 0.7, y));
+    col = mix(vec3(0.55, 0.06, 0.008), vec3(1.0, 0.38, 0.05), smoothstep(0.05, 0.55, i));
+    col = mix(col, vec3(1.0, 0.82, 0.48), core);
+    col *= 2.2;
+    a = i * (0.8 + 0.2 * sin(uTime * 11.0 + vSeed * 30.0));
+  } else if (vKind < 1.5) {
+    // the warm light on the back bricks behind the flames
+    vec2 d = vec2(vUv.x * 1.6, (vUv.y - 0.25) * 1.3);
+    col = vec3(1.0, 0.42, 0.1);
+    a = exp(-dot(d, d) * 3.2) * 0.5 * uGlow;
+  } else {
+    // a spark: a tiny hot dot that cools and fades as it rises
+    vec2 d = vUv - vec2(0.0, 0.5);
+    col = mix(vec3(1.4, 0.85, 0.35), vec3(1.0, 0.25, 0.03), vLife);
+    a = exp(-dot(d, d) * 18.0) * (1.0 - vLife) * smoothstep(0.0, 0.08, vLife);
+  }
+  gl_FragColor = vec4(col * a, a);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+
+/** The back glow's strength (stronger at night), shared with the frame loop. */
+export const houseFireGlow = { value: 1 };
+
+/**
+ * The fire over a house's ember bed (floor 1 of houses 1, 2, 7, 10), or null for a house without a fireplace: flame sheets, the back
+ * glow and the sparks in one mesh. The positions are the unbillboarded quads (facing the room, local +z); the vertex shader turns each
+ * round its own root to face the camera.
+ */
 export function hearthFlames(n: number) {
   const bed = EMBERS[n];
   if (!bed) return null;
-  const positions: number[] = [], uvs: number[] = [], indices: number[] = [];
-  const rings = [[0, 0.43], [0.17, 1], [0.46, 0.78], [0.73, 0.39], [1, 0.016]] as const;
-  const sides = 8;
-  const tongues = [
-    [-0.158, 0.028, 0.23, 0.054, 0.035], [-0.085, -0.032, 0.295, 0.055, -0.025],
-    [-0.026, 0.017, 0.36, 0.061, 0.034], [0.039, -0.044, 0.25, 0.055, 0.047],
-    [0.095, 0.035, 0.19, 0.050, -0.028], [0.156, -0.013, 0.28, 0.048, 0.033],
-  ] as const;
-  for (const [phase, [x, z, height, radius, lean]] of tongues.entries()) {
-    const start = positions.length / 3;
-    for (const [j, [t, width]] of rings.entries()) {
-      for (let i = 0; i < sides; i++) {
-        const a = 2 * Math.PI * i / sides;
-        positions.push(x + lean * t * t + Math.cos(a) * radius * width, height * t,
-          z + 0.018 * Math.sin(t * 4 + phase) * t + Math.sin(a) * radius * width * 0.74);
-        uvs.push(t, phase * 2.4);
-        if (j === 0) continue;
-        const index = start + j * sides + i, next = start + j * sides + (i + 1) % sides;
-        indices.push(index - sides, index, next, index - sides, next, next - sides);
-      }
+  const pos: number[] = [], center: number[] = [], shape: number[] = [], seed: number[] = [], idx: number[] = [];
+  const quad = (cx: number, cy: number, cz: number, w: number, h: number, s: number, kind: number) => {
+    const k = pos.length / 3;
+    for (const [u, v] of [[-0.5, 0], [0.5, 0], [0.5, 1], [-0.5, 1]] as const) {
+      pos.push(cx + u * w, cy + v * h, cz);
+      center.push(cx, cy, cz);
+      shape.push(u, v, w, h);
+      seed.push(s, kind);
     }
-  }
+    idx.push(k, k + 1, k + 2, k, k + 2, k + 3);
+  };
+  // flames: [x, z, width, height] — a tall pair over the middle where the logs cross, smaller licks along the logs
+  const sheets = [
+    [-0.02, -0.02, 0.26, 0.42], [0.08, 0.02, 0.22, 0.34], [-0.12, 0.0, 0.2, 0.3], [0.17, -0.03, 0.16, 0.22],
+    [-0.2, 0.03, 0.15, 0.2], [0.02, 0.07, 0.3, 0.26], [-0.07, -0.06, 0.18, 0.36],
+  ] as const;
+  for (const [i, [x, z, w, h]] of sheets.entries()) quad(x, 0.07, z, w, h, 0.137 * (i + 1), 0);
+  quad(0, 0.0, -0.2, 0.62, 0.6, 0.5, 1);                     // the back-brick glow, just off the firebox's back wall
+  for (let i = 0; i < 12; i++) quad(-0.18 + 0.36 * ((i * 0.618) % 1), 0.16, -0.05 + 0.1 * ((i * 0.37) % 1), 0.012, 0.012, (i * 0.381) % 1, 2);
   const geometry = new BufferGeometry();
-  geometry.setAttribute("position", new Float32BufferAttribute(positions, 3));
-  geometry.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
+  geometry.setAttribute("position", new Float32BufferAttribute(pos, 3));
+  geometry.setAttribute("aCenter", new Float32BufferAttribute(center, 3));
+  geometry.setAttribute("aShape", new Float32BufferAttribute(shape, 4));
+  geometry.setAttribute("aSeed", new Float32BufferAttribute(seed, 2));
+  geometry.setIndex(idx);
   const mat = new ShaderMaterial({
-    uniforms: { uTime: houseFireTime }, transparent: true, depthWrite: false,
-    vertexShader: `
-      uniform float uTime;
-      varying float t, facing;
-      void main() {
-        t = uv.x;
-        vec3 p = position;
-        p.x += t*t * (0.023*sin(4.8*uTime + uv.y) + 0.010*sin(8.9*uTime + t*5.0));
-        p.y *= 1.0 + 0.08*t*sin(6.2*uTime + uv.y);
-        vec4 mv = modelViewMatrix * vec4(p, 1.0);
-        facing = abs(dot(normalize(normalMatrix*normal), normalize(-mv.xyz)));
-        gl_Position = projectionMatrix * mv;
-      }`,
-    fragmentShader: `
-      varying float t, facing;
-      void main() {
-        float hot = (1.0-t) * (0.35 + 0.65*facing);
-        vec3 tint = mix(vec3(1.35, 0.12, 0.012), vec3(3.2, 1.85, 0.39), smoothstep(0.12, 0.84, hot));
-        float alpha = (0.10 + 0.82*smoothstep(0.03, 0.65, facing)) * (1.0-smoothstep(0.68, 1.0, t));
-        gl_FragColor = vec4(tint, alpha);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-      }`,
+    uniforms: { uTime: houseFireTime, uGlow: houseFireGlow },
+    vertexShader: FIRE_VERT,
+    fragmentShader: FIRE_FRAG,
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
   });
   const mesh = new Mesh(geometry, mat);
   mesh.name = "hearth_flames";
   mesh.position.set(bed[0], bed[1], bed[2]);
   mesh.rotation.y = bed[3];
+  mesh.frustumCulled = false; // the billboarding moves the quads off their bounding sphere
+  mesh.renderOrder = 2;
   mesh.raycast = () => {};
   return mesh;
 }
