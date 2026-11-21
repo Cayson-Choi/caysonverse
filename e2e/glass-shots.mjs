@@ -90,9 +90,10 @@ for (const key of KEYS) {
     await page.evaluate((c) => (window.__cvShot = { x: c.x, y: c.y, z: c.z, tx: c.tx, ty: c.ty, tz: c.tz, fov: c.fov }), cam);
     await sleep(2500);
     // the room behind the glass (portal/RoomShowcase.tsx): wait until it is drawn
-    if (s.room) await page.waitForFunction((r) => window.__cvRoomShowcase?.()?.shown.includes(r), s.room, { timeout: 150000 }).catch(() => console.log("room not drawn", s.room));
-    if (s.house) await page.waitForFunction((n) => window.__cvHouseShowcase?.()?.shown === n, s.house, { timeout: 150000 }).catch(() => console.log("house not drawn", s.house));
-    if (s.hall) await page.waitForFunction(() => window.__cvMemorialShown === true, null, { timeout: 150000 }).catch(() => console.log("hall not drawn"));
+    const wantRooms = !Q.includes("rooms=off");
+    if (wantRooms && s.room) await page.waitForFunction((r) => window.__cvRoomShowcase?.()?.shown.includes(r), s.room, { timeout: 150000 }).catch(() => console.log("room not drawn", s.room));
+    if (wantRooms && s.house) await page.waitForFunction((n) => window.__cvHouseShowcase?.()?.shown === n, s.house, { timeout: 150000 }).catch(() => console.log("house not drawn", s.house));
+    if (wantRooms && s.hall) await page.waitForFunction(() => window.__cvMemorialShown === true, null, { timeout: 150000 }).catch(() => console.log("hall not drawn"));
     await sleep(2500);
     const file = join(OUT, `${tag}_${phone ? "phone" : "pc"}_${s.id}_${key}.png`);
     await page.screenshot({ path: file });
