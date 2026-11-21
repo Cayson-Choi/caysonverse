@@ -325,8 +325,10 @@ await run.step("audit", async () => {
               mine.push({ over: cov[s] === 2, n, area: Math.round(n * CELL * CELL * 1000) / 1000, minX: wx(i0), maxX: wx(i1), minZ: wz(j1), maxZ: wz(j0), cx: wx(si / n), cz: wz(sj / n), at: [wx(si0), wz(sj0)], what: null });
             }
             mine.sort((a, b) => b.n - a.n);
-            const drawables = [];
+            let drawables = [];
             const sphere = new T.Sphere();
+            const listDrawables = () => {
+            drawables = [];
             scene.traverse((o) => {
               if (!(o.isMesh || o.isPoints || o.isSprite || o.isLine) || !o.visible) return;
               let far = false;
@@ -340,6 +342,8 @@ await run.step("audit", async () => {
               } else o.__auditSphere = null;
               drawables.push(o);
             });
+            };
+            listDrawables();
             let byHiding = 0;
             for (const pass of [true, false]) {
             if (!pass) {
@@ -347,6 +351,7 @@ await run.step("audit", async () => {
               window.__cvShot = NEAR;
               await settle();
               quiet();
+              listDrawables(); // (the close view shows other levels of detail: other objects)
             }
             for (const c of mine) {
               if (c.area < 0.015 || c.over !== pass) continue;

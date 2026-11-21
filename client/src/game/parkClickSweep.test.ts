@@ -14,7 +14,7 @@ import { isBlocked, resolveCollision } from "@caysonverse/shared/collision";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import { PARK_ARRIVAL, PARK_BINS, PARK_BOUNDS, PARK_LAMPS, PARK_PLANTERS, PARK_PLAZA, PARK_TROUGHS, parkGeometry, parkStreetSolids } from "@caysonverse/shared/village/parkArea";
 import { PARK_BENCHES } from "@caysonverse/shared/village/parkBenches";
-import { PARK_ISLANDS } from "@caysonverse/shared/village/parkIslands";
+import { PARK_ISLANDS, onIsland } from "@caysonverse/shared/village/parkIslands";
 import { planClickMove, simulateWalk } from "./clickPlan";
 
 const R = PLAYER_RADIUS;
@@ -97,6 +97,24 @@ describe("케이슨랜드 click-to-walk with solid street furniture", () => {
         if (!walk.arrived) bad.push(`${p.name} (${p.x}, ${p.z}) from ${dx},${dz}: planned to (${plan.x.toFixed(2)}, ${plan.z.toFixed(2)}) but stuck at (${walk.x.toFixed(2)}, ${walk.z.toFixed(2)})`);
       }
     }
+    // a click on the middle of a planted island from 30-60 m off, with lamp posts, benches and bins on the line: the walk ends
+    // at that island's kerb (within a body and a step of the bed), not at the first post on the way (clickPlan's near edge)
+    let far = 0;
+    for (const island of PARK_ISLANDS) {
+      for (const from of [{ x: 40, z: -150 }, { x: 40, z: -122 }, { x: 120, z: -112 }, { x: 2, z: -110 }]) {
+        const d = Math.hypot(from.x - island[0], from.z - island[1]);
+        if (d < 25 || d > 70 || !free(from.x, from.z)) continue;
+        far++;
+        const plan = planClickMove(from.x, from.z, ground(island[0], island[1]), obstacles, bounds);
+        if (!plan.ok) {
+          bad.push(`island ${island[0]},${island[1]} from (${from.x}, ${from.z}): ${plan.reason}`);
+          continue;
+        }
+        const walk = simulateWalk(from.x, from.z, plan.x, plan.z, obstacles, bounds, R, plan.via);
+        if (!onIsland(island, walk.x, walk.z, -(R + 0.9))) bad.push(`island ${island[0]},${island[1]} from (${from.x}, ${from.z}): the walk ended at (${walk.x.toFixed(1)}, ${walk.z.toFixed(1)}), not at its kerb`);
+      }
+    }
+    expect(far).toBeGreaterThan(15);
     expect(counts.lamp).toBeGreaterThan(150);
     expect(counts.bench).toBeGreaterThan(50);
     expect(counts.island).toBeGreaterThan(30);

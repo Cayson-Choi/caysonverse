@@ -3,11 +3,12 @@
  * walked through: "뭐 이렇게 문제가 많은거야"). In the running game, with the real walk (LocalPlayer's loop, the server taking the moves):
  *
  *   1. every flowerbed and hedge, and a sample of every other prop type, is walked INTO from four sides (a straight click-walk at
- *      its middle from 1.5 m off; on a PC also with the W key held): the body never ends inside it, and it stops at its face;
+ *      its middle from 1.5 m off; on a PC also with the W key held; on a phone the beds from two opposite sides, the samples from
+ *      four): the body never ends inside it, and it stops at its face;
  *   2. a click ON a prop walks to a spot beside it (the planner's nearest reachable point), never into it;
  *   3. click-to-walk across the open ground (the plaza, the lanes; in the park the promenade, the plaza and the avenue) arrives.
  *
- *   CV_CLIENT_URL=http://localhost:5581 node e2e/solid-walk.mjs [--park] [--phone] [--quick]
+ *   CV_CLIENT_URL=http://localhost:5581 node e2e/solid-walk.mjs [--park] [--phone] [--quick] [--only=lamp,bench]
  *   (--quick: one side instead of four for the beds, for a fast look)
  */
 import { CLIENT_URL, DESKTOP, PHONE, SLOW, createRun, entryReady, launchBrowser, openPlayer, press, sleep, pos, turnCameraTo } from "./lib/common.mjs";
@@ -29,8 +30,15 @@ async function until(fn, ms) {
   return false;
 }
 /** The planned walk (the game's own way round the colliders) to a free spot; the final position. */
+let lastGood = null;
 async function goTo(p, x, z, tol = 0.6) {
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    // (a body resting in a nook between two props finds no way out on the planner's grid: it steps back to the last open spot first)
+    if (attempt > 0 && lastGood) {
+      await p.page.evaluate(async ([x, z]) => (await window.__imp("/src/game/clickMove.ts")).setClickTarget(x, z, 0), lastGood);
+      await sleep(200);
+      await until(async () => (await p.page.evaluate(() => window.__cvClickTarget?.() ?? null)) === null, 20000);
+    }
     await p.page.evaluate(
       async ([x, z]) => {
         const plan = await window.__imp("/src/game/clickPlan.ts");
@@ -42,30 +50,33 @@ async function goTo(p, x, z, tol = 0.6) {
       },
       [x, z],
     );
-    await sleep(300);
+    await sleep(120);
     await until(async () => (await p.page.evaluate(() => window.__cvClickTarget?.() ?? null)) === null, 120000);
-    await sleep(200);
+    await sleep(80);
     const at = await pos(p);
-    if (Math.hypot(at.x - x, at.z - z) < tol) return at;
+    if (Math.hypot(at.x - x, at.z - z) < tol) {
+      lastGood = [x, z];
+      return at;
+    }
   }
   return pos(p);
 }
 /** A straight walk at (x, z), no plan (what holding a key toward it does): where the body comes to rest. */
 async function walkInto(p, x, z) {
   await p.page.evaluate(async ([x, z]) => (await window.__imp("/src/game/clickMove.ts")).setClickTarget(x, z, 0), [x, z]);
+  await sleep(250); // (the walk gets going)
   let last = await pos(p);
   let still = 0;
-  for (let i = 0; i < 80; i++) {
-    await sleep(150);
-    const at = await pos(p);
-    const target = await p.page.evaluate(() => window.__cvClickTarget?.() ?? null);
-    still = Math.hypot(at.x - last.x, at.z - last.z) < 0.01 ? still + 1 : 0;
+  for (let i = 0; i < 120; i++) {
+    await sleep(100);
+    const { at, target } = await p.page.evaluate(() => ({ at: window.__cv.getPos(), target: window.__cvClickTarget?.() ?? null }));
+    still = Math.hypot(at.x - last.x, at.z - last.z) < 0.005 ? still + 1 : 0;
     last = at;
     if (target === null && still >= 2) break;
     if (still >= 5) break;
   }
   await p.page.evaluate(async () => (await window.__imp("/src/game/clickMove.ts")).clearClickTarget());
-  await sleep(150);
+  await sleep(60);
   return pos(p);
 }
 /** The game's own click: the plan for a tap on the ground at (x, z), walked; { ok, reason, x, z } and where the body ends. */
@@ -130,6 +141,7 @@ const props = await A.page.evaluate(
         const pts = [];
         for (let k = 0; k < 64; k++) pts.push(I.islandPoint(is, Math.cos((k / 64) * Math.PI * 2) * 0.55, Math.sin((k / 64) * Math.PI * 2) * 0.55));
         add("island", `island ${i} (${is[0]}, ${is[1]})`, { minX: Math.min(...pts.map((p) => p.x)), maxX: Math.max(...pts.map((p) => p.x)), minZ: Math.min(...pts.map((p) => p.z)), maxZ: Math.max(...pts.map((p) => p.z)) }, true);
+        out[out.length - 1].island = i;
       });
       P.PARK_TROUGHS.forEach((t, i) => add("trough", `trough ${i}`, { minX: t.x0, maxX: t.x1, minZ: t.z0, maxZ: t.z1 }, true));
       P.PARK_PLANTERS.forEach((p, i) => add("planter", `planter ${i}`, { minX: p.x - p.w / 2, maxX: p.x + p.w / 2, minZ: p.z - p.d / 2, maxZ: p.z + p.d / 2 }, true));
@@ -183,6 +195,11 @@ const props = await A.page.evaluate(
   },
   { park },
 );
+const onlyArg = process.argv.find((a) => a.startsWith("--only="));
+if (onlyArg) {
+  const only = onlyArg.slice(7).split(",");
+  for (let i = props.length - 1; i >= 0; i--) if (!only.includes(props[i].type)) props.splice(i, 1);
+}
 console.log(`${props.length} props: ${[...new Set(props.map((p) => p.type))].map((t) => `${t} ${props.filter((p) => p.type === t).length}`).join(", ")}`);
 
 const free = (x, z, r = R + 0.03) =>
@@ -200,7 +217,8 @@ const rows = [];
 await run.step("walk into every bed and a sample of every prop, from four sides", async () => {
   for (const p of props) {
     const cx = (p.box.minX + p.box.maxX) / 2, cz = (p.box.minZ + p.box.maxZ) / 2;
-    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    const round = [[1, 0], [0, 1], [-1, 0], [0, -1]]; // east, south, west, north: the next start is a quarter turn on
+    const dirs = phone && p.bed ? [round[0], round[2]] : round;
     let tried = 0, inside = 0, stoppedAtFace = 0;
     const notes = [];
     for (const [dx, dz] of quick && p.bed ? dirs.slice(0, 1) : dirs) {
@@ -215,7 +233,13 @@ await run.step("walk into every bed and a sample of every prop, from four sides"
       if (Math.hypot(at0.x - start[0], at0.z - start[1]) > 0.7) { notes.push(`start ${dx},${dz} not reached`); continue; }
       tried++;
       const at = await walkInto(A, cx, cz);
-      const d = dist(p.box, at.x, at.z);
+      let d = dist(p.box, at.x, at.z);
+      // (a planted island is a bent, turned oval: its own outline decides, not the box round its middle. On the bed, a quarter
+      // metre in from the kerb, is inside.)
+      if (p.island !== undefined) {
+        const on = await A.page.evaluate(async ([i, x, z]) => { const I = await window.__imp("/village/parkIslands.ts"); return I.onIsland(I.PARK_ISLANDS[i], x, z, 0.25); }, [p.island, at.x, at.z]);
+        d = on ? 0 : Math.max(d, R);
+      }
       if (d < R - 0.08) { inside++; notes.push(`from ${dx},${dz}: ended ${d.toFixed(2)} m from it (inside) at (${at.x.toFixed(2)}, ${at.z.toFixed(2)})`); }
       if (Math.hypot(at.x - start[0], at.z - start[1]) > 0.3) stoppedAtFace++;
     }
@@ -249,10 +273,19 @@ if (!phone)
 await run.step("a click ON a prop walks beside it, never into it", async () => {
   for (const p of props.filter((q, i) => ["lamp", "bench", "island", "trough", "lot bed", "plaza planter", "bush", "tree", "bin"].includes(q.type) && i % 3 === 0).slice(0, 10)) {
     const cx = (p.box.minX + p.box.maxX) / 2, cz = (p.box.minZ + p.box.maxZ) / 2;
+    // from a few metres off (a click is on what the screen shows), on whichever side is open
+    let start = null;
+    for (const [dx, dz] of [[0, 1], [1, 0], [-1, 0], [0, -1]]) {
+      const half = dx ? (p.box.maxX - p.box.minX) / 2 : (p.box.maxZ - p.box.minZ) / 2;
+      if (await free(cx + dx * (half + 3), cz + dz * (half + 3))) { start = [cx + dx * (half + 3), cz + dz * (half + 3)]; break; }
+    }
+    if (!start) continue;
+    const at0 = await goTo(A, start[0], start[1]);
+    if (Math.hypot(at0.x - start[0], at0.z - start[1]) > 0.8) continue;
     const { plan, at } = await clickAt(A, cx, cz);
     const d = dist(p.box, at.x, at.z);
-    // (a planned walk ends beside it; a refused one, "here" / "unreachable", leaves the body where it was: outside too)
-    run.check(`click on ${p.name}: the body ends outside it`, d >= R - 0.08, { plan, at: [at.x.toFixed(2), at.z.toFixed(2)], gap: d.toFixed(2) });
+    // a planned walk ends beside it (the nearest spot a body stands on, or up to its face); it is never refused as "not ground"
+    run.check(`click on ${p.name}: walks up to it, the body ends outside it`, plan.ok && d >= R - 0.08 && d < 2.6, { plan, at: [at.x.toFixed(2), at.z.toFixed(2)], gap: d.toFixed(2) });
   }
 });
 

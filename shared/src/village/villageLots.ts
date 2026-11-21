@@ -1076,14 +1076,26 @@ export const LOT_HURDLES: Readonly<Record<string, number>> = Object.freeze({
 /**
  * The lots' planted beds and clipped borders as solids (owner 2026-11-21: "화단에 식물이 있는데 이걸 그냥 통과해버리네"): lot-local
  * rectangles, kept apart from the models' collider boxes (the models have none for them; client/village/lots/entranceGardens.ts draws
- * the beds from the same numbers). The chapel's and the church's entrance borders either side of the walk, the chapel's five side
- * pockets, the school's and the library's boxwood borders and the library's two clipped crowns.
+ * the beds from the same numbers). The chapel's and the church's entrance borders either side of the walk, four of the chapel's five side
+ * beds (mulch beds of roses and box balls round its two gardens; the fifth would close a bench off), the school's and the library's boxwood borders and the library's
+ * two clipped crowns. No box leaves a slit under a body's width beside a neighbour, and none closes a seat off: villageSolidsReach.test.ts
+ * and the click sweep (client game/clickPlanSweep.test.ts) hold that.
  */
 export const LOT_BED_SOLIDS: Readonly<Record<LotId, readonly LotRect[]>> = Object.freeze({
   lot_school: Object.freeze([rect(-6.9, -3.2, 9.5, 9.8), rect(3.2, 9, 9.5, 9.8)]),
   lot_chapel: Object.freeze([
     rect(1.88, 4.66, 5.68, 7.05), rect(-4.66, -1.88, 5.68, 7.05),
-    rect(9.9, 11.6, -3.6, 1.6), rect(5.5, 6.6, -4.6, -2.8), rect(-11.7, -9.9, -4.5, 1.5), rect(-6.5, -5.3, -4.6, -1.6), rect(-11.6, -9.4, 1.9, 4.2),
+    // the south garden (the fountain's): the long bed beyond the gravel circle. NOT the small one at the bench's north end
+    // (1.9 x 1.1 m of mulch with three roses, lot-local 5.5..6.6 x -4.6..-2.8): its box stood 0.57 m from the basin's, corner to
+    // corner, and 0.7 m from the bench's end, so the bench between the two beds could not be walked to or round (the click
+    // sweep: every tap from that bench "unreachable"). A seat's approach comes before a bed of three roses.
+    // (...and the half metre of gravel between the basin's box and that bed: a slit no body enters, closed so a tap there is
+    // answered from the bed's edge and not refused)
+    rect(9.9, 11.6, -3.6, 1.6), rect(9.4, 9.9, -2.4, 0),
+    // the north garden (the rose arbour's): the two beds along its far side as one run (0.4 m of lawn between their boxes was a
+    // slit nobody enters), the bed by the nave up to the nave's own box. Beside the bench's two ends (lot-local z under -3.4)
+    // each bed's box stands 0.25 m back from its mulch edge: a body passes between bench and bed (1.05 m), round to its back.
+    rect(-11.7, -9.9, -3.4, 1.9), rect(-11.7, -10.15, -4.5, -3.4), rect(-6.5, -5, -3.4, -1.6), rect(-6.25, -5, -4.6, -3.4), rect(-11.6, -9.4, 1.9, 4.2),
   ]),
   lot_library: Object.freeze([rect(-9.85, -8.75, 3.53, 3.81), rect(-5.55, -5.02, 3.53, 3.81), rect(-0.98, -0.45, 3.53, 3.81), rect(-5.15, -4.25, 3.35, 4.25), rect(-1.75, -0.85, 3.35, 4.25)]),
   lot_temple: Object.freeze([]),

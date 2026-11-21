@@ -260,7 +260,7 @@ export function parkFountainSolids(): AABB[] {
  * every 6 m, up to 2.5 m), the last ones at x -30 and 30 either side of the station): the walk bounds end at z -2.2, INSIDE the row, so
  * a walker stood in the hedge. Its north face is the wall now (`face`: the widest shrub's leaf tips reach z -4.7).
  */
-export const PARK_SOUTH_HEDGE = Object.freeze({ z: -2.7, face: -4.6, gap: 28.2 });
+export const PARK_SOUTH_HEDGE = Object.freeze({ z: -2.7, face: -4.7, gap: 27.8 });
 export function parkSouthHedgeSolids(): AABB[] {
   const h = PARK_SOUTH_HEDGE;
   return [box(PARK_BOUNDS.minX - 1, -h.gap, h.face, PARK_BOUNDS.maxZ + 1), box(h.gap, PARK_BOUNDS.maxX + 1, h.face, PARK_BOUNDS.maxZ + 1)];
