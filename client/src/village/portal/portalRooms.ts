@@ -28,6 +28,13 @@ export interface PortalFrame {
   e: number;
   f: number;
   lift: number;
+  /**
+   * Depth squeeze (≤ 1, default 1): a room deeper than its building's inside is drawn this much shallower along room Z, about the door
+   * wall's Z `kz` — the 성당's nave (13.4 m) behind its 9.9 m deep shell, the 대웅전's hall behind its recessed front — so its back wall
+   * stays inside the shell's (a squeeze nobody sees through a door, where a room poking out of the back wall would be seen).
+   */
+  k?: number;
+  kz?: number;
 }
 
 export interface PortalRoom {
@@ -39,34 +46,50 @@ export interface PortalRoom {
   max: [number, number, number];
   /** The bake's eye in the room frame. */
   eye: [number, number, number];
+  /**
+   * Room-frame boxes left out when the room is seen from outside: its own door, shut, in the building's open doorway (the room was built
+   * as a closed room: its door leaves stand where the building's open ones swing back).
+   */
+  cut?: Array<{ min: [number, number, number]; max: [number, number, number] }>;
 }
 
 /** Room frame → village: the inverse of `frame` (the rotation is orthonormal). */
 export function toVillage(fr: PortalFrame, X: number, Y: number, Z: number): [number, number, number] {
+  const k = fr.k ?? 1, kz = fr.kz ?? 0;
+  Z = kz + (Z - kz) * k;
   const x0 = X - fr.e, z0 = Z - fr.f;
   return [fr.a * x0 + fr.c * z0, Y + fr.lift, fr.b * x0 + fr.d * z0];
 }
 export function toRoom(fr: PortalFrame, x: number, y: number, z: number): [number, number, number] {
-  return [fr.a * x + fr.b * z + fr.e, y - fr.lift, fr.c * x + fr.d * z + fr.f];
+  const k = fr.k ?? 1, kz = fr.kz ?? 0;
+  const Z = fr.c * x + fr.d * z + fr.f;
+  return [fr.a * x + fr.b * z + fr.e, y - fr.lift, kz + (Z - kz) / k];
 }
 
 // ─────────────────────────────────────────── lots ───────────────────────────────────────────
 
-/** The lots' ground-floor heights in the village (m): the floor just inside the door, measured by the bake (lifts.json). */
-export const LOT_FLOOR_LIFT: Readonly<Record<string, number>> = Object.freeze({
-  lot_school_class: 0.45,
-  lot_library_reading: 0.3,
-  lot_chapel_nave: 0.3,
-  lot_church_nave: 0.3,
-  lot_temple_hall: 0.96,
+/**
+ * The lots' rooms in their buildings, measured on the lots' own door leaves (village, 2026-11-22: the closed leaves' inner faces and
+ * their sills): `lift` the room's floor above the lawn (the 대웅전 stands on its 기단), `wallIn` how far behind the body's front edge the
+ * door wall's inner face is (the 대웅전's lattice front stands 1.96 m back, behind its open 툇마루 porch).
+ */
+export const LOT_ROOM_PLACE: Readonly<Record<string, { lift: number; wallIn: number; doorHalf: number; doorTop: number }>> = Object.freeze({
+  lot_school_class: { lift: 0.03, wallIn: 0.38, doorHalf: 1.11, doorTop: 3.2 },
+  lot_library_reading: { lift: 0.03, wallIn: 0.4, doorHalf: 1.11, doorTop: 3.4 },
+  lot_chapel_nave: { lift: 0.03, wallIn: 0.8, doorHalf: 1.2, doorTop: 3.6 },
+  lot_church_nave: { lift: 0.03, wallIn: 0.21, doorHalf: 1.11, doorTop: 3.4 },
+  lot_temple_hall: { lift: 0.96, wallIn: 1.96, doorHalf: 1.5, doorTop: 3.05 },
 });
 
 /** The rooms seen through the lots' glass and doors (the café's room is the café agent's). */
 export const PORTAL_LOT_UNITS = ["lot_school_class", "lot_library_reading", "lot_chapel_nave", "lot_church_nave", "lot_temple_hall"] as const;
 
-export function lotPortalRoom(room: LotRoom, lift = LOT_FLOOR_LIFT[room.unit.id] ?? 0.3): PortalRoom {
+export function lotPortalRoom(room: LotRoom, place = LOT_ROOM_PLACE[room.unit.id] ?? { lift: 0.03, wallIn: 0.3, doorHalf: 1.1, doorTop: 3.2 }): PortalRoom {
   const w = windowViewFrame(room);
   const [ma, mb, mc, md] = w.m; // room (x, z) → village: v = M · r + t
+  const lift = place.lift;
+  // the door wall's inner face `wallIn` into the building (room +z is into it: M · (0, 1))
+  const t: [number, number] = [w.t[0] + place.wallIn * mb, w.t[1] + place.wallIn * md];
   const o = room.origin;
   // room = Mᵀ (v − t); frame = origin + room
   const frame: PortalFrame = {
@@ -74,17 +97,24 @@ export function lotPortalRoom(room: LotRoom, lift = LOT_FLOOR_LIFT[room.unit.id]
     b: mc,
     c: mb,
     d: md,
-    e: o.x - (ma * w.t[0] + mc * w.t[1]),
-    f: o.z - (mb * w.t[0] + md * w.t[1]),
+    e: o.x - (ma * t[0] + mc * t[1]),
+    f: o.z - (mb * t[0] + md * t[1]),
     lift,
   };
   const s = room.unit.interior.size;
+  // the building's inside behind the door wall: the body's depth less the door wall's set-back and the back wall (0.3 m)
+  const inside = room.lot.body.z1 - room.lot.body.z0 - place.wallIn - 0.3;
+  if (inside < s.z) {
+    frame.k = inside / s.z;
+    frame.kz = o.z;
+  }
   return {
     id: room.unit.id,
     frame,
     min: [o.x, 0, o.z],
     max: [o.x + s.x, room.ceiling, o.z + s.z],
     eye: [o.x + s.x / 2, PORTAL_EYE_Y, o.z + s.z / 2],
+    cut: [{ min: [o.x + room.spec.doorX - place.doorHalf - 0.08, -0.1, o.z - 0.6], max: [o.x + room.spec.doorX + place.doorHalf + 0.08, place.doorTop + 0.4, o.z + 0.45] }],
   };
 }
 
@@ -96,8 +126,10 @@ export const MEMORIAL_PORCH = { backZ: -53.68, floorY: 0.15 } as const;
 export function memorialPortalRoom(): PortalRoom {
   const hall = VILLAGE_LAYOUT.memorial.interior;
   const r = hall.room;
-  // the hall's door wall (z = r.maxZ, the south) stands where the porch's back wall is; x: the door's centre on the porch's
-  const frame: PortalFrame = { a: 1, b: 0, c: 0, d: 1, e: hall.doorPad.centre.x, f: r.maxZ - MEMORIAL_PORCH.backZ, lift: MEMORIAL_PORCH.floorY };
+  // the hall's door wall stands just behind the porch's back wall: its outer face and the door leaves hung on it (autoDoorParts
+  // HALL_REVEAL_OUTER_Z 6.14, the leaves to 6.26) behind the shop front's plane; x: the door's centre on the porch's
+  const behind = 0.3;
+  const frame: PortalFrame = { a: 1, b: 0, c: 0, d: 1, e: hall.doorPad.centre.x, f: r.maxZ + behind - MEMORIAL_PORCH.backZ, lift: MEMORIAL_PORCH.floorY };
   return {
     id: "memorial_hall",
     frame,
@@ -160,7 +192,7 @@ export function bakeTargets(): BakeTarget[] {
   const out: BakeTarget[] = [];
   for (const u of PORTAL_LOT_UNITS) {
     const room = LOT_ROOMS.find((r) => r.unit.id === u)!;
-    const pr = lotPortalRoom(room, 0);
+    const pr = lotPortalRoom(room);
     const dp = lotDoorPoint(room.lot, room.door);
     // just inside the door, in the village: the floor's height there is the room's lift
     const sill = toVillage(pr.frame, room.origin.x + room.spec.doorX, 0, room.origin.z + 0.8);

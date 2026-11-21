@@ -19,6 +19,7 @@ import {
   type ShaderMaterial,
   type Texture,
 } from "three";
+import { clearGlassMaterial, memorialCardHide, patchCardHide, type ClearGlass } from "./portal/clearGlass";
 import {
   COLLIDER_PREFIX,
   LIGHTMAP_INTENSITY,
@@ -528,6 +529,9 @@ const GLASS_NIGHT = /* glsl */ `#include <map_fragment>
 diffuseColor.rgb *= mix( 1.0, 0.1, uVillageLit );
 diffuseColor.a *= mix( 1.0, 0.55, uVillageLit );`;
 
+/** How much a village pane hides what is behind it where no room is drawn: little (the kiosk's flowers and the lanterns' flames show). */
+export const VILLAGE_GLASS_DARK = 0.3;
+
 /** Dim the shared `M_glass` (windows, doors, shop glass) with the night, in place and idempotently (house review 2026-11-13). */
 export function nightGlass(m: Material): void {
   const b = m as MeshBasicMaterial;
@@ -759,6 +763,11 @@ export interface VillageNodes {
    * to its pools), or null (`fountain: "old"`, or no fountain in the model).
    */
   fountain: { water: FountainWater; pool: ShaderMaterial } | null;
+  /**
+   * The village's panes (`M_glass`: the memorial's shop front, the kiosk, the lanterns): clear glass (portal/clearGlass.ts, owner
+   * 2026-11-21 — the model's milky sheet with its painted streak is gone), clear over a room drawn behind it, a faint dark sheen elsewhere.
+   */
+  glass: ClearGlass | null;
   /** Materials, textures and geometries this call made (and nothing else): dispose them with the scene. */
   own: Array<Material | Texture | BufferGeometry>;
 }
@@ -1002,12 +1011,19 @@ export function prepareVillage(
     const source = found.get(name);
     if (!source) continue;
     const lit = litMaterial(source, kind);
+    // the cards behind the memorial's shop front step aside while the hall itself is drawn there (portal/MemorialShowcase.tsx)
+    if (kind === "window") patchCardHide(lit, memorialCardHide.uCardHide);
     own.push(lit);
     swapMaterial(root, name, lit);
   }
 
   const glassSource = found.get(MATERIAL.glass);
-  if (glassSource) nightGlass(glassSource);
+  let glass: ClearGlass | null = null;
+  if (glassSource) {
+    glass = clearGlassMaterial(MATERIAL.glass, VILLAGE_GLASS_DARK);
+    own.push(glass.material);
+    swapMaterial(root, MATERIAL.glass, glass.material);
+  }
 
   // The plots' outlines glow.
   const glowSource = found.get(MATERIAL.glowPlot) as MeshBasicMaterial | undefined;
@@ -1079,7 +1095,7 @@ export function prepareVillage(
   }
 
   freezeStatic(root);
-  return { root, water, sky, skyMapping, hazed, graded, stars, fountain, own };
+  return { root, water, sky, skyMapping, hazed, graded, stars, fountain, glass, own };
 }
 
 /**

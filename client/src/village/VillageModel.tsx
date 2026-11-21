@@ -35,6 +35,7 @@ import { FallsModel } from "./falls/FallsModel";
 import { LotsVillagePatch } from "./lots/LotsVillagePatch";
 import { ExteriorDress } from "./ExteriorDress";
 import { CafeShowcase } from "./cafe/CafeShowcase";
+import { MemorialShowcase } from "./portal/MemorialShowcase";
 import { fallsMode, fallsRuntimeFor } from "./falls/fallsConfig";
 import { fallsModelBuilt } from "./falls/fallsLoader";
 import { StreetFurniture } from "./street/StreetFurniture";
@@ -293,6 +294,8 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       <ExteriorDress root={nodes.root} tier={tier} />
       {/* The café's real rooms (both floors) behind real glass, village.glb's café interior taken out of the clone (cafe/CafeShowcase.tsx). */}
       <CafeShowcase root={nodes.root} />
+      {/* The memorial hall behind the porch's clear shop front while the camera is near (portal/MemorialShowcase.tsx). */}
+      <MemorialShowcase glass={nodes.glass} />
       {veg && <primitive object={veg.group} dispose={null} />}
       {mountains && (
         <Suspense fallback={null}>

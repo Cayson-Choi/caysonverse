@@ -45,7 +45,7 @@ import type { LotDoorExtras } from "./lotsLoader";
 import { litUniform } from "../villageModelPrep";
 import { SS_FRAGMENT_PARS, SS_VERTEX_PARS, SS_VERTEX_WORLD, bindSunShadowUniforms } from "../sunShadows";
 import { lanternPositions } from "../street/streetLayout";
-import { addBusSky, busEnvScale } from "../villageBusPrep";
+import { clearGlassMaterial, type ClearGlass } from "../portal/clearGlass";
 import type { DayNightState } from "../dayNightBlend";
 
 /** DEV `?lots=off`: the village without the lot buildings (the before sheets). Production: always on. */
@@ -66,9 +66,6 @@ export const LOT_LOOK = {
   metalness: 0.35,
   /** The dancheong atlas's gold leaf (its ORM's metal channel says where; contract B3 note). */
   goldLeaf: 0.6,
-  glassOpacity: 0.72, // (v2: most lots are shells behind their glass — at 0.42 the sky showed through the chapel's rose window)
-  glassNightOpacity: 0.4,
-  glassEnv: 0.9,
   /** The lamp lenses (M_lamp) by day and at night. */
   lampDay: 0.25,
   lampNight: 2.2,
@@ -241,25 +238,13 @@ export function applyLotTextures(m: MeshStandardMaterial, bank: LotTextureBank):
 }
 
 export interface LotGlow {
-  glass: MeshStandardMaterial | null;
-  glassSky: { value: number };
+  /** Every lot's panes: clear over a room drawn behind them (portal/RoomShowcase.tsx), a dark reflective pane elsewhere. */
+  glass: ClearGlass | null;
   lamps: MeshStandardMaterial[];
   signs: Array<{ m: MeshStandardMaterial; base: number }>;
   night: MeshBasicMaterial;
 }
 
-function glassMaterial(source: MeshStandardMaterial, strength: { value: number }): MeshStandardMaterial {
-  const m = source.clone();
-  m.transparent = true;
-  m.depthWrite = false;
-  m.opacity = LOT_LOOK.glassOpacity;
-  m.roughness = 0.05;
-  m.metalness = 0;
-  m.vertexColors = false;
-  m.forceSinglePass = true;
-  addBusSky(m, strength, "glass");
-  return m;
-}
 
 // ───────────────────────────────────────── level of detail ─────────────────────────────────────────
 
@@ -681,7 +666,6 @@ export function prepareLots(
   const surfaces: MeshStandardMaterial[] = [];
   const glow: LotGlow = {
     glass: null,
-    glassSky: { value: LOT_LOOK.glassEnv },
     lamps: [],
     signs: [],
     night: new MeshBasicMaterial({ vertexColors: true, toneMapped: false, transparent: true, depthWrite: false, opacity: 0 }),
@@ -703,7 +687,11 @@ export function prepareLots(
       // open door one looked through the far walls' backs at the sky and the grass behind (L5v2 release-4 sheet)
       m.side = DoubleSide;
       surfaces.push(m as MeshStandardMaterial);
-    } else if (src.name === "M_glass") m = glow.glass = glassMaterial(s, glow.glassSky);
+    } else if (src.name === "M_glass") {
+      // clear glass (owner 2026-11-21: "모든 유리창을 투명하게"): one material for every lot's panes
+      glow.glass ??= clearGlassMaterial("M_glass", 1);
+      m = glow.glass.material;
+    }
     else if (spec?.kind === "screen") m = new MeshBasicMaterial({ name: src.name, vertexColors: colours, toneMapped: true });
     else if (spec?.kind === "own" && ownMaps[src.name]) {
       const c = new MeshStandardMaterial({ name: src.name, map: ownMaps[src.name]!, roughness: 0.6, vertexColors: colours, side: s.side });
@@ -938,8 +926,6 @@ export function applyLotsDayNight(nodes: LotNodes, s: Pick<DayNightState, "light
   for (const n of nodes.night) if (n.visible !== on) n.visible = on;
   for (const m of g.lamps) m.emissiveIntensity = LOT_LOOK.lampDay + (LOT_LOOK.lampNight - LOT_LOOK.lampDay) * s.lights;
   for (const { m, base } of g.signs) m.emissiveIntensity = base * (LOT_LOOK.signDay + (LOT_LOOK.signNight - LOT_LOOK.signDay) * s.lights);
-  if (g.glass) g.glass.opacity = LOT_LOOK.glassOpacity + (LOT_LOOK.glassNightOpacity - LOT_LOOK.glassOpacity) * s.lights;
-  g.glassSky.value = LOT_LOOK.glassEnv * busEnvScale(s);
 }
 
 /** Show each lot's detail at its level. */

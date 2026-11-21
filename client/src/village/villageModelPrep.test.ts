@@ -537,7 +537,7 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(nodes.sky!.userData.inverseTone.uExposure.value).toBe(1.3);
   });
 
-  it("windows and lamps are copies that glow warm and past white once lit; the glass stays as the model has it (not emissive)", () => {
+  it("windows and lamps are copies that glow warm and past white once lit; the glass is clear glass (not emissive, no painted streak)", () => {
     const f = fixture();
     const nodes = prepareVillage(f.root, new Texture(), "high");
     const window = materialOf(nodes.root, "village_fx_12");
@@ -548,9 +548,15 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(lamp.name).toBe("M_lamp");
     expect(nodes.own).toContain(window);
     expect(nodes.own).toContain(lamp);
-    expect(materialOf(nodes.root, "village_glass")).toBe(f.mats.M_glass);
-    expect(f.mats.M_glass.toneMapped).toBe(true);
-    expect(f.mats.M_glass.customProgramCacheKey()).toBe("village-glass-night"); // dark at night with the lit weight (review 2026-11-13)
+    // clear glass (owner 2026-11-21: the milky sheet with its painted streak was "not real"): portal/clearGlass.ts, made here and owned
+    const glass = materialOf(nodes.root, "village_glass") as unknown as ShaderMaterial;
+    expect(glass).not.toBe(f.mats.M_glass);
+    expect(glass).toBe(nodes.glass!.material);
+    expect(glass.name).toBe("M_glass");
+    expect(glass.transparent).toBe(true);
+    expect(glass.depthWrite).toBe(false);
+    expect(nodes.own).toContain(glass);
+    expect(glass.fragmentShader).toContain("0.04 + 0.96"); // Schlick, F0 0.04
     // The hook: map_fragment is followed by the glow, mixed by the shared lit weight.
     const compile = (m: MeshBasicMaterial) => {
       const shader = {
@@ -569,7 +575,8 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(w.fragmentShader).toContain("uniform float uVillageLit;");
     expect(w.fragmentShader.indexOf("villageGlowLuma")).toBeLessThan(w.fragmentShader.indexOf("#include <color_fragment>"));
     expect((compile(lamp).uniforms.uVillageLitBoost!.value as number)).toBe(LIT.lamp.boost);
-    expect(window.customProgramCacheKey()).toBe("village-lit");
+    // (the window cards also step aside behind the memorial's shop front while the hall is drawn there: portal/clearGlass.ts)
+    expect(window.customProgramCacheKey()).toBe("village-lit|cards");
     // Glowing means past white: the boosted glow colour exceeds 1, so the rich tier's bloom (threshold 1.6) takes it.
     expect(Math.max(...LIT.window.color) * LIT.window.boost).toBeGreaterThan(1.6);
     expect(Math.max(...LIT.lamp.color) * LIT.lamp.boost).toBeGreaterThan(1.6);
@@ -999,7 +1006,7 @@ describe("the shader patches against three's own MeshBasicMaterial shader (T7 re
   it("the windows' and lamps' glow lands after the texture is read", () => {
     const f = fixture();
     const nodes = prepareVillage(f.root, new Texture(), "low");
-    const lit = nodes.own.filter((r): r is MeshBasicMaterial => (r as MeshBasicMaterial).isMeshBasicMaterial && (r as MeshBasicMaterial).customProgramCacheKey() === "village-lit");
+    const lit = nodes.own.filter((r): r is MeshBasicMaterial => (r as MeshBasicMaterial).isMeshBasicMaterial && /^village-lit(\|cards)?$/.test((r as MeshBasicMaterial).customProgramCacheKey()));
     expect(lit.length).toBe(2);
     for (const m of lit) {
       const fs = compile(m);

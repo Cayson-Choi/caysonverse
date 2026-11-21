@@ -19,6 +19,7 @@ import { installEntranceGardens } from "./entranceGardens";
 import { dressGateLot } from "./gateDress";
 import { setLotsDrawn } from "./lotsStore";
 import { doorSwingClearance } from "./lotDoorCheck";
+import { LotRoomShowcase } from "../portal/RoomShowcase";
 import { viewState } from "../../game/viewState";
 import { LOT_ROOM_PREFETCH_M, prefetchLotRoom } from "./LotRoom";
 
@@ -365,7 +366,13 @@ export function VillageLots({ pose, tier }: { pose: Pose; tier: VillageTier }) {
   });
 
   if (!nodes) return null;
-  return <primitive object={nodes.root} dispose={null} />;
+  return (
+    <>
+      <primitive object={nodes.root} dispose={null} />
+      {/* the real rooms behind the glass and the open doors (owner 2026-11-21/22) */}
+      {lotsMode() === "on" && <LotRoomShowcase root={nodes.root} glass={nodes.glow.glass} />}
+    </>
+  );
 }
 
 /** DEV: the undersides (m) of the porch roofs, the pergola and the temple's eaves over a few points per lot (LOT_ROOF_SLABS' floors). */
