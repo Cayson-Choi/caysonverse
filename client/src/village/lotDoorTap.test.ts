@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CAFE_LOT, LOT_ROOMS, lotDoorPoint, lotRoomDoor, lotRoomOf } from "@caysonverse/shared/village/villageLots";
 import { lotDoorTapTarget } from "./lotDoorTap";
-import { LOT_ENTER_TARGET_PREFIX, LOT_EXIT_TARGET_PREFIX, lotDoorTarget, lotExitTarget, lotWalkInTarget } from "./lots/lotTargets";
-import { isBlocked } from "@caysonverse/shared/collision";
-import { villageGeometry } from "@caysonverse/shared/village/villageLayout";
-import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
+import { LOT_ENTER_TARGET_PREFIX, LOT_EXIT_TARGET_PREFIX, lotDoorTarget, lotExitTarget } from "./lots/lotTargets";
 
 describe("a tap on a lot building's door (the café's, owner 2026-11-20)", () => {
   const door = lotDoorPoint(CAFE_LOT, CAFE_LOT.doors[0]!);
@@ -47,17 +44,76 @@ describe("a tap on a lot building's door (the café's, owner 2026-11-20)", () =>
     expect(lotDoorTapTarget(room.area, exit.x, 4.2, room.origin.z - 0.12)).toBeNull();
   });
 
-  it("walking into the café's door never goes in (owner 2026-11-21: the button, E or a tap on the door only); the button is offered there", () => {
-    // the closed door's wall stops a body 0.4 m short of it: that spot is the doorstep
-    const step = { x: door.centre.x + Math.sin(door.yaw) * (PLAYER_RADIUS + 0.05), z: door.centre.z + Math.cos(door.yaw) * (PLAYER_RADIUS + 0.05) };
-    expect(isBlocked(step.x, step.z, PLAYER_RADIUS, villageGeometry.obstacles, 0)).toBe(false);
-    expect(lotWalkInTarget(step.x, step.z)).toBeNull();
-    expect(lotWalkInTarget(door.pad.x, door.pad.z)).toBeNull(); // the pad (0.65 m out): the button
-    expect(lotWalkInTarget(door.arrival.x, door.arrival.z)).toBeNull();
-    expect(lotWalkInTarget(step.x, step.z + 2.5)).toBeNull(); // along the façade, beside the door
-    expect(lotWalkInTarget(step.x - 3, step.z)).toBeNull();
-    expect(lotWalkInTarget(Number.NaN, 0)).toBeNull();
-    // the button is offered at the doorstep too: the use is valid there
-    expect(lotDoorTarget(step.x, step.z)?.id).toBe(`${LOT_ENTER_TARGET_PREFIX}lot_cafe_main`);
+  it("a tap on the ground or floor by a door is a walk, never a use of it (owner 2026-11-21)", () => {
+    for (const r of LOT_ROOMS) {
+      const p = lotDoorPoint(r.lot, r.door);
+      for (const o of [-0.5, 0, 0.2, 0.6]) {
+        expect(lotDoorTapTarget("village", p.centre.x + Math.sin(p.yaw) * o, 0, p.centre.z + Math.cos(p.yaw) * o), r.door.id).toBeNull();
+      }
+    }
+    const room = lotRoomOf("lot:lot_cafe_room")!;
+    const exit = lotRoomDoor(room).exitPad;
+    for (const dz of [-0.3, 0, 0.4, 0.8]) expect(lotDoorTapTarget(room.area, exit.x, 0, room.origin.z + dz)).toBeNull();
+  });
+
+  it("a tap that goes through an open / unpickable leaf onto the wall inside is the door; onto the floor beyond or past the opening it is not", () => {
+    const ray = (from: { x: number; y: number; z: number }, to: { x: number; y: number; z: number }) => {
+      const l = Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z);
+      return { ray: { o: from, d: { x: (to.x - from.x) / l, y: (to.y - from.y) / l, z: (to.z - from.z) / l } }, distance: l };
+    };
+    for (const r of LOT_ROOMS) {
+      const p = lotDoorPoint(r.lot, r.door);
+      const at = (o: number, a: number, y: number) => ({
+        x: p.centre.x + Math.sin(p.yaw) * o + Math.cos(p.yaw) * a,
+        y,
+        z: p.centre.z + Math.cos(p.yaw) * o - Math.sin(p.yaw) * a,
+      });
+      const eye = at(5, 0, 1.7);
+      const wall = at(-2.5, 0, 1.0);
+      const w = ray(eye, wall);
+      expect(lotDoorTapTarget("village", wall.x, wall.y, wall.z, w.ray, w.distance)?.id, r.door.id).toBe(`${LOT_ENTER_TARGET_PREFIX}${r.door.id}`);
+      const floor = at(-2.5, 0, 0);
+      const f = ray(eye, floor);
+      expect(lotDoorTapTarget("village", floor.x, floor.y, floor.z, f.ray, f.distance), `${r.door.id} floor beyond`).toBeNull();
+      const side = at(-2.5, r.door.width / 2 + 2.5, 1.0);
+      const sd = ray(eye, side);
+      expect(lotDoorTapTarget("village", side.x, side.y, side.z, sd.ray, sd.distance), `${r.door.id} wall beside`).toBeNull();
+    }
+  });
+
+  it("a flat thing by the door (a step, a threshold, a planter's top) is not the door; an upright face and a bar's top edge high up are", () => {
+    for (const r of LOT_ROOMS) {
+      const p = lotDoorPoint(r.lot, r.door);
+      const at = { x: p.centre.x + Math.sin(p.yaw) * 0.1, z: p.centre.z + Math.cos(p.yaw) * 0.1 };
+      expect(lotDoorTapTarget("village", at.x, 0.45, at.z, null, 0, 1), r.door.id).toBeNull();
+      expect(lotDoorTapTarget("village", at.x, 0.9, at.z, null, 0, 0.9), r.door.id).toBeNull();
+      expect(lotDoorTapTarget("village", at.x, 0.45, at.z, null, 0, 0)?.id, r.door.id).toBe(`${LOT_ENTER_TARGET_PREFIX}${r.door.id}`);
+      expect(lotDoorTapTarget("village", at.x, 1.5, at.z, null, 0, 1)?.id, r.door.id).toBe(`${LOT_ENTER_TARGET_PREFIX}${r.door.id}`);
+    }
+  });
+
+  it("a tap through a glass leaf that picks nothing at all is the door by its ray alone; from behind the door, or past its jamb, it is not", () => {
+    const ray = (from: { x: number; y: number; z: number }, to: { x: number; y: number; z: number }) => {
+      const l = Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z);
+      return { o: from, d: { x: (to.x - from.x) / l, y: (to.y - from.y) / l, z: (to.z - from.z) / l } };
+    };
+    for (const r of LOT_ROOMS) {
+      const p = lotDoorPoint(r.lot, r.door);
+      const at = (o: number, a: number, y: number) => ({ x: p.centre.x + Math.sin(p.yaw) * o + Math.cos(p.yaw) * a, y, z: p.centre.z + Math.cos(p.yaw) * o - Math.sin(p.yaw) * a });
+      const id = `${LOT_ENTER_TARGET_PREFIX}${r.door.id}`;
+      expect(lotDoorTapTarget("village", NaN, NaN, NaN, ray(at(6, 0, 2.6), at(0, 0, 1.2)), 0)?.id, r.door.id).toBe(id);
+      expect(lotDoorTapTarget("village", NaN, NaN, NaN, null, 0), r.door.id).toBeNull(); // the sky, no ray
+      expect(lotDoorTapTarget("village", NaN, NaN, NaN, ray(at(6, 0, 2.6), at(0, r.door.width / 2 + 1.5, 1.2)), 0), `${r.door.id} beside`).toBeNull();
+      expect(lotDoorTapTarget("village", NaN, NaN, NaN, ray(at(6, 0, 2.6), at(0, 0, 0.1)), 0), `${r.door.id} foot`).toBeNull();
+      expect(lotDoorTapTarget("village", NaN, NaN, NaN, ray(at(-6, 0, 2.6), at(0, 0, 1.2)), 0), `${r.door.id} from behind`).toBeNull();
+      // inside its room: the way out is the z = origin wall, the room on its +z side
+      const room = lotRoomOf(r.area)!;
+      const exit = lotRoomDoor(room).exitPad;
+      const out = `${LOT_EXIT_TARGET_PREFIX}${room.unit.id}`;
+      // (a room with no way out of its own, the café's upstairs: nothing there is a door)
+      expect(lotDoorTapTarget(room.area, NaN, NaN, NaN, ray({ x: exit.x, y: 3, z: room.origin.z + 5 }, { x: exit.x, y: 1.2, z: room.origin.z }), 0)?.id, room.area).toBe(room.spec.noExit ? undefined : out);
+      expect(lotDoorTapTarget(room.area, NaN, NaN, NaN, ray({ x: exit.x, y: 3, z: room.origin.z + 5 }, { x: exit.x, y: 0.05, z: room.origin.z }), 0), `${room.area} foot`).toBeNull();
+      expect(lotDoorTapTarget(room.area, NaN, NaN, NaN, ray({ x: exit.x, y: 3, z: room.origin.z + 5 }, { x: exit.x + room.spec.doorWidth / 2 + 1.2, y: 1.2, z: room.origin.z }), 0), `${room.area} beside`).toBeNull();
+    }
   });
 });

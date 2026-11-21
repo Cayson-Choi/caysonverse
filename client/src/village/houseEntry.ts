@@ -4,12 +4,13 @@ import { HOUSE_BUDGET } from "@caysonverse/shared/village/houseAreas";
 /**
  * Coming into a house (집 실내 G; design 5.2 step 4): the server moves the player at once when the code is right, but the house's
  * model may still be on its way (a slow phone, no prefetch). The dark cover with "집에 들어가는 중…" stands over the screen from the
- * keypad's "ok" (or from the house scene mounting, whichever is first) until the house's floor is drawn, and for at most
- * `HOUSE_BUDGET.loadTimeoutSeconds` (8 s): after that the entry is given up — the player is sent back to the porch with a short
- * "다시 시도해 주세요". Module state (like keypadStore.ts); `useHouseEntry` is the React window onto it, and `HouseEntryCover.tsx` draws it.
+ * keypad's "ok" (or from the house scene mounting, whichever is first) until the house's floor is drawn. After
+ * `HOUSE_BUDGET.loadTimeoutSeconds` (8 s) of waiting, or when the model fails, the cover says so and offers a "밖으로 나가기" button: the
+ * visitor is never sent back out by itself (owner 2026-11-21), and the cover still opens when the floor is drawn after all. Module state
+ * (like keypadStore.ts); `useHouseEntry` is the React window onto it, and `HouseEntryCover.tsx` draws it.
  *
  * Phases: `idle` (nothing), `loading` (cover shown, waiting for the model), `ready` (the floor is drawn: the cover opens), `failed`
- * (timed out or the model failed: the cover stays while the player is sent out).
+ * (the wait ran out or the model failed: the cover stays, with the way out as a button, until the floor is drawn or the visitor leaves).
  */
 
 export type HouseEntryPhase = "idle" | "loading" | "ready" | "failed";
@@ -26,7 +27,7 @@ const emit = () => listeners.forEach((fn) => fn());
 
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
-/** How long the cover waits for the model before the entry is given up (ms). */
+/** How long the cover waits for the model before it offers the way back out (ms). */
 export const HOUSE_ENTRY_TIMEOUT_MS = HOUSE_BUDGET.loadTimeoutSeconds * 1000;
 
 export function houseEntryState(): HouseEntryState {
@@ -47,7 +48,7 @@ export function houseEntryReady(): void {
   emit();
 }
 
-/** The model did not come in time (or failed): the player is sent back out. */
+/** The model did not come in time (or failed): the cover offers the way back out (the visitor's own press). */
 export function houseEntryFailed(): void {
   if (state.phase === "failed") return;
   state = { phase: "failed", since: state.since };

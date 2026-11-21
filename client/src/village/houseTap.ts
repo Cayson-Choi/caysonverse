@@ -11,6 +11,7 @@ import {
   parseHouseFloorArea,
   worldToLocal,
 } from "@caysonverse/shared/village/houseAreas";
+import { doorTapOnFlat, type TapRayLike } from "./lotDoorTap";
 import { HOUSE_EXIT_TARGET_ID, HOUSE_STAIR_DOWN_TARGET_ID, HOUSE_STAIR_UP_TARGET_ID } from "@caysonverse/shared/village/houseTargets";
 
 /**
@@ -31,8 +32,29 @@ export const HOUSE_TAP_STAIR_MARGIN = 0.2;
  */
 export const HOUSE_TAP_STAIR_BELOW = 0.5;
 export const HOUSE_TAP_STAIR_ABOVE = 1.1;
-/** The front door (local): the glass double door on the z = 0 wall, 2.9 m tall (HOUSE_ROOM.frontDoor), a tap within this much of the wall. */
-const FRONT_DOOR = { minX: 4.4, maxX: 6.2, maxZ: 0.45, height: 3.0 } as const;
+/** The front door (local): the glass double door on the z = 0 wall, 2.9 m tall (HOUSE_ROOM.frontDoor), a tap within this much of the wall, above the floor (a tap on the floor by the door walks, never leaves: owner 2026-11-21). */
+const FRONT_DOOR = { minX: 4.4, maxX: 6.2, maxZ: 0.45, height: 3.0, minY: 0.35 } as const;
+
+/** With nothing picked, the ray is followed this far (m) to the front door's wall. */
+const FRONT_DOOR_RAY_ONLY_MAX_M = 30;
+
+/**
+ * Whether a click's ray, coming from inside the room, crossed the front door's opening (the z = 0 wall, between the door's jambs, above the
+ * floor and under its head) within `maxT` m: a tap on the glass leaf, which a click passes through (clickPick.ts: glass is not picked).
+ */
+function frontDoorCrossed(n: HouseNumber, ray: TapRayLike | null | undefined, maxT: number): boolean {
+  if (!ray) return false;
+  const o = worldToLocal(n, 1, ray.o.x, ray.o.z);
+  const o1 = worldToLocal(n, 1, ray.o.x + ray.d.x, ray.o.z + ray.d.z);
+  const dz = o1.z - o.z;
+  // from inside (local z > 0) towards the wall (local -z)
+  if (!(o.z > 0) || !(dz < -1e-6)) return false;
+  const t = -o.z / dz;
+  if (!(t > 0) || t > maxT) return false;
+  const hx = o.x + (o1.x - o.x) * t;
+  const hy = ray.o.y + ray.d.y * t;
+  return hx >= FRONT_DOOR.minX && hx <= FRONT_DOOR.maxX && hy >= FRONT_DOOR.minY && hy <= FRONT_DOOR.height;
+}
 
 export interface HouseTapTarget {
   /** The target id the pad offers (houseTargets.ts). */
@@ -56,11 +78,15 @@ export function onStairSurface(n: HouseNumber, floor: HouseFloor, x: number, y: 
   return y >= surface - HOUSE_TAP_STAIR_BELOW && y <= top;
 }
 
-/** What the picked world point (x, y, z) of house floor `area` is: its stair, its front door, or nothing. */
-export function houseTapTarget(area: string, x: number, y: number, z: number): HouseTapTarget | null {
+/** What the picked world point (x, y, z) of house floor `area` is: its stair, its front door, or nothing. `ny`: the picked face's normal's y (a flat thing by the door, a mat or a shoe shelf's top, is not the door); `ray` / `distance`: the click's ray and how far along it the pick lies (the glass front door is not picked: frontDoorCrossed); a NaN point means nothing was picked. */
+export function houseTapTarget(area: string, x: number, y: number, z: number, ny?: number, ray?: TapRayLike | null, distance = 0): HouseTapTarget | null {
   const hit = parseHouseFloorArea(area);
-  if (!hit || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
+  if (!hit) return null;
   const places = HOUSE_PLACES[hit.n];
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+    // nothing picked: the click went through the front door's glass and out of the house. The ray alone says whether it crossed the door.
+    return hit.floor === 1 && frontDoorCrossed(hit.n, ray, FRONT_DOOR_RAY_ONLY_MAX_M) ? { id: HOUSE_EXIT_TARGET_ID, x: places.exitPad.x, z: places.exitPad.z } : null;
+  }
   const plan = STAIR_PLANS[HOUSE_STAIR_TYPE[hit.n]];
   const foot = localRectToWorld(hit.n, hit.floor, plan.footprint);
   const m = HOUSE_TAP_STAIR_MARGIN;
@@ -71,7 +97,11 @@ export function houseTapTarget(area: string, x: number, y: number, z: number): H
   }
   if (hit.floor === 1) {
     const l = worldToLocal(hit.n, 1, x, z);
-    if (l.x >= FRONT_DOOR.minX && l.x <= FRONT_DOOR.maxX && l.z <= FRONT_DOOR.maxZ && y <= FRONT_DOOR.height) {
+    if (l.x >= FRONT_DOOR.minX && l.x <= FRONT_DOOR.maxX && l.z <= FRONT_DOOR.maxZ && l.z >= -FRONT_DOOR.maxZ && y >= FRONT_DOOR.minY && y <= FRONT_DOOR.height && !doorTapOnFlat(y, ny)) {
+      return { id: HOUSE_EXIT_TARGET_ID, x: places.exitPad.x, z: places.exitPad.z };
+    }
+    // through the glass onto what stands outside it (the view's backdrop, the frame's far side): the pick lies at or past the wall, off the floor
+    if (l.z <= FRONT_DOOR.maxZ && y >= FRONT_DOOR.minY && !doorTapOnFlat(y, ny) && frontDoorCrossed(hit.n, ray, distance + 0.05)) {
       return { id: HOUSE_EXIT_TARGET_ID, x: places.exitPad.x, z: places.exitPad.z };
     }
   }
