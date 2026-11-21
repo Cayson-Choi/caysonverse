@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { GATE_LEAF_OPEN, GATE_PENNANT_TWIST, GATE_SPOTS, flagstoneRing, gateSpans, isOldGatePiece, spanPoint, victorianLampGeometry } from "./gateDress";
 import { GATE_BOARD } from "./gateBoard";
+import { GATE_MAP, GATE_MAP_URL, GATE_MAP_URL_PHONE, GATE_WINDOW_MAPS } from "./gateMap";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 describe("gateDress", () => {
   it("cuts the old fountain, its shrubs and the topiaries, and nothing of the gate building", () => {
@@ -57,6 +60,28 @@ describe("gateDress: the park is open", () => {
     expect(GATE_LEAF_OPEN).toBeGreaterThan(1.2);
     expect(GATE_LEAF_OPEN).toBeLessThan(Math.PI / 2);
     expect(GATE_PENNANT_TWIST).toBeGreaterThan(0.3);
+  });
+});
+
+describe("gateDress: 케이슨랜드 안내도", () => {
+  it("cuts the cartoon map off both piers and out of the six ticket windows, and nothing else of the goods", () => {
+    expect(isOldGatePiece(-26.99, 1.8, 93.8, "M_martgate_goods")).toBe(true);
+    expect(isOldGatePiece(-21.01, 1.8, 93.8, "M_martgate_goods")).toBe(true);
+    expect(GATE_WINDOW_MAPS).toHaveLength(6);
+    for (const w of GATE_WINDOW_MAPS) expect(isOldGatePiece(w.x + 0.2, w.y, w.z, "M_martgate_goods")).toBe(true);
+    // the banners on the piers' fronts and the stone stay
+    expect(isOldGatePiece(-27.7, 5, 92.53, "M_martgate_goods")).toBe(false);
+    expect(isOldGatePiece(-26.99, 1.8, 93.8, "LM_martgate_stone")).toBe(false);
+    expect(isOldGatePiece(-24, 2.5, 92.78, "M_martgate_goods")).toBe(false);
+  });
+  it("the notice cases fit the piers' inner faces and hang at eye level; the print is in the client in both sizes", () => {
+    expect(GATE_MAP.z - GATE_MAP.width / 2 - 0.07).toBeGreaterThan(92.6);
+    expect(GATE_MAP.z + GATE_MAP.width / 2 + 0.07).toBeLessThan(95);
+    expect(GATE_MAP.y).toBeGreaterThan(1.5);
+    expect(GATE_MAP.y).toBeLessThan(1.9);
+    expect(GATE_MAP.width / GATE_MAP.height).toBeCloseTo(16 / 9, 2);
+    const dir = resolve(__dirname, "..", "..", "..", "public");
+    for (const u of [GATE_MAP_URL, GATE_MAP_URL_PHONE]) expect(existsSync(join(dir, u)), u).toBe(true);
   });
 });
 
