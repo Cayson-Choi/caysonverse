@@ -9,6 +9,8 @@ import { LOT_TREE_SPECS } from "../veg/treeSkeleton";
 import { PHONE_GOODS_REACH, VESTIBULE_FLOOR_MIN_Y, innerHingePivot, lotSurfaceMaterial, mergeReady, pickLotLevels, setLotDoor, vestibuleFloor, type LotLevel } from "./lotsPrep";
 import { LOT_DOOR_PADS, LOT_SLOT_HOOKS, lotDoorNotice, lotDoorTarget, lotExitTarget, lotSlotHandlers, onLotSlot } from "./lotTargets";
 import { lotTrimFootprints } from "./LotsVillagePatch";
+import { parkGateDoor } from "@caysonverse/shared/village/parkArea";
+import { parkGateTarget } from "../villageTargets";
 import { manifestPaths } from "./lotTextures";
 import { LOT_ROOM_PHONE_FILES, SACRED_MAP_MAX, capMips, isSacredHero, sacredCaps, sacredFile, sacredUrl } from "./LotRoom";
 
@@ -154,17 +156,20 @@ describe("swing doors turn on their inner hinge corner (the door check's finding
 });
 
 describe("lot doors, the rooms' ways out, the slots", () => {
-  it("five room doors (들어가기), the café's and the gate (곧 문을 열어요)", () => {
+  it("five room doors (들어가기) and the café's; the park gate is not a lot door (the park is open: parkGateTarget offers 케이슨랜드 들어가기)", () => {
     expect(LOT_DOOR_PADS.map((p) => `${p.door}:${p.kind}`).sort()).toEqual(
-      ["lot_cafe_main:enter", "lot_chapel_main:enter", "lot_church_main:enter", "lot_gate_main:soon", "lot_library_main:enter", "lot_school_main:enter", "lot_temple_main:enter"].sort(),
+      ["lot_cafe_main:enter", "lot_chapel_main:enter", "lot_church_main:enter", "lot_library_main:enter", "lot_school_main:enter", "lot_temple_main:enter"].sort(),
     );
     const church = LOT_DOOR_PADS.find((p) => p.door === "lot_church_main")!;
     expect(lotDoorTarget(church.x, church.z)).toMatchObject({ kind: "door", id: "lotenter:lot_church_main", label: "교회 들어가기", short: "들어가기" });
     const temple = LOT_DOOR_PADS.find((p) => p.door === "lot_temple_main")!;
     expect(lotDoorTarget(temple.x, temple.z)!.label).toBe("절 들어가기");
-    const gate = LOT_DOOR_PADS.find((p) => p.door === "lot_gate_main")!;
-    expect(lotDoorTarget(gate.x, gate.z)).toMatchObject({ kind: "object", label: "곧 문을 열어요" });
-    expect(lotDoorNotice(gate)).toMatch(/곧 문을 열어요/);
+    // the gate: no "곧 문을 열어요" anywhere (owner 2026-11-21), its pad offers the park's door
+    expect(LOT_DOOR_PADS.some((p) => p.lot === "lot_gate")).toBe(false);
+    const gate = parkGateDoor().pad;
+    expect(lotDoorTarget(gate.x, gate.z)).toBeNull();
+    expect(parkGateTarget(gate.x, gate.z)).toMatchObject({ kind: "door", label: "케이슨랜드 들어가기" });
+    expect(lotDoorNotice(church)).toBe("케이슨 마을 교회에 들어가요.");
     expect(lotDoorTarget(0, 0)).toBeNull();
   });
   it("inside, the way out is offered on its pad and straight in front of the door, not from the side or deeper in", () => {
