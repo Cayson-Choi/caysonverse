@@ -18,6 +18,9 @@ piece: x = right, z = the piece's front (yaw 0 = facing into the room), y up; th
   laundry_basket, umbrella_stand, wall_outlet_strip  small lived-in details
 """
 import math
+import random
+
+from mathutils import Vector
 
 from kit_core import PAL, bar, col, cyl, gface, lathe, light, rbox
 
@@ -190,6 +193,47 @@ def wall_shelf_deco(F, w=1.0, shelf_y=1.45, tn=None, seed=0):
     rbox(F, 0.07, 0.2, 0.06, 0.063, y + 0.06, y + 0.24, "H_atlas", r=0.0, seg=1)
 
 
+def split_log(F, a, b, r, seed=0, split=False, segs=9):
+    """a firewood log between local points a and b (x, z, y): an irregular round with bark sides (H_bark), sawn ends with growth rings
+    (H_endgrain, the disc fills the texture square), optionally split lengthwise (a flat pale face of fresh wood). houses-real pass."""
+    rnd = random.Random(seed)
+    A, B = Vector(a), Vector(b)
+    t = (B - A).normalized()
+    e1 = t.cross(Vector((0, 0, 1)))
+    if e1.length < 1e-4:
+        e1 = Vector((1, 0, 0))
+    e1.normalize()
+    e2 = e1.cross(t).normalized()
+    roll = rnd.uniform(0, 2 * math.pi)
+    flat_y = -0.15 * r
+    pts2 = []
+    for k in range(segs):
+        rk = r * rnd.uniform(0.86, 1.08)
+        a_ = roll + 2 * math.pi * k / segs
+        px, py = math.cos(a_) * rk, math.sin(a_) * rk
+        pts2.append((px, max(py, flat_y) if split else py))
+    RA = [tuple(A + e1 * p[0] + e2 * p[1]) for p in pts2]
+    RB = [tuple(B + e1 * p[0] + e2 * p[1]) for p in pts2]
+    L = (B - A).length
+    tn = (0.92 + 0.12 * rnd.random(), 0.88 + 0.1 * rnd.random(), 0.82 + 0.1 * rnd.random(), 1)
+    per = 0.0
+    for k in range(segs):
+        k2 = (k + 1) % segs
+        seg = math.hypot(pts2[k2][0] - pts2[k][0], pts2[k2][1] - pts2[k][1])
+        flat = split and pts2[k][1] <= flat_y + 1e-6 and pts2[k2][1] <= flat_y + 1e-6
+        n = e1 * ((pts2[k][0] + pts2[k2][0]) / 2) + e2 * ((pts2[k][1] + pts2[k2][1]) / 2)
+        if flat:
+            gface(F, [RA[k], RA[k2], RB[k2], RB[k]], "H_wood_oak", tuple(t), 0.6, tuple(n), tn=(1.0, 0.86, 0.66, 1))
+        else:
+            u0, u1 = per / 0.35, (per + seg) / 0.35
+            gface(F, [RA[k], RA[k2], RB[k2], RB[k]], "H_bark", None, 1.0, tuple(n), uv=[(u0, 0), (u1, 0), (u1, L / 0.35), (u0, L / 0.35)], tn=tn)
+        per += seg
+    rmax = max(math.hypot(*p) for p in pts2) * 1.02
+    for R, sgn in ((RA, -1), (RB, 1)):
+        uv = [(0.5 + 0.5 * p[0] / rmax, 0.5 + 0.5 * p[1] / rmax) for p in pts2]
+        gface(F, R, "H_endgrain", None, 1.0, tuple(t * sgn), uv=uv, tn=(1.0, 0.96, 0.9, 1))
+
+
 def stone_fireplace(F, w=1.9, d=0.55, h=3.7, firebox_w=0.85, firebox_h=0.75, hearth_y=0.2, tn=None, hearth_d=0.45):
     """돌 벽난로: a fieldstone chimney breast floor to ceiling (back at z = 0, front at z = d), a firebox with a soot-black back, split
     logs and a fire glow, a rough timber mantel at 1.25 m, a raised stone hearth in front. Lights: a warm low fire for the bake."""
@@ -204,31 +248,80 @@ def stone_fireplace(F, w=1.9, d=0.55, h=3.7, firebox_w=0.85, firebox_h=0.75, hea
     rbox(F, -fw, fw, 0.0, d, y1, 1.25, "H_paint", r=0.0, seg=1, tn=tn, bottom=True)
     rbox(F, -fw, fw, 0.0, d, 0.0, y0, "H_paint", r=0.0, seg=1, tn=tn)
     rbox(F, -hw + 0.12, hw - 0.12, 0.0, d - 0.08, 1.37, h, "H_paint", r=0.02, seg=1, tn=tn)
-    # firebox: soot-black back and sides, a cast-iron grate, logs, glowing embers
-    rbox(F, -fw, fw, 0.08, 0.1, y0, y1, "H_rubber", r=0.0, seg=1)
+    # firebox (houses-real pass 2026-11-21, refs: real wood-burning fireplaces): a lining of new buff firebricks - back wall, splayed
+    # sides, brick floor - a dark flue throat at the top back, a cast-iron grate on four legs with split logs (bark, sawn end grain,
+    # pale split faces), a bed of embers under it (the game makes them glow and puts the flames, sparks and fire light over them:
+    # client/src/village/houseFire.ts), red facing-brick slips round the opening
+    bw = fw * 0.66            # the back wall is narrower than the opening: the splayed sides throw the heat into the room
+    zb = 0.06 if d < 0.45 else 0.1     # a shallow chimney breast (HA, d 0.3) keeps a usable firebox: the back wall right at the room wall
+    zc = (zb + d) / 2                  # the fire bed's centre (client houseFire.ts EMBERS)
+    dd = d - zb
+    print(f"FIREPLACE d={d:.3f} hearth_d={hearth_d:.3f} bed z={zc:.3f} w={w:.3f} fw={fw:.3f} y0={y0:.3f}")
+    gface(F, [(-bw, zb, y0), (bw, zb, y0), (bw, zb, y1), (-bw, zb, y1)], "H_firebrick", (1, 0, 0), 0.96, (0, 1, 0), tn=(0.98, 0.95, 0.92, 1))
     for s in (-1, 1):
-        gface(F, [(s * fw, 0.1, y0), (s * fw, d, y0), (s * fw, d, y1), (s * fw, 0.1, y1)], "H_rubber", (0, 1, 0), 1.0, (-s, 0, 0))
-    gface(F, [(-fw, 0.1, y1), (fw, 0.1, y1), (fw, d, y1), (-fw, d, y1)], "H_rubber", (1, 0, 0), 1.0, (0, 0, -1))
-    rbox(F, -fw * 0.8, fw * 0.8, 0.18, d - 0.12, y0, y0 + 0.03, "H_rubber", r=0.0, seg=1)
-    for (a, b, c) in (((-0.28, 0.25), (0.28, 0.32), 0.055), ((-0.25, 0.36), (0.25, 0.28), 0.05), ((-0.1, 0.22), (0.18, 0.4), 0.045)):
-        bar(F, (a[0], a[1], y0 + 0.08), (b[0], b[1], y0 + 0.1), c * 2, c * 2, "H_wood_dark", tn=(0.35, 0.22, 0.14, 1))
-    rbox(F, -0.25, 0.25, 0.2, 0.42, y0 + 0.03, y0 + 0.06, "H_lamp", r=0.0, seg=1)
-    for (x, hh) in ((-0.12, 0.22), (0.05, 0.3), (0.16, 0.18)):
-        gface(F, [(x - 0.07, 0.3, y0 + 0.12), (x + 0.07, 0.3, y0 + 0.12), (x, 0.3, y0 + 0.12 + hh)], "H_lamp", (1, 0, 0), 1.0, (0, 1, 0))
+        gface(F, [(s * bw, zb, y0), (s * fw, d, y0), (s * fw, d, y1), (s * bw, zb, y1)], "H_firebrick", (0, 1, 0), 0.96, (-s, 0, 0),
+              tn=(0.95, 0.92, 0.89, 1))
+    gface(F, [(-bw, zb, y0 + 0.002), (bw, zb, y0 + 0.002), (fw, d, y0 + 0.002), (-fw, d, y0 + 0.002)], "H_firebrick", (1, 0, 0), 0.96, (0, 0, 1),
+          tn=(0.9, 0.86, 0.82, 1))
+    gface(F, [(-bw, zb, y1), (bw, zb, y1), (fw, d, y1), (-fw, d, y1)], "H_firebrick", (1, 0, 0), 0.96, (0, 0, -1), tn=(0.7, 0.66, 0.62, 1))
+    gface(F, [(-bw + 0.06, zb + 0.005, y1 - 0.045), (bw - 0.06, zb + 0.005, y1 - 0.045), (bw - 0.04, zb + 0.005, y1 - 0.005),
+              (-bw + 0.04, zb + 0.005, y1 - 0.005)], "H_rubber", (1, 0, 0), 1.0, (0, 1, 0))       # the flue throat
+    # facing-brick slips round the opening (sides + a soldier course over it), just proud of the surround
+    sw = 0.115
+    SLIP = (0.8, 0.56, 0.47, 1)
+    rbox(F, -fw - sw, -fw, d, d + 0.012, y0, y1, "H_firebrick", r=0.0, seg=1, tn=SLIP, grain=(1, 0, 0), tile=0.96, skip=("-z",))
+    rbox(F, fw, fw + sw, d, d + 0.012, y0, y1, "H_firebrick", r=0.0, seg=1, tn=SLIP, grain=(1, 0, 0), tile=0.96, skip=("-z",))
+    rbox(F, -fw - sw, fw + sw, d, d + 0.012, y1, y1 + 0.087 * 2, "H_firebrick", r=0.0, seg=1, tn=SLIP, grain=(1, 0, 0), tile=0.96,
+         skip=("-z",))
+    # ash and embers under the grate (H_lamp below the ember line: the game's coal shader)
+    rbox(F, -bw * 0.95, bw * 0.95, zb + 0.05, d - 0.06, y0, y0 + 0.012, "H_paint", r=0.0, seg=1, tn=(0.5, 0.48, 0.46, 1))
+    rr = random.Random(int(abs(w * 1000)) + 3)
+    for i in range(7):
+        for j in range(3):
+            cx = -0.27 + i * 0.09 + rr.uniform(-0.025, 0.025)
+            cz = zc + (j - 1) * dd * 0.27 + rr.uniform(-0.015, 0.015)
+            sx, sz = rr.uniform(0.03, 0.05), min(rr.uniform(0.025, 0.045), dd * 0.16)
+            G = F.sub(cx, cz, 0.0, rr.uniform(0, math.pi))
+            rbox(G, -sx, sx, -sz, sz, y0 + 0.01, y0 + rr.uniform(0.03, 0.055), "H_lamp", r=0.008, seg=1)
+    # cast-iron grate: front rail, five bars that bend up at the back, four short legs
+    gz0, gz1, gy = zb + 0.035, d - 0.025, y0 + 0.085
+    IRON = (0.11, 0.105, 0.1, 1)
+    for k in range(5):
+        x = -0.24 + k * 0.12
+        bar(F, (x, gz1, gy), (x, gz0, gy), 0.018, 0.018, "H_metal", tn=IRON)
+        bar(F, (x, gz0, gy), (x, gz0 - 0.02, gy + 0.14), 0.018, 0.018, "H_metal", tn=IRON)
+    bar(F, (-0.27, gz1, gy + 0.01), (0.27, gz1, gy + 0.01), 0.022, 0.03, "H_metal", tn=IRON)
+    bar(F, (-0.27, gz0, gy), (0.27, gz0, gy), 0.018, 0.018, "H_metal", tn=IRON)
+    for (x, z) in ((-0.25, gz1), (0.25, gz1), (-0.25, gz0), (0.25, gz0)):
+        bar(F, (x, z, y0 + 0.01), (x, z, gy), 0.02, 0.02, "H_metal", tn=IRON)
+    # split logs on the grate: two along the grate, one across them leaning back, a split half on the right
+    lr = min(0.055, dd * 0.2)
+    zf, zr = zc + dd * 0.2, zc - dd * 0.2
+    split_log(F, (-0.24, zf, gy + lr), (0.23, zf + 0.01, gy + lr * 0.95), lr, seed=1)
+    split_log(F, (-0.22, zr, gy + lr * 0.95), (0.25, zr - 0.01, gy + lr * 0.9), lr * 0.92, seed=2)
+    split_log(F, (-0.17, zr - 0.01, gy + lr * 2.1), (0.13, zf + 0.01, gy + lr * 2.3), lr * 0.82, seed=3, split=True)
+    split_log(F, (0.05, zr, gy + lr * 2.6), (0.21, zf, gy + lr * 2.0), lr * 0.72, seed=4)
     light(F, "fire", 0.0, 0.45, y0 + 0.25, 60.0, "#FF9A4A")
     # mantel: a rough timber beam, a few things on it
     rbox(F, -hw - 0.08, hw + 0.08, 0.0, d + 0.12, 1.25, 1.37, "H_wood_dark", r=0.012, seg=1, tn=(0.42, 0.28, 0.18, 1), bottom=True)
     # hearth: a raised stone slab in front of the opening
-    rbox(F, -hw - 0.05, hw + 0.05, d, d + hearth_d, 0.0, hearth_y, "H_stone", r=0.012, seg=1, tn=(0.62, 0.6, 0.57, 1))
-    # layered pass 2: a wicker log basket on the hearth beside the opening, split logs stacked in it
-    bx = -(fw + hw) / 2
+    rbox(F, -hw - 0.05, hw + 0.05, d, d + hearth_d, 0.0, hearth_y, "H_stone", r=0.012, seg=1, tn=(1.0, 0.97, 0.92, 1))   # houses-real: honed limestone (was near-black)
+    # a round wicker log basket on the hearth beside the opening, split logs stacked in it end-on (houses-real pass)
+    bx = -(fw + 0.115 + hw) / 2
     bz = d + hearth_d * 0.5
-    bw_ = min(0.34, hw - fw - 0.04)
-    if bw_ > 0.18 and hearth_d > 0.2:
-        rbox(F, bx - bw_ / 2, bx + bw_ / 2, bz - 0.12, bz + 0.1, hearth_y, hearth_y + 0.2, "H_rattan", r=0.02, seg=1, tn=(0.82, 0.68, 0.5, 1))
-        for j in range(3):
-            xx = bx - bw_ / 2 + 0.06 + j * (bw_ - 0.12) / 2
-            bar(F, (xx, bz - 0.14, hearth_y + 0.22), (xx + 0.01, bz + 0.12, hearth_y + 0.23), 0.07, 0.07, "H_wood_dark", tn=(0.45, 0.3, 0.2, 1))
+    br = min(0.17, (hw - fw - 0.115) / 2 - 0.02, hearth_d / 2 - 0.03)
+    if br > 0.1:
+        G = F.sub(bx, bz, 0.0, 0.0)
+        lathe(G, 0, 0, hearth_y, [(br * 0.82, 0.0), (br * 0.95, 0.06), (br, 0.2), (br * 1.04, 0.24), (br * 0.96, 0.245), (br * 0.92, 0.03),
+                                  (0.0, 0.03)], "H_rattan", 16, tn=(0.84, 0.68, 0.48, 1))
+        rl = random.Random(9)
+        for k, (px, py) in enumerate(((-0.06, 0.08), (0.05, 0.08), (0.0, 0.17), (-0.09, 0.17), (0.09, 0.16), (-0.04, 0.25), (0.05, 0.25))):
+            lr = rl.uniform(0.038, 0.048)
+            if abs(px) + lr > br * 0.98:
+                continue
+            half = math.sqrt(max(br * br - (abs(px) + lr) ** 2, 0.0)) * 0.95 + 0.02   # inside the round basket's chord, ends just proud of the rim
+            split_log(G, (px, -half, hearth_y + py), (px + rl.uniform(-0.01, 0.01), half, hearth_y + py + rl.uniform(-0.01, 0.01)), lr,
+                      seed=10 + k, split=(k % 3 == 2))
     col(F, -hw - 0.08, hw + 0.08, 0.0, d + hearth_d, h, name="fireplace")
 
 

@@ -928,6 +928,24 @@ export function muteLotLampsNear(x: number, z: number, r: number, belowY: number
   return n;
 }
 
+/**
+ * Move the lots' lamp points by (dx, dz) - the gate standing in the park (land/ParkGateLot.tsx) takes its lamps' light with it.
+ * Returns the way back.
+ */
+export function shiftLotLamps(dx: number, dz: number): () => void {
+  const moved = lampUniform.value;
+  for (const p of moved) {
+    p.x += dx;
+    p.z += dz;
+  }
+  return () => {
+    for (const p of moved) {
+      p.x -= dx;
+      p.z -= dz;
+    }
+  };
+}
+
 /** Per frame (number writes only): the night's glow, lamps, signs and glass. */
 export function applyLotsDayNight(nodes: LotNodes, s: Pick<DayNightState, "lights" | "night" | "hemiIntensity" | "hemiSky">): void {
   nightUniform.value = s.night * LOT_LOOK.nightDesaturate;
