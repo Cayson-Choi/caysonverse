@@ -142,7 +142,9 @@ function Station({ concrete, paving, pine }: { concrete: ReturnType<typeof pickS
     for (let i = 0; i < N; i++) {
       const h = (top * (N - i)) / N;
       const zc = -6.95 - run * (i + 0.5);
-      b.box([2, h / 2, zc], X, Y, half, h / 2, run / 2, [0.74, 0.71, 0.66], 2); // the riser block
+      // the riser block stops inside the tread slab (3.5 cm under the tread's top): its top used to share the tread's plane, and the two
+      // coplanar faces (light tread, dark riser) z-fought over the whole step, crawling as the camera moved (owner 2026-11-21)
+      b.box([2, (h - 0.035) / 2, zc], X, Y, half, (h - 0.035) / 2, run / 2, [0.74, 0.71, 0.66], 2); // the riser block
       b.box([2, h - 0.035, zc - 0.03], X, Y, half + 0.02, 0.035, run / 2 + 0.03, [0.97, 0.95, 0.9], 2); // the tread with its nosing
       for (const sx of [-1, 1]) {
         b.box([2 + sx * (half + 0.3), (h + 0.5) / 2, zc], X, Y, 0.3, (h + 0.5) / 2, run / 2, [0.84, 0.81, 0.76], 2); // a cheek wall
@@ -167,7 +169,7 @@ function Station({ concrete, paving, pine }: { concrete: ReturnType<typeof pickS
     const X: V3 = [1, 0, 0];
     const Y: V3 = [0, 1, 0];
     const top = STATION_Y + 0.2;
-    b.box([2, 0.15, -6.9], X, Y, 17.05, 0.15, 0.1, [0.62, 0.6, 0.56], 2); // the plinth
+    b.box([2, 0.15, -6.9], X, Y, 17.05, 0.15, 0.11, [0.62, 0.6, 0.56], 2); // the plinth (its face 1 cm proud of the apron kerb's at z -7: in one plane the two z-fought)
     b.box([2, top - 0.05, -6.92], X, Y, 17.1, 0.05, 0.13, [0.97, 0.95, 0.9], 2); // the coping
     b.box([2, top - 0.13, -6.88], X, Y, 17, 0.03, 0.08, [0.8, 0.77, 0.72], 2); // its shadow line
     return b.build();

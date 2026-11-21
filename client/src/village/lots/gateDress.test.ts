@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { GATE_SPOTS, flagstoneRing, gateSpans, isOldGatePiece, spanPoint, victorianLampGeometry } from "./gateDress";
+import { GATE_LEAF_OPEN, GATE_PENNANT_TWIST, GATE_SPOTS, flagstoneRing, gateSpans, isOldGatePiece, spanPoint, victorianLampGeometry } from "./gateDress";
+import { GATE_BOARD } from "./gateBoard";
 
 describe("gateDress", () => {
   it("cuts the old fountain, its shrubs and the topiaries, and nothing of the gate building", () => {
@@ -27,6 +28,35 @@ describe("gateDress", () => {
     expect(lamp.boundingBox!.max.y).toBeLessThan(3.8);
     expect(lamp.getAttribute("position").count / 3).toBeLessThan(4000);
     expect(victorianLampGeometry(true).getAttribute("position").count).toBeLessThan(lamp.getAttribute("position").count);
+  });
+});
+
+describe("gateDress: the park is open", () => {
+  it("cuts the belt barrier and the old '곧 문을 열어요' stand out of the gateway, not the leaves or the piers", () => {
+    expect(isOldGatePiece(-24, 1.2, 94.17, "LM_martgate_render")).toBe(true); // the old letters
+    expect(isOldGatePiece(-24, 1.3, 94.2, "LM_martgate_steel")).toBe(true); // the board's face
+    expect(isOldGatePiece(-23, 0.8, 94.2, "LM_martgate_metal")).toBe(true); // a post
+    expect(isOldGatePiece(-21.6, 0.88, 94.19, "LM_martgate_steel")).toBe(true); // a belt
+    expect(isOldGatePiece(-26.85, 0.5, 94.2, "LM_martgate_metal")).toBe(true); // the last stanchion
+    expect(isOldGatePiece(-24, 1.5, 94.8, "LM_martgate_steel")).toBe(false); // the leaves' line
+    expect(isOldGatePiece(-27.5, 0.5, 94.2, "LM_martgate_granite")).toBe(false); // the pier's plinth
+    expect(isOldGatePiece(-24, 2.4, 94.2, "LM_martgate_metal")).toBe(false);
+  });
+  it("the welcome board stands beside the way in, clear of the gateway and of the pier, and says the park is open", () => {
+    expect(GATE_BOARD.lines.map((l) => l.text).join(" ")).toMatch(/어서 오세요/);
+    expect(GATE_BOARD.lines.map((l) => l.text).join(" ")).not.toMatch(/곧|준비/);
+    // its panel's ends (the look vector's normal is the panel's run)
+    const [lx, lz] = GATE_BOARD.look;
+    expect(Math.hypot(lx, lz)).toBeCloseTo(1, 3);
+    for (const s of [-1, 1]) {
+      const x = GATE_BOARD.x + s * (GATE_BOARD.width / 2 + 0.2) * -lz;
+      const z = GATE_BOARD.z + s * (GATE_BOARD.width / 2 + 0.2) * lx;
+      expect(x).toBeLessThan(-27.05); // outside the gateway (x -27 .. -21)
+      expect(z).toBeLessThan(92.55); // in front of the pier's face (z 92.6)
+    }
+    expect(GATE_LEAF_OPEN).toBeGreaterThan(1.2);
+    expect(GATE_LEAF_OPEN).toBeLessThan(Math.PI / 2);
+    expect(GATE_PENNANT_TWIST).toBeGreaterThan(0.3);
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Vector3 } from "three";
-import { PARK_WALL_PLAN, VILLAGE_WALL_PLAN, WALL } from "@caysonverse/shared/village/parkWall";
+import { PARK_WALL_PLAN, VILLAGE_GATE_PASSAGE, VILLAGE_WALL_PLAN, WALL } from "@caysonverse/shared/village/parkWall";
 import {
   bannerGeometry,
   lanternGeometry,
@@ -8,6 +8,8 @@ import {
   towerGeometry,
   trianglesOf,
   trimGeometry,
+  SLIT,
+  wallEndGeometry,
   wallInstances,
   wallModuleGeometry,
 } from "./castleWallGeometry";
@@ -57,10 +59,10 @@ describe("castle wall geometry", () => {
     }
   });
 
-  it("stays light: a module under 240 triangles, a tower with its roof under 900, the phone tier lighter", () => {
+  it("stays light: a module under 240 triangles, a tower with its roof under 1010 (its three slit windows each in a stone surround, +120), the phone tier lighter", () => {
     expect(trianglesOf(wallModuleGeometry("high"))).toBeLessThan(240);
     expect(trianglesOf(wallModuleGeometry("low"))).toBeLessThan(trianglesOf(wallModuleGeometry("high")));
-    expect(trianglesOf(towerGeometry("high")) + trianglesOf(roofGeometry("high"))).toBeLessThan(900);
+    expect(trianglesOf(towerGeometry("high")) + trianglesOf(roofGeometry("high"))).toBeLessThan(1010);
     expect(trianglesOf(towerGeometry("low"))).toBeLessThan(trianglesOf(towerGeometry("high")));
   });
 
@@ -85,6 +87,31 @@ describe("placing the wall", () => {
     }
     expect(inst.lanterns.length).toBeGreaterThan(PARK_WALL_PLAN.towers.length * 2);
     expect(inst.glows).toHaveLength(inst.lanterns.length);
+  });
+
+  it("cuts the arrow slit INTO the outer face (nothing dark stands proud of the stone) and closes the village runs' ends at the gateway", () => {
+    const g = wallModuleGeometry("high");
+    const pos = g.getAttribute("position");
+    const col = g.getAttribute("color");
+    const H = WALL.halfThickness;
+    let darkBack = 0;
+    for (let i = 0; i < pos.count; i++) {
+      if (col.getX(i) > 0.2) continue; // the slot's dark back
+      darkBack++;
+      expect(pos.getZ(i)).toBeCloseTo(H - SLIT.depth, 5);
+      expect(Math.abs(pos.getX(i))).toBeCloseTo(SLIT.back, 5);
+    }
+    expect(darkBack).toBe(4);
+    const flat = () => 0;
+    expect(wallInstances(PARK_WALL_PLAN, flat, "inner").ends).toHaveLength(0); // the park's runs end inside the gate's towers
+    const ends = wallInstances(VILLAGE_WALL_PLAN, flat, "outer").ends;
+    expect(ends).toHaveLength(2);
+    const p = new Vector3();
+    expect(ends.map((m) => p.setFromMatrixPosition(m).x).sort((a, b) => a - b)).toEqual([VILLAGE_GATE_PASSAGE.minX, VILLAGE_GATE_PASSAGE.maxX]);
+    const end = wallEndGeometry();
+    end.computeBoundingBox();
+    expect(end.boundingBox!.max.x - end.boundingBox!.min.x).toBeCloseTo(0, 6);
+    expect(end.boundingBox!.max.y).toBeCloseTo(10.07, 5);
   });
 
   it("turns each module's outer face out of the enclosure", () => {
