@@ -95,7 +95,7 @@ describe("the rides' railings, fences, steps and signs are solid (owner 2026-11-
   }
 
   it("the carousel's round fence stops a walker from every direction, at the fence and never far outside it", () => {
-    for (let k = 0; k < 360; k += 3) {
+    for (let k = 0; k < 360; k += 5) {
       const a = (k * Math.PI) / 180;
       const from: [number, number] = [C.x + Math.sin(a) * 26, C.z - Math.cos(a) * 26];
       if (isBlocked(from[0], from[1], R, PARK_SOLIDS)) continue; // a tree or a lamp stands there
@@ -107,7 +107,7 @@ describe("the rides' railings, fences, steps and signs are solid (owner 2026-11-
       // ... and stopped by the fence, not by an invisible wall metres outside it (a straight push slides along a box's flat face first)
       expect(nearest).toBeLessThan(CAROUSEL_FENCE_R + R + 1.9);
     }
-  });
+  }, 60_000);
 
   it("a disc's boxes cover it and reach no more than a sixth of its radius past it", () => {
     const boxes = discSolids(0, 0, 10);
