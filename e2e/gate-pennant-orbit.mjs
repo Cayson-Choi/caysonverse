@@ -31,7 +31,7 @@ for (let i = 0; i < 24; i++) {
   const R = 12;
   const cam = [centre[0] + Math.sin(a) * R, 3.0, centre[2] + Math.cos(a) * R];
   await P.page.evaluate(([c, l]) => (window.__cvShot = { x: c[0], y: c[1], z: c[2], tx: l[0], ty: l[1], tz: l[2], fov: 60 }), [cam, centre]);
-  await sleep(1500);
+  await sleep(i === 0 ? 5000 : 1500); // the first step jumps the camera 30 m: the lots' LOD settles first
   const r = await P.page.evaluate(async () => {
     const { scene, camera } = window.__cvThree();
     let mesh = null;
@@ -55,7 +55,7 @@ for (let i = 0; i < 24; i++) {
       const e = mm.elements, wp = new V(e[12], e[13], e[14]).applyMatrix4(mesh.matrixWorld), nrm = new V(e[8], e[9], e[10]).transformDirection(mesh.matrixWorld), vd = camera.position.clone().sub(wp).normalize();
       if (wp.x < -30) { face += Math.abs(nrm.dot(vd)); nw++; } }
     if (!mesh.boundingSphere) mesh.computeBoundingSphere();
-    return { found: true, vis, count: mesh.count, drawn, inView, facing: +(face / Math.max(1, nw)).toFixed(2), frustumCulled: mesh.frustumCulled, sphereR: +mesh.boundingSphere.radius.toFixed(1), sphereC: mesh.boundingSphere.center.toArray().map((v) => +v.toFixed(1)) };
+    return { found: true, vis, count: mesh.count, drawn, inView, facing: +(face / Math.max(1, nw)).toFixed(2), frustumCulled: mesh.frustumCulled, twoSided: mesh.material.side === 2, sphereR: +mesh.boundingSphere.radius.toFixed(1), sphereC: mesh.boundingSphere.center.toArray().map((v) => +v.toFixed(1)) };
   });
   rows.push({ i, ...r });
   if (OUT) await run.shot(P, `pennant-orbit-${DEV}-${String(i).padStart(2, "0")}.png`);
@@ -65,6 +65,8 @@ const bad = rows.filter((r) => !r.found || !r.vis || (r.inView > 0 && r.drawn ==
 for (const r of bad) console.log("BAD", JSON.stringify(r));
 run.check("pennants read square enough from every direction (mean facing >= 0.3)", rows.every((r) => r.found && r.facing >= 0.3), JSON.stringify(rows.map((r) => r.facing)));
 run.check("pennant instanced mesh found", rows.every((r) => r.found));
+// a pennant is one flat triangle: drawn on one face only it vanished from behind its string (owner 2026-11-21)
+run.check("the pennants' cloth is drawn on both faces", rows.every((r) => r.twoSided));
 run.check("pennants drawn (visible, not culled while instances are in view) from all 24 directions, same count", bad.length === 0);
 const code = run.finish();
 await browser.close();
