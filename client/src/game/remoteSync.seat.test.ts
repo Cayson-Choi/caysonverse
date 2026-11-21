@@ -86,7 +86,7 @@ vi.mock("@colyseus/sdk", () => ({ getStateCallbacks: h.getStateCallbacks }));
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
 import { startRemoteSync, type PlayersRoom } from "./remoteSync";
 import { clearRemotes, getRemoteRecord } from "./remoteStore";
-import { clearSentMoves, createEchoWatch, healDeadline, noteEcho, recordSentMove } from "./sentMoves";
+import { clearSentMoves, createEchoWatch, healDeadline, noteEcho, recordSentMove, serverRefused, takePoseResend } from "./sentMoves";
 import { REFUSAL_HEAL_MS } from "./constants";
 
 type TestPlayer = Record<string, unknown>;
@@ -195,6 +195,26 @@ describe("the self-correction waits out a refused Move the server may still heal
     now += REFUSAL_HEAL_MS;
     vi.advanceTimersByTime(REFUSAL_HEAL_MS);
     expect(self.z).toBeCloseTo(-0.64 * 6, 9);
+    // …but my pose is sent once more (fix/net-sync: a refused last Move of a walk used to leave the two 0.6-1.5 m apart for good)
+    expect(takePoseResend()).toBe(true);
+    // the resent pose refused too (still no newer stamp a heal window later): put back where the server has me
+    now += REFUSAL_HEAL_MS;
+    vi.advanceTimersByTime(REFUSAL_HEAL_MS);
+    expect(self.z).toBeCloseTo(-0.64 * 5, 9);
+  });
+
+  it("the server's notice of a refusal that changed no synced field (the first Move after the join): judged all the same (fix/net-sync)", () => {
+    vi.useFakeTimers();
+    const me = player({ x: -0.58, z: 11.9, moveT: 0 }); // never echoed a stamp
+    room.players.set("me", me);
+    start();
+    Object.assign(self, { x: -24, z: 88 }); // the client walked on to the park gate; every Move refused, no patch at all
+    serverRefused();
+    expect(self.x).toBe(-24); // a heal window first
+    now += REFUSAL_HEAL_MS;
+    vi.advanceTimersByTime(REFUSAL_HEAL_MS);
+    expect(self.x).toBeCloseTo(-0.58, 9); // put back where the server has me
+    expect(self.z).toBeCloseTo(11.9, 9);
   });
 
   it("the teardown cancels a pending look", () => {

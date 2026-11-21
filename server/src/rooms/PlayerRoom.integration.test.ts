@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import config from "@colyseus/tools";
 import { defineRoom, type Client } from "colyseus";
-import { VILLAGE_ROOM, PLAYER_RADIUS, CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
+import { VILLAGE_ROOM, PLAYER_RADIUS, CHAT_MAX_LENGTH, MOVE_REFUSED_NOTICE_MS } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type {
   ChatBroadcast,
@@ -256,6 +256,67 @@ describe("PlayerRoom hooks (a room built on the base)", () => {
     await flush();
     expect(player.x).toBeCloseTo(-2.1, 4);
     expect(player.moveT).toBe(0);
+  });
+
+  it("a refused Move tells the mover where the server has it, even when no synced field changes (fix/net-sync)", async () => {
+    // The reported desync: the first Moves after a join were refused (a phone's first frames after entering lasted seconds, and
+    // the client leapt metres in one). The echoed clock was 0 already, so the refusal changed nothing synced, the client never
+    // learnt of it, walked on, and every later Move — and every door / keypad / ride press — was refused for good.
+    const room = await colyseus.createRoom<ProbeRoom>(PROBE_ROOM);
+    const alice = await colyseus.connectTo(room, { nickname: "앨리스" });
+    const notices: Array<{ x: number; z: number }> = [];
+    alice.onMessage(MessageType.MoveRefused, (m: { x: number; z: number }) => notices.push(m));
+    const player = room.state.players.get(alice.sessionId)!;
+    const track = trackingOf(room).get(alice.sessionId)!;
+    expect(player.moveT).toBe(0);
+
+    // a leap far past the budget, the very first Move: refused, nothing synced changes — and the mover is told
+    alice.send(MessageType.Move, { x: -5.5, z: 4, yaw: 0, t: 5_000 });
+    await room.waitForNextMessage();
+    await flush();
+    expect(player.x).toBe(0);
+    expect(player.moveT).toBe(0);
+    expect(notices).toEqual([{ x: 0, z: 0 }]);
+
+    // refused again and again (it walked on): at most one notice per MOVE_REFUSED_NOTICE_MS, not one per Move (the window is pinned
+    // open here, so a slow machine's waits cannot let it pass)
+    track.refusedNoticeAt = Date.now() + 60_000 - MOVE_REFUSED_NOTICE_MS;
+    for (let k = 0; k < 5; k++) alice.send(MessageType.Move, { x: -5.5, z: 4.4, yaw: 0, t: 5_100 + k });
+    for (let k = 0; k < 5; k++) await room.waitForNextMessage();
+    await flush();
+    expect(notices).toHaveLength(1);
+    track.refusedNoticeAt = Date.now() - MOVE_REFUSED_NOTICE_MS; // the window has passed
+    alice.send(MessageType.Move, { x: -5.5, z: 4.4, yaw: 0, t: 5_200 });
+    await room.waitForNextMessage();
+    await flush();
+    expect(notices).toHaveLength(2);
+
+    // an accepted Move (the client came back to where the server has it) is no notice; a malformed one is dropped like a refusal
+    track.lastAcceptedAt = Date.now() - 200;
+    alice.send(MessageType.Move, { x: -0.3, z: 0, yaw: 0, t: 5_300 });
+    await room.waitForNextMessage();
+    await flush();
+    expect(player.x).toBeCloseTo(-0.3, 5);
+    expect(player.moveT).toBe(5_300);
+    expect(notices).toHaveLength(2);
+  });
+
+  it("a teleport cheat is still refused: a leap past the budget never lands, however long it waited (fix/net-sync)", async () => {
+    const room = await colyseus.createRoom<ProbeRoom>(PROBE_ROOM);
+    const alice = await colyseus.connectTo(room, { nickname: "앨리스" });
+    alice.onMessage(MessageType.MoveRefused, () => {});
+    const player = room.state.players.get(alice.sessionId)!;
+    const track = trackingOf(room).get(alice.sessionId)!;
+    track.lastAcceptedAt = Date.now() - 60_000; // idle a minute: still only MOVE_ELAPSED_CEIL_MS of budget (4.8 m)
+    player.x = -5.5;
+    alice.send(MessageType.Move, { x: 5.5, z: 0, yaw: 0, t: 7_000 }); // 11 m in one Move
+    await room.waitForNextMessage();
+    await flush();
+    expect(player.x).toBe(-5.5);
+    alice.send(MessageType.Move, { x: -1.0, z: 0, yaw: 0, t: 7_100 }); // 4.5 m: within it
+    await room.waitForNextMessage();
+    await flush();
+    expect(player.x).toBeCloseTo(-1.0, 5);
   });
 
   it("canMove() false drops Move and Jump silently; true lets them through", async () => {
