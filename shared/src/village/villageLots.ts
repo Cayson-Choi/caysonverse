@@ -1104,6 +1104,29 @@ export const LOT_BED_SOLIDS: Readonly<Record<LotId, readonly LotRect[]>> = Objec
   lot_cafe: Object.freeze([]),
 });
 
+/**
+ * The gate's welcome board ("어서 오세요!", client lots/gateBoard.ts GATE_BOARD: two turned posts 1.75 m apart carrying an enamel
+ * panel from 0.92 m up, standing askew beside the avenue): a sign stand is solid like every other prop (2026-11-21; found by
+ * e2e/solid-audit.mjs the day the board was added). Its plan, in world metres: the panel's centre, the way it looks, half the
+ * distance between its posts. client lots/gateBoard.test checks these against the board that is drawn.
+ */
+export const GATE_BOARD_PLAN = Object.freeze({ x: -28.05, z: 91.75, look: [0.42, -0.9075] as const, halfSpan: 0.875 });
+
+/** The board as five small boxes along its line (it stands 25 degrees off the axes: one box round it would reach 0.3 m past its ends). */
+export function gateBoardSolids(): AABB[] {
+  const b = GATE_BOARD_PLAN;
+  const n = Math.hypot(b.look[0], b.look[1]);
+  // the panel's own line on the ground: across its look
+  const ax = b.look[1] / n;
+  const az = -b.look[0] / n;
+  const r2 = (v: number): number => Math.round(v * 100) / 100;
+  return [-1, -0.5, 0, 0.5, 1].map((t) => {
+    const x = b.x + ax * b.halfSpan * t;
+    const z = b.z + az * b.halfSpan * t;
+    return { minX: r2(x - 0.24), maxX: r2(x + 0.24), minZ: r2(z - 0.16), maxZ: r2(z + 0.16) };
+  });
+}
+
 /** The lots' boxes as the village geometry takes them: every collider an obstacle, the tall ones and the roof slabs camera boxes (`hurdles`: LOT_HURDLES). */
 export function lotGeometryColliders(ids: readonly LotId[] = LOTS_WITH_MODEL): { obstacles: AABB[]; cameraBoxes: CameraBox[]; hurdles: CameraBox[] } {
   const obstacles: AABB[] = [];
@@ -1118,6 +1141,7 @@ export function lotGeometryColliders(ids: readonly LotId[] = LOTS_WITH_MODEL): {
     }
     obstacles.push(...lotSeatFurnitureBoxes(l));
     for (const r of LOT_BED_SOLIDS[l.id]) obstacles.push(lotBox(l, r));
+    if (l.id === "lot_gate") obstacles.push(...gateBoardSolids());
     for (const s of LOT_ROOF_SLABS[l.id]) cameraBoxes.push({ ...lotBox(l, s.rect), minY: s.minY, height: s.height });
   }
   return { obstacles, cameraBoxes, hurdles };

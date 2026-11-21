@@ -7,7 +7,7 @@ import { VILLAGE_VEG_COLLIDERS, VILLAGE_VEG_GHOSTS } from "./generated/villageVe
 import { PATH_PLANT_MOVES, movedBox } from "./pathPlants";
 import { LANE_LAMPS, LAMP_COLLIDER_HALF } from "./streetPoles";
 import { VILLAGE_LAYOUT, villageGeometry } from "./villageLayout";
-import { LOT_BED_SOLIDS, VILLAGE_LOTS, lotBox, lotDoorPoints } from "./villageLots";
+import { GATE_BOARD_PLAN, LOT_BED_SOLIDS, VILLAGE_LOTS, gateBoardSolids, lotBox, lotDoorPoints } from "./villageLots";
 
 // owner 2026-11-21: flowerbeds, bushes, trunks and lamp posts became solid in the village (the plants where the game draws them, the
 // lots' beds, the two lane lamps). The other half of the job: none of the new solids blocks a path, a door or a seat's approach, and
@@ -58,6 +58,7 @@ const NEW_SOLIDS: Array<{ name: string; box: AABB }> = [
   ...VILLAGE_VEG_COLLIDERS.map((box, i) => ({ name: `plant ${i}`, box })),
   ...PATH_PLANT_MOVES.map((m) => ({ name: `moved ${m.id}`, box: movedBox(m) })),
   ...VILLAGE_LOTS.flatMap((lot) => (LOT_BED_SOLIDS[lot.id] ?? []).map((r, i) => ({ name: `${lot.id} bed ${i}`, box: lotBox(lot, r) }))),
+  ...gateBoardSolids().map((box, i) => ({ name: `gate board ${i}`, box })),
   ...LANE_LAMPS.map((l, i) => ({ name: `lane lamp ${i}`, box: { minX: l.x - LAMP_COLLIDER_HALF, maxX: l.x + LAMP_COLLIDER_HALF, minZ: l.z - LAMP_COLLIDER_HALF, maxZ: l.z + LAMP_COLLIDER_HALF } })),
 ];
 
@@ -112,6 +113,19 @@ describe("the village with its plants, beds and lamps solid: everything is still
     }
     expect(lonely).toEqual([]);
   }, 120000);
+
+  it("the gate's welcome board is solid from post to post, and the avenue beside it stays open", () => {
+    const b = GATE_BOARD_PLAN;
+    const n = Math.hypot(b.look[0], b.look[1]);
+    for (const t of [-1, -0.6, -0.2, 0.2, 0.6, 1]) {
+      const x = b.x + (b.look[1] / n) * b.halfSpan * t;
+      const z = b.z - (b.look[0] / n) * b.halfSpan * t;
+      expect(index.isBlocked(x, z, 0.05), `board at ${t}`).toBe(true);
+    }
+    // the avenue to the gate (x -24), 3 m wide: the board's boxes stand clear of its whole width
+    const board = obstacleIndex(gateBoardSolids());
+    for (let z = 84; z <= 94; z += 0.25) for (const x of [-25.5, -24, -22.5]) expect(board.isBlocked(x, z, R), `avenue (${x}, ${z})`).toBe(false);
+  });
 
   it("the boxes nothing was drawn in are gone: the temple's and the chapel's lanes carry no invisible box", () => {
     const lane = VILLAGE_VEG_GHOSTS.filter((g) => Math.abs(Math.abs((g.minX + g.maxX) / 2) - 32) < 2.5 && Math.abs((g.minZ + g.maxZ) / 2 + 29.7) < 2.5);
