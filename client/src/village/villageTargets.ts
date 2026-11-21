@@ -6,7 +6,7 @@ import { TRANSIT } from "@caysonverse/shared/village/transit";
 import { HOUSE_KEYPAD_REACH_M, keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import { GUIDE_ASK_LABEL, nearestGuide } from "@caysonverse/shared/village/guides";
 import type { InteractTarget } from "../game/interact";
-import { lotDoorTarget, lotExitTarget } from "./lots/lotTargets";
+import { lotDoorTarget, lotExitTarget, lotStairTarget } from "./lots/lotTargets";
 import { CAROUSEL_PAD, COASTER_PAD, PARK_EXIT_PAD, WHEEL_PAD, MOON_BOAT_PAD, DROP_PAD, parkGateDoor } from "@caysonverse/shared/village/parkArea";
 import { BUS_SEATS, busPlaceOf, busSeatNumber, inExitZone, nearestFreeSpot, seatApproachOk } from "@caysonverse/shared/village/busCabin";
 
@@ -118,8 +118,8 @@ export function villageTargets(
   }
   // a lot building's room (lots v2): its way out
   if (isLotArea(area)) {
-    const exit = lotExitTarget(area, x, z);
-    return exit ? [exit] : NONE;
+    const offers = [lotExitTarget(area, x, z), lotStairTarget(area, x, z)].filter((t): t is InteractTarget => t !== null);
+    return offers.length ? offers.sort((a, b) => a.dist - b.dist) : NONE;
   }
   const pad = doorPadFor(area, layout);
   const dist = Math.hypot(x - pad.centre.x, z - pad.centre.z);

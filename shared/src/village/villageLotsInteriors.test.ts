@@ -16,7 +16,7 @@ const unitOf = (id: string) => [...VILLAGE_LOTS, CAFE_LOT].flatMap((l) => l.unit
 
 describe("v2 walk-in interiors (owner 2026-11-17: every building enterable, sit on every seat inside)", () => {
   it("one interior per lot building, phase 1, each on its unit's room", () => {
-    expect(LOT_INTERIORS.map((i) => i.lot)).toEqual(["lot_school", "lot_library", "lot_chapel", "lot_church", "lot_temple", "lot_cafe"]);
+    expect(LOT_INTERIORS.map((i) => i.lot)).toEqual(["lot_school", "lot_library", "lot_chapel", "lot_church", "lot_temple", "lot_cafe", "lot_cafe"]);
     for (const i of LOT_INTERIORS) {
       const u = unitOf(i.unit);
       expect(u.interior.phase, i.unit).toBe(1);
@@ -30,12 +30,14 @@ describe("v2 walk-in interiors (owner 2026-11-17: every building enterable, sit 
 
   it("interior seat ids are unique and in their fixed, append-only order", () => {
     expect(new Set(LOT_INTERIOR_SEAT_ORDER).size).toBe(LOT_INTERIOR_SEAT_ORDER.length);
-    expect(LOT_INTERIOR_SEAT_ORDER.length).toBe(66);
+    expect(LOT_INTERIOR_SEAT_ORDER.length).toBe(81);
     expect(LOT_INTERIOR_SEAT_ORDER.slice(0, 3)).toEqual(["lot_school_chair_1", "lot_school_chair_2", "lot_school_chair_3"]);
     expect(LOT_INTERIOR_SEAT_ORDER.slice(52 - 2, 52)).toEqual(["lot_temple_cushion_11", "lot_temple_cushion_12"]); // (the café's 14 come after the temple's)
-    expect(LOT_INTERIOR_SEAT_ORDER.slice(52)).toEqual([...Array.from({ length: 10 }, (_, k) => `lot_cafe_chair_${k + 1}`), "lot_cafe_stool_1", "lot_cafe_stool_2", "lot_cafe_stool_3", "lot_cafe_banquette"]);
+    expect(LOT_INTERIOR_SEAT_ORDER.slice(52, 66)).toEqual([...Array.from({ length: 10 }, (_, k) => `lot_cafe_chair_${k + 1}`), "lot_cafe_stool_1", "lot_cafe_stool_2", "lot_cafe_stool_3", "lot_cafe_banquette"]);
     const groups = LOT_INTERIORS.map((i) => [i.unit, i.seats.length]);
-    expect(groups).toEqual([["lot_school_class", 12], ["lot_library_reading", 10], ["lot_chapel_nave", 10], ["lot_church_nave", 8], ["lot_temple_hall", 12], ["lot_cafe_room", 14]]);
+    expect(groups).toEqual([["lot_school_class", 12], ["lot_library_reading", 10], ["lot_chapel_nave", 10], ["lot_church_nave", 8], ["lot_temple_hall", 12], ["lot_cafe_room", 14], ["lot_cafe_upstairs", 15]]);
+    // (the café's salon upstairs, 2026-11-21: appended after the café's 14)
+    expect(LOT_INTERIOR_SEAT_ORDER.slice(66)).toEqual([...Array.from({ length: 12 }, (_, k) => `lot_cafe_up_chair_${k + 1}`), "lot_cafe_up_sofa", "lot_cafe_up_armchair_1", "lot_cafe_up_armchair_2"]);
   });
 
   it("every seat and solid is inside its room; seats never overlap a solid or each other", () => {
