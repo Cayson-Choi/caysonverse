@@ -32,7 +32,9 @@ export const PARK_BOUNDS: Bounds = Object.freeze({ minX: -170, maxX: 380, minZ: 
 
 /** The gate arch's way-out pad and the arrival spot inside (park-local). */
 export const PARK_EXIT_PAD = Object.freeze({ x: 40, z: -181, radius: 1.8 });
-export const PARK_ARRIVAL = Object.freeze({ x: 40, z: -171, yaw: Math.PI }); // facing north is yaw PI (villageLayout FACING_NORTH)
+// Arriving, one looks INTO the park: south (+z, yaw 0), the promenade and the star plaza ahead. (It was yaw PI, north: every visitor
+// arrived staring back at the arch they had just come through - owner 2026-11-21 "반대방향을 보도록".)
+export const PARK_ARRIVAL = Object.freeze({ x: 40, z: -171, yaw: 0 });
 
 /** The star plaza and its fountain. */
 export const PARK_PLAZA = Object.freeze({ x: 40, z: -112, radius: 26, fountainHalf: 4 });

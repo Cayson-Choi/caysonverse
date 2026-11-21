@@ -60,6 +60,7 @@ import { STAR_FOUNTAIN, STAR_SPOUTS } from "../village/fountain/fountainDesigns"
 import { LAMP_GLOBE, flagstoneRing, victorianLampGeometry } from "../village/lots/gateDress";
 import { getPbrSet, pbrTextures } from "../village/pbr/pbrLibrary";
 import { addGateArch, addGateStar } from "./parkGateStone";
+import { ParkVillageView } from "./ParkVillageView";
 import { BulbHalos, LampPools } from "./nightGlow";
 import { CastleWall, PARK_WALL_LOOK } from "./CastleWall";
 import { PARK_WALL_PLAN } from "@caysonverse/shared/village/parkWall";
@@ -769,6 +770,9 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       <ParkScenery all={all} />
       <Suspense fallback={null}>
         <ParkMountains tier={tier === "high" ? "high" : "low"} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <ParkVillageView />
       </Suspense>
       <CoasterWorld all={all} pine={pine} env={env} />
       <CarouselWorld env={env} all={all} />

@@ -13,7 +13,10 @@ import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor, sendUseStair } from "../net/connection";
 import { rideStatusText, sendBusRide, sendBusSit, sendBusStand, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState } from "../net/transitSync";
 import { BUS_VIEW_YAW, busCamGoal, busSeatPreferred, busWalk, selfBusRide } from "../game/busRide";
-import { requestViewToggle } from "../game/viewState";
+import { requestViewToggle, viewState } from "../game/viewState";
+import { recenterYaw } from "../game/cameraControls";
+import { PARK_ARRIVAL } from "@caysonverse/shared/village/parkArea";
+import { PARK_ARRIVAL_PITCH, parkArrivalView } from "../land/parkArrival";
 import { useViewStore } from "../stores/viewStore";
 import { busRiderPoints, takenBusSpots } from "../game/remoteStore";
 import { TRANSIT, boardingOpensWords } from "@caysonverse/shared/village/transit";
@@ -167,9 +170,19 @@ function LandPoseProbe({ pose }: { pose: Pose }) {
 }
 
 /** 케이슨랜드 (the park area): no village model to dress, so the loading cover lifts at once; the park loads in its own Suspense. */
-function ParkArea({ tier }: { tier: VillageTier }) {
+function ParkArea({ tier, pose }: { tier: VillageTier; pose: Pose }) {
   useEffect(() => {
     uncoverVillage();
+  }, []);
+  // Through the gate, the view turns with the visitor: the camera behind them, looking into the park (owner 2026-11-21: one arrived
+  // looking back at the arch). Only on an arrival - someone who reloads deep in the park keeps the view they had.
+  useEffect(() => {
+    if (!parkArrivalView(pose.x, pose.z)) return;
+    const yaw = recenterYaw(PARK_ARRIVAL.yaw);
+    viewState.fpYaw = yaw;
+    viewState.fpPitch = 0;
+    viewState.orbitGoal = { yaw, pitch: PARK_ARRIVAL_PITCH };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arriving
   }, []);
   return (
     <LoadBoundary fallback={null} onReset={() => undefined} onFail={uncoverVillage} notice="케이슨랜드를 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
@@ -182,7 +195,7 @@ function ParkArea({ tier }: { tier: VillageTier }) {
 
 /** What the local player's area draws: the village model and its signs (no floor mark at the memorial's door), or the hall's room. */
 function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; pose: Pose }) {
-  if (area === "park") return <ParkArea tier={tier} />;
+  if (area === "park") return <ParkArea tier={tier} pose={pose} />;
   if (area === "hall") return <HallArea pose={pose} />;
   if (isHouseArea(area)) return <HouseArea area={area} pose={pose} />;
   if (isLotArea(area)) return area === `lot:${CAFE_ROOM_UNIT}` ? <CafeRoomArea area={area} pose={pose} /> : <LotRoomArea area={area} pose={pose} />;
