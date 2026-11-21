@@ -70,3 +70,18 @@ export function rideSeatPose(rideId: number, seat: number, outPos: Vector3, outQ
   else if (rideId === RIDE.droptower) dropRiderPose(seat, rideMs(), outPos, outQuat);
   else carSeatPose(coasterNow().s, seat, outPos, outQuat);
 }
+
+const fPos = new Vector3();
+const fQuat = new Quaternion();
+const fV = new Vector3();
+/**
+ * The seat pose as plain numbers (the e2e reads how another client draws a rider: e2e/rides-seat-facing.mjs): the root's position, and the body's forward
+ * (+z of the root: the way the seated avatar looks) and up, in park axes.
+ */
+export function rideSeatFacing(rideId: number, seat: number): { pos: [number, number, number]; fwd: [number, number, number]; up: [number, number, number] } {
+  rideSeatPose(rideId, seat, fPos, fQuat);
+  const f = fV.set(0, 0, 1).applyQuaternion(fQuat);
+  const fwd: [number, number, number] = [f.x, f.y, f.z];
+  const u = fV.set(0, 1, 0).applyQuaternion(fQuat);
+  return { pos: [fPos.x, fPos.y, fPos.z], fwd, up: [u.x, u.y, u.z] };
+}

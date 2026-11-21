@@ -500,7 +500,7 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
       boat.rod("gold", [x - 0.36, fy + 0.5, zo(-0.27)], [x - 0.36, fy + 0.5, zo(0.25)], 0.012, 0.012, 6);
       boat.rod("gold", [x + 0.36, fy + 0.5, zo(-0.27)], [x + 0.36, fy + 0.5, zo(0.25)], 0.012, 0.012, 6);
       for (const bx of [-0.17, 0.17]) {
-        for (const bz of [-0.1, 0.12]) boat.ball("gold", 0.02, x + bx, fy + 0.505, z + bz, 1, 0.7, 1, 6);
+        for (const bz of [-0.1, 0.12]) boat.ball("gold", 0.02, x + bx, fy + 0.505, zo(bz - 0.02), 1, 0.7, 1, 6);
         boat.ball("gold", 0.02, x + bx, fy + 0.82, zo(-0.275), 1, 1, 0.7, 6);
       }
     }
@@ -515,6 +515,17 @@ function build(mats: Record<MatKey, Material>): BoatBuild {
       boat.rod("chrome", [s * (half - 0.18), fy + 0.04, zo(0.46)], [s * (half - 0.18), by, zo(0.46)], 0.03, 0.03, 10);
       fin(0.02, s * (half - 0.18), by + 0.03, zo(0.46));
     }
+  }
+  // the middle of the boat, between the two halves that face each other (a real Viking's mast foot stands there): a flat plank deck with a gold edge strip
+  // toward each half and a star inlay, where the riders of the two middle benches rest their feet
+  {
+    const zm = MOON_SEAT.mid / 2 + 0.03; // exactly the gap: from the stern half's first terrace to the bow half's last (each terrace is dz - 0.06 long)
+    const fy = moonFloorY(zm);
+    const half = fInner(0) - 0.06;
+    boat.box("deck", half * 2, 0.34, 2 * zm, 0, fy - 0.17 + 0.012, 0);
+    for (const sz of [-1, 1]) boat.box("gold", half * 2 - 0.1, 0.012, 0.05, 0, fy + 0.02, sz * (zm - 0.06));
+    boat.rod("indigoPaint", [0, fy + 0.013, 0], [0, fy + 0.02, 0], 0.36, 0.36, 24);
+    boat.rod("gold", [0, fy + 0.02, 0], [0, fy + 0.026, 0], 0.2, 0.2, 5);
   }
   // the carved rail along both gunwales: turned balusters (a swelling and a ball) under a gold hand rail, a row of gilded scallops on the rim cap, gold posts at the horns
   for (const sg of [-1, 1]) {

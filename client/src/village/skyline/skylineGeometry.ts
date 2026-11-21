@@ -30,7 +30,7 @@ import { WHEEL_HUB_Y, WHEEL_N, WHEEL_R, WHEEL_SITE } from "@caysonverse/shared/l
 import { CAROUSEL_CANOPY_Y, CAROUSEL_CENTER, CAROUSEL_DECK_Y, CAROUSEL_RADIUS } from "@caysonverse/shared/land/carousel";
 import { PARK_PLAZA, COASTER_PAD, DROP_SITE_AT, MOON_BOAT_SITE_AT } from "@caysonverse/shared/village/parkArea";
 import { MOON_FRAME, MOON_HULL, MOON_PIVOT_Y, moonKeelY } from "@caysonverse/shared/land/moonBoat";
-import { DROP_BEAM_YS, DROP_CROWN_Y, DROP_FRAME, dropFrameD } from "@caysonverse/shared/land/dropTowerGeometry";
+import { DROP_BEAM_YS, DROP_CROWN_Y } from "@caysonverse/shared/land/dropTowerGeometry";
 import { GeoBuilder, cross, norm, type V3 } from "../../land/geoBuilder";
 
 export type SkylineTier = "high" | "low";
@@ -248,7 +248,7 @@ export function buildSkyline(tier: SkylineTier, ground: GroundLocal = () => 0, o
   // ───────── static ─────────
   const s = new GeoBuilder();
 
-  // — the 구름 낙하탑 (the cloud drop tower): the real tower's column, four leaning legs with ring beams, indigo bands, the cloud bank on top and the gold moon —
+  // — the 구름 낙하탑 (the cloud drop tower): the real tower's single column with its indigo bands, the cloud bank on top and the gold moon (the frame that stood round it was taken away 2026-11-21: DropTowerWorld.tsx) —
   {
     const gx = DROP_SITE_AT.x;
     const gz = DROP_SITE_AT.z;
@@ -256,24 +256,9 @@ export function buildSkyline(tier: SkylineTier, ground: GroundLocal = () => 0, o
     const CY = DROP_CROWN_Y;
     const S = 1.3; // the crown's scale (as in DropTowerWorld)
     const CLOUD: V3 = [1.3, 1.3, 1.34]; // over-bright, so the baked light still leaves the cloud white
-    const legR = (y: number): number => 0.8 - 0.42 * (y / CY);
     s.box([gx, g0 + 0.5, gz], X, Y, 3.8, 1.0, 3.8, C.sandDark);
     s.box([gx, g0 + CY / 2, gz], X, Y, 1.05, CY / 2, 1.05, C.cream);
     for (const y of DROP_BEAM_YS.slice(1)) s.box([gx, g0 + y, gz], X, Y, 1.4, 0.5, 1.4, C.indigoDeep);
-    const ys = [0.9, ...DROP_BEAM_YS.slice(1), CY + 0.4];
-    for (const sx of [-1, 1])
-      for (const sz of [-1, 1]) {
-        for (let i = 0; i + 1 < ys.length; i++) s.cylinder([gx + sx * dropFrameD(ys[i]!), g0 + ys[i]!, gz + sz * dropFrameD(ys[i]!)], [gx + sx * dropFrameD(ys[i + 1]!), g0 + ys[i + 1]!, gz + sz * dropFrameD(ys[i + 1]!)], legR(ys[i]!), legR(ys[i + 1]!), 6, C.cream);
-        for (const y of DROP_BEAM_YS.slice(1)) s.box([gx + sx * dropFrameD(y), g0 + y, gz + sz * dropFrameD(y)], X, Y, legR(y) * 1.3, 0.5, legR(y) * 1.3, C.indigo);
-        s.box([gx + sx * dropFrameD(0.9), g0 + 1.3, gz + sz * dropFrameD(0.9)], X, Y, 0.95, 1.3, 0.95, C.sandDark);
-      }
-    for (const y of DROP_BEAM_YS) {
-      const d = dropFrameD(y);
-      s.box([gx, g0 + y, gz - d], X, Y, d, 0.25, DROP_FRAME.beamHalf, C.indigo);
-      s.box([gx, g0 + y, gz + d], X, Y, d, 0.25, DROP_FRAME.beamHalf, C.indigo);
-      s.box([gx - d, g0 + y, gz], X, Y, DROP_FRAME.beamHalf, 0.25, d, C.indigo);
-      s.box([gx + d, g0 + y, gz], X, Y, DROP_FRAME.beamHalf, 0.25, d, C.indigo);
-    }
     s.box([gx, g0 + CY - 0.7, gz], X, Y, 2.4, 0.9, 2.4, C.indigoDeep);
     addBlob(s, gx, g0 + CY + 0.9 * S, gz, 6.2 * S, 1.6 * S, CLOUD, high ? 10 : 7, 3);
     for (let i = 0; i < 8; i++) {

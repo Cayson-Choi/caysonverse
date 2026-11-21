@@ -16,13 +16,15 @@ import {
   DROP_TOP_Y,
   dropAt,
   dropCanLeave,
+  dropFaceDir,
+  dropSeatCell,
   dropGLoad,
   dropMotion,
   dropSeatLocal,
   dropSeatPose,
   type DropStage,
 } from "./dropTower";
-import { DROP_CAR_REACH, DROP_COLUMN, DROP_CROWN, DROP_CROWN_Y, DROP_PLATFORM_BOXES, dropFrameReach, dropRidingPoints, pointBoxDistance } from "./dropTowerGeometry";
+import { DROP_COLUMN, DROP_CROWN, DROP_CROWN_Y, DROP_PLATFORM_BOXES, dropRidingPoints, pointBoxDistance } from "./dropTowerGeometry";
 import { RIDES, rideByKey } from "./rides";
 
 const motion = (t: number): { y: number; v: number; a: number; stage: DropStage } => {
@@ -120,8 +122,18 @@ describe("drop tower clearances through the whole ride", () => {
     expect(minFloorY).toBeGreaterThanOrEqual(DROP_DECK_Y - 1e-9);
     expect(minGap).toBeGreaterThan(0.25);
   });
-  it("the tower's outer frame (legs, beams, arches) stays 0.5 m clear of the car's swept cylinder at every height, and the widening capital is above every rider", () => {
-    for (let y = 0; y <= DROP_CROWN_Y; y += 0.25) expect(dropFrameReach(y) - DROP_CAR_REACH).toBeGreaterThan(0.5);
+  it("nothing stands in front of a rider (owner 2026-11-21: the frame round the car is gone): the column is behind every seat, the platform under every eye, the crown above every head", () => {
+    const loc: [number, number] = [0, 0];
+    for (let seat = 0; seat < DROP_SEATS; seat++) {
+      dropSeatLocal(seat, loc);
+      const n = dropFaceDir(dropSeatCell(seat).face);
+      // the column's nearest face is behind the hips (looking out along n, every point of the column is at least 1.5 m BEHIND the seat)
+      for (const cx of [DROP_COLUMN.min[0], DROP_COLUMN.max[0]]) for (const cz of [DROP_COLUMN.min[2], DROP_COLUMN.max[2]]) expect((cx - loc[0]) * n.x + (cz - loc[1]) * n.z).toBeLessThan(-1.5);
+    }
+    // at the station the eye (0.8 m over the hips) is over the deck and its 1 m rail's top is below it
+    expect(DROP_STATION_Y + 0.8).toBeGreaterThan(DROP_DECK_Y + 1.0 + 0.2);
+    // at the top stop the crown's underside is well over the eye
+    expect(DROP_CROWN.min[1] - (DROP_TOP_Y + 0.8)).toBeGreaterThan(3);
     let topRider = 0;
     for (let t = 0; t <= DROP_RIDE_MS / 1000; t += dt) for (const { p } of dropRidingPoints(motion(t).y)) topRider = Math.max(topRider, p[1]);
     expect(DROP_CROWN_Y - 1.6 - topRider).toBeGreaterThan(1.2);
