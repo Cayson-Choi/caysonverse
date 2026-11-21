@@ -5,7 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { PlayShell } from "../game/PlayShell";
 import { villageActiveMap } from "../game/activeMap";
-import { clearClickTarget } from "../game/clickMove";
+import { clearClickTarget, peekClickTarget } from "../game/clickMove";
 import { fireTarget, setTargetHandler, setTargetSource } from "../game/interactTargets";
 import { armedHouseUse, disarmHouseUse, takeArmedHouseUse } from "./houseTap";
 import type { PlayersRoom } from "../game/remoteSync";
@@ -75,8 +75,7 @@ import { SIGNALS_MODEL_URL, TransitRoadSignals } from "./TransitRoadSignals";
 import { PublicAutoDoor } from "./PublicAutoDoor";
 import { VillageLots } from "./lots/VillageLots";
 import { LotRoomArea } from "./lots/LotRoom";
-import { CAFE_ROOM_UNIT, CafeRoomArea, CafeRoomPrefetch } from "./cafe/CafeRoom";
-import { lotDoorNotice, lotDoorPadById, lotWalkInTarget, LOT_DOOR_TARGET_PREFIX } from "./lots/lotTargets";
+import { lotDoorNotice, lotDoorPadById, LOT_DOOR_TARGET_PREFIX } from "./lots/lotTargets";
 import { openKeypad, useKeypad } from "./keypadStore";
 import { VillageKeypad } from "./VillageKeypad";
 import { HouseArea } from "./HouseInterior";
@@ -93,7 +92,7 @@ import { sendRideBoard } from "../net/connection";
 import { landPose } from "../land/coasterRide";
 import { startRideAudio } from "../land/coasterAudio";
 import { boardRide } from "../land/rideBoardWalk";
-import { takeArmedRide } from "../land/rideBoard";
+import { armRide, armedRide, takeArmedRide } from "../land/rideBoard";
 import { maybePreloadPark } from "../land/parkAssets";
 
 /**
@@ -185,7 +184,7 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
   if (area === "park") return <ParkArea tier={tier} />;
   if (area === "hall") return <HallArea pose={pose} />;
   if (isHouseArea(area)) return <HouseArea area={area} pose={pose} />;
-  if (isLotArea(area)) return area === `lot:${CAFE_ROOM_UNIT}` ? <CafeRoomArea area={area} pose={pose} /> : <LotRoomArea area={area} pose={pose} />;
+  if (isLotArea(area)) return <LotRoomArea area={area} pose={pose} />;
   return (
     <>
       {/* A failed download shows a plain ground and tries again, instead of the crash screen (final review m2). */}
@@ -230,8 +229,6 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
       <PublicAutoDoor area="village" pose={pose} />
       {/* The six lot buildings (마을 부지 건물, L5): their own loader, never waited for; a failed one is just not there. */}
       <VillageLots pose={pose} tier={tier} />
-      {/* The café's walk-in room starts to build when the avatar comes near its door (cafe/CafeRoom.tsx). */}
-      <CafeRoomPrefetch pose={pose} />
     </>
   );
 }
@@ -353,29 +350,23 @@ function VillageDoors({ pose }: { pose: Pose }) {
   }, [pose, boarded, keypadOpen]);
   // A tap on a house's stair or front door armed its use (houseTap.ts): once the walk has brought us into the pad's reach, it is used.
   const lastArea = useRef<string | null>(null);
-  const walkedIn = useRef(false);
   useFrame(() => {
     const area = localArea();
     // Going in, out or up / down: a use armed by an earlier tap is stale (owner 2026-11-20: never climb without the player's own use)
     if (lastArea.current !== area) {
       lastArea.current = area;
       disarmHouseUse();
+      armRide(null); // ... and so is a board armed in the park before leaving it
     }
-    // A tap on a ride, or a press of its 타기 from afar, walked to the pad: the board is sent on arrival (rideBoard.ts)
+    // A press of a ride's 타기 from afar walked to the pad: the board is sent on arrival (rideBoard.ts). The board lives only as long as
+    // that walk: once it has ended short of the pad (blocked, given up) nothing boards later by passing the pad (owner 2026-11-21).
     if (area === "park") {
       const key = takeArmedRide(pose.x, pose.z);
       if (key) sendRideBoard(key);
+      else if (armedRide() !== null && peekClickTarget() === null) armRide(null);
       return;
     }
     if (area === "village") maybePreloadPark(pose.x, pose.z); // the park's files start loading as the gate comes near
-    // Walking into a lot door (the café's) goes in: the doorstep is the last 0.6 m of the walk to it (lotTargets.ts lotWalkInTarget); used once per arrival
-    if (area === "village") {
-      const step = lotWalkInTarget(pose.x, pose.z);
-      if (step && !walkedIn.current) {
-        walkedIn.current = true;
-        fireTarget(step, "press");
-      } else if (!step) walkedIn.current = false;
-    }
     // a house floor, a lot building's room, or the village with a lot door's use armed by a tap on it (lotDoorTap.ts)
     if (!isHouseArea(area) && !isLotArea(area) && armedHouseUse() === null) return;
     const offered = villageTargets(area, pose.x, pose.z);
