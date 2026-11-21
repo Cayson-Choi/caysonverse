@@ -41,7 +41,7 @@ LM_SCALE = 2.0         # the light map stores L / LM_SCALE (the game multiplies 
 LM_LIFT_DAY, LM_LIFT_NIGHT = 0.08, 0.012
 UNLIT = ("H_lamp", "H_shade", "H_glass", "H_mirror")
 DAY = dict(sun=(4.8, math.radians(52), math.radians(-30)), sky=0.85, lamp_scale=0.25)   # layered pass: more contrast
-NIGHT = dict(sky=(0.02, 0.03, 0.07), lamp_scale=1.0)
+NIGHT = dict(sky=(0.02, 0.03, 0.07), lamp_scale=0.13)   # houses-real night mood (owner 2026-11-22): was 1.0 (p50 0.67, 27 % clipped: a washed-out night)
 
 
 def arg(name, default=None, cast=str):
@@ -153,7 +153,7 @@ def lightmap_uv(objs, margin=0.0014):
 
 
 KIND_DAY = {"downlight": 0.5, "lamp": 3.0, "sconce": 3.0, "pendant": 1.6, "fire": 1.2, "led": 1.5}
-KIND_NIGHT = {"downlight": 0.55, "lamp": 1.5, "sconce": 1.5, "pendant": 1.2, "fire": 0.45}   # houses-real: the fire a warm local pool, not a wash (was 1.4)
+KIND_NIGHT = {"downlight": 0.05, "lamp": 1.8, "sconce": 1.5, "pendant": 1.0, "fire": 0.45}   # houses-real night mood (owner 2026-11-22: the night room was as bright as day): ceiling downlights low, lamps / sconces / pendants and the fire make warm pools, corners fall dark (was downlight 0.55, pendant 1.2, fire 1.4)   # houses-real: the fire a warm local pool, not a wash (was 1.4)
 
 
 def setup_lights(scene, night):
