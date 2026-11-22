@@ -80,8 +80,8 @@
 /* ── Top-right: 👁 🗺 ☰ ── */
 .cv-hud-right {
   position: fixed;
-  top: 16px;
-  right: 16px;
+  top: max(16px, env(safe-area-inset-top, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
   z-index: 22;
   display: flex;
   gap: 8px;
@@ -95,14 +95,14 @@
 /* ── Top-left: room name + 👥, then the roster / chat-log toggle / admin panel ── */
 .cv-hud-left {
   position: fixed;
-  top: 16px;
-  left: 16px;
+  top: max(16px, env(safe-area-inset-top, 0px));
+  left: max(16px, env(safe-area-inset-left, 0px));
   z-index: 22;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100vw - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
   pointer-events: none; /* empty column space must not eat canvas clicks */
 }
 
@@ -110,11 +110,21 @@
   pointer-events: auto;
 }
 
+/* Nothing in the HUD columns is text to select: a tap or a drag on a phone used to paint the ride panel and the roster blue (owner 2026-11-19). */
+.cv-hud-left,
+.cv-hud-left *,
+.cv-hud-right,
+.cv-hud-right * {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
 /* A PC: the column may not reach the chat log below it (chat.css --cv-log-reserve is the
    log's worst-case height from the bottom): it ends at least 8 px above it. The room chip
    and 👥 never shrink; the roster list and the admin panel's body scroll inside what is left. */
 html:not(.cv-touch) .cv-hud-left {
-  max-height: calc(100vh - 16px - var(--cv-log-reserve, 360px) - 8px);
+  max-height: calc(100vh - max(16px, env(safe-area-inset-top, 0px)) - var(--cv-log-reserve, 360px) - 8px);
   overflow: hidden;
 }
 
@@ -268,8 +278,8 @@ html:not(.cv-touch) .cv-hud-left {
   --cv-compass-ring: 0deg;
   --cv-compass-letter: 0deg;
   position: fixed;
-  top: calc(16px + var(--cv-hud-btn, 48px) + 12px);
-  right: 16px;
+  top: calc(max(16px, env(safe-area-inset-top, 0px)) + var(--cv-hud-btn, 48px) + 12px);
+  right: max(16px, env(safe-area-inset-right, 0px));
   z-index: 21;
   width: var(--cv-compass-size);
   height: var(--cv-compass-size);
@@ -335,7 +345,8 @@ html:not(.cv-touch) .cv-hud-left {
 
 /* ── "내 위치" tag on the overview map (OverviewMarker): a pill above the blinking marker ── */
 .cv-map-me {
-  transform: translateY(-50px);
+  /* MapPlaces steps it aside from the place chips (--cv-me-dx / --cv-me-dy) so both stay readable */
+  transform: translate(var(--cv-me-dx, 0px), calc(-50px + var(--cv-me-dy, 0px)));
   padding: 3px 10px;
   font-size: 13px;
   font-weight: 800;

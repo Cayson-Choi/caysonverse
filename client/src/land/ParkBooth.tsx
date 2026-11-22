@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Color, DoubleSide, MeshStandardMaterial, type Texture } from "three";
-import { GeoBuilder, type V3 } from "./geoBuilder";
-import { addHipRoof } from "./parkShapes";
+import { GeoBuilder, norm, type V3 } from "./geoBuilder";
+import { addHipRoof, addLathe } from "./parkShapes";
 import { boothBoardTexture, chalkMenuTexture } from "./canvasTextures";
 import { parkMaterial, pickSet } from "./pbr";
 
@@ -29,6 +29,79 @@ export interface BoothSpec {
 }
 
 const CREAM: V3 = [0.97, 0.94, 0.88];
+
+function addAwning(cloth: GeoBuilder, fittings: GeoBuilder, x: number, wallZ: number, width: number, colors: [V3, V3]) {
+  const bands = Math.round(width / 0.3);
+  const projection = 1.14;
+  const frontZ = wallZ + projection;
+  const railY = 2.48;
+  const rise = 0.42;
+  const metal: V3 = [0.2, 0.19, 0.16];
+  const left = x - width / 2;
+  for (let band = 0; band < bands; band++) {
+    const color = colors[band % 2]!;
+    const x0 = left + width * band / bands;
+    const x1 = left + width * (band + 1) / bands;
+    // The canvas sags slightly between its attachment at the wall and the front rail.
+    for (let row = 0; row <= 4; row++) {
+      const t = row / 4;
+      const sag = 0.065 * Math.sin(Math.PI * t);
+      const y = railY + rise * (1 - t) - sag;
+      const normal = norm([0, projection, rise + 0.065 * Math.PI * Math.cos(Math.PI * t)]);
+      const a = cloth.rawVertex([x0, y, wallZ + t * projection], normal, 0, t, color);
+      cloth.rawVertex([x1, y, wallZ + t * projection], normal, 1, t, color);
+      if (row > 0) cloth.idx.push(a - 2, a, a - 1, a - 1, a, a + 1);
+    }
+    // The hanging hem starts exactly on the leading edge; its rounded lobes droop between the seams.
+    for (let k = 0; k <= 6; k++) {
+      const u = k / 6;
+      const lobe = Math.sin(Math.PI * u);
+      const px = x0 + u * (x1 - x0);
+      const a = cloth.rawVertex([px, railY, frontZ], [0, 0, 1], u, 1, color);
+      cloth.rawVertex([px, railY - 0.07 - 0.11 * lobe, frontZ + 0.014 * lobe], [0, 0, 1], u, 0, color);
+      if (k > 0) cloth.idx.push(a - 2, a - 1, a, a, a - 1, a + 1);
+    }
+  }
+  const rodY = railY - 0.025;
+  const rodZ = frontZ - 0.024;
+  fittings.cylinder([left, rodY, rodZ], [left + width, rodY, rodZ], 0.024, 0.024, 8, metal, true);
+  for (const side of [-1, 1]) {
+    const px = x + side * (width / 2 - 0.045);
+    fittings.box([px, 2.2, wallZ + 0.012], X, Y, 0.035, 0.07, 0.015, metal);
+    fittings.cylinder([px, 2.2, wallZ + 0.024], [px, rodY, rodZ], 0.016, 0.016, 8, metal);
+  }
+}
+
+/** A single spun-sugar shell with uneven windings, closed poles and continuous normals around the stick. */
+function addCandyFloss(matte: GeoBuilder, x: number, baseY: number, z: number, tint: V3, seed: number) {
+  const sides = 14;
+  const rings = 9;
+  const height = 0.43 + 0.035 * Math.sin(seed * 1.7);
+  const lean = 0.034 * Math.cos(seed * 2.1);
+  const bottom = matte.rawVertex([x, baseY, z], Y, 0.5, 0, tint);
+  for (let j = 1; j < rings; j++) {
+    const angle = j * Math.PI / rings;
+    const h = (1 - Math.cos(angle)) / 2;
+    for (let k = 0; k < sides; k++) {
+      const a = 2 * Math.PI * k / sides;
+      const winding = Math.sin(3 * a + 11 * h + seed) * 0.07 + Math.sin(2 * a - 15 * h + seed * 2) * 0.05;
+      const r = 0.161 * Math.sin(angle) * (0.91 + 0.2 * h + winding);
+      const color = tint.map(c => 0.24 + (0.69 + winding * 0.6) * c) as V3;
+      matte.rawVertex([x + lean * h + r * Math.cos(a), baseY + h * height, z + r * Math.sin(a)], Y, k / sides, h, color);
+    }
+  }
+  const top = matte.rawVertex([x + lean, baseY + height, z], Y, 0.5, 1, CREAM);
+  for (let k = 0; k < sides; k++) {
+    const next = (k + 1) % sides;
+    let ring = bottom + 1;
+    matte.idx.push(bottom, ring + k, ring + next);
+    for (let j = 1; j < rings - 1; j++, ring += sides) {
+      matte.idx.push(ring + k, ring + sides + k, ring + next, ring + next, ring + sides + k, ring + sides + next);
+    }
+    matte.idx.push(ring + k, top, ring + next);
+  }
+  matte.smoothNormals(bottom);
+}
 
 /** The booth's parts as merged geometry per material (the goods and the awning stand out of the plaster). */
 export function buildBooth(s: BoothSpec) {
@@ -76,11 +149,9 @@ export function buildBooth(s: BoothSpec) {
   wood.box([x, sill - 0.02, fz + 0.05], X, Y, ww / 2 + 0.15, 0.05, 0.1, timber);
   // the counter: a thick plank over the sill, reaching out, on two brackets
   const counterZ = z + hz + 0.28;
+  const counterTop = sill + 0.11;
   wood.box([x, sill + 0.06, counterZ], X, Y, ww / 2 + 0.3, 0.05, 0.38, [0.55, 0.36, 0.2]);
   for (const sx of [-1, 1]) wood.box([x + sx * (ww / 2 + 0.05), sill - 0.22, z + hz + 0.14], X, Y, 0.05, 0.26, 0.2, timber);
-  // the shutter flap, propped open above the window on two stays
-  const flap: V3 = [0, 0.9, -0.43];
-  wood.box([x, lintel + 0.38, z + hz + 0.34], X, [flap[0], 0.98, 0.2], ww / 2 + 0.08, 0.04, 0.3, [0.28, 0.4, 0.55]);
   // inside the window: a back shelf with jars / tickets, so the opening has depth
   wood.box([x, 1.85, z - hz + t + 0.12], X, Y, ww / 2 - 0.1, 0.035, 0.12, timber);
   wood.box([x, 2.2, z - hz + t + 0.12], X, Y, ww / 2 - 0.1, 0.035, 0.12, timber);
@@ -92,36 +163,37 @@ export function buildBooth(s: BoothSpec) {
     const cols: V3[] = [[0.96, 0.5, 0.6], [0.98, 0.82, 0.3], [0.5, 0.78, 0.95], [0.6, 0.85, 0.5], [0.85, 0.6, 0.95]];
     for (let i = 0; i < 7; i++) jar(x - ww / 2 + 0.25 + i * ((ww - 0.5) / 6), 1.885, z - hz + t + 0.12, cols[i % cols.length]!);
     for (let i = 0; i < 6; i++) jar(x - ww / 2 + 0.32 + i * ((ww - 0.64) / 5), 2.235, z - hz + t + 0.12, cols[(i + 2) % cols.length]!);
-    // cotton candy on the counter: paper cones with soft puffs, and striped cups
+    wood.box([x, counterTop + 0.035, counterZ], X, Y, ww / 2 - 0.15, 0.035, 0.085, timber, 0.65);
     for (let i = 0; i < 5; i++) {
       const cxp = x - ww / 2 + 0.32 + i * ((ww - 0.64) / 4);
-      goods.cylinder([cxp, sill + 0.11, counterZ], [cxp, sill + 0.4, counterZ], 0.025, 0.1, 8, CREAM, true);
-      const puff = cols[i % cols.length]!;
-      goods.cylinder([cxp, sill + 0.4, counterZ], [cxp, sill + 0.66, counterZ], 0.13, 0.17, 10, [puff[0] * 0.55 + 0.45, puff[1] * 0.55 + 0.45, puff[2] * 0.55 + 0.45], true);
-      goods.cylinder([cxp, sill + 0.66, counterZ], [cxp, sill + 0.74, counterZ], 0.17, 0.08, 10, [puff[0] * 0.5 + 0.5, puff[1] * 0.5 + 0.5, puff[2] * 0.5 + 0.5], true);
+      goods.cylinder([cxp, counterTop + 0.07, counterZ], [cxp, counterTop + 0.27, counterZ], 0.012, 0.022, 8, CREAM);
+      addCandyFloss(cloth, cxp, counterTop + 0.23, counterZ, cols[i]!, i);
     }
     for (let i = 0; i < 3; i++) {
       const cxp = x + 0.2 + i * 0.28 - 0.28;
-      goods.cylinder([cxp, sill + 0.11, counterZ + 0.22], [cxp, sill + 0.3, counterZ + 0.22], 0.07, 0.05, 10, i % 2 ? [0.86, 0.3, 0.3] : CREAM, true);
+      const body: V3 = i % 2 ? [0.65, 0.14, 0.12] : CREAM;
+      addLathe(goods, cxp, counterZ + 0.22, [[0.045, 0], [0.064, 0.15], [0.068, 0.153], [0.067, 0.159], [0.061, 0.159], [0.043, 0.009], [0, 0.009]], body, 1, 12, counterTop);
     }
   } else {
     const cols: V3[] = [[0.92, 0.35, 0.3], [0.3, 0.4, 0.85], [0.95, 0.8, 0.3]];
     // stacks of tickets (little blocks), a brass bell, a small cash drawer
-    for (let i = 0; i < 5; i++) for (let k = 0; k < 3; k++) goods.box([x - ww / 2 + 0.3 + i * 0.28, 1.885 + k * 0.08, z - hz + t + 0.12], X, Y, 0.09, 0.035, 0.06, cols[(i + k) % 3]!);
-    for (let i = 0; i < 4; i++) goods.box([x + 0.3 + i * 0.18 - 0.2, 2.24, z - hz + t + 0.12], X, Y, 0.07, 0.07, 0.05, cols[i % 3]!);
-    for (let i = 0; i < 6; i++) goods.box([x - ww / 2 + 0.3 + i * 0.22, sill + 0.14 + (i % 2) * 0.01, counterZ], X, Y, 0.1, 0.012 + 0.02 * (i % 3), 0.07, CREAM);
-    goods.cylinder([x + ww / 2 - 0.35, sill + 0.11, counterZ], [x + ww / 2 - 0.35, sill + 0.2, counterZ], 0.13, 0.1, 14, [0.88, 0.7, 0.28], true);
-    goods.cylinder([x + ww / 2 - 0.35, sill + 0.2, counterZ], [x + ww / 2 - 0.35, sill + 0.27, counterZ], 0.1, 0.03, 14, [0.92, 0.75, 0.3], true);
-    goods.box([x - 0.1, sill + 0.2, counterZ + 0.1], X, Y, 0.28, 0.11, 0.17, [0.3, 0.2, 0.14]);
+    for (let i = 0; i < 5; i++) for (let k = 0; k < 3; k++) goods.box([x - ww / 2 + 0.3 + i * 0.28, 1.92 + k * 0.07, z - hz + t + 0.12], X, Y, 0.09, 0.035, 0.06, cols[(i + k) % 3]!);
+    for (let i = 0; i < 4; i++) goods.box([x + 0.1 + i * 0.18, 2.305, z - hz + t + 0.12], X, Y, 0.07, 0.07, 0.05, cols[i % 3]!);
+    for (let i = 0; i < 3; i++) {
+      const paperX = x - ww / 2 + 0.2 + i * 0.2;
+      const paperH = 0.018 + i * 0.007;
+      goods.box([paperX, counterTop + paperH / 2, counterZ + 0.06], X, Y, 0.08, paperH / 2, 0.046, CREAM);
+      goods.box([paperX + 0.048, counterTop + paperH + 0.001, counterZ + 0.06], X, Y, 0.005, 0.001, 0.046, cols[i]!);
+    }
+    const bellX = x + ww / 2 - 0.3;
+    const brass: V3 = [0.82, 0.58, 0.21];
+    addLathe(goods, bellX, counterZ, [[0.106, 0], [0.116, 0.009], [0.116, 0.023], [0.084, 0.031]], [0.13, 0.11, 0.09], 1, 18, counterTop);
+    addLathe(goods, bellX, counterZ, [[0.08, 0.029], [0.104, 0.036], [0.101, 0.054], [0.086, 0.084], [0.061, 0.104], [0.03, 0.114], [0.012, 0.116], [0.012, 0.136], [0.03, 0.14], [0.026, 0.15], [0, 0.151]], brass, 1, 18, counterTop);
+    wood.box([x + 0.12, counterTop + 0.093, counterZ - 0.06], X, Y, 0.25, 0.093, 0.16, timber, 0.65);
+    wood.box([x + 0.12, counterTop + 0.083, counterZ + 0.104], X, Y, 0.23, 0.058, 0.009, [0.58, 0.41, 0.25], 0.65);
+    goods.cylinder([x + 0.12, counterTop + 0.085, counterZ + 0.11], [x + 0.12, counterTop + 0.085, counterZ + 0.14], 0.012, 0.018, 8, brass, true);
   }
-  // the striped awning over the window: sloped slabs and a scalloped valance
-  const stripes = Math.round((ww + 0.6) / 0.3);
-  for (let i = 0; i < stripes; i++) {
-    const col = i % 2 ? s.stripes[1] : s.stripes[0];
-    const px = x - ww / 2 - 0.3 + (i + 0.5) * ((ww + 0.6) / stripes);
-    cloth.box([px, lintel + 0.4, z + hz + 0.56], X, [0, 0.9553, -0.2955], (ww + 0.6) / stripes / 2, 0.02, 0.62, col);
-    cloth.box([px, lintel + 0.02 - (i % 2) * 0.03, z + hz + 1.14], X, Y, (ww + 0.6) / stripes / 2, 0.11 + (i % 2) * 0.03, 0.02, col);
-  }
+  addAwning(cloth, goods, x, z + hz, ww + 0.6, s.stripes);
   // a tiled hip roof with a deep overhang, a ridge cap, fascia and a finial
   const over = 0.55;
   const rise = 1.15;
@@ -162,8 +234,8 @@ export function Booth({ all, spec }: { all: Texture[]; spec: BoothSpec }) {
       <mesh geometry={built.plaster} material={plasterMat} castShadow receiveShadow />
       <mesh geometry={built.roof} material={roofMat} castShadow receiveShadow />
       <mesh geometry={built.wood} material={woodMat} castShadow receiveShadow />
-      <mesh geometry={built.cloth} material={clothMat} castShadow />
-      <mesh geometry={built.goods} material={goodsMat} castShadow />
+      <mesh geometry={built.cloth} material={clothMat} castShadow receiveShadow />
+      <mesh geometry={built.goods} material={goodsMat} castShadow receiveShadow />
       {/* the signboard, standing on the eave in front of the roof */}
       <mesh position={[x, built.signY, built.signZ]} material={woodMat} castShadow>
         <boxGeometry args={[Math.min(w + 0.7, 3.1), 0.66, 0.07]} />

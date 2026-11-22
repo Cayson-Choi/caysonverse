@@ -43,7 +43,10 @@ describe("memorial client helpers", () => {
 
   it("names a cubby the way the card says it", () => {
     expect(slotLabel("M1-A-r3-c11")).toBe("A구역 4단 12번");
-    expect(slotLabel("M1-E-r0-c00")).toBe("E구역 1단 1번");
+    // the zone is the signs' letter in walking order (owner 2026-11-20): ids A, C, B, E read A, B, C, D
+    expect(slotLabel("M1-C-r0-c02")).toBe("B구역 1단 3번");
+    expect(slotLabel("M1-B-r7-c13")).toBe("C구역 8단 14번");
+    expect(slotLabel("M1-E-r0-c00")).toBe("D구역 1단 1번");
     expect(slotLabel("nope")).toBe("");
   });
 

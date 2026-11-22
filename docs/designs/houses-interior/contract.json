@@ -337,8 +337,8 @@
   "budget": {
     "glb": {
       "maxBytes": 1048576,
-      "maxTriangles": 45000,
-      "maxMaterials": 24,
+      "maxTriangles": 54000,
+      "maxMaterials": 56,
       "maxTextureSide": 2048
     },
     "props": {

@@ -1,0 +1,112 @@
+/* 케이슨랜드로 가는 중 화면 (AreaLoadingOverlay). 스피너·막대 움직임은 transform/opacity 만 써서 메인 스레드가 막혀도(셰이더 컴파일·텍스처 올리기) 계속 돌아간다. */
+.cv-aload {
+  position: fixed;
+  inset: 0;
+  z-index: 47; /* 문 장막(45)·집 덮개(46) 위, 입장 로딩(58)·메뉴(60) 아래 */
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  box-sizing: border-box;
+  background: radial-gradient(ellipse at 50% 38%, #26275a 0%, #14142b 55%, #0b0b14 100%);
+  font-family: "Noto Sans KR", system-ui, sans-serif;
+  color: #f3efea;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  opacity: 1;
+  will-change: opacity;
+}
+.cv-aload.is-closing {
+  opacity: 0;
+  transition: opacity 450ms ease-out;
+}
+.cv-aload-card {
+  width: min(360px, 100%);
+  text-align: center;
+}
+.cv-aload-spinner {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 22px;
+}
+.cv-aload-orbit {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  will-change: transform, opacity;
+  transform: rotate(0deg);
+  animation: cv-aload-orbit 2.2s cubic-bezier(0.3, 0.1, 0.4, 0.95) infinite;
+}
+.cv-aload-orbit i {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #b9a3ff, #8b5cf6);
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.8);
+}
+@keyframes cv-aload-orbit {
+  0% { transform: rotate(0deg); opacity: 0; }
+  8% { opacity: 1; }
+  55% { transform: rotate(240deg); opacity: 1; }
+  92% { opacity: 1; }
+  100% { transform: rotate(520deg); opacity: 0; }
+}
+.cv-aload-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.cv-aload-sub {
+  min-height: 1.5em;
+  margin: 8px 0 20px;
+  font-size: 14px;
+  color: #cfc9f5;
+  animation: cv-aload-sub-in 400ms ease-out;
+}
+@keyframes cv-aload-sub-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.cv-aload-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: #2a2c52;
+  overflow: hidden;
+}
+.cv-aload-fill {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4b4fd8, #8b5cf6);
+  transform-origin: left center;
+  transition: transform 600ms ease-out;
+  overflow: hidden;
+  will-change: transform;
+}
+.cv-aload-shine {
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  will-change: transform;
+  animation: cv-aload-shine 1.3s ease-in-out infinite;
+}
+@keyframes cv-aload-shine {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(260%); }
+}
+@media (max-height: 420px) {
+  .cv-aload-spinner { width: 48px; height: 48px; margin-bottom: 12px; }
+  .cv-aload-title { font-size: 18px; }
+  .cv-aload-sub { margin: 4px 0 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cv-aload-shine { animation: none; }
+}

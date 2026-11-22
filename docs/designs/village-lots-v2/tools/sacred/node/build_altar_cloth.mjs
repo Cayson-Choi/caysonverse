@@ -28,16 +28,16 @@ const lin = { pos: [], nor: [], uv: [], idx: [] }, gold = { pos: [], nor: [], uv
 const W = X1 - X0, DEP = Z1 - Z0;
 const fold = (x, drop) => 0.016 * Math.sin((2 * Math.PI * x) / 0.21 + 0.6) * drop + 0.008 * Math.sin((2 * Math.PI * x) / 0.083) * drop;
 // top (very faintly crumpled)
-grid((u, v) => [X0 + u * W, TOP + 0.002 * Math.sin(u * 40) * Math.sin(v * 25), Z0 + v * DEP], 40, 12, lin, true);
+grid((u, v) => [X0 + u * W, TOP + 0.002 * Math.sin(u * 40) * Math.sin(v * 25), Z0 + v * DEP], 16, 6, lin, true);
 // front drop (faces -z), 0.62 m down to 0.85, hem band 4 cm
 const FD = 0.52;
-grid((u, v) => { const x = X0 + u * W, d = v * FD; return [x, TOP - d - 0.004 * v, Z0 - 0.004 - fold(x, Math.min(1, d / 0.1 + 0.1)) - 0.012 * v]; }, 120, 14, lin, false);
+grid((u, v) => { const x = X0 + u * W, d = v * FD; return [x, TOP - d - 0.004 * v, Z0 - 0.004 - fold(x, Math.min(1, d / 0.1 + 0.1)) - 0.012 * v]; }, 90, 8, lin, false);
 // side drops, shorter (0.34)
-for (const [x, s] of [[X0, -1], [X1, 1]]) grid((u, v) => { const z = Z0 + u * DEP, d = v * 0.34; return [x + s * (0.004 + 0.012 * v + 0.008 * Math.sin((2 * Math.PI * z) / 0.19) * v), TOP - d, z]; }, 40, 10, lin, s === 1);
+for (const [x, s] of [[X0, -1], [X1, 1]]) grid((u, v) => { const z = Z0 + u * DEP, d = v * 0.34; return [x + s * (0.004 + 0.012 * v + 0.008 * Math.sin((2 * Math.PI * z) / 0.19) * v), TOP - d, z]; }, 18, 6, lin, s === 1);
 // gold hem on the front and sides, and a gold band 6 cm in from the front edge on the top
-grid((u, v) => { const x = X0 + u * W, d = FD - 0.045 + v * 0.045; return [x, TOP - d - 0.004, Z0 - 0.006 - fold(x, 1) - 0.012 * (d / FD) - 0.003]; }, 120, 2, gold, false);
-for (const [x, s] of [[X0, -1], [X1, 1]]) grid((u, v) => { const z = Z0 + u * DEP, d = 0.295 + v * 0.045; return [x + s * (0.006 + 0.012 * (d / 0.34) + 0.0025), TOP - d, z]; }, 40, 2, gold, s === 1);
-grid((u, v) => [X0 + u * W, TOP + 0.0035, Z0 + 0.04 + v * 0.03], 40, 1, gold, true);
+grid((u, v) => { const x = X0 + u * W, d = FD - 0.045 + v * 0.045; return [x, TOP - d - 0.004, Z0 - 0.006 - fold(x, 1) - 0.012 * (d / FD) - 0.003]; }, 90, 1, gold, false);
+for (const [x, s] of [[X0, -1], [X1, 1]]) grid((u, v) => { const z = Z0 + u * DEP, d = 0.295 + v * 0.045; return [x + s * (0.006 + 0.012 * (d / 0.34) + 0.0025), TOP - d, z]; }, 14, 1, gold, s === 1);
+grid((u, v) => [X0 + u * W, TOP + 0.0035, Z0 + 0.04 + v * 0.03], 16, 1, gold, true);
 
 const doc = new Document();
 const buf = doc.createBuffer();

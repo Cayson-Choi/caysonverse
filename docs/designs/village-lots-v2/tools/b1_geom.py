@@ -67,6 +67,8 @@ def hexc(h):
 
 # ------------------------------------------------------------------------------------------------ surface --
 
+LOD = 1.0   # the round sections' side count scale (a phone LOD sets it below 1; see Mesh.lathe)
+
 class S:
     """A surface: material name, tint (linear RGB), an optional U direction (texture courses run along it), a UV scale
     (UV units per metre, 1 = real size) and a UV offset (so neighbouring parts do not repeat the same patch)."""
@@ -255,6 +257,8 @@ class Mesh:
 
     def lathe(self, prof, n, s, cx=0.0, cz=0.0, y0=0.0, cap_top=False, cap_bottom=False, sx=1.0, sz=1.0, phase=0.0, smooth=True):
         """Revolve [(r, y)] (bottom to top) round a vertical axis; arc-length / height UVs."""
+        if LOD < 1.0 and n > 8:
+            n = max(8, int(round(n * LOD)))   # (a phone LOD: a kit sets G.LOD; the round sections keep their read at fewer sides)
         rings = []
         for r, y in prof:
             rings.append([(cx + r * math.cos(phase + 2 * math.pi * i / n) * sx, y0 + y, cz - r * math.sin(phase + 2 * math.pi * i / n) * sz) for i in range(n)])
@@ -285,6 +289,8 @@ class Mesh:
 
     def tube(self, path, r, n, s, caps=False):
         """A round tube along a polyline (rings perpendicular to the path)."""
+        if LOD < 1.0 and n > 4:
+            n = max(4, int(round(n * LOD)))
         rings = []
         for i, p in enumerate(path):
             if i == 0:

@@ -1,6 +1,8 @@
 import { BufferAttribute, Color, Matrix4, RepeatWrapping, SRGBColorSpace, Vector3, type InstancedMesh, type Material, type Mesh, type MeshBasicMaterial, type Object3D, type Texture } from "three";
+import { isHouseMirrorMaterial, splitMirrorMesh } from "./houseMirror";
+import { isLampShadeMaterial, prepareShadeMesh, type HouseLamp } from "./houseLampGlow";
 import { COLLIDER_PREFIX, LIGHTMAP_MATERIAL_PREFIX, configureLightmap, isMesh, lightmapMaterial, materialsOf } from "../game/hub/hubModelPrep";
-import { HOUSE_FLOORS, HOUSE_NODE, houseFiles, type HouseFloor, type HouseNumber } from "@caysonverse/shared/village/houseAreas";
+import { HOUSE_FLOORS, HOUSE_NODE, houseFiles, houseFloorBounds, type HouseFloor, type HouseNumber } from "@caysonverse/shared/village/houseAreas";
 import { freeTexture } from "./villageModelPrep";
 import { HOUSE_REMOVED_PIECES } from "@caysonverse/shared/village/houseFixes";
 
@@ -27,7 +29,7 @@ export const HOUSE_VIEW_MATERIAL = "M_view";
  * `export_materials`) — every `E_H_*` but the lamp, the lamp shade and the glass carries the light map on its second UV set.
  */
 const HB_PREFIX = "E_H_";
-const HB_DIRECT = new Set(["E_H_lamp", "E_H_shade", "E_H_glass"]);
+const HB_DIRECT = new Set(["E_H_lamp", "E_H_shade", "E_H_glass", "E_H_mirror"]);
 /** The lit-from-within materials (bulbs, lamp shades): drawn as they are, a little dimmer by day (patchHouseGlowMaterial). */
 const GLOW = new Set(["M_lamp", "M_shade", "E_H_lamp", "E_H_shade"]);
 
@@ -220,9 +222,19 @@ export function dressLoadedHouse(scene: Object3D, n: HouseNumber): void {
   const b = new Vector3();
   const c = new Vector3();
   const cuts = HOUSE_REMOVED_PIECES.filter((q) => q.n === n);
+  const mirrors: Mesh[] = [];
+  const lamps: HouseLamp[] = [];
   scene.traverse((o) => {
     if (!isMesh(o) || Array.isArray(o.material) || (o as InstancedMesh).isInstancedMesh) return;
     const m = o.material as MeshBasicMaterial;
+    if (isLampShadeMaterial(m.name)) {
+      lamps.push(...prepareShadeMesh(o, a)); // lit-fabric shades: the rim-to-top gradient and the floor lamps' places (houseLampGlow.ts)
+      return;
+    }
+    if (isHouseMirrorMaterial(m.name)) {
+      mirrors.push(o); // mirror glass: split into one mesh per mirror, each a live reflector (houseMirror.ts)
+      return;
+    }
     if (m.name === HOUSE_VIEW_MATERIAL) {
       m.color.set("#ffffff");
       return;
@@ -284,6 +296,14 @@ export function dressLoadedHouse(scene: Object3D, n: HouseNumber): void {
     }
     o.material = [m, cm];
   });
+  scene.userData.houseLamps = lamps;
+  // the mirrors: one mesh each (after the walk: it changes the tree), looking into the room of the floor they hang on
+  for (const o of mirrors) {
+    let floor: HouseFloor = 1;
+    for (let q: Object3D | null = o; q; q = q.parent) for (const f of HOUSE_FLOORS) if (q.name === HOUSE_NODE.floor(n, f)) floor = f;
+    const b = houseFloorBounds(n, floor);
+    splitMirrorMesh(o, new Vector3((b.minX + b.maxX) / 2, 1.4, (b.minZ + b.maxZ) / 2));
+  }
 }
 
 /**

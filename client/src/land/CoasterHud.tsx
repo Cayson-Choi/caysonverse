@@ -2,25 +2,34 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { isTouchDevice } from "../device";
 import { getRoom, sendRideLeave } from "../net/connection";
 import { VillageServerMsg, type RideNoticePayload } from "@caysonverse/shared/village/messages";
-import { COASTER_DWELL_MS, COASTER_SEATS } from "@caysonverse/shared/land/coaster";
+import { COASTER_DWELL_MS } from "@caysonverse/shared/land/coaster";
 import { CAROUSEL_DWELL_MS } from "@caysonverse/shared/land/carousel";
+import { MOON_DWELL_MS } from "@caysonverse/shared/land/moonBoat";
+import { DROP_DWELL_MS, dropAt } from "@caysonverse/shared/land/dropTower";
 import { coasterNow, landPose, rideComfort, rideNotice, rideReserved, selfRide, setRideComfort, subscribeRideComfort, type RideComfort } from "./coasterRide";
 import { rideMuted, setRideMuted } from "./coasterAudio";
+import { useSoundStore } from "../stores/soundStore";
 import { useLocalArea } from "../village/villageArea";
-import { RIDES, msUntilBoarding, rideById } from "@caysonverse/shared/land/rides";
+import { RIDES, msUntilBoarding, rideById, type RideDef } from "@caysonverse/shared/land/rides";
 import { villageClock } from "../village/villageClock";
 import { boardRide } from "./rideBoardWalk";
-import { useParkReady } from "./parkReady";
+import { rideSchedule } from "./rideSchedule";
 import { wheelSeatPose } from "@caysonverse/shared/land/wheel";
+import { moonSeatPref, setMoonSeatPref, subscribeMoonSeatPref } from "./moonSeatPref";
+import "./ridePanel.css";
 
-const NOTICE_TEXT = {
-  closed: "지금은 탈 수 없어요. 다음 출발을 기다려 주세요.",
-  full: `자리가 가득 찼어요. 다음 번에 타요. (${COASTER_SEATS}석 이하)`,
+/** What a refused board says: one short line, shown once in the panel's toast (a reservation is shown by the status line, never repeated here). */
+const NOTICE_TEXT: Record<Exclude<RideNoticePayload["reason"], "reserved">, string> = {
+  closed: "지금은 탈 수 없어요. 다음 출발을 기다려요.",
+  full: "자리가 가득 찼어요. 다음 번에 타요.",
   busy: "앉아 있거나 버스·낚시 중에는 탈 수 없어요.",
-  aloft: "높이 떠 있을 땐 내릴 수 없어요. 바닥에 닿으면 내릴 수 있어요.",
-  reserved: "자리를 맡아뒀어요. 다음 탑승 때 자동으로 타요.",
+  aloft: "높이 떠 있을 땐 내릴 수 없어요.",
   far: "탑승 위치로 가까이 가 주세요.",
-} as const;
+};
+
+/** The ride's icon (a ride added later falls back to the coaster's). */
+const RIDE_ICON: Record<string, string> = { coaster: "🎢", carousel: "🎠", wheel: "🎡", moonboat: "🌙", droptower: "☁️" };
+export const rideIcon = (key: string): string => RIDE_ICON[key] ?? "🎢";
 
 /** Re-render ~4 times a second (the countdown). */
 function useTick(ms = 250): void {
@@ -34,32 +43,17 @@ function useTick(ms = 250): void {
 const COMFORT_LABEL: Record<RideComfort, string> = { 0: "움직임 끔", 1: "움직임 약하게", 2: "움직임 실감나게" };
 const COMFORT_SHORT: Record<RideComfort, string> = { 0: "흔들 끔", 1: "흔들 약", 2: "흔들 강" };
 
-const box = {
-  marginTop: 8,
-  padding: "8px 10px",
-  borderRadius: 10,
-  background: "rgba(20, 28, 52, 0.84)",
-  color: "#fff",
-  fontSize: isTouchDevice ? 12 : 12.5,
-  lineHeight: 1.35,
-  pointerEvents: "auto" as const,
-  maxWidth: isTouchDevice ? 200 : 240,
-};
-const btn = {
-  border: 0,
-  borderRadius: 8,
-  padding: "6px 10px",
-  cursor: "pointer",
-  fontSize: isTouchDevice ? 14 : 13,
-  background: "rgba(255,255,255,0.93)",
-  color: "#1b2147",
-  minHeight: isTouchDevice ? 48 : 34,
-} as const;
+/** The longest a wait has been seen to be (per ride): the bar fills as the wait runs down. */
+const waitSeen = { key: "", max: 1 };
+
+/** How far (m) a ride's pad may be and its button still reads as "타기" (past it: the walk). */
+const NEAR_M = 45;
 
 /**
- * The coaster's panel in the HUD column. TEMPORARY TEST ENTRY (DESIGN.md section 9): mounted only with `?land=coaster` in the address;
- * shows the next departure and a boarding button wherever you stand (phase 2 puts boarding at the park's queue gate, by walking in).
- * Riding: the way off (always there), the comfort setting, the sound switch, and what the ride is doing.
+ * The park's ride panel in the HUD column: the ride in question (the one I sit on, else the nearest) as a card: its icon and name, ONE status line (the
+ * countdown, or the reservation, with a bar), one primary button that says what the press does (타기 / 자리 맡기 / 자리 취소 / 걸어가서 타기), one hint line,
+ * and the other rides as compact rows (icon and name left, distance right). Riding: the way off (always there), the comfort setting and the sound switch.
+ * Styles: ridePanel.css (no text selection, no wrapping, nothing clipped).
  */
 export function CoasterHud() {
   const pose = landPose;
@@ -86,15 +80,20 @@ export function CoasterHud() {
     });
   }, []);
   const comfort = useSyncExternalStore(subscribeRideComfort, rideComfort, rideComfort);
-  const [muted, setMuted] = useState(rideMuted());
-  // a phone keeps the panel small (it lies over the ground a thumb taps): the other rides are behind one button
+  const seatPref = useSyncExternalStore(subscribeMoonSeatPref, moonSeatPref, moonSeatPref);
+  const [rideOnlyMuted, setMuted] = useState(rideMuted());
+  // the menu's master 소리 switch silences the rides too; the panel's button then shows (and undoes) that
+  const masterMuted = useSoundStore((s) => s.muted);
+  const muted = rideOnlyMuted || masterMuted;
+  // a phone keeps the card small (it lies over the ground a thumb taps): the whole card folds to its title and status, and the other rides sit behind one row
   const [more, setMore] = useState(false);
+  const [folded, setFolded] = useState(false);
   const riding = selfRide.slot >= 0;
-  // the ride in question: the one I sit on, else the nearest whose boarding pad is within sight (70 m)
+  // the ride in question: the one I sit on, else the nearest whose boarding pad is within sight (the whole park: the nearest ride is always shown, with the way to it)
   const wall = villageClock.liveMs();
-  let def = riding ? (rideById(selfRide.ride) ?? RIDES[0]!) : null;
+  let def: RideDef | null = riding ? (rideById(selfRide.ride) ?? RIDES[0]!) : null;
   if (!def && area === "park") {
-    let best = 400; // the whole park: the nearest ride is always shown, with the way to it
+    let best = 400;
     for (const r of RIDES) {
       if (r.seats <= 0) continue;
       const d = Math.hypot(pose.x - r.pad.x, pose.z - r.pad.z);
@@ -111,89 +110,164 @@ export function CoasterHud() {
   }
   const now = def ? def.statusAt(wall) : coasterNow();
   const secs = Math.max(0, Math.ceil(now.departsInMs / 1000));
-  const noticeFresh = rideNotice.reason !== null && performance.now() - rideNotice.at < 4500;
-  const icon = def?.key === "carousel" ? "🎠" : def?.key === "wheel" ? "🎡" : "🎢";
   const isCoaster = !def || def.key === "coaster";
-  const waitMs = def && now.status !== "boarding" ? msUntilBoarding(def, wall) : null;
-  const waitSecs = waitMs === null ? null : Math.max(1, Math.ceil(waitMs / 1000));
   const isWheel = def?.key === "wheel";
-  const padDist = def ? Math.hypot(landPose.x - def.pad.x, landPose.z - def.pad.z) : 0;
-  const ddx = def ? def.pad.x - landPose.x : 0;
-  const ddz = def ? def.pad.z - landPose.z : 0;
-  // the compass's words: north is -z, east +x
-  const dirWord = `${Math.abs(ddz) > Math.abs(ddx) * 0.45 ? (ddz < 0 ? "북" : "남") : ""}${Math.abs(ddx) > Math.abs(ddz) * 0.45 ? (ddx > 0 ? "동" : "서") : ""}`;
   const aloft = riding && !!def?.canLeave && !def.canLeave(selfRide.slot, wall);
+
   if (!riding) {
     if (!def) return null;
+    const padDist = Math.hypot(landPose.x - def.pad.x, landPose.z - def.pad.z);
+    const near = padDist <= NEAR_M;
+    const boarding = now.status === "boarding";
+    const reserved = rideReserved.key === def.key;
+    const waitMs = !boarding ? msUntilBoarding(def, wall) : null;
+    const waitSecs = waitMs === null ? null : Math.max(1, Math.ceil(waitMs / 1000));
+    // the bar: how far the boarding window has run (open), or how far the wait has run down
+    let frac = 0;
+    if (boarding) frac = now.phase / Math.max(1, now.phase + now.departsInMs);
+    else if (waitMs !== null) {
+      if (waitSeen.key !== def.key || waitMs > waitSeen.max) {
+        waitSeen.key = def.key;
+        waitSeen.max = Math.max(waitMs, 1);
+      }
+      frac = 1 - waitMs / waitSeen.max;
+    }
+    let line: string;
+    // a reserved seat is NOT a seat: the rider waits on the pad until the vehicle stands in its station and the loading begins (the server seats then)
+    const vehicle = def.key === "coaster" ? "열차가" : def.key === "carousel" ? "회전목마가" : def.key === "wheel" ? "곤돌라가" : def.key === "moonboat" ? "달배가" : "낙하탑이";
+    if (rideSchedule.skew) line = "놀이기구 시간표가 서버와 달라요";
+    else if (reserved) line = now.status === "unloading" ? `자리 맡음 · 내리는 중이에요 · 곧 타요` : waitSecs !== null ? `자리 맡음 · ${vehicle} 도착하면 타요 · ${waitSecs}초 뒤` : "자리 맡음 · 곧 탑승해요";
+    else if (boarding) line = `탑승 중 · ${secs}초 뒤 출발`;
+    else line = waitSecs !== null ? `다음 탑승까지 ${waitSecs}초` : "잠시 쉬는 중이에요";
+    const label = reserved ? "자리 취소" : !near ? "걸어가서 타기" : boarding ? "타기" : "자리 맡기";
+    const ddx = def.pad.x - landPose.x;
+    const ddz = def.pad.z - landPose.z;
+    // the compass's words: north is -z, east +x
+    const dirWord = `${Math.abs(ddz) > Math.abs(ddx) * 0.45 ? (ddz < 0 ? "북" : "남") : ""}${Math.abs(ddx) > Math.abs(ddz) * 0.45 ? (ddx > 0 ? "동" : "서") : ""}`;
+    const hint = rideSchedule.skew
+      ? "새로고침하거나 잠시 뒤 다시 와 주세요"
+      : reserved
+      ? "탑승 위치에서 기다려요"
+      : !near
+        ? `${dirWord}쪽 ${Math.round(padDist)}m · 놀이기구를 눌러도 가요`
+        : !boarding
+          ? "자리를 맡으면 열릴 때 자동으로 타요"
+          : isTouchDevice
+            ? "타기 버튼을 눌러야 타요"
+            : "타기 버튼이나 E 키를 눌러야 타요";
+    // a refused board: one toast, once (a reservation is the status line's business)
+    const fresh = rideNotice.reason !== null && rideNotice.reason !== "reserved" && performance.now() - rideNotice.at < 4500;
+    const others = RIDES.filter((r) => r.seats > 0 && r.key !== def!.key);
+    const showList = !folded && (!isTouchDevice || more);
     return (
-      <div style={box} data-testid="coaster-hud">
-        <div>
-          {icon} {def.name}
-        </div>
-        <div style={{ opacity: 0.8 }}>
-          {now.status === "boarding" && `탑승 중 · ${secs}초 뒤 출발`}
-          {now.status === "gate" && `곧 출발해요 (${secs}초) · 다음 탑승을 기다려요`}
-          {(now.status === "unloading" || now.status === "riding" || now.status === "gate") && waitSecs !== null && (
-            <div data-testid="ride-countdown">{rideReserved.key === def.key ? `자리를 맡았어요 · ${waitSecs}초 뒤 자동 탑승` : `다음 탑승까지 ${waitSecs}초`}</div>
-          )}
-        </div>
-        <div style={{ opacity: 0.7 }}>
-          {padDist > 45 ? `${dirWord} 쪽으로 ${Math.round(padDist)}m · 놀이기구를 눌러도 걸어가요` : isTouchDevice ? "놀이기구를 누르거나 타기 버튼을 눌러요" : "놀이기구를 누르거나 E 키를 눌러요"}
-        </div>
-        <button type="button" data-testid={`ride-go-${def.key}`} style={{ ...btn, marginTop: 6, width: "100%", fontSize: 13 }} onClick={() => boardRide(def!.key, landPose.x, landPose.z)}>
-          {padDist > 45 ? "걸어가서 타기" : "타기"}
-        </button>
-        {isTouchDevice ? (
-          <button type="button" data-testid="ride-more" style={{ ...btn, marginTop: 4, width: "100%", fontSize: 12, background: "rgba(255,255,255,0.2)", color: "#fff" }} onClick={() => setMore(!more)}>
-            {more ? "다른 놀이기구 접기 ▲" : "다른 놀이기구 ▼"}
-          </button>
-        ) : null}
-        {(!isTouchDevice || more ? RIDES.filter((r) => r.seats > 0 && r.key !== def!.key) : []).map((r) => {
-          const od = Math.hypot(landPose.x - r.pad.x, landPose.z - r.pad.z);
-          return (
-            <button key={r.key} type="button" data-testid={`ride-go-${r.key}`} style={{ ...btn, marginTop: 4, width: "100%", fontSize: 12, textAlign: "left" }} onClick={() => boardRide(r.key, landPose.x, landPose.z)}>
-              {r.key === "carousel" ? "🎠" : r.key === "wheel" ? "🎡" : "🎢"} {r.name} · {Math.round(od)}m · {od > 45 ? "걸어가서 타기" : "타기"}
+      <section className="cv-ride" data-testid="coaster-hud" aria-label={`${def.name} 탑승`}>
+        <header className="cv-ride-head">
+          <span className="cv-ride-ic" aria-hidden="true">{rideIcon(def.key)}</span>
+          <strong className="cv-ride-name">{def.name}</strong>
+          {isTouchDevice ? (
+            <button type="button" className="cv-ride-fold" data-testid="ride-fold" aria-expanded={!folded} aria-label={folded ? "펼치기" : "접기"} onClick={() => setFolded(!folded)}>
+              {folded ? "▾" : "▴"}
             </button>
-          );
-        })}
-        {noticeFresh ? (
-          <div role="alert" data-testid="coaster-notice" style={{ marginTop: 5, background: "rgba(255,196,64,0.28)", borderRadius: 8, padding: "5px 8px" }}>
-            {NOTICE_TEXT[rideNotice.reason!]}
+          ) : null}
+        </header>
+        <div className="cv-ride-status">
+          <div className="cv-ride-line" data-testid="ride-countdown">{line}</div>
+          <div className={"cv-ride-bar" + (reserved ? " is-reserved" : "")} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(frac * 100)}>
+            <i style={{ width: `${Math.round(Math.max(0, Math.min(1, frac)) * 100)}%` }} />
           </div>
+        </div>
+        {folded ? null : (
+          <>
+            {def.key === "moonboat" && !reserved ? (
+              // the moon boat's seat choice (owner 2026-11-20): the end rows swing highest; the middle is the gentle ride
+              <div className="cv-ride-tools" role="group" aria-label="자리 고르기">
+                {(["end", "middle"] as const).map((k) => (
+                  <button key={k} type="button" className="cv-ride-tool" data-testid={`moon-pref-${k}`} aria-pressed={seatPref === k} onClick={() => setMoonSeatPref(k)}>
+                    {k === "end" ? "맨 끝 자리" : "가운데 자리"}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <button
+              type="button"
+              data-testid={`ride-go-${def.key}`}
+              disabled={rideSchedule.skew}
+              className={"cv-ride-primary" + (reserved ? " is-quiet" : "")}
+              onClick={() => {
+                if (reserved) {
+                  sendRideLeave();
+                  rideReserved.key = null;
+                } else boardRide(def!.key, landPose.x, landPose.z);
+              }}
+            >
+              {label}
+            </button>
+            <p className="cv-ride-hint">{hint}</p>
+            {isTouchDevice ? (
+              <button type="button" className="cv-ride-more" data-testid="ride-more" aria-expanded={more} onClick={() => setMore(!more)}>
+                {more ? "다른 놀이기구 접기 ▴" : "다른 놀이기구 ▾"}
+              </button>
+            ) : null}
+            {showList ? (
+              <ul className="cv-ride-list">
+                {others.map((r) => {
+                  const od = Math.hypot(landPose.x - r.pad.x, landPose.z - r.pad.z);
+                  return (
+                    <li key={r.key}>
+                      <button type="button" className="cv-ride-row" data-testid={`ride-go-${r.key}`} disabled={rideSchedule.skew} onClick={() => boardRide(r.key, landPose.x, landPose.z)}>
+                        <span className="cv-ride-ic" aria-hidden="true">{rideIcon(r.key)}</span>
+                        <span className="cv-ride-rname">{r.name}</span>
+                        <span className="cv-ride-dist">{Math.round(od)}m</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+          </>
+        )}
+        {fresh ? (
+          <p role="alert" className="cv-ride-toast" data-testid="coaster-notice">
+            {NOTICE_TEXT[rideNotice.reason as Exclude<RideNoticePayload["reason"], "reserved">]}
+          </p>
         ) : null}
-      </div>
+      </section>
     );
   }
+  // riding: the way off (always there), the comfort setting, the sound switch, and what the ride is doing
+  const state = isWheel
+    ? aloft
+      ? `${Math.round(wheelSeatPose(selfRide.slot, wall).y)}m 높이 · 한 바퀴 돌면 내려요`
+      : "승강장이에요 · 내릴 수 있어요"
+    : now.status === "riding"
+      ? `${Math.max(0, Math.round((now.phase - (isCoaster ? COASTER_DWELL_MS : def?.key === "moonboat" ? MOON_DWELL_MS : def?.key === "droptower" ? DROP_DWELL_MS : CAROUSEL_DWELL_MS)) / 1000))}초 · ${isCoaster ? "안전바를 잡고 있어요" : def?.key === "moonboat" ? "배가 점점 크게 흔들려요" : def?.key === "droptower" ? "어깨 안전바를 잡고 있어요" : "말이 오르내려요"}`
+      : now.status === "gate"
+        ? `곧 출발해요 · ${secs}초`
+        : "출발을 기다리는 중이에요";
   return (
-    <div style={box} data-testid="coaster-ride-hud">
-      <div>
-        {icon} {def?.name} 탑승 중
-      </div>
-      {/* a phone keeps the panel small: the ride is the view */}
+    <section className="cv-ride is-riding" data-testid="coaster-ride-hud" aria-label={`${def?.name ?? ""} 탑승 중`}>
+      <header className="cv-ride-head">
+        <span className="cv-ride-ic" aria-hidden="true">{rideIcon(def?.key ?? "coaster")}</span>
+        <strong className="cv-ride-name">{def?.name}</strong>
+        <span className="cv-ride-badge">탑승 중</span>
+      </header>
+      {/* a phone keeps the card small: the ride is the view */}
       {isTouchDevice ? null : (
-        <>
-          <div style={{ opacity: 0.8 }}>
-            {isWheel
-              ? aloft
-                ? `${Math.round(wheelSeatPose(selfRide.slot, wall).y)}m 높이 · 한 바퀴 돌면 내려요`
-                : "승강장이에요 · 내릴 수 있어요"
-              : now.status === "riding"
-                ? `${Math.max(0, Math.round((now.phase - (isCoaster ? COASTER_DWELL_MS : CAROUSEL_DWELL_MS)) / 1000))}초 · ${isCoaster ? "안전바를 잡고 있어요" : "말이 오르내려요"}`
-                : now.status === "gate"
-                  ? `곧 출발해요 (${secs}초)`
-                  : "출발을 기다리는 중이에요"}
-          </div>
-          <div style={{ marginTop: 4, opacity: 0.7 }}>화면을 끌면 둘러볼 수 있어요</div>
-        </>
+        <div className="cv-ride-status">
+          <div className="cv-ride-line">{state}</div>
+          <p className="cv-ride-hint">화면을 끌면 둘러볼 수 있어요</p>
+        </div>
       )}
-      <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: isCoaster ? "1fr 1fr" : "1fr", gap: 4 }}>
-        {isCoaster ? <button type="button" data-testid="coaster-comfort" style={{ ...btn, fontSize: 12 }} onClick={() => setRideComfort(((comfort + 1) % 3) as RideComfort)}>
+      <div className="cv-ride-tools">
+        {/* every ride's camera reads the comfort setting (the moon boat's tipping horizon, the drop's lens): the switch is on every ride */}
+        <button type="button" className="cv-ride-tool" data-testid="coaster-comfort" onClick={() => setRideComfort(((comfort + 1) % 3) as RideComfort)}>
           {isTouchDevice ? COMFORT_SHORT[comfort] : COMFORT_LABEL[comfort]}
-        </button> : null}
+        </button>
         <button
           type="button"
-          style={{ ...btn, fontSize: 12 }}
+          className="cv-ride-tool"
           onClick={() => {
+            if (masterMuted) useSoundStore.getState().toggleMuted();
             setRideMuted(!muted);
             setMuted(!muted);
           }}
@@ -201,39 +275,9 @@ export function CoasterHud() {
           {muted ? "소리 켜기" : "소리 끄기"}
         </button>
       </div>
-      <button type="button" data-testid="coaster-leave" disabled={aloft} style={{ ...btn, marginTop: 6, width: "100%", background: aloft ? "#e6e1dc" : "#ffd9d2", opacity: aloft ? 0.6 : 1 }} onClick={() => sendRideLeave()}>
-        {aloft ? "높이 떠 있어요" : isWheel ? "내리기" : now.status === "riding" ? "비상 내리기" : "내리기"}
+      <button type="button" data-testid="coaster-leave" disabled={aloft} className={"cv-ride-primary" + (aloft ? "" : " is-danger")} onClick={() => sendRideLeave()}>
+        {aloft ? "높이 떠 있어요" : isWheel ? "내리기" : now.status === "riding" && !(def?.key === "droptower" && dropAt(wall).stage === "rest") ? "비상 내리기" : "내리기"}
       </button>
-    </div>
-  );
-}
-
-/** Until the park's world has loaded: a veil with a short line (so the void is not mistaken for a broken park). */
-export function ParkLoadingVeil() {
-  const area = useLocalArea();
-  const ready = useParkReady();
-  if (area !== "park" || ready) return null;
-  return (
-    <div
-      data-testid="park-loading"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 5,
-        display: "grid",
-        placeItems: "center",
-        background: "linear-gradient(#b8c8e8, #e9eef8)",
-        color: "#26305e",
-        fontSize: 18,
-        fontWeight: 600,
-        pointerEvents: "none",
-      }}
-    >
-      <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 38 }}>🎡</div>
-        <div>케이슨랜드를 불러오는 중이에요…</div>
-        <div style={{ fontSize: 13, fontWeight: 400, opacity: 0.75, marginTop: 6 }}>놀이기구와 꽃밭을 준비하고 있어요</div>
-      </div>
-    </div>
+    </section>
   );
 }

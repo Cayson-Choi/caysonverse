@@ -13,6 +13,7 @@ describe("appStore — village screen and reconnect", () => {
       notice: null,
       reconnecting: false,
       connectionEpoch: 0,
+      resuming: false,
     });
   });
 
@@ -33,6 +34,10 @@ describe("appStore — village screen and reconnect", () => {
     expect(s.identity?.sessionId).toBe("s1");
     expect(s.connectionEpoch).toBe(1);
     expect(s.reconnecting).toBe(false);
+    // the overlay stays up over the remounting village until it reports itself in view
+    expect(s.resuming).toBe(true);
+    useAppStore.getState().finishResume();
+    expect(useAppStore.getState().resuming).toBe(false);
   });
 
   it("leaveToEntry returns to the entry with the notice and forgets the identity", () => {

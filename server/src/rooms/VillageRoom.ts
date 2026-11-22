@@ -6,6 +6,7 @@ import { PATCH_RATE_MS, PLAYER_RADIUS, VILLAGE_MAX_CLIENTS } from "@caysonverse/
 import { APPEARANCE_FIELDS } from "@caysonverse/shared/appearance";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
 import {
+  CANDLE_OUT_RATE,
   CANDLE_RATE,
   SERVER_TIME_INTERVAL_MS,
   VillageMsg,
@@ -14,7 +15,7 @@ import {
   type KeypadResultPayload,
   type ServerTimePayload,
 } from "@caysonverse/shared/village/messages";
-import { VILLAGE_LAYOUT, isHouseArea, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, isHouseArea, isLotArea, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { HOUSE_PLACES, HOUSE_POLICY, houseFloorArea, houseNumberOf, parseHouseFloorArea } from "@caysonverse/shared/village/houseAreas";
 import { houseIsReady } from "@caysonverse/shared/village/housesGeometry";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
@@ -22,12 +23,13 @@ import { arrivalArea, freeSpawnSpot, spreadArrival } from "@caysonverse/shared/v
 import { PlayerRoom, baseTracking, spawnInDisk, type Tracking } from "./PlayerRoom";
 import { validateJoinOptions } from "./joinValidation";
 import { RateWindow } from "./rateLimit";
-import { DOOR_RATE, useDoor, useHouseExit, useStair } from "./villageDoor";
-import { useLotDoor } from "@caysonverse/shared/village/villageLots";
+import { DOOR_RATE, HOUSE_ENTRY_RESCUE_M, useDoor, useHouseExit, useStair } from "./villageDoor";
+import { useLotDoor, useLotStair } from "@caysonverse/shared/village/villageLots";
+import { CAFE_ROOM_AREA, CAFE_UP_AREA } from "@caysonverse/shared/village/cafeRoom";
 import { candleCubby } from "./villageCandle";
 import { memorial } from "../memorial/service";
 import { MemorialServerMsg } from "@caysonverse/shared/memorial/messages";
-import { CANDLES, type CandleBook } from "./candleBook";
+import { CANDLES, sameLighter, type CandleBook } from "./candleBook";
 import { chooseStandSpot, validateSit } from "./seating";
 import { STAND_BLOCKED } from "@caysonverse/shared/village/standSpot";
 import { VillageFishing } from "./villageFishing";
@@ -40,6 +42,8 @@ import {
 import { BUS_DRIVER, BusDriver, busDriveTrip } from "@caysonverse/shared/village/busDrive";
 import { busDismountSpot } from "@caysonverse/shared/village/busSeats";
 import { VillageCoaster } from "./villageCoaster";
+import { rideScheduleKey } from "@caysonverse/shared/land/rides";
+
 import { parkGeometry, useParkDoor } from "@caysonverse/shared/village/parkArea";
 import {
   BUS_CAPACITY,
@@ -65,8 +69,12 @@ const BUS_ACT_MAX_PER_SEC = 6;
 interface VillageTracking extends Tracking {
   /** Sliding-window rate cap for door uses (1 per second). */
   doorRate: RateWindow;
+  /** The assigned entry spot and its nominal door position while a house or lot interior loads. */
+  interiorEntry: { area: string; placed: TransitPoint; nominal: TransitPoint } | null;
   /** Sliding-window rate cap for lighting candles (1 per 5 seconds, Task 9). */
   candleRate: RateWindow;
+  /** Sliding-window rate cap for putting candles out (`CANDLE_OUT_RATE`, owner 2026-11-20). */
+  candleOutRate: RateWindow;
   /** Whether this session has been accepted onto the current scheduled trip. */
   busBoarded: boolean;
   /** Trip id assigned at boarding; a rider is cleared when that trip returns. */
@@ -99,7 +107,8 @@ interface VillageTracking extends Tracking {
  *    no door), the seat freed on Stand and on every permanent leave but kept through a reconnection window;
  *  - `VillageMsg.UseDoor`: the memorial hall's door is a validated teleport (see `handleUseDoor`);
  *  - `VillageMsg.LightCandle` (Task 9): a candle in a cubby, told to everyone in the hall (see `handleLightCandle`);
- *  - the hall is a quiet place (`isQuiet`): Emoji and Jump are dropped there, chat still goes through;
+ *  - the hall is a quiet place (`isQuiet`): Jump is dropped there, chat still goes through; Emoji goes through since
+ *    2026-11-20 (owner: "추모관안에서도 이모티콘을 보낼 수 있게", `isEmojiQuiet`);
  *  - chat is scoped by area (`deliverChat`): a line is heard only by the clients in the sender's area, so what is
  *    said inside the hall stays in the hall and the plaza's talk does not carry in. Emoji, Jump and Typing stay
  *    unscoped (they are the world's, relayed to everyone);
@@ -178,7 +187,12 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
   onCreate(): void {
     // A candle lit in ANY room's hall burns in this room's hall too (the book is shared by every shard).
-    this.offCandles = this.candles.onLit((c) => this.broadcastToArea("hall", VillageServerMsg.CandleLit, c));
+    const offLit = this.candles.onLit((c) => this.broadcastToArea("hall", VillageServerMsg.CandleLit, c));
+    const offOut = this.candles.onOut((c) => this.broadcastToArea("hall", VillageServerMsg.CandleOut, c));
+    this.offCandles = () => {
+      offLit();
+      offOut();
+    };
     // A cubby claimed, edited or given an approved photo in ANY room (or over HTTPS) → every hall refetches that cubby.
     this.offClaims = memorial()?.onClaimUpdated((p) => this.broadcastToArea("hall", MemorialServerMsg.ClaimUpdated, p)) ?? null;
     // Move, Chat, Emoji, Jump, Typing (+ the "*" catch-all for stray types).
@@ -197,6 +211,9 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     });
     this.onMessage(VillageMsg.LightCandle, (client, payload: unknown) => {
       this.handleLightCandle(client, payload);
+    });
+    this.onMessage(VillageMsg.PutOutCandle, (client, payload: unknown) => {
+      this.handlePutOutCandle(client, payload);
     });
     this.onMessage(MessageType.BusRide, (client, payload: unknown) => {
       this.handleBusRide(client, payload);
@@ -246,7 +263,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
   /** The server's clock for one visitor (on join; queued until their join completes) or for everyone. */
   private serverTime(): ServerTimePayload {
-    return { serverTimeMs: this.wallClock() };
+    return { serverTimeMs: this.wallClock(), rideSchedule: rideScheduleKey() };
   }
 
   onDispose(): void {
@@ -258,7 +275,10 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
   /** The candles burning now, to one client (it came into the hall, or came back inside it). */
   private sendCandles(client: Client): void {
-    const msg: CandleStatePayload = { candles: this.candles.snapshot(this.wallClock()) };
+    const track = this.tracking.get(client.sessionId);
+    const msg: CandleStatePayload = {
+      candles: this.candles.snapshot(this.wallClock(), { sessionId: client.sessionId, keyHash: track?.keyHash ?? null, tabId: track?.tabId ?? null }),
+    };
     client.send(VillageServerMsg.CandleState, msg);
   }
 
@@ -311,7 +331,11 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const track = this.tracking.get(client.sessionId);
     const tripId = track?.busTripId ?? snapshot.tripId;
     client.send(MessageType.BusRideState, { boarded: track?.busBoarded === true, tripId } satisfies BusRideStatePayload);
-    this.fishing.resend(client);
+    // the lake's state only where the lake is: a visitor back in 케이슨랜드 (a ride's seat kept through the drop) has no lake on screen, and its
+    // client has no handler for these (the SDK warned "onMessage() not registered for type 'FishingState'"; a player in the park holds no rod, so
+    // nothing is lost); the lake's card asks for its board itself
+    // when it is opened
+    if (this.state.players.get(client.sessionId)?.area !== "park") this.fishing.resend(client);
     if (this.state.players.get(client.sessionId)?.area === "hall") this.sendCandles(client);
   }
 
@@ -358,7 +382,9 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     return {
       ...baseTracking(now),
       doorRate: new RateWindow(DOOR_RATE.count, DOOR_RATE.windowMs),
+      interiorEntry: null,
       candleRate: new RateWindow(CANDLE_RATE.count, CANDLE_RATE.windowMs),
+      candleOutRate: new RateWindow(CANDLE_OUT_RATE.count, CANDLE_OUT_RATE.windowMs),
       busBoarded: false,
       busTripId: null,
       keypadRate: initialKeypadRate(),
@@ -421,6 +447,14 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   /** The memorial hall is quiet: no emoji, no jumping there (chat and walking are fine). */
   protected isQuiet(player: Player): boolean {
     return player.area !== "village";
+  }
+
+  /**
+   * Emoji reactions work in the village AND the memorial hall (owner 2026-11-20: "추모관안에서도 이모티콘을 보낼 수 있게"); a house
+   * floor, the other lot rooms and the park stay as before; the café's room (owner 2026-11-20: 카페 안에서도 이모티콘) and its salon upstairs (2026-11-21) join them. Jumping stays off in the hall (`isQuiet`).
+   */
+  protected override isEmojiQuiet(player: Player): boolean {
+    return player.area !== "village" && player.area !== "hall" && player.area !== CAFE_ROOM_AREA && player.area !== CAFE_UP_AREA;
   }
 
   /** Seated on a bench → Move and Jump are dropped silently: getting up is an explicit Stand. */
@@ -827,8 +861,12 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
     // the village's memorial door and the hall's way out (useDoor), or a house's way out to its porch (useHouseExit)
     const loadFailed = payload !== null && typeof payload === "object" && (payload as { loadFailed?: unknown }).loadFailed === true;
+    const entry = track.interiorEntry;
+    const from = loadFailed && entry?.area === player.area && Math.hypot(player.x - entry.placed.x, player.z - entry.placed.z) <= HOUSE_ENTRY_RESCUE_M
+      ? entry.nominal
+      : player;
     // …or a lot building's door and its room's way out (L5v2, villageLots.ts useLotDoor: the same reach and in-front rules)
-    const arrival = useDoor(player.area, player.x, player.z) ?? useHouseExit(player.area, player.x, player.z, loadFailed) ?? useLotDoor(player.area, player.x, player.z) ?? useParkDoor(player.area, player.x, player.z);
+    const arrival = useDoor(player.area, player.x, player.z) ?? useHouseExit(player.area, from.x, from.z, loadFailed) ?? useLotDoor(player.area, from.x, from.z) ?? useParkDoor(player.area, player.x, player.z);
     if (arrival === null) return; // no door within reach → silent drop
 
     const now = this.now();
@@ -837,6 +875,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     // The door's own spot if it is free, else the nearest free one beside it: two visitors through the door in the
     // same second (or one walking in while another still stands at the spawn) never appear inside each other.
     const at = spreadArrival(arrival.area, arrival, this.playersIn(arrival.area, client.sessionId));
+    track.interiorEntry = isLotArea(arrival.area) ? { area: arrival.area, placed: at, nominal: arrival } : null;
     player.x = at.x;
     player.z = at.z;
     player.yaw = at.yaw;
@@ -856,11 +895,12 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const track = this.tracking.get(client.sessionId);
     if (!player || !track) return;
     if (player.seatIndex >= 0) return; // sitting: stand up first
-    const arrival = useStair(player.area, player.x, player.z);
+    const arrival = useStair(player.area, player.x, player.z) ?? useLotStair(player.area, player.x, player.z);
     if (arrival === null) return;
     const now = this.now();
     if (!track.doorRate.tryAccept(now)) return;
     const at = spreadArrival(arrival.area, arrival, this.playersIn(arrival.area, client.sessionId));
+    track.interiorEntry = null;
     player.x = at.x;
     player.z = at.z;
     player.yaw = at.yaw;
@@ -884,7 +924,43 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     if (anchor === null) return;
     if (this.candles.burning(anchor.id, this.wallClock())) return; // already burning: the card shows who lit it
     if (!track.candleRate.tryAccept(this.now())) return;
-    this.candles.light(anchor.id, player.nickname, this.wallClock());
+    this.candles.light(anchor.id, { nickname: player.nickname, sessionId: client.sessionId, keyHash: track.keyHash, tabId: track.tabId }, this.wallClock());
+  }
+
+  /**
+   * Put-out pipeline (owner 2026-11-20): sender must have a seat → in the hall, a real cubby within reach (the same pure rule as
+   * lighting) → a candle burns there → the sender lit it (same device key / tab / session: `sameLighter`) or is of the cubby's
+   * family (their device key belongs to the claim's owner) → per-client cap (`CANDLE_OUT_RATE`) → the book forgets it and
+   * `CandleOut` goes to every hall. A visitor who neither lit it nor is family cannot put out someone else's candle (a memorial:
+   * no griefing). Anything refused is dropped silently; the client shows the button only where it would work.
+   */
+  private handlePutOutCandle(client: Client, payload: unknown): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track) return;
+    const cubby = payload !== null && typeof payload === "object" ? (payload as { cubby?: unknown }).cubby : undefined;
+    const anchor = candleCubby(player.area, player.x, player.z, cubby, undefined, (id) => memorial()?.isClaimed(id) === true);
+    if (anchor === null) return;
+    const now = this.wallClock();
+    const lit = this.candles.lighter(anchor.id, now);
+    if (lit === null) return;
+    const mine = sameLighter(lit, { sessionId: client.sessionId, keyHash: track.keyHash, tabId: track.tabId });
+    if (!mine && !this.isFamilyOf(anchor.id, track.keyHash)) return;
+    if (!track.candleOutRate.tryAccept(this.now())) return;
+    this.candles.putOut(anchor.id, player.nickname, now);
+  }
+
+  /** Is the device `keyHash` one of the family's of the claim in cubby `slotId` (memorial stage B)? */
+  private isFamilyOf(slotId: string, keyHash: string | null): boolean {
+    const m = memorial();
+    if (!m || keyHash === null || !m.isClaimed(slotId)) return false;
+    try {
+      const owner = m.ownerOf(keyHash);
+      const claim = m.store.liveClaimBySlot(slotId);
+      return owner !== null && claim !== undefined && m.store.resolveOwner(claim.owner_id) === owner.ownerId;
+    } catch {
+      return false; // the store is unavailable: nobody but the lighter
+    }
   }
 
   /**
@@ -958,6 +1034,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const area = houseFloorArea(house, 1);
     // The same spread as the hall's door: a visitor coming in after another lands beside them, not inside.
     const at = spreadArrival(area, spot, this.playersIn(area, client.sessionId));
+    track.interiorEntry = { area, placed: at, nominal: spot };
     player.x = at.x;
     player.z = at.z;
     player.yaw = at.yaw;

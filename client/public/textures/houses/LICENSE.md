@@ -26,3 +26,48 @@
 
 게임은 집을 조명 없이(unlit) 라이트맵으로 그려서 노멀·거칠기 맵을 실시간으로 쓰지 않아요. 대신 스캔의 노멀과 AO로 만든 요철(널빤지 틈, 천의 짜임, 돌 줄눈)을
 알베도에 구워 넣었어요.
+
+
+## 집 액자 그림 (2026-11-20)
+
+집 10채의 모든 액자(벽 액자, 갤러리 벽, 작은 탁상 액자)는 아래의 **퍼블릭 도메인** 명화예요. 작가는 모두 1954년 이전에 세상을 떠난 분들이고(저작권 만료), 그림 사진은 박물관·위키미디어 커먼즈가 CC0 / 퍼블릭 도메인으로 공개한 파일이에요. `T_h_art_<id>.webp`: `hi/` 긴 변 2048 px (PC), `lo/` 1024 px (폰). 만드는 법: `art/village/tools/houses/make_paintings.py` (원본 목록 `paintings_src.json`).
+
+| 파일 (`T_h_art_…`) | 작가 | 작품 | 연도 | 출처 | 라이선스 |
+| --- | --- | --- | --- | --- | --- |
+| `starry_night` | Vincent van Gogh | The Starry Night | 1889 | https://commons.wikimedia.org/wiki/File:Vincent_van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg | Public domain (Wikimedia Commons, PD-Art) |
+| `bedroom_arles` | Vincent van Gogh | Bedroom in Arles | 1888 | https://commons.wikimedia.org/wiki/File:Vincent_van_Gogh_-_De_slaapkamer_-_Google_Art_Project.jpg | Public domain (Wikimedia Commons, PD-Art) |
+| `irises` | Vincent van Gogh | Irises | 1889 | https://commons.wikimedia.org/wiki/File:Irises-Vincent_van_Gogh.jpg | Public domain (Wikimedia Commons, PD-Art) |
+| `cafe_terrace` | Vincent van Gogh | Cafe Terrace at Night | 1888 | https://commons.wikimedia.org/wiki/File:Vincent-van-gogh-cafe-terrace-on-the-place-du-forum-arles-at-night-the.jpg | CC0 1.0 (Wikimedia Commons; the painting is public domain) |
+| `wheat_cypresses_met` | Vincent van Gogh | Wheat Field with Cypresses | 1889 | https://www.metmuseum.org/art/collection/search/436535 | CC0 1.0 (The Met Open Access, public domain) |
+| `madame_roulin` | Vincent van Gogh | Madame Roulin and Her Baby | 1888 | https://www.metmuseum.org/art/collection/search/459123 | CC0 1.0 (The Met Open Access, public domain) |
+| `la_berceuse` | Vincent van Gogh | La Berceuse | 1889 | https://www.metmuseum.org/art/collection/search/437984 | CC0 1.0 (The Met Open Access, public domain) |
+| `vg_straw_hat` | Vincent van Gogh | Self-Portrait with a Straw Hat | 1887 | https://www.metmuseum.org/art/collection/search/436532 | CC0 1.0 (The Met Open Access, public domain) |
+| `water_pitcher` | Johannes Vermeer | Young Woman with a Water Pitcher | ca. 1662 | https://www.metmuseum.org/art/collection/search/437881 | CC0 1.0 (The Met Open Access, public domain) |
+| `dance_class` | Edgar Degas | The Dance Class | 1874 | https://www.metmuseum.org/art/collection/search/438817 | CC0 1.0 (The Met Open Access, public domain) |
+| `woman_vase_flowers` | Edgar Degas | A Woman Seated beside a Vase of Flowers | 1865 | https://www.metmuseum.org/art/collection/search/436121 | CC0 1.0 (The Met Open Access, public domain) |
+| `by_the_seashore` | Auguste Renoir | By the Seashore | 1883 | https://www.metmuseum.org/art/collection/search/437430 | CC0 1.0 (The Met Open Access, public domain) |
+| `girls_at_piano` | Auguste Renoir | Two Young Girls at the Piano | 1892 | https://www.metmuseum.org/art/collection/search/459112 | CC0 1.0 (The Met Open Access, public domain) |
+| `madame_charpentier` | Auguste Renoir | Madame Georges Charpentier | 1878 | https://www.metmuseum.org/art/collection/search/438815 | CC0 1.0 (The Met Open Access, public domain) |
+| `card_players` | Paul Cézanne | The Card Players | 1890–92 | https://www.metmuseum.org/art/collection/search/435868 | CC0 1.0 (The Met Open Access, public domain) |
+| `apples_primroses` | Paul Cézanne | Still Life with Apples and a Pot of Primroses | ca. 1890 | https://www.metmuseum.org/art/collection/search/435882 | CC0 1.0 (The Met Open Access, public domain) |
+| `jas_de_bouffan` | Paul Cézanne | Trees and Houses Near the Jas de Bouffan | 1885–86 | https://www.metmuseum.org/art/collection/search/459092 | CC0 1.0 (The Met Open Access, public domain) |
+| `great_wave` | Katsushika Hokusai | Under the Wave off Kanagawa (The Great Wave) | ca. 1830–32 | https://www.metmuseum.org/art/collection/search/39799 | CC0 1.0 (The Met Open Access, public domain) |
+| `rembrandt_self_portrait` | Rembrandt van Rijn | Self-Portrait | 1660 | https://www.metmuseum.org/art/collection/search/437397 | CC0 1.0 (The Met Open Access, public domain) |
+| `aristotle_homer` | Rembrandt van Rijn | Aristotle with a Bust of Homer | 1653 | https://www.metmuseum.org/art/collection/search/437394 | CC0 1.0 (The Met Open Access, public domain) |
+| `jalais_hill` | Camille Pissarro | Jalais Hill, Pontoise | 1867 | https://www.metmuseum.org/art/collection/search/437299 | CC0 1.0 (The Met Open Access, public domain) |
+| `manet_boating` | Edouard Manet | Boating | 1874 | https://www.metmuseum.org/art/collection/search/436947 | CC0 1.0 (The Met Open Access, public domain) |
+| `haystacks_autumn` | Jean-François Millet | Haystacks: Autumn | ca. 1874 | https://www.metmuseum.org/art/collection/search/437097 | CC0 1.0 (The Met Open Access, public domain) |
+| `village_ladies` | Gustave Courbet | Young Ladies of the Village | 1851–52 | https://www.metmuseum.org/art/collection/search/438820 | CC0 1.0 (The Met Open Access, public domain) |
+| `harvesters` | Pieter Bruegel the Elder | The Harvesters | 1565 | https://www.metmuseum.org/art/collection/search/435809 | CC0 1.0 (The Met Open Access, public domain) |
+| `view_of_toledo` | El Greco | View of Toledo | ca. 1599–1600 | https://www.metmuseum.org/art/collection/search/436575 | CC0 1.0 (The Met Open Access, public domain) |
+| `repast_lion` | Henri Rousseau | The Repast of the Lion | ca. 1907 | https://www.metmuseum.org/art/collection/search/438822 | CC0 1.0 (The Met Open Access, public domain) |
+| `ia_orana_maria` | Paul Gauguin | Ia Orana Maria | 1891 | https://www.metmuseum.org/art/collection/search/438821 | CC0 1.0 (The Met Open Access, public domain) |
+| `circus_sideshow` | Georges Seurat | Circus Sideshow | 1887–88 | https://www.metmuseum.org/art/collection/search/437654 | CC0 1.0 (The Met Open Access, public domain) |
+| `spanish_singer` | Edouard Manet | The Spanish Singer | 1860 | https://www.metmuseum.org/art/collection/search/436944 | CC0 1.0 (The Met Open Access, public domain) |
+| `red_boy` | Francisco de Goya | Manuel Osorio Manrique de Zuñiga | 1787–88 | https://www.metmuseum.org/art/collection/search/436545 | CC0 1.0 (The Met Open Access, public domain) |
+| `irises_met` | Vincent van Gogh | Irises | 1890 | https://www.metmuseum.org/art/collection/search/436528 | CC0 1.0 (The Met Open Access, public domain) |
+
+
+## 커튼 리넨 (2026-11-20)
+
+`T_h_linen` (커튼 천: 촘촘한 평직 리넨, 0.6 m 한 타일): 직접 제작(절차 생성, `art/village/tools/houses/make_linen.py`).

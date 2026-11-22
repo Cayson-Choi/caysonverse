@@ -39,6 +39,9 @@ async function join_(p, time, extra = "", frameLabel = null) {
   await p.page.waitForFunction(() => window.__cv?.getScreen?.() === "village", null, { timeout: 90000 });
   if (frameLabel) await startFrames(p); // the walk-in: from the village showing until the lots are in
   await p.page.waitForFunction(() => !!window.__cv?.getPos, null, { timeout: 30000 });
+  await p.page.evaluate(async () => {
+    window.__l2Area = (await window.__imp("/src/village/villageArea.ts")).localArea;
+  });
   if (!extra.includes("lots=off")) await p.page.waitForFunction(() => !!window.__cvLots, null, { timeout: 180000 });
   await sleep(2500);
   if (frameLabel) await stopFrames(p, frameLabel);
@@ -277,7 +280,7 @@ async function roomTrip(p, unit, tag) {
   // 2. in
   await startFrames(p);
   await act(p);
-  const inside = await p.page.waitForFunction((a) => window.__imp("/src/village/villageArea.ts").then((m) => m.localArea() === a), info.area, { timeout: 20000 }).then(() => true, () => false);
+  const inside = await p.page.waitForFunction((area) => window.__l2Area() === area, info.area, { timeout: 20000 }).then(() => true, () => false);
   run.check(`${tag} ${unit}: in through the door (area ${info.area})`, inside, await areaOf(p));
   const drawn = await p.page.waitForFunction(() => !!window.__cvLotRoom, null, { timeout: 60000 }).then(() => true, () => false);
   await p.page.waitForFunction(() => document.querySelector(".cv-house-cover")?.getAttribute("data-phase") !== "loading", null, { timeout: 30000 }).catch(() => {});
@@ -306,6 +309,17 @@ async function roomTrip(p, unit, tag) {
       ceiling: [5.7, 1.5, 1.5, 5.7, 5.0, 4.5, 75],
       scroll: [3.2, 1.7, 4.6, 1.85, 2.5, 7.3, 45],
     };
+    // 협시보살 close-ups (owner 2026-11-19: the fingers, the feet on the floor). The views are for the new figure, whose soles stand on the
+    // 연화대 cushion (the node y 1.1 + 0.09); CV_BODHI_DY=0.072 lifts them for the old file, whose pegs carried the soles 16 cm above its origin.
+    const dy = 0.09 + Number(process.env.CV_BODHI_DY ?? 0);
+    for (const [k, v] of Object.entries({
+      bodhi_hand_raised: [4.15, 2.45, 5.35, 3.86, 2.32, 6.26, 14],
+      bodhi_hand_low: [3.0, 1.95, 5.5, 3.13, 1.76, 6.43, 16],
+      bodhi_feet: [3.58, 1.3, 5.4, 3.58, 1.16, 6.4, 24],
+      bodhi_feet_side: [4.4, 1.25, 6.0, 3.58, 1.16, 6.4, 20],
+      bodhi_r_feet: [8.0, 1.3, 5.4, 7.96, 1.16, 6.4, 24],
+      bodhi_buddha: [4.6, 1.9, 2.4, 4.6, 2.3, 6.4, 55, 88], // the 본존불 and a 협시보살 in one frame (their colour side by side)
+    })) V[k] = [v[0], v[1] + dy, v[2], v[3], v[4] + dy, v[5], tag === "phone" ? (v[7] ?? v[6] * 2) : v[6]]; // (a phone's tall frame: the fov is spent on the wide side)
     // what the sacred pieces' materials are in the drawn room (metal, env map, map sizes)
     const sacred = await p.page.evaluate(() => {
       const { scene } = window.__cvThree();
@@ -320,6 +334,27 @@ async function roomTrip(p, unit, tag) {
       return out;
     });
     writeFileSync(join(dir, `${tag}_sacred_materials.json`), JSON.stringify(sacred, null, 1));
+    await hideHud(p);
+    for (const [name, [x, y, z, tx, ty, tz, fov]] of Object.entries(V)) {
+      await p.page.evaluate(([b, x, y, z, tx, ty, tz, fov]) => { window.__cvShot = { x: b.minX + x, y, z: b.minZ + z, tx: b.minX + tx, ty, tz: b.minZ + tz, fov }; }, [info.bounds, x, y, z, tx, ty, tz, fov]);
+      await sleep(1400);
+      await p.page.screenshot({ path: join(dir, `${tag}_${name}.png`) });
+    }
+    await p.page.evaluate(() => { window.__cvShot = null; });
+    await showHud(p);
+    await sleep(400);
+  }
+  // CV_HYMN_SHOTS=<dir>: the 예배당's hymn board from the pews and close up (fixed photo cameras, room-frame views)
+  if (unit === "lot_church_nave" && process.env.CV_HYMN_SHOTS) {
+    const dir = process.env.CV_HYMN_SHOTS;
+    mkdirSync(dir, { recursive: true });
+    const V = {
+      pew_far: [1.8, 1.15, 2.2, 0.0, 1.4, 7.075, 58],
+      pew_near: [1.8, 1.15, 4.4, 0.0, 1.4, 7.075, 58],
+      aisle: [3.9, 1.55, 5.0, 0.0, 1.4, 7.075, 60],
+      close: [1.5, 1.5, 7.075, 0.0, 1.4, 7.075, 42],
+      closer: [0.9, 1.45, 7.075, 0.0, 1.4, 7.075, 34],
+    };
     await hideHud(p);
     for (const [name, [x, y, z, tx, ty, tz, fov]] of Object.entries(V)) {
       await p.page.evaluate(([b, x, y, z, tx, ty, tz, fov]) => { window.__cvShot = { x: b.minX + x, y, z: b.minZ + z, tx: b.minX + tx, ty, tz: b.minZ + tz, fov }; }, [info.bounds, x, y, z, tx, ty, tz, fov]);
@@ -392,7 +427,7 @@ async function roomTrip(p, unit, tag) {
   const tt = await targets(p);
   run.check(`${tag} ${unit}: "밖으로 나가기" is offered at the door`, tt.some((x) => x.label === "밖으로 나가기"), tt);
   await act(p);
-  const outside = await p.page.waitForFunction(() => window.__imp("/src/village/villageArea.ts").then((m) => m.localArea() === "village"), null, { timeout: 20000 }).then(() => true, () => false);
+  const outside = await p.page.waitForFunction(() => window.__l2Area() === "village", null, { timeout: 20000 }).then(() => true, () => false);
   await sleep(2500);
   const back = await pos(p);
   run.check(`${tag} ${unit}: out in front of the door`, outside && Math.hypot(back.x - info.arrival.x, back.z - info.arrival.z) < 1.2, back);
@@ -465,7 +500,7 @@ if (ONLY.includes("times")) {
 if (ONLY.includes("phone")) {
   await run.step("phone (375x812, touch): LOD, two rooms door to door", async () => {
     const p = await openPlayer(browser, run, { tag: "phone", device: PHONE });
-    await join_(p, TIMES.day, "", "phone_join");
+    await join_(p, TIMES[process.env.CV_PHONE_TIME ?? "day"], "", "phone_join");
     const l = await lots(p);
     run.check("phone: the six loaded at the light tier", l && l.tier === "low" && l.device === "phone" && l.failed.length === 0, { tier: l?.tier, textures: l?.textures });
     numbers.phoneLots = l;

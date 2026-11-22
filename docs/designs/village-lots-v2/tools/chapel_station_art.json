@@ -183,8 +183,9 @@
    "what": "Station 14 of the Cross (framed print, CC0 Cooper Hewitt), right wall"
   },
   {
-   "node": "lotprop__lot_chapel_nave_altar_cloth",
-   "file": "lots/sacred/lotprop__lot_chapel_nave_altar_cloth.glb",
+   "node": "lotprop__lot_chapel_nave_props",
+   "file": "lots/sacred/lotprop__lot_chapel_nave_props.glb",
+   "phoneFile": "lots/sacred/lotprop__lot_chapel_nave_props_phone.glb",
    "phone": true,
    "at": [
     0,
@@ -192,7 +193,7 @@
     0
    ],
    "yaw": 0,
-   "what": "draped linen altar cloth with a gold hem over the altar"
+   "what": "the room's small carved and flower props merged into one file (one mesh per material, instances baked in room metres)"
   }
  ],
  "glassDay": {
@@ -202,5 +203,8 @@
   "rose": 1.0,
   "grisaille": 0.8,
   "apse": 0.8
- }
+ },
+ "remove": [
+  "lotprop__lot_chapel_nave_"
+ ]
 }

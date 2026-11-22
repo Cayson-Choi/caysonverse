@@ -5,7 +5,7 @@
  * point, uses ONLY what the UI shows: it walks by tapping the ground, looks for the 타기 prompt (the action button / E) and the ride itself, and for
  * each ride records what a person would see:
  *   - the distance from the boarding pad at which the 타기 prompt first appears,
- *   - whether TAPPING THE RIDE (the carousel's canopy, the wheel's frame, the coaster's station) walks to the pad and boards,
+ *   - that TAPPING THE RIDE (the coaster's station) walks to the pad and does NOT board (owner 2026-11-21: only the 타기 button boards),
  *   - whether PRESSING 타기 from afar walks there and boards,
  *   - what happens while the boarding window is closed (the seat is reserved, a countdown shows, the player is seated at the next load).
  * It leaves each ride again with the on-screen leave button, so the three rides are done back to back.
@@ -26,8 +26,8 @@ if (outArg) run.evidence = outArg.slice("--out=".length);
 mkdirSync(run.evidence, { recursive: true });
 
 const NOON = "2026-11-03T12:30";
-const NAMES = { coaster: "별똥별 급행", carousel: "달빛 회전목마", wheel: "하늘 등불 바퀴" };
-const PADS = { coaster: { x: -17, z: -46 }, carousel: { x: 110, z: -119 }, wheel: { x: 211, z: -130.8 } };
+const NAMES = { coaster: "별똥별 급행", carousel: "달빛 회전목마", wheel: "하늘 등불 바퀴", moonboat: "달배", droptower: "구름 낙하탑" };
+const PADS = { coaster: { x: 2, z: -12 }, carousel: { x: 110, z: -119 }, wheel: { x: 205, z: -128.2 }, moonboat: { x: -82.1, z: -140 }, droptower: { x: -61, z: -88 } };
 const report = [];
 
 async function until(fn, ms, step = 150) {
@@ -58,6 +58,22 @@ const rideState = () =>
     return { slot: m.selfRide.slot, ride: m.selfRide.ride };
   });
 const ctarget = () => A.page.evaluate(() => window.__cvClickTarget?.() ?? null);
+
+async function gateState() {
+  return A.page.evaluate(async () => {
+    const { getRoom } = await window.__imp("/src/net/connection.ts");
+    const { useParkDoor } = await window.__imp("/village/parkArea.ts");
+    const room = getRoom(), self = room?.state?.players?.get(room.sessionId);
+    const { x, z } = window.__cv.getPos();
+    const button = document.querySelector(".cv-action-btn");
+    const action = button?.getClientRects().length ? button.getAttribute("aria-label") : null;
+    return {
+      action, local: { x, z }, server: self ? { x: self.x, z: self.z, area: self.area } : null,
+      inReach: !!self && useParkDoor(self.area, self.x, self.z)?.area === "park",
+      focus: document.activeElement?.tagName,
+    };
+  });
+}
 
 /** Project a world point to the page (CSS px), or null when it is off the screen. */
 const project = (x, y, z) =>
@@ -137,6 +153,7 @@ await run.step("join", async () => {
   // the gate: the village's own way (a first-time player is shown it; this e2e is about the park)
   const g = await A.page.evaluate(async () => (await window.__imp("/village/parkArea.ts")).parkGateDoor().pad);
   let enter = false;
+  let state;
   for (let attempt = 0; attempt < 4 && !enter; attempt++) {
     await A.page.evaluate(
       async ([x, z]) => {
@@ -150,14 +167,19 @@ await run.step("join", async () => {
       [g.x, g.z - 0.5],
     );
     await sleep(500);
-    await until(async () => (await ctarget()) === null, 90000);
-    await sleep(600);
-    enter = await until(async () => (await A.page.locator(".cv-action-btn").count()) > 0, 4000);
+    if (!(await until(async () => (await ctarget()) === null, 90000 * SLOW))) continue;
+    // A seat or guide can offer the same button en route. The server decides a door press from its last accepted pose.
+    enter = await until(async () => {
+      state = await gateState();
+      return state.action === "케이슨랜드 들어가기" && state.inReach;
+    }, 4000 * SLOW);
   }
-  run.check("the gate offers an action button", enter);
+  if (!enter) state = await gateState();
+  run.check("the gate offers an action button", enter, { pad: g, ...state });
+  if (!enter) throw new Error("The walk did not reach the active park entrance: " + JSON.stringify({ pad: g, ...state }));
   await act(A);
   const inPark = await until(async () => (await areaOf()) === "park", 15000);
-  run.check("pressing it goes into the park", inPark, { area: await areaOf() });
+  run.check("pressing it goes into the park", inPark, inPark ? { area: "park" } : { area: await areaOf(), afterPress: await gateState() });
   // the loading veil (the park shows no void while it loads) and its end
   const veilSeen = await until(async () => (await A.page.locator("[data-testid=park-loading]").count()) > 0, 4000, 100);
   const veilGone = await until(async () => (await A.page.locator("[data-testid=park-loading]").count()) === 0, 120000, 250);
@@ -213,6 +235,20 @@ async function tryRide(key, how, route, tapPoint, pre) {
       run.check(`${key}: tap skipped (${rec.skipped})`, true);
       return;
     }
+    // owner 2026-11-21 ("타기 버튼을 눌러야만 타도록"): a tap on the ride walks to its boarding pad and NEVER boards; the 타기 prompt is there
+    await sleep(1500);
+    await until(async () => (await A.page.evaluate(() => window.__cvClickTarget?.() ?? null)) === null, 120_000, 300);
+    await sleep(6000);
+    const st = await rideState();
+    const reserved = await A.page.evaluate(async () => (await window.__imp("/src/land/coasterRide.ts")).rideReserved.key);
+    const me = await pos(A);
+    rec.tapWalkedTo = { x: Math.round(me.x), z: Math.round(me.z), dist: Math.round(Math.hypot(me.x - pad.x, me.z - pad.z) * 10) / 10 };
+    rec.promptAfterTap = await prompt(NAMES[key]);
+    report.push(rec);
+    console.log(JSON.stringify(rec));
+    run.check(`${key}: a tap on the ride does NOT board and keeps no seat (only the 타기 button does)`, st.slot < 0 && reserved === null, { st, reserved });
+    run.check(`${key}: the tap walked to the boarding pad, where the 타기 prompt is`, rec.tapWalkedTo.dist <= 7 && !!rec.promptAfterTap, rec);
+    return;
   } else if (how === "pill") {
     const go = A.page.locator(`[data-testid=ride-go-${key}]`);
     // on a phone the other rides sit behind "다른 놀이기구 ▼"
@@ -270,15 +306,21 @@ await run.step("carousel: the park panel's go button", async () => {
 await run.step("wheel: the panel's go button", async () => {
   await tryRide("wheel", "pill", [], null);
 });
+await run.step("moonboat: the panel's go button", async () => {
+  await tryRide("moonboat", "pill", [], null);
+});
+await run.step("droptower: the panel's go button", async () => {
+  await tryRide("droptower", "pill", [], null);
+});
 await run.step("coaster: the panel's go button", async () => {
   await tryRide("coaster", "pill", [], null);
 });
 // and the other two ways, at the coaster: walk off a little way (by taps), the 타기 prompt is still there; tap the queue hall; press the prompt
-await run.step("coaster: tap the queue hall", async () => {
-  await tryRide("coaster", "tap", [], [-17, 2.5, -24], [[-17, -62], [-17, -78]]);
+await run.step("coaster: tap the station", async () => {
+  await tryRide("coaster", "tap", [], [2, 1.75, -4.5], [[2, -34], [2, -46]]);
 });
 await run.step("coaster: press the prompt from afar", async () => {
-  await tryRide("coaster", "press", [], null, [[-17, -62], [-17, -78]]);
+  await tryRide("coaster", "press", [], null, [[2, -34], [2, -46]]);
 });
 
 writeFileSync(join(run.evidence, "first-time-report.json"), JSON.stringify(report, null, 1));

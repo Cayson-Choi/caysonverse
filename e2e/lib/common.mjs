@@ -40,6 +40,8 @@ const ALLOWED_CONSOLE = [
   // ANGLE/D3D's HLSL compiler (the PC tier's GPU path) notes a gradient in three.js's own shadow-sampling loop the first time a
   // lit program compiles: a driver notice about stock three.js shader code, not an app error (seen in e2e/village-bus-stop.mjs
   // with the bus parked and nobody aboard).
+  // Leaving the park (its scene is torn down while a program is still compiling): a driver notice, the app keeps working.
+  { name: "ANGLE glGetProgramiv notice", re: /glGetProgramiv: Program object expected/ },
   { name: "ANGLE X3595 shader-compile notice", re: /X3595|THREE\.WebGLProgram: Program Info Log/ },
 ];
 
@@ -86,6 +88,7 @@ export function createRun(name) {
       page.on("pageerror", (e) => errors.push(`[${tag}] pageerror: ${e.message}`));
       page.on("console", (m) => {
         const type = m.type();
+        if (process.env.CV_GLTRACE && m.text().startsWith("[gltrace]")) console.log(`[${tag}] ${m.text()}`);
         if (type !== "error" && type !== "warning") return;
         const text = m.text();
         const hit = [...ALLOWED_CONSOLE, ...extraAllowed].find((a) => a.re.test(text));
@@ -152,6 +155,38 @@ export async function openPlayer(browser, run, { tag, device = DESKTOP, settings
       return import(/* @vite-ignore */ u ?? p);
     };
   });
+  // CV_GLTRACE=1: every getProgramParameter / getProgramInfoLog on a program that is no longer a live GL program is logged with its
+  // JS stack ("[gltrace] ..."), to find who asks a released program's status (the "glGetProgramiv: Program object expected" warning).
+  if (process.env.CV_GLTRACE)
+    await ctx.addInitScript(() => {
+      // a ring of the last program calls (who asked / deleted which program, with a short stack), dumped when the browser reports the warning
+      const ring = (window.__glring = []);
+      const ids = new WeakMap();
+      let nextId = 1;
+      const idOf = (p) => (p ? (ids.get(p) ?? (ids.set(p, nextId++), ids.get(p))) : 0);
+      const stack = () =>
+        (new Error().stack || "")
+          .split(String.fromCharCode(10))
+          .slice(3, 7)
+          .map((l) => l.trim().replace(/https?:\/\/[^/]+/, "").replace(/\?[^:)]*/, ""))
+          .join(" < ");
+      for (const C of [window.WebGL2RenderingContext, window.WebGLRenderingContext]) {
+        if (!C) continue;
+        for (const fn of ["getProgramParameter", "getProgramInfoLog", "deleteProgram", "linkProgram", "useProgram", "getActiveUniform", "getActiveAttrib", "validateProgram"]) {
+          const orig = C.prototype[fn];
+          if (!orig) continue;
+          C.prototype[fn] = function (p, ...rest) {
+            const dead = !!p && !this.isProgram(p);
+            const t = Math.round(performance.now());
+            const row = { t, fn, pid: idOf(p), dead, arg: rest[0], stack: fn === "getProgramParameter" && !dead && rest[0] !== 0x91b1 ? "" : stack() };
+            ring.push(row);
+            if (ring.length > 400) ring.splice(0, 200);
+            if (dead) console.log("[gltrace] " + fn + " on a dead program " + row.pid + " " + row.stack);
+            return orig.call(this, p, ...rest);
+          };
+        }
+      }
+    });
   // CV_LOD_OFF=1: the far-avatar stand-ins and the still-avatar skipping (perf/crowd) switched off, to tell them from a regression
   if (process.env.CV_LOD_OFF) await ctx.addInitScript(() => (window.__cvLodOff = true));
   await ctx.addInitScript((extra) => {
@@ -160,11 +195,26 @@ export async function openPlayer(browser, run, { tag, device = DESKTOP, settings
     } catch {}
   }, settings);
   const page = await ctx.newPage();
+  // CV_E2E_CPU=4: the page runs on a CPU throttled to 1/4 (a slow phone), through the DevTools protocol
+  if (Number(process.env.CV_E2E_CPU) > 1) {
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: Number(process.env.CV_E2E_CPU) });
+  }
   if (SLOW > 1) {
     page.setDefaultTimeout(30000 * SLOW);
     page.setDefaultNavigationTimeout(30000 * SLOW);
   }
   run.watch(page, tag);
+  if (process.env.CV_GLTRACE) {
+    // the browser's own GL warnings (they are not JS calls) with the JS stack the page was on when the message was reported
+    const s = await ctx.newCDPSession(page);
+    await s.send("Log.enable");
+    s.on("Log.entryAdded", ({ entry }) => {
+      if (/Program object expected/.test(entry.text)) {
+        page.evaluate(() => (window.__glring ?? []).slice(-14)).then((r) => console.log(`[${tag}] [gltrace] GL warning; last program calls: ${JSON.stringify(r)}`)).catch(() => {});
+      }
+    });
+  }
   const touch = !!device.hasTouch;
   // The model files this tab fetched (name → bytes), in order: the first-load report reads them.
   const assets = [];

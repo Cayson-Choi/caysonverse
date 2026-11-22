@@ -16,6 +16,16 @@
 #   "hair_above": 0.86,            # gilt only: fraction of height above which the head hair is painted lapis (Korean 나발)
 #   "hair_radius": 0.16,           #   ... within this radius (fraction of height) of the head axis
 #   "smooth": 0                    # Laplacian smoothing iterations on the high-poly (weathered stone -> freshly carved)
+#   "floor_cut": 0.16              # metres above the normalised bottom: cut away everything below (a scan's mounting tenons), cap flat,
+#                                  #   then z = 0 is the flat sole (the figure stands directly on whatever it is placed on)
+#   "floor_lift": 0.09             # metres: after the bake, lift the whole figure (the placed node sits this far below what the soles stand on)
+#   "protect": [{"c": [x, y, z], "r": 0.1, "w": 1.0}, ...]   # metres (after normalising and the floor cut): spheres whose vertices are
+#                                  #   spared by the decimations (hands, face) - the rest of the robe takes the cuts; w = 0..1 at the centre
+#   "phone_hold": 0.6              # how hard the phone LOD holds the protect spheres (x the weights)
+#   "local_smooth": [{"c": [x, y, z], "r": 0.08, "iter": 80, "mu": -0.53, "gain": 1.6}, ...]   # extra Taubin smoothing inside spheres only (casting
+#                                  #   pits and warty bumps on a hand; a mu closer to -0.5 smooths more of the middle wavelengths)
+#   "fine_normal": {"cage": 0.0025, "ray": 0.006, "spheres": [{"c": [x, y, z], "r": 0.1}, ...]}   # second, short-ray normal bake used inside the spheres
+#   "uv_boost": [{"c": [x, y, z], "r": 0.1, "k": 1.8}, ...]   # faces inside get their own UV islands at k times the linear texel density of the rest
 # }
 # Writes <out_dir>/<name>.glb (PNG textures inside; ktx2_glb.mjs swaps them to KTX2) and <out_dir>/report.json.
 import bpy, bmesh, sys, os, json, math, time
@@ -111,6 +121,86 @@ if job.get("mirror_x"):
     me.transform(Matrix.Scale(-1, 4, (1, 0, 0))); me.flip_normals()
 me.update()
 H = job["height_m"]
+if job.get("floor_cut") is not None:
+    # the scan's mounting tenons (round pegs under the soles): cut at the sole, cap flat, put the sole at z = 0
+    zc = job["floor_cut"]
+    bm = bmesh.new(); bm.from_mesh(me)
+    r = bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], plane_co=(0, 0, zc), plane_no=(0, 0, 1), clear_inner=True, clear_outer=False)
+    cut_edges = [e for e in r["geom_cut"] if isinstance(e, bmesh.types.BMEdge)]
+    fr = bmesh.ops.holes_fill(bm, edges=cut_edges, sides=0)
+    bmesh.ops.triangulate(bm, faces=fr["faces"], quad_method="BEAUTY", ngon_method="EAR_CLIP")
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    bm.to_mesh(me); bm.free()
+    me.transform(Matrix.Translation(Vector((0, 0, -zc)))); me.update()
+    H = H - zc
+    rep["floor_cut_m"] = zc; rep["height_after_cut_m"] = round(H, 4)
+    log("floor cut at", zc, "height now", round(H, 4))
+import numpy as np
+
+
+def sphere_weights(obj, spheres, key="w"):
+    """per-vertex weight 0..1 = max over spheres of w * smoothstep(1 - d / r); spheres in the object's own (normalised) space"""
+    n = len(obj.data.vertices)
+    a = np.empty(n * 3, np.float32); obj.data.vertices.foreach_get("co", a); a = a.reshape(-1, 3)
+    wt = np.zeros(n, np.float32)
+    for s in spheres:
+        d = np.linalg.norm(a - np.array(s["c"], np.float32), axis=1) / s["r"]
+        f = np.clip(1.0 - d, 0, 1); f = f * f * (3 - 2 * f)
+        wt = np.maximum(wt, f * s.get(key, 1.0))
+    return wt
+
+
+def set_group(obj, name, wt):
+    if name in obj.vertex_groups: obj.vertex_groups.remove(obj.vertex_groups[name])
+    vg = obj.vertex_groups.new(name=name)
+    q = np.round(wt * 16).astype(np.int32)
+    for lv in range(1, 17):
+        idx = np.nonzero(q == lv)[0]
+        if len(idx): vg.add(idx.tolist(), lv / 16.0, "REPLACE")
+    return vg
+
+
+def decimate_protect(obj, spheres, total, delimit=None, hold=1.0):
+    """Collapse decimation to `total` triangles that spares the protect spheres (hands, face): Blender's inverted vertex group, weight =
+    how hard a vertex is held. Everything outside (the robe's folds, the plain limbs) takes the cuts, the fingers keep their triangles."""
+    set_group(obj, "protect", sphere_weights(obj, spheres) * hold)
+    n0 = sum(len(p.vertices) - 2 for p in obj.data.polygons)
+    d = obj.modifiers.new("dec", "DECIMATE"); d.decimate_type = "COLLAPSE"; d.ratio = min(1.0, total / max(1, n0))
+    d.use_collapse_triangulate = True; d.vertex_group = "protect"; d.invert_vertex_group = True; d.vertex_group_factor = 1.0
+    if delimit: d.delimit = delimit
+    for oo in sc.objects: oo.select_set(False)
+    bpy.context.view_layer.objects.active = obj; obj.select_set(True)
+    bpy.ops.object.modifier_apply(modifier="dec")
+    w = sphere_weights(obj, spheres)
+    inside = sum(1 for p in obj.data.polygons if w[list(p.vertices)].min() > 0.5)
+    log("protected decimation:", n0, "->", sum(len(p.vertices) - 2 for p in obj.data.polygons), "tris,", inside, "of them inside the spheres")
+
+
+def taubin_smooth(me, wt, iters, lam=0.5, mu=-0.53):
+    """Taubin (lambda | mu) smoothing, weighted per vertex, no shrinkage: the casting pits and scan noise on a hand go, the fingers stay.
+    (Blender's Laplacian Smooth modifier does next to nothing with a vertex group here.)"""
+    n = len(me.vertices)
+    e = np.empty(len(me.edges) * 2, np.int32); me.edges.foreach_get("vertices", e); e = e.reshape(-1, 2)
+    P = np.empty(n * 3, np.float32); me.vertices.foreach_get("co", P); P = P.reshape(-1, 3).astype(np.float64)
+    deg = np.maximum(np.bincount(e[:, 0], minlength=n) + np.bincount(e[:, 1], minlength=n), 1).astype(np.float64)
+    act = wt > 0
+    keep = act[e[:, 0]] | act[e[:, 1]]
+    i, j = e[keep, 0], e[keep, 1]
+    for _ in range(iters):
+        for fac in (lam, mu):
+            S = np.zeros_like(P)
+            for ax in range(3):
+                S[:, ax] = np.bincount(i, weights=P[j, ax], minlength=n) + np.bincount(j, weights=P[i, ax], minlength=n)
+            P += (fac * wt)[:, None] * (S / deg[:, None] - P)
+    me.vertices.foreach_set("co", P.astype(np.float32).ravel()); me.update()
+
+
+if job.get("local_smooth"):
+    # casting pits and scan noise on the hands: heavier smoothing inside the spheres only, with the finger shapes kept
+    for s in job["local_smooth"]:
+        wt = np.clip(sphere_weights(hi, [s], key="w") * s.get("gain", 1.6), 0, 1).astype(np.float64)   # (a gain > 1 smooths the sphere's outer part too)
+        taubin_smooth(hi.data, wt, s.get("iter", 80), mu=s.get("mu", -0.53))
+        log("local smooth", s["c"], s.get("iter", 80), s.get("mu", -0.53))
 if job.get("smooth", 0):
     m = hi.modifiers.new("smooth", "LAPLACIANSMOOTH"); m.iterations = job["smooth"]; m.lambda_factor = 0.4; m.use_volume_preserve = True
     bpy.ops.object.modifier_apply(modifier=m.name)
@@ -177,17 +267,61 @@ bpy.ops.object.shade_smooth()
 lo = hi.copy(); lo.data = hi.data.copy(); lo.name = NAME; sc.collection.objects.link(lo)
 for o in sc.objects: o.select_set(False)
 bpy.context.view_layer.objects.active = lo; lo.select_set(True)
-d = lo.modifiers.new("dec", "DECIMATE"); d.decimate_type = "COLLAPSE"
-d.ratio = min(1.0, job["tri_pc"] / max(1, rep["high_tris"])); d.use_collapse_triangulate = True
-bpy.ops.object.modifier_apply(modifier="dec")
+if job.get("protect"):
+    decimate_protect(lo, job["protect"], job["tri_pc"])
+else:
+    d = lo.modifiers.new("dec", "DECIMATE"); d.decimate_type = "COLLAPSE"
+    d.ratio = min(1.0, job["tri_pc"] / max(1, rep["high_tris"])); d.use_collapse_triangulate = True
+    bpy.ops.object.modifier_apply(modifier="dec")
 # UVs: unwrap a heavily smoothed proxy (same topology, calm normals -> few large islands), then copy the UVs back
 px_ = lo.copy(); px_.data = lo.data.copy(); sc.collection.objects.link(px_)
 for o in sc.objects: o.select_set(False)
 bpy.context.view_layer.objects.active = px_; px_.select_set(True)
-sm = px_.modifiers.new("sm", "SMOOTH"); sm.factor = 1.0; sm.iterations = job.get("uv_smooth", 40)
+boost = job.get("uv_boost") or []
+bw = sphere_weights(lo, boost, key="k") if boost else None    # >0 inside a boost sphere
+if boost:
+    # the proxy keeps its fingers (no smoothing there) so they unwrap as their own islands
+    set_group(px_, "calm", np.clip(1.0 - sphere_weights(lo, [dict(s, w=1.0) for s in boost]) * 4, 0, 1))
+    sm = px_.modifiers.new("sm", "SMOOTH"); sm.factor = 1.0; sm.iterations = job.get("uv_smooth", 40); sm.vertex_group = "calm"
+else:
+    sm = px_.modifiers.new("sm", "SMOOTH"); sm.factor = 1.0; sm.iterations = job.get("uv_smooth", 40)
 bpy.ops.object.modifier_apply(modifier="sm")
 bpy.ops.object.mode_set(mode="EDIT"); bpy.ops.mesh.select_all(action="SELECT")
+def _select_faces(obj, flags):
+    bm_ = bmesh.from_edit_mesh(obj.data)
+    bm_.faces.ensure_lookup_table()
+    for f_ in bm_.faces: f_.select_set(False)
+    for f_ in bm_.faces:
+        if flags[f_.index]: f_.select_set(True)
+    bm_.select_flush_mode(); bmesh.update_edit_mesh(obj.data)
+
+
+if boost:
+    vin = bw > 0.02
+    pin = np.array([vin[list(p.vertices)].all() for p in px_.data.polygons], bool)
+    bpy.ops.mesh.select_mode(type="FACE")
+    _select_faces(px_, pin)
+    bpy.ops.uv.smart_project(angle_limit=math.radians(70), island_margin=0.006, area_weight=0.0, scale_to_bounds=False)
+    _select_faces(px_, ~pin)
 bpy.ops.uv.smart_project(angle_limit=math.radians(job.get("uv_angle", 70)), island_margin=0.006, area_weight=0.0, scale_to_bounds=False)
+if boost:
+    bpy.ops.object.mode_set(mode="OBJECT")
+    # draw the hand faces k times larger (about each hand's own UV centre) before the islands are packed
+    uvl = px_.data.uv_layers[0].data
+    luv = np.empty(len(px_.data.loops) * 2, np.float32); uvl.foreach_get("uv", luv); luv = luv.reshape(-1, 2)
+    lv = np.empty(len(px_.data.loops), np.int32); px_.data.loops.foreach_get("vertex_index", lv)
+    kmax = max(s["k"] for s in boost)       # linear texel density of the hands relative to the rest of the figure
+    hand_loop = np.repeat(pin, [len(p.vertices) for p in px_.data.polygons])
+    a3 = np.empty(len(px_.data.polygons), np.float32); lo.data.polygons.foreach_get("area", a3)
+    tu = luv.reshape(-1, 3, 2)
+    au = 0.5 * np.abs((tu[:, 1, 0] - tu[:, 0, 0]) * (tu[:, 2, 1] - tu[:, 0, 1]) - (tu[:, 2, 0] - tu[:, 0, 0]) * (tu[:, 1, 1] - tu[:, 0, 1]))
+    dens_h = au[pin].sum() / max(1e-9, a3[pin].sum()); dens_r = au[~pin].sum() / max(1e-9, a3[~pin].sum())
+    kfac = np.full(len(luv), kmax * math.sqrt(dens_r / max(1e-12, dens_h)), np.float32)   # (smart_project sized the two groups on its own)
+    rep["uv_hand_density_before"] = round(float(math.sqrt(dens_h / dens_r)), 3)
+    ctr = luv[hand_loop].mean(0) if hand_loop.any() else luv.mean(0)
+    luv[hand_loop] = ctr + (luv[hand_loop] - ctr) * kfac[hand_loop, None]
+    uvl.foreach_set("uv", luv.ravel())
+    bpy.ops.object.mode_set(mode="EDIT"); bpy.ops.mesh.select_all(action="SELECT")
 try: bpy.ops.uv.pack_islands(margin=0.006, rotate=True, shape_method="CONCAVE")
 except Exception as ex: log("pack", ex)
 bpy.ops.object.mode_set(mode="OBJECT")
@@ -196,6 +330,11 @@ import numpy as _np
 _uv = _np.empty(len(px_.data.loops) * 2, _np.float32); px_.data.uv_layers[0].data.foreach_get("uv", _uv)
 lo.data.uv_layers[0].data.foreach_set("uv", _uv)
 rep["uv_islands_hint"] = len(px_.data.polygons)
+if boost:
+    tri_uv = _uv.reshape(-1, 3, 2)
+    ar = 0.5 * np.abs((tri_uv[:, 1, 0] - tri_uv[:, 0, 0]) * (tri_uv[:, 2, 1] - tri_uv[:, 0, 1]) - (tri_uv[:, 2, 0] - tri_uv[:, 0, 0]) * (tri_uv[:, 1, 1] - tri_uv[:, 0, 1]))
+    rep["boosted_uv_share_pct"] = round(100 * float(ar[pin].sum() / max(1e-9, ar.sum())), 1)
+    rep["uv_used_pct"] = round(100 * float(ar.sum()), 1)
 bpy.data.objects.remove(px_, do_unlink=True)
 for o in sc.objects: o.select_set(False)
 bpy.context.view_layer.objects.active = lo; lo.select_set(True)
@@ -388,6 +527,33 @@ def bake(kind, btype, **kw):
 
 
 bake("normal", "NORMAL", normal_space="TANGENT")
+if job.get("fine_normal"):
+    # a second normal bake with a short cage / ray inside the hands (fine_normal.spheres): between thin fingers the standard 2 cm cage starts its rays
+    # inside the next finger (dark smudges, wrong creases); the short one reads only the finger's own surface. A UV-space mask picks the fine texels.
+    fn = job["fine_normal"]
+    img("normal_fine", tex["normal"], False); img("mask_fine", tex["normal"], False)
+    keep_cage, keep_ray = bk.cage_extrusion, bk.max_ray_distance
+    bk.cage_extrusion = fn.get("cage", 0.0025) * H; bk.max_ray_distance = fn.get("ray", 0.006) * H
+    bake("normal_fine", "NORMAL", normal_space="TANGENT")
+    bk.cage_extrusion, bk.max_ray_distance = keep_cage, keep_ray
+    mm = bpy.data.materials.new("fmask"); mm.use_nodes = True; mt_ = mm.node_tree
+    for n_ in list(mt_.nodes):
+        if n_.type != "OUTPUT_MATERIAL": mt_.nodes.remove(n_)
+    tcm = mt_.nodes.new("ShaderNodeTexCoord"); acc = None
+    for s in fn["spheres"]:
+        vd = mt_.nodes.new("ShaderNodeVectorMath"); vd.operation = "DISTANCE"; vd.inputs[1].default_value = tuple(s["c"]); mt_.links.new(tcm.outputs["Object"], vd.inputs[0])
+        mr = mt_.nodes.new("ShaderNodeMapRange"); mr.clamp = True
+        mr.inputs["From Min"].default_value = s["r"] * 0.55; mr.inputs["From Max"].default_value = s["r"]; mr.inputs["To Min"].default_value = 1.0; mr.inputs["To Max"].default_value = 0.0
+        mt_.links.new(vd.outputs["Value"], mr.inputs["Value"])
+        if acc is None: acc = mr.outputs["Result"]
+        else:
+            mx = mt_.nodes.new("ShaderNodeMath"); mx.operation = "MAXIMUM"; mt_.links.new(acc, mx.inputs[0]); mt_.links.new(mr.outputs["Result"], mx.inputs[1]); acc = mx.outputs[0]
+    em2 = mt_.nodes.new("ShaderNodeEmission"); mt_.links.new(acc, em2.inputs["Color"])
+    mt_.links.new(em2.outputs[0], next(n_ for n_ in mt_.nodes if n_.type == "OUTPUT_MATERIAL").inputs["Surface"])
+    saved_m = [m_ for m_ in hi.data.materials]
+    for i_ in range(len(hi.data.materials)): hi.data.materials[i_] = mm
+    bake("mask_fine", "EMIT")
+    for i_, m_ in enumerate(saved_m): hi.data.materials[i_] = m_
 sc.cycles.samples = 64
 bake("ao", "AO")
 sc.cycles.samples = 8
@@ -499,7 +665,14 @@ orm.pixels.foreach_set(o4.ravel())
 rep["metal_mean"] = float(mt[:, 0].mean()); rep["ao_mean"] = float(ao[:, 0].mean())
 
 # normal clean-up: texels whose tangent normal tips past ~70 deg are ray misses into undercuts -> flatten them
-nrm = px(imgs["normal"][0]); nz = nrm[:, 2] * 2 - 1
+nrm = px(imgs["normal"][0])
+if "normal_fine" in imgs:
+    nf = px(imgs["normal_fine"][0]); mk = px(imgs["mask_fine"][0])[:, :1]
+    okf = ((nf[:, 2] * 2 - 1) > 0.35)[:, None]          # a fine texel that missed (flat default / tipped) is not trusted
+    mk = mk * okf
+    nrm[:, :3] = nrm[:, :3] * (1 - mk) + nf[:, :3] * mk
+    rep["fine_normal_texels_pct"] = round(100 * float((mk > 0.5).mean()), 2)
+nz = nrm[:, 2] * 2 - 1
 bad = nz < 0.35
 nrm[bad, 0] = 0.5; nrm[bad, 1] = 0.5; nrm[bad, 2] = 1.0
 imgs["normal"][0].pixels.foreach_set(nrm.ravel()); rep["normal_fixed_pct"] = round(100 * float(bad.mean()), 2)
@@ -533,14 +706,21 @@ gn = lnt.nodes.new("ShaderNodeGroup"); gn.node_tree = grp; LL.new(sp.outputs[0],
 ph = lo.copy(); ph.data = lo.data.copy(); ph.name = NAME + "_phone"; sc.collection.objects.link(ph)
 for o in sc.objects: o.select_set(False)
 bpy.context.view_layer.objects.active = ph; ph.select_set(True)
-d = ph.modifiers.new("dec", "DECIMATE"); d.decimate_type = "COLLAPSE"; d.ratio = job["tri_phone"] / max(1, rep["pc_tris"])
-d.use_collapse_triangulate = True; d.delimit = {"UV"}
-bpy.ops.object.modifier_apply(modifier="dec")
+if job.get("protect"):
+    decimate_protect(ph, job["protect"], job["tri_phone"], delimit={"UV"}, hold=job.get("phone_hold", 0.6))
+else:
+    d = ph.modifiers.new("dec", "DECIMATE"); d.decimate_type = "COLLAPSE"; d.ratio = job["tri_phone"] / max(1, rep["pc_tris"])
+    d.use_collapse_triangulate = True; d.delimit = {"UV"}
+    bpy.ops.object.modifier_apply(modifier="dec")
 rep["phone_tris"] = sum(len(p.vertices) - 2 for p in ph.data.polygons)
 log("phone", rep["phone_tris"])
 
 # ---------------- export ----------------
 bpy.data.objects.remove(hi, do_unlink=True)
+if job.get("floor_lift"):
+    # the figure is placed on a pedestal whose own top stands above the node's origin (the 대웅전's 연화대 cushion, 9 cm): lift the soles to it
+    for o in (lo, ph): o.data.transform(Matrix.Translation(Vector((0, 0, job["floor_lift"])))); o.data.update()
+    rep["floor_lift_m"] = job["floor_lift"]
 for o in sc.objects: o.select_set(o.name in (NAME, NAME + "_phone"))
 glb = os.path.join(OUT, f"{NAME}.glb")
 bpy.ops.export_scene.gltf(filepath=glb, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,

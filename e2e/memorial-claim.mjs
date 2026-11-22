@@ -153,7 +153,7 @@ try {
     summary.pcCard = c;
     run.check("my card: name, mine badge, pending badge", c.claimed === "mine" && c.name === "콩이" && c.text.includes("우리 가족 칸") && c.text.includes("검토 중이에요"), c);
     run.check("the family sees its own photo through a signed link", /\/media\/s\/.+sig=/.test(c.photo), c.photo.slice(0, 80));
-    run.check("family buttons: 고치기 / 사진 바꾸기 / 가족 기기, plus 촛불 켜기", ["고치기", "사진 바꾸기", "가족 기기", "촛불 켜기"].every((b) => c.buttons.includes(b)), c.buttons);
+    run.check("family buttons: 고치기 / 사진 바꾸기 / 가족 기기, plus 촛불 밝히기", ["고치기", "사진 바꾸기", "가족 기기", "촛불 밝히기"].every((b) => c.buttons.includes(b)), c.buttons);
     run.check("no '!' anywhere on the card", !c.text.includes("!"));
     await run.shot(A, "07-pc-my-card-pending.png");
   });

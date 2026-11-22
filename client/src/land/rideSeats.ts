@@ -7,7 +7,9 @@ import { SIT_POSE } from "@caysonverse/shared/sitPose";
 import { RIDE } from "@caysonverse/shared/land/rides";
 import { carouselSeatPose, type CarouselSeatPose } from "@caysonverse/shared/land/carousel";
 import { wheelSeatPose, type WheelSeatPose } from "@caysonverse/shared/land/wheel";
-import { villageClock } from "../village/villageClock";
+import { moonSeatPose, type MoonSeatPose } from "@caysonverse/shared/land/moonBoat";
+import { dropSeatPose, type DropSeatPose } from "@caysonverse/shared/land/dropTower";
+import { rideMs } from "./rideClock";
 import { carSeatPose, coasterNow } from "./coasterRide";
 
 const cp: CarouselSeatPose = { x: 0, y: 0, z: 0, fx: 0, fz: 1, pitch: 0, theta: 0, ring: 0 };
@@ -37,9 +39,49 @@ export function wheelRiderPose(seat: number, nowMs: number, outPos: Vector3, out
   outQuat.premultiply(qz);
 }
 
+const mp: MoonSeatPose = { x: 0, y: 0, z: 0, fy: 0, fz: 1, uy: 1, uz: 0, angle: 0, gload: 1, face: 1 };
+const axX = new Vector3(1, 0, 0);
+const qFlip = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI);
+
+/** The moon boat seat's avatar pose: seated on the cushion facing the middle of the boat (toward the stern in the bow half), pitched with the hull (the boat swings along z: a turn about x). */
+export function moonBoatRiderPose(seat: number, nowMs: number, outPos: Vector3, outQuat: Quaternion): void {
+  moonSeatPose(seat, nowMs, mp);
+  outPos.set(mp.x, mp.y - SIT_POSE.contactY * mp.uy + mp.fy * SIT_POSE.hipsBehindRoot, mp.z - SIT_POSE.contactY * mp.uz + mp.fz * SIT_POSE.hipsBehindRoot);
+  outQuat.setFromAxisAngle(axX, -mp.angle);
+  // the avatar faces +z (the bow) by default; the bow half sits facing the stern (toward the middle)
+  if (mp.face < 0) outQuat.multiply(qFlip);
+}
+
+const dp: DropSeatPose = { x: 0, y: 0, z: 0, fx: 1, fz: 0, face: 0, vy: 0, gload: 1, stage: "idle" };
+
+/** The drop tower seat's avatar pose: hips on the cushion (root 0.397 m ahead of them), facing out over the park, legs dangling. */
+export function dropRiderPose(seat: number, nowMs: number, outPos: Vector3, outQuat: Quaternion): void {
+  dropSeatPose(seat, nowMs, dp);
+  outPos.set(dp.x + dp.fx * SIT_POSE.hipsBehindRoot, dp.y - SIT_POSE.contactY, dp.z + dp.fz * SIT_POSE.hipsBehindRoot);
+  eul.set(0, Math.atan2(dp.fx, dp.fz), 0, "YXZ");
+  outQuat.setFromEuler(eul);
+}
+
 /** The seat pose of `seat` on ride `rideId` now (the coaster's when `rideId` is 0: an older server). */
 export function rideSeatPose(rideId: number, seat: number, outPos: Vector3, outQuat: Quaternion): void {
-  if (rideId === RIDE.carousel) carouselRiderPose(seat, villageClock.liveMs(), outPos, outQuat);
-  else if (rideId === RIDE.wheel) wheelRiderPose(seat, villageClock.liveMs(), outPos, outQuat);
+  if (rideId === RIDE.carousel) carouselRiderPose(seat, rideMs(), outPos, outQuat);
+  else if (rideId === RIDE.wheel) wheelRiderPose(seat, rideMs(), outPos, outQuat);
+  else if (rideId === RIDE.moonboat) moonBoatRiderPose(seat, rideMs(), outPos, outQuat);
+  else if (rideId === RIDE.droptower) dropRiderPose(seat, rideMs(), outPos, outQuat);
   else carSeatPose(coasterNow().s, seat, outPos, outQuat);
+}
+
+const fPos = new Vector3();
+const fQuat = new Quaternion();
+const fV = new Vector3();
+/**
+ * The seat pose as plain numbers (the e2e reads how another client draws a rider: e2e/rides-seat-facing.mjs): the root's position, and the body's forward
+ * (+z of the root: the way the seated avatar looks) and up, in park axes.
+ */
+export function rideSeatFacing(rideId: number, seat: number): { pos: [number, number, number]; fwd: [number, number, number]; up: [number, number, number] } {
+  rideSeatPose(rideId, seat, fPos, fQuat);
+  const f = fV.set(0, 0, 1).applyQuaternion(fQuat);
+  const fwd: [number, number, number] = [f.x, f.y, f.z];
+  const u = fV.set(0, 1, 0).applyQuaternion(fQuat);
+  return { pos: [fPos.x, fPos.y, fPos.z], fwd, up: [u.x, u.y, u.z] };
 }

@@ -153,4 +153,23 @@ describe("the moon", () => {
       expect(moonAt(Date.parse(iso)).elongationDeg).toBeGreaterThan(170);
     }
   });
+  it("follows the real phases: the lit share and waxing/waning at known 2026 instants (astronomy-engine, run outside the repo)", () => {
+    // [KST pin, lit share, waxing, Korean word]
+    const known: [string, number, boolean, string][] = [
+      ["2026-02-19T19:01", 0.0427, true, "초승달"], // 2 days after the 음력 1일 new moon of Seollal (2026-02-17)
+      ["2026-02-24T18:58", 0.4893, true, "상현달"], // first quarter 2026-02-24 21:28 KST
+      ["2026-02-27T21:28", 0.818, true, "차오르는 달"],
+      ["2026-03-04T00:38", 0.9997, false, "보름달"], // full moon (total lunar eclipse) 2026-03-03
+      ["2026-03-12T05:39", 0.4579, false, "하현달"], // last quarter 2026-03-11 18:39 KST
+      ["2026-11-05T05:58", 0.194, false, "그믐달"],
+      ["2026-11-17T18:18", 0.4912, true, "상현달"],
+      ["2026-11-25T00:24", 0.9981, false, "보름달"],
+    ];
+    for (const [kst, lit, waxing, word] of known) {
+      const m = moonAt(Date.parse(kst + ":00+09:00"));
+      expect(Math.abs(m.illuminated - lit), kst).toBeLessThan(0.005);
+      expect(m.waxing, kst).toBe(waxing);
+      expect(moonPhaseName(m), kst).toBe(word);
+    }
+  });
 });

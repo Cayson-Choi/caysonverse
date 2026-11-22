@@ -17,7 +17,7 @@ import {
 } from "@caysonverse/shared/land/carousel";
 import { CAROUSEL_PAD } from "@caysonverse/shared/village/parkArea";
 import { selfRide } from "./coasterRide";
-import { villageClock } from "../village/villageClock";
+import { rideMs } from "./rideClock";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 import { parkMaterial, pickSet } from "./pbr";
 import { isTouchDevice } from "../device";
@@ -257,7 +257,7 @@ export function CarouselWorld({ env, all }: { env: Texture; all: Texture[] }) {
   }, [gl, cam, horseParts, loParts]);
 
   useFrame(({ camera }) => {
-    const now = villageClock.liveMs();
+    const now = rideMs();
     const st = carouselAt(now, stScratch);
     if (turning.current) turning.current.rotation.y = -st.angle;
     // horses: near ones with the full model, far ones with the low-poly model; the two sets are packed (instance k of a set = the k-th horse
@@ -319,7 +319,7 @@ export function CarouselWorld({ env, all }: { env: Texture; all: Texture[] }) {
   // the platform's own origin is the centre on the ground; its parts are in that frame
   return (
     <group ref={root}>
-      <group ref={turning} position={[CAROUSEL_CENTER.x, 0, CAROUSEL_CENTER.z]}>
+      <group ref={turning} name="ride-carousel-turntable" position={[CAROUSEL_CENTER.x, 0, CAROUSEL_CENTER.z]}>
         {statParts.map((p, i) => (
           <mesh key={i} geometry={p.geometry} material={p.material} castShadow receiveShadow />
         ))}

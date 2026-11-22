@@ -1,12 +1,17 @@
 import {
   HOUSE_NODE_PATTERNS,
   HOUSE_PLACES,
+  HOUSE_ROOM,
+  HOUSE_STAIR,
   HOUSE_STAIR_TYPE,
   STAIR_PLANS,
+  type HouseFloor,
+  type HouseNumber,
   localRectToWorld,
   parseHouseFloorArea,
   worldToLocal,
 } from "@caysonverse/shared/village/houseAreas";
+import { doorTapOnFlat, type TapRayLike } from "./lotDoorTap";
 import { HOUSE_EXIT_TARGET_ID, HOUSE_STAIR_DOWN_TARGET_ID, HOUSE_STAIR_UP_TARGET_ID } from "@caysonverse/shared/village/houseTargets";
 
 /**
@@ -19,8 +24,37 @@ import { HOUSE_EXIT_TARGET_ID, HOUSE_STAIR_DOWN_TARGET_ID, HOUSE_STAIR_UP_TARGET
 
 /** How far (m) past the stair's footprint a pick still counts as on the stair (the rail, the steps' edge). */
 export const HOUSE_TAP_STAIR_MARGIN = 0.2;
-/** The front door (local): the glass double door on the z = 0 wall, 2.9 m tall (HOUSE_ROOM.frontDoor), a tap within this much of the wall. */
-const FRONT_DOOR = { minX: 4.4, maxX: 6.2, maxZ: 0.45, height: 3.0 } as const;
+/**
+ * How far (m) below / above the stair's own surface a picked point may be and still be "on the stair" (owner 2026-11-20: "집안에 들어갔을때
+ * 2층올라가기 버튼을 누르지도 않았는데 2층으로 올라가버린다"). The footprint is a plan view: the back wall behind a stair, the ceiling over
+ * it and the floor beside its high steps all stand over it, and a tap there (the wall one looks at on entering) used to be a tap on the
+ * stair. Below: the stringer and the soffit; above: the handrail (0.9 m) and a little more.
+ */
+export const HOUSE_TAP_STAIR_BELOW = 0.5;
+export const HOUSE_TAP_STAIR_ABOVE = 1.1;
+/** The front door (local): the glass double door on the z = 0 wall, 2.9 m tall (HOUSE_ROOM.frontDoor), a tap within this much of the wall, above the floor (a tap on the floor by the door walks, never leaves: owner 2026-11-21). */
+const FRONT_DOOR = { minX: 4.4, maxX: 6.2, maxZ: 0.45, height: 3.0, minY: 0.35 } as const;
+
+/** With nothing picked, the ray is followed this far (m) to the front door's wall. */
+const FRONT_DOOR_RAY_ONLY_MAX_M = 30;
+
+/**
+ * Whether a click's ray, coming from inside the room, crossed the front door's opening (the z = 0 wall, between the door's jambs, above the
+ * floor and under its head) within `maxT` m: a tap on the glass leaf, which a click passes through (clickPick.ts: glass is not picked).
+ */
+function frontDoorCrossed(n: HouseNumber, ray: TapRayLike | null | undefined, maxT: number): boolean {
+  if (!ray) return false;
+  const o = worldToLocal(n, 1, ray.o.x, ray.o.z);
+  const o1 = worldToLocal(n, 1, ray.o.x + ray.d.x, ray.o.z + ray.d.z);
+  const dz = o1.z - o.z;
+  // from inside (local z > 0) towards the wall (local -z)
+  if (!(o.z > 0) || !(dz < -1e-6)) return false;
+  const t = -o.z / dz;
+  if (!(t > 0) || t > maxT) return false;
+  const hx = o.x + (o1.x - o.x) * t;
+  const hy = ray.o.y + ray.d.y * t;
+  return hx >= FRONT_DOOR.minX && hx <= FRONT_DOOR.maxX && hy >= FRONT_DOOR.minY && hy <= FRONT_DOOR.height;
+}
 
 export interface HouseTapTarget {
   /** The target id the pad offers (houseTargets.ts). */
@@ -30,22 +64,44 @@ export interface HouseTapTarget {
   z: number;
 }
 
-/** What the picked world point (x, y, z) of house floor `area` is: its stair, its front door, or nothing. */
-export function houseTapTarget(area: string, x: number, y: number, z: number): HouseTapTarget | null {
+/**
+ * Whether the picked point (x, y, z) is at the height of the stair's own steps and rail there: floor 1 the climb rises 4.0 m over the
+ * run (the first step at the foot, the floor above at the top); floor 2 the stairwell shows the same flight below the floor (y 0 at its top),
+ * and above the floor only the guard rail (0.9 m) stands.
+ */
+export function onStairSurface(n: HouseNumber, floor: HouseFloor, x: number, y: number, z: number): boolean {
+  const plan = STAIR_PLANS[HOUSE_STAIR_TYPE[n]];
+  const l = worldToLocal(n, floor, x, z);
+  const t = Math.min(1, Math.max(0, ((l.x - plan.foot.x) * plan.climb.x + (l.z - plan.foot.z) * plan.climb.z) / HOUSE_STAIR.run));
+  const surface = t * HOUSE_ROOM.storey - (floor === 2 ? HOUSE_ROOM.storey : 0);
+  const top = floor === 2 ? HOUSE_TAP_STAIR_ABOVE : surface + HOUSE_TAP_STAIR_ABOVE;
+  return y >= surface - HOUSE_TAP_STAIR_BELOW && y <= top;
+}
+
+/** What the picked world point (x, y, z) of house floor `area` is: its stair, its front door, or nothing. `ny`: the picked face's normal's y (a flat thing by the door, a mat or a shoe shelf's top, is not the door); `ray` / `distance`: the click's ray and how far along it the pick lies (the glass front door is not picked: frontDoorCrossed); a NaN point means nothing was picked. */
+export function houseTapTarget(area: string, x: number, y: number, z: number, ny?: number, ray?: TapRayLike | null, distance = 0): HouseTapTarget | null {
   const hit = parseHouseFloorArea(area);
-  if (!hit || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
+  if (!hit) return null;
   const places = HOUSE_PLACES[hit.n];
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+    // nothing picked: the click went through the front door's glass and out of the house. The ray alone says whether it crossed the door.
+    return hit.floor === 1 && frontDoorCrossed(hit.n, ray, FRONT_DOOR_RAY_ONLY_MAX_M) ? { id: HOUSE_EXIT_TARGET_ID, x: places.exitPad.x, z: places.exitPad.z } : null;
+  }
   const plan = STAIR_PLANS[HOUSE_STAIR_TYPE[hit.n]];
   const foot = localRectToWorld(hit.n, hit.floor, plan.footprint);
   const m = HOUSE_TAP_STAIR_MARGIN;
-  if (x >= foot.minX - m && x <= foot.maxX + m && z >= foot.minZ - m && z <= foot.maxZ + m) {
+  if (x >= foot.minX - m && x <= foot.maxX + m && z >= foot.minZ - m && z <= foot.maxZ + m && onStairSurface(hit.n, hit.floor, x, y, z)) {
     return hit.floor === 1
       ? { id: HOUSE_STAIR_UP_TARGET_ID, x: places.upPad.x, z: places.upPad.z }
       : { id: HOUSE_STAIR_DOWN_TARGET_ID, x: places.downPad.x, z: places.downPad.z };
   }
   if (hit.floor === 1) {
     const l = worldToLocal(hit.n, 1, x, z);
-    if (l.x >= FRONT_DOOR.minX && l.x <= FRONT_DOOR.maxX && l.z <= FRONT_DOOR.maxZ && y <= FRONT_DOOR.height) {
+    if (l.x >= FRONT_DOOR.minX && l.x <= FRONT_DOOR.maxX && l.z <= FRONT_DOOR.maxZ && l.z >= -FRONT_DOOR.maxZ && y >= FRONT_DOOR.minY && y <= FRONT_DOOR.height && !doorTapOnFlat(y, ny)) {
+      return { id: HOUSE_EXIT_TARGET_ID, x: places.exitPad.x, z: places.exitPad.z };
+    }
+    // through the glass onto what stands outside it (the view's backdrop, the frame's far side): the pick lies at or past the wall, off the floor
+    if (l.z <= FRONT_DOOR.maxZ && y >= FRONT_DOOR.minY && !doorTapOnFlat(y, ny) && frontDoorCrossed(hit.n, ray, distance + 0.05)) {
       return { id: HOUSE_EXIT_TARGET_ID, x: places.exitPad.x, z: places.exitPad.z };
     }
   }
@@ -65,6 +121,11 @@ let armed: { id: string; at: number } | null = null;
 /** Arm the use of target `id` for the walk now planned (null disarms: any other tap does). */
 export function armHouseUse(id: string | null, now: number = performance.now()): void {
   armed = id === null ? null : { id, at: now };
+}
+
+/** Drop the armed use (entering or leaving a house, the keys / stick taking over). Same as `armHouseUse(null)`. */
+export function disarmHouseUse(): void {
+  armed = null;
 }
 
 export function armedHouseUse(): string | null {

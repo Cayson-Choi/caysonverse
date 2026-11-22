@@ -34,6 +34,7 @@ import { LakeVillagePatch } from "../lake/PatchVillage";
 import { FallsModel } from "./falls/FallsModel";
 import { LotsVillagePatch } from "./lots/LotsVillagePatch";
 import { ExteriorDress } from "./ExteriorDress";
+import { CafeShowcase } from "./cafe/CafeShowcase";
 import { fallsMode, fallsRuntimeFor } from "./falls/fallsConfig";
 import { fallsModelBuilt } from "./falls/fallsLoader";
 import { StreetFurniture } from "./street/StreetFurniture";
@@ -45,6 +46,7 @@ import { preloadHouses } from "./houses/housesLoader";
 import { LoadBoundary } from "./LoadBoundary";
 import { clearHousesFiles } from "./villageRelease";
 import { ensureShadowPlaceholder, liveSunEnabled } from "./sunShadows";
+import { reconnectFrame } from "../ui/reconnectFrame";
 
 declare global {
   interface Window {
@@ -249,7 +251,9 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   useEffect(() => {
     // Dev/E2E probe: the dressed model (draw-call and material checks). Tree-shaken in production.
     if (import.meta.env.DEV) window.__cvVillage = () => nodes;
+    reconnectFrame.villageIn(); // the village is in the scene: a reconnect's overlay may lift (ReconnectingOverlay)
     return () => {
+      reconnectFrame.villageOut();
       if (import.meta.env.DEV) delete window.__cvVillage;
       disposeVillage(nodes);
     };
@@ -287,6 +291,8 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       <LotsVillagePatch root={nodes.root} />
       {/* The memorial roof, the cafe parasols, the pavilion roof, the plaza seats and the fountain crescent get real surfaces (exteriorDress.ts). */}
       <ExteriorDress root={nodes.root} tier={tier} />
+      {/* The café's real rooms (both floors) behind real glass, village.glb's café interior taken out of the clone (cafe/CafeShowcase.tsx). */}
+      <CafeShowcase root={nodes.root} />
       {veg && <primitive object={veg.group} dispose={null} />}
       {mountains && (
         <Suspense fallback={null}>

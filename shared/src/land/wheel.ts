@@ -3,10 +3,11 @@
  * CLIENT evaluate the same functions of the wall clock; the server only keeps who sits where.
  *
  * Park-local frame (parkArea.ts). A wheel 44 m across stands in the plane z = WHEEL_SITE.z (x east, y up), hub at 26 m; eight enclosed lantern gondolas
- * (four seats each: seats g*4 + k) hang on arms 3.2 m SOUTH of the wheel plane (the rim trusses are behind the riders, who face south). It turns
- * clockwise seen from the south, in STEPS of one gondola (45 degrees): each step lasts 18 s: 1.5 s unloading, 6.5 s boarding, 1.5 s gate, then 8.5 s turning
- * (eased) to the next gondola. The gondola at the bottom platform (east side) takes the next riders; a rider rides one full revolution (8 steps, 2 min 24 s)
- * and is put off when the same gondola is back at the platform.
+ * (four seats each: seats g*4 + k) hang on arms 3.4 m SOUTH of the wheel plane (the rim trusses are behind the riders, who face south). It turns clockwise
+ * seen from the south, ALWAYS and at a constant speed: one revolution takes 2 min 30 s (the bottom of the rim creeps by at 0.92 m/s), like the slow observation
+ * wheels: nobody waits for it to stop. A gondola reaches the boarding platform every 18.75 s (one eighth of a turn); while its door is within 3 m of the
+ * platform's middle (6.5 s) the station is BOARDING: the riders of the gondola that came round get off and the next ones step on, the gondola creeping by.
+ * A rider stays one full revolution (eight passes) and is put off when the same gondola is back at the platform. The gondolas hang level (never swing or tilt).
  */
 
 export const WHEEL_SITE = Object.freeze({ x: 205, z: -140 });
@@ -17,83 +18,81 @@ export const WHEEL_SEATS_PER = 4;
 export const WHEEL_SEATS = WHEEL_N * WHEEL_SEATS_PER;
 export const WHEEL_STEP = (Math.PI * 2) / WHEEL_N;
 
-export const WHEEL_STEP_MS = 18_000;
-export const WHEEL_UNLOAD_MS = 1500;
-export const WHEEL_BOARD_END_MS = 8000;
-export const WHEEL_GATE_END_MS = 9500;
-/** The cycle (step) count of one ride: a full revolution. */
+/** One revolution (ms) and the time between two gondolas reaching the platform (a cycle: one eighth of a turn). */
+export const WHEEL_REV_MS = 150_000;
+export const WHEEL_STEP_MS = WHEEL_REV_MS / WHEEL_N;
+/** The wheel's turning speed (rad/s) and the speed of the rim's lowest point (m/s). */
+export const WHEEL_OMEGA = (Math.PI * 2) / (WHEEL_REV_MS / 1000);
+export const WHEEL_BOTTOM_SPEED = WHEEL_OMEGA * WHEEL_R;
+/** The loading window: while a gondola's pivot is within this many metres (along x) of the platform's middle, riders may step on and off. */
+export const WHEEL_BOARD_REACH_M = 3;
+export const WHEEL_BOARD_HALF_MS = (WHEEL_BOARD_REACH_M / WHEEL_BOTTOM_SPEED) * 1000;
+/** The cycle (pass) count of one ride: a full revolution. */
 export const WHEEL_RIDE_CYCLES = WHEEL_N;
-const MOVE_S = (WHEEL_STEP_MS - WHEEL_GATE_END_MS) / 1000;
 
 /** The gondola's floor and seats, in its own frame (y down from the pivot): the same numbers as tools/land/make_wheel.py. */
 export const GONDOLA_FLOOR_Y = -3.04;
 export const GONDOLA_SEAT_Y = -2.53;
-/** The cabin's centre lies this far south of the pivot (m); its bench runs along the north wall: seat k at x = (k - 1.5) * 0.75, z = CZ - 0.5, facing south. */
-export const GONDOLA_CZ = 3.2;
+/** The cabin's centre lies this far south of the pivot (m; 3.4 keeps the roof's north edge 0.24 m clear of the south rim's bulbs); its bench runs along the north wall: seat k at x = (k - 1.5) * 0.75, z = CZ - 0.5, facing south. */
+export const GONDOLA_CZ = 3.4;
 export const GONDOLA_SEAT_DZ = -0.5;
 export const GONDOLA_SEAT_DX = 0.75;
 
-export type WheelPhase = "unloading" | "boarding" | "gate" | "riding";
+export type WheelPhase = "boarding" | "riding";
 export interface WheelState {
-  /** the step count since the epoch (the cycle) */
+  /** the pass count: cycle k begins when a gondola's door comes within reach of the platform (the window opens), `phase` ms later the window closes */
   cycle: number;
-  /** ms since this step began */
+  /** ms since this cycle began */
   phase: number;
+  /** "boarding" while a gondola is at the platform (6.5 s every 18.75 s), "riding" otherwise */
   status: WheelPhase;
-  /** the wheel's angle (rad, clockwise seen from the south = increasing) */
+  /** the wheel's angle (rad, clockwise seen from the south = increasing; it never stops) */
   angle: number;
-  /** turning speed (rad/s) */
+  /** turning speed (rad/s): constant */
   omega: number;
-  /** angular acceleration (rad/s^2) */
+  /** angular acceleration (rad/s^2): zero */
   alpha: number;
-  /** ms to the next departure (the turn's start) */
+  /** ms to the window's close (boarding) or to the next window's opening (riding) */
   departsInMs: number;
 }
 
-// the turn's ease: f in [0,1] -> a smoothstep (position), its first and second derivatives
-const ease = (f: number): number => f * f * (3 - 2 * f);
-const ease1 = (f: number): number => 6 * f * (1 - f);
-const ease2 = (f: number): number => 6 - 12 * f;
-
-const SCRATCH: WheelState = { cycle: 0, phase: 0, status: "boarding", angle: 0, omega: 0, alpha: 0, departsInMs: 0 };
+const SCRATCH: WheelState = { cycle: 0, phase: 0, status: "boarding", angle: 0, omega: WHEEL_OMEGA, alpha: 0, departsInMs: 0 };
 
 export function wheelAt(nowMs: number, out: WheelState = { cycle: 0, phase: 0, status: "boarding", angle: 0, omega: 0, alpha: 0, departsInMs: 0 }): WheelState {
-  const cycle = Math.floor(nowMs / WHEEL_STEP_MS);
-  const phase = nowMs - cycle * WHEEL_STEP_MS;
+  // pass k is centred on t = k * step (the gondola at the bottom, at the platform's middle); its window runs from k*step - half to k*step + half
+  const shifted = nowMs + WHEEL_BOARD_HALF_MS;
+  const cycle = Math.floor(shifted / WHEEL_STEP_MS);
+  const phase = shifted - cycle * WHEEL_STEP_MS;
   out.cycle = cycle;
   out.phase = phase;
-  if (phase < WHEEL_GATE_END_MS) {
-    out.status = phase < WHEEL_UNLOAD_MS ? "unloading" : phase < WHEEL_BOARD_END_MS ? "boarding" : "gate";
-    out.angle = (cycle % WHEEL_N) * WHEEL_STEP;
-    out.omega = 0;
-    out.alpha = 0;
-    out.departsInMs = WHEEL_GATE_END_MS - phase;
+  out.angle = (nowMs / WHEEL_REV_MS) * Math.PI * 2;
+  out.omega = WHEEL_OMEGA;
+  out.alpha = 0;
+  if (phase < 2 * WHEEL_BOARD_HALF_MS) {
+    out.status = "boarding";
+    out.departsInMs = 2 * WHEEL_BOARD_HALF_MS - phase;
   } else {
-    const f = (phase - WHEEL_GATE_END_MS) / (WHEEL_STEP_MS - WHEEL_GATE_END_MS);
     out.status = "riding";
-    out.angle = ((cycle % WHEEL_N) + ease(f)) * WHEEL_STEP;
-    out.omega = (WHEEL_STEP * ease1(f)) / MOVE_S;
-    out.alpha = (WHEEL_STEP * ease2(f)) / (MOVE_S * MOVE_S);
-    out.departsInMs = WHEEL_STEP_MS - phase + WHEEL_GATE_END_MS;
+    out.departsInMs = WHEEL_STEP_MS - phase;
   }
   return out;
 }
 
-/** The gondola at the bottom platform at rest in step `cycle` (gondola g stands at angle g*step + the wheel's angle; the bottom is the angle pi). */
+/** The gondola at the bottom platform in pass `cycle` (gondola g stands at angle g*step + the wheel's angle; the bottom is the angle pi). */
 export function wheelBottomGondola(cycle: number): number {
   return (((WHEEL_N / 2 - cycle) % WHEEL_N) + WHEEL_N) % WHEEL_N;
 }
 
-/** The four seats a boarding rider may take at `nowMs`: the bottom gondola's (RideDef.boardingSeats). */
+/** The four seats a boarding rider may take at `nowMs`: the gondola at the platform (RideDef.boardingSeats). */
 export function boardingSeatsOfWheel(nowMs: number): number[] {
-  const g = wheelBottomGondola(Math.floor(nowMs / WHEEL_STEP_MS));
+  const g = wheelBottomGondola(wheelAt(nowMs, SCRATCH).cycle);
   return [0, 1, 2, 3].map((k) => g * WHEEL_SEATS_PER + k);
 }
 
-/** Whether `seat`'s gondola stands at the platform (a rider may get off) at `nowMs` (RideDef.canLeave). */
+/** Whether `seat`'s gondola is at the platform (a rider may get off) at `nowMs` (RideDef.canLeave). */
 export function wheelSeatAtPlatform(seat: number, nowMs: number): boolean {
   const s = wheelAt(nowMs, SCRATCH);
-  if (s.status === "riding") return false;
+  if (s.status !== "boarding") return false;
   return Math.floor(seat / WHEEL_SEATS_PER) === wheelBottomGondola(s.cycle);
 }
 
@@ -106,11 +105,9 @@ export function wheelPivot(g: number, angle: number, out: { x: number; y: number
   return out;
 }
 
-/** How far a gondola swings (rad about the z axis; positive = the cabin goes to +x): the pendulum lags the pivot's acceleration. */
-export function wheelSway(g: number, st: WheelState): number {
-  const phi = g * WHEEL_STEP + st.angle;
-  const ax = WHEEL_R * Math.cos(phi) * st.alpha;
-  return Math.max(-0.12, Math.min(0.12, (-ax / 9.81) * 0.9));
+/** The gondolas hang level: they never swing or tilt, for anyone, from any side (owner 2026-11-19). Kept as a function for its callers. */
+export function wheelSway(_g: number, _st: WheelState): number {
+  return 0;
 }
 
 const PIV = { x: 0, y: 0, z: 0 };
@@ -123,7 +120,7 @@ export interface WheelSeatPose {
   /** the facing: a unit vector on the ground (south) */
   fx: number;
   fz: number;
-  /** the cabin's swing (rad about z) */
+  /** the cabin's tilt (rad about z): always 0 */
   sway: number;
   gondola: number;
   pivotX: number;

@@ -5,11 +5,11 @@
  * take the click target over), and stops with a short line when a leg cannot go on (something in the way).
  */
 import { activeBounds, activeSeats, getActiveMap } from "../game/activeMap";
-import { clickGeneration, peekClickTarget, setClickTarget } from "../game/clickMove";
+import { clearClickTarget, clickGeneration, endWalk, peekClickTarget, setClickTarget } from "../game/clickMove";
 import { planClickMove, walkStart } from "../game/clickPlan";
 import type { Pose, SeatState } from "../game/types";
 import { useClickHint } from "../stores/clickHintStore";
-import { mapPlace, wayTo } from "./villagePlaces";
+import { mapPlace, wayTo, type MapPlace } from "./villagePlaces";
 import type { Point2 } from "@caysonverse/shared/village/villageLayout";
 
 /** How often the walk looks at its leg (ms). */
@@ -51,6 +51,7 @@ export function subscribeMapWalk(l: () => void): () => void {
 function stop(hint?: string): void {
   if (!walk) return;
   clearInterval(walk.timer);
+  if (walk.gen === clickGeneration() && peekClickTarget()) endWalk();
   walk = null;
   if (hint) useClickHint.getState().show(hint);
   emit();
@@ -107,11 +108,24 @@ function tick(): void {
 
 /** Walk to the map place `id` from where the player is (`pose`, `seat`: the live objects). False when it cannot start. */
 export function startMapWalk(id: string, pose: Pose, seat: SeatState): boolean {
-  stop();
   const place = mapPlace(id);
-  if (!place) return false;
+  if (!place) {
+    stop();
+    return false;
+  }
+  return startWalkTo(place, pose, seat);
+}
+
+/**
+ * Walk to `place` (a map place, or a spot shaped like one: the guide's "같이 가요" to the fountain) along its way, as
+ * startMapWalk does. False when it cannot start (already there says so: "<name>에 도착했어요.").
+ */
+export function startWalkTo(place: MapPlace, pose: Pose, seat: SeatState): boolean {
+  stop();
+  // This destination replaces the previous click even when the planner says we are already here.
+  clearClickTarget();
   const legs = wayTo(place, pose.x, pose.z);
-  const w: Walk = { name: place.name, legs, leg: 0, gen: -1, timer: setInterval(tick, TICK_MS), pose, seat };
+  const w: Walk = { name: place.name, legs, leg: 0, gen: clickGeneration(), timer: setInterval(tick, TICK_MS), pose, seat };
   walk = w;
   if (!startLeg(w)) {
     const here = Math.hypot(legs[legs.length - 1]!.x - pose.x, legs[legs.length - 1]!.z - pose.z) <= LEG_REACHED_M;

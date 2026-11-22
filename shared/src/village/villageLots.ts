@@ -25,13 +25,14 @@
 
 import type { AABB, CameraBox } from "../collision";
 import type { PlotId, Point2, Side } from "./villageLayout";
+import { CAFE_CENTRE_XZ, CAFE_IN, CAFE_ROOM_SIZE, CAFE_UP, CAFE_UP_CEIL, CAFE_UP_SIZE } from "./cafeRoom";
 
 /** v2 ids (2026-11-17). v1's market/shops/hall/post/mart ids were never released (cancelled), so they are not kept. */
-export type LotId = "lot_school" | "lot_chapel" | "lot_library" | "lot_temple" | "lot_church" | "lot_gate";
+export type LotId = "lot_school" | "lot_chapel" | "lot_library" | "lot_temple" | "lot_church" | "lot_gate" | "lot_cafe";
 
 
 /** What a lot holds (design 2). */
-export type LotKind = "school" | "chapel" | "library" | "temple" | "church" | "park_gate";
+export type LotKind = "school" | "chapel" | "library" | "temple" | "church" | "park_gate" | "cafe";
 
 /** A rectangle in a lot's local frame (m): x0 < x1, z0 < z1. */
 export interface LotRect {
@@ -653,6 +654,48 @@ const GATE: VillageLot = {
   priority: 6,
 };
 
+/**
+ * 케이슨 카페 (owner 2026-11-20 "들어갈 수 있게 해"): the village café on the east side of the plaza, a roomed building like the others but
+ * not one of the lots (it is a layout `cafe` house with its own baked facade and terrace, so it is not in `VILLAGE_LOTS`: no lot model,
+ * no lot LOD, no lot colliders). It only carries what the walk-in room needs: its frame, its door and its room (cafeRoom.ts). Frame as
+ * parts_cafe.py: local z out of the door, the body x +-7.1, z -9.6..4.0 (the terrace is the 6 m before it).
+ */
+export const CAFE_LOT: VillageLot = {
+  id: "lot_cafe",
+  plot: null,
+  kind: "cafe",
+  name: "케이슨 카페",
+  sign: "케이슨 카페",
+  storeys: 2,
+  storeyHeight: 4.6,
+  height: 12.7,
+  doorSide: "w",
+  centre: { x: CAFE_CENTRE_XZ.x, z: CAFE_CENTRE_XZ.z },
+  front: 15,
+  depth: 20,
+  body: rect(-7.1, 7.1, -9.6, 4),
+  apron: 6,
+  entry: "door",
+  doors: [door("lot_cafe_main", 0, 2.4, "swing", "door", 1, "front", 3)],
+  units: [
+    {
+      id: "lot_cafe_room", name: "카페 홀", sign: "카페", x0: -7.1, x1: 7.1, door: "lot_cafe_main",
+      interior: interior("lot_cafe_room", { x: 560, z: 40 }, { x: CAFE_ROOM_SIZE.x, z: CAFE_ROOM_SIZE.z }, 4.3, 1),
+    },
+    {
+      // the upstairs salon (owner 2026-11-21): reached by the café's stair only (its spec has no way out; the door is the café's)
+      id: "lot_cafe_upstairs", name: "카페 2층", sign: "카페", x0: -7.1, x1: 7.1, door: "lot_cafe_main",
+      interior: interior("lot_cafe_upstairs", { x: 560, z: 60 }, { x: CAFE_UP_SIZE.x, z: CAFE_UP_SIZE.z }, CAFE_UP_CEIL, 1),
+    },
+  ],
+  colliders: [],
+  seats: [],
+  slots: [],
+  approach: { x: 40.6, z: -15.1 },
+  phase: { exterior: 1, interior: 1 },
+  priority: 7,
+};
+
 function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
     Object.freeze(value);
@@ -665,7 +708,7 @@ function deepFreeze<T>(value: T): T {
 export const VILLAGE_LOTS: readonly VillageLot[] = deepFreeze([SCHOOL, CHAPEL, LIBRARY, TEMPLE, CHURCH, GATE]);
 
 export function villageLot(id: LotId): VillageLot {
-  const l = VILLAGE_LOTS.find((x) => x.id === id);
+  const l = id === "lot_cafe" ? CAFE_LOT : VILLAGE_LOTS.find((x) => x.id === id);
   if (!l) throw new Error(`unknown lot ${id}`);
   return l;
 }
@@ -836,6 +879,7 @@ export const LOT_TRIANGLES: Readonly<Record<LotId, { shell: number; detail: numb
   lot_temple: Object.freeze({ shell: 3_400, detail: 20_000 }),
   lot_church: Object.freeze({ shell: 2_400, detail: 14_000 }),
   lot_gate: Object.freeze({ shell: 4_000, detail: 25_000 }),
+  lot_cafe: Object.freeze({ shell: 0, detail: 0 }), // (no lot model: the facade is the village's)
 });
 
 /**
@@ -926,6 +970,8 @@ export const LOT_SURFACE_RULES = Object.freeze({
     // B3 2026-11-17: the 75ab7df gate re-seated on the library's KTX2 sets (v1's band names had no library sets): ashlar
     // towers, granite plinths, cream render, glossy painted iron and domes (plaster_painted), brushed metal, oak benches
     lot_gate: Object.freeze(["stone_ashlar", "granite_flamed", "stucco_white", "plaster_painted", "aluminium_brushed", "wood_oak"]),
+    // 2026-11-20: the café's room (no lot model: CafeRoom.tsx dresses its floor, walls and oak with these library sets)
+    lot_cafe: Object.freeze(["floor_wood", "plaster_painted", "wood_oak", "wood_painted", "tile_white"]),
   }),
 });
 
@@ -991,6 +1037,7 @@ export const LOT_ROOF_SLABS: Readonly<Record<LotId, readonly { rect: LotRect; mi
   ]),
   lot_church: Object.freeze([{ rect: rect(-2.2, 2.2, 3, 4.8), minY: 3.6, height: 4.8 }]), // columned porch
   lot_gate: Object.freeze([]),
+  lot_cafe: Object.freeze([]),
 });
 
 /**
@@ -1013,20 +1060,40 @@ export function lotSeatFurnitureBoxes(l: VillageLot): AABB[] {
   return out;
 }
 
-/** The lots' boxes as the village geometry takes them: every collider an obstacle, the tall ones and the roof slabs camera boxes. */
-export function lotGeometryColliders(ids: readonly LotId[] = LOTS_WITH_MODEL): { obstacles: AABB[]; cameraBoxes: CameraBox[] } {
+/**
+ * The lots' low solids that hide an avatar's lower body from a camera behind them (QA 2026-11-20): collider id -> its real height (m).
+ * The camera looks over them (cameraHeight 0: they never shorten the arm) but rises over them when one is between the lens and the
+ * avatar (client/src/game/cameraCollision.ts `hurdleLift`). The stone garden wall of the temple (1.5 m), the basins and planters.
+ */
+export const LOT_HURDLES: Readonly<Record<string, number>> = Object.freeze({
+  lot_temple_wall_fl: 1.5,
+  lot_temple_wall_fr: 1.5,
+  lot_temple_wall_l: 1.5,
+  lot_temple_wall_r: 1.5,
+  lot_temple_wall_b: 1.5,
+  lot_temple_pond: 0.6,
+  lot_chapel_fountain: 0.9,
+  lot_gate_fountain: 1.1,
+  lot_gate_planter_l: 0.9,
+  lot_gate_planter_r: 0.9,
+});
+
+/** The lots' boxes as the village geometry takes them: every collider an obstacle, the tall ones and the roof slabs camera boxes (`hurdles`: LOT_HURDLES). */
+export function lotGeometryColliders(ids: readonly LotId[] = LOTS_WITH_MODEL): { obstacles: AABB[]; cameraBoxes: CameraBox[]; hurdles: CameraBox[] } {
   const obstacles: AABB[] = [];
   const cameraBoxes: CameraBox[] = [];
+  const hurdles: CameraBox[] = [];
   for (const l of VILLAGE_LOTS) {
     if (!ids.includes(l.id)) continue;
     for (const c of lotColliders(l)) {
       obstacles.push(c.box);
       if (c.camera) cameraBoxes.push({ ...c.box, height: c.cameraHeight });
+      else if (LOT_HURDLES[c.id] !== undefined) hurdles.push({ ...c.box, height: LOT_HURDLES[c.id]! });
     }
     obstacles.push(...lotSeatFurnitureBoxes(l));
     for (const s of LOT_ROOF_SLABS[l.id]) cameraBoxes.push({ ...lotBox(l, s.rect), minY: s.minY, height: s.height });
   }
-  return { obstacles, cameraBoxes };
+  return { obstacles, cameraBoxes, hurdles };
 }
 
 /**
@@ -1088,6 +1155,10 @@ export interface LotInteriorSeat {
   frontEdge: number;
   backDepth: number;
   places: number;
+  /** A chair pulled up to its table (the café's): its front is the table, so it is sat on from beside and stood up from in front-and-aside (the terrace chairs' rule), and the 0.6 m front strip is not kept clear. */
+  tableFront?: boolean;
+  /** A backless seat sat on from either side (a stool at a counter): two facings, one exclusive group. */
+  both?: boolean;
 }
 
 export interface LotInteriorSpec {
@@ -1103,6 +1174,14 @@ export interface LotInteriorSpec {
   budget: { pc: { triangles: number; textureMB: number; draws: number }; phone: { triangles: number; textureMB: number; draws: number } };
   /** What must be there (design 11): the review checks every item. */
   program: readonly string[];
+  /** A room with no way out of its own (the café's upstairs salon: its stair is the only way): no exit pad, no "밖으로 나가기". */
+  noExit?: boolean;
+  /**
+   * A stair to another room of the same building (the café's, owner 2026-11-21), used as a house's stair is: its pad (interior frame; `faces`:
+   * the way a user at the pad faces, toward the stair), the room it leads to (`to`: a unit id), and where one arrives in THIS room coming from
+   * that one (`arrival`, the side it faces). `useLotStair` (the server's rule) and the client's 2층 / 1층 button read it.
+   */
+  stair?: { pad: { x: number; z: number; radius: number }; faces: "in" | "out" | "left" | "right"; to: string; arrival: { x: number; z: number; faces: "in" | "out" | "left" | "right" } };
 }
 
 /** Minimum clear floor in front of a seat's front edge (owner rule P6: sit and stand from the front). */
@@ -1130,7 +1209,9 @@ const SCHOOL_IN: LotInteriorSpec = {
     solid("globe_stand", 13.6, 14.3, 2.7, 3.4, 1.25), solid("plant_tall", 11.35, 11.95, 6.35, 6.95, 1.7),
   ],
   seats: [0, 1, 2, 3].flatMap((c) => [0, 1, 2].map((r) => iseat(`lot_school_chair_${c * 3 + r + 1}`, 4 + c * 2.2, 3.6 + r * 1.4, "left", "backed", 0.44, 1, 0.45, 0.22, 0.23))),
-  budget: { pc: { triangles: 60_000, textureMB: 24, draws: 40 }, phone: { triangles: 25_000, textureMB: 8, draws: 25 } },
+  // the realism pass (owner 2026-11-20): real desks / chairs / books / plants and the children's drawings' own atlases. The phone
+  // reads the same file (as the reading room): the phone budget below is what a `_phone` file (LOT_ROOM_PHONE_FILES) should meet.
+  budget: { pc: { triangles: 75_000, textureMB: 72, draws: 40 }, phone: { triangles: 33_000, textureMB: 18, draws: 30 } },
   program: ["복도 사물함(번호판·손잡이)", "유리 칸막이", "칠판(새 칠판)·분필 받침", "교탁·교사 의자", "책상 12 + 의자 12(앉기)", "벽시계", "게시판(그림·시간표)", "창가 화분", "펜던트 조명"],
 };
 
@@ -1164,7 +1245,14 @@ const LIBRARY_IN: LotInteriorSpec = {
     iseat("lot_library_nook_1", 2.6, 0.4, "in", "backless", 2.4, 2, 0.48, 0.2, 0.2), // the bay window seats (cushion, sat facing the room)
     iseat("lot_library_nook_2", 10.8, 0.4, "in", "backless", 2.4, 2, 0.48, 0.2, 0.2),
   ],
-  budget: { pc: { triangles: 90_000, textureMB: 32, draws: 45 }, phone: { triangles: 35_000, textureMB: 10, draws: 28 } },
+  // 2026-11-20 (owner "책들이 너무 허접해 … 실제와 같이 … 고해상도로 선명하게"): every book is its own hardback (a rounded spine on the
+  // procedural spine atlas, page block, boards; ~4,000 books in 16 instanced 0.42 m runs, ~17 triangles a book) and the props are
+  // turned smoothly (16–24 sides, was 6–8): 140k triangles (was 90k; the 대웅전 and 성당 are 140k too), 60 draws (16 run kinds).
+  // Textures (PC): the oak, floor and limestone at 2K, the books atlas 2048 + normal / ORM 1024, the rugs 2048, the lightmaps 2048
+  // (UASTC): ~66 MB (was 29) — a desktop GPU holds it easily. The phone's maps are capped (colour 1024, normal / ORM 512, lightmaps
+  // 1024: ~14 MB). NOTE: there is no phone GLB for this room yet — a phone draws the same file (before: 79k triangles over the 35k
+  // phone budget; now ~130k); the phone budget below is what a `_phone` file (LOT_ROOM_PHONE_FILES) should meet.
+  budget: { pc: { triangles: 140_000, textureMB: 72, draws: 60 }, phone: { triangles: 60_000, textureMB: 16, draws: 45 } },
   program: ["벽 책장 가득한 책(책등 다양, 인스턴스)", "열람 테이블 2 + 의자 8(앉기)", "초록 갓 독서등", "창가 독서 자리 2(쿠션·담요·책 더미, 앉기)", "사서 데스크(도장·책 수레)", "벽난로·안락의자(장식)", "책장 사다리", "천장 들보·펜던트"],
 };
 
@@ -1182,7 +1270,8 @@ const CHAPEL_IN: LotInteriorSpec = {
     ...[0, 1, 2, 3, 4].flatMap((r) => [solid(`pew_l${r + 1}`, 0.7, 3.7, 2.6 + r * 1.5 - 0.35, 2.6 + r * 1.5 + 0.25, 1.0), solid(`pew_r${r + 1}`, 5.7, 8.7, 2.6 + r * 1.5 - 0.35, 2.6 + r * 1.5 + 0.25, 1.0)]),
   ],
   seats: [0, 1, 2, 3, 4].flatMap((r) => [iseat(`lot_chapel_pew_l${r + 1}`, 2.2, 2.6 + r * 1.5, "in", "backed", 3, 3), iseat(`lot_chapel_pew_r${r + 1}`, 7.2, 2.6 + r * 1.5, "in", "backed", 3, 3)]),
-  budget: { pc: { triangles: 140_000, textureMB: 48, draws: 60 }, phone: { triangles: 55_000, textureMB: 14, draws: 35 } },
+  // phone draws 35 -> 45 (2026-11-19): the 14 Stations of the Cross frames and the merged props file added ~10 draws; a room of 44 draws is far below the village view on a phone (100-300).
+  budget: { pc: { triangles: 140_000, textureMB: 48, draws: 60 }, phone: { triangles: 55_000, textureMB: 14, draws: 45 } },
   program: ["장의자 10 + 무릎틀(앉기)", "가운데 통로", "제대·감실·십자고상·독서대·제대 초", "성수대", "고해소", "십자가의 길 14처(부조)", "성모상", "성인상", "구상 스테인드글라스(측창·장미창, 바닥에 색 빛)", "리브 볼트 천장", "샹들리에", "성가대석(오르간 로프트)", "꽃"],
 };
 
@@ -1194,12 +1283,13 @@ const CHURCH_IN: LotInteriorSpec = {
   doorWidth: 2.2,
   solids: [
     solid("chancel", 0.4, 7.4, 8.4, 10.4, 0.3), // raised chancel: pulpit, communion table, the cross on the wall
-    solid("organ", 6.6, 7.6, 7.6, 8.4, 1.3), solid("hymn_board", 0.2, 0.5, 7.2, 7.8, 1.8),
+    solid("organ", 6.6, 7.6, 7.6, 8.4, 1.3), solid("hymn_board", 0.2, 0.5, 7.0, 7.85, 1.8),
     ...[0, 1, 2, 3].flatMap((r) => [solid(`pew_l${r + 1}`, 0.5, 3.1, 2.2 + r * 1.5 - 0.35, 2.2 + r * 1.5 + 0.25, 1.0), solid(`pew_r${r + 1}`, 4.7, 7.3, 2.2 + r * 1.5 - 0.35, 2.2 + r * 1.5 + 0.25, 1.0)]),
   ],
   seats: [0, 1, 2, 3].flatMap((r) => [iseat(`lot_church_pew_l${r + 1}`, 1.8, 2.2 + r * 1.5, "in", "backed", 2.6, 3), iseat(`lot_church_pew_r${r + 1}`, 6, 2.2 + r * 1.5, "in", "backed", 2.6, 3)]),
-  budget: { pc: { triangles: 70_000, textureMB: 28, draws: 40 }, phone: { triangles: 28_000, textureMB: 8, draws: 25 } },
-  program: ["나무 장의자 8(앉기)", "강대상(설교단)", "성찬상", "단순한 나무 십자가", "찬송 번호판(숫자만)", "오르간 또는 피아노", "맑은 유리 또는 단순한 색유리", "노출 들보 천장", "펜던트 등", "꽃"],
+  // phone draws 25 -> 30 (2026-11-19): three framed paintings and the merged props file added 3 draws.
+  budget: { pc: { triangles: 70_000, textureMB: 28, draws: 40 }, phone: { triangles: 28_000, textureMB: 8, draws: 30 } },
+  program: ["나무 장의자 8(앉기)", "강대상(설교단)", "성찬상", "단순한 나무 십자가", "찬송 게시판(오늘의 찬송: 79·288·305장)", "오르간 또는 피아노", "맑은 유리 또는 단순한 색유리", "노출 들보 천장", "펜던트 등", "꽃"],
 };
 
 /** 대웅전 안: 방석 floor seats (3 x 4) facing the 수미단, wooden floor, 닫집 over the main 불상 and two 협시보살, 탱화 behind. */
@@ -1225,7 +1315,7 @@ const TEMPLE_IN: LotInteriorSpec = {
 };
 
 /** Every walk-in interior, in fixed order (interior seat ids follow it; never reorder). */
-export const LOT_INTERIORS: readonly LotInteriorSpec[] = deepFreeze([SCHOOL_IN, LIBRARY_IN, CHAPEL_IN, CHURCH_IN, TEMPLE_IN]);
+export const LOT_INTERIORS: readonly LotInteriorSpec[] = deepFreeze([SCHOOL_IN, LIBRARY_IN, CHAPEL_IN, CHURCH_IN, TEMPLE_IN, CAFE_IN, CAFE_UP]);
 
 /** Every interior seat id in its one fixed order (append-only: a new seat goes at the end). Game ids `lotin:<id>…`. */
 export const LOT_INTERIOR_SEAT_ORDER: readonly string[] = Object.freeze(LOT_INTERIORS.flatMap((i) => i.seats.map((s) => s.id)));
@@ -1313,9 +1403,14 @@ export function lotRoomOf(area: string): LotRoom | null {
   return LOT_ROOMS.find((r) => r.area === area) ?? null;
 }
 
-/** The room a lot door opens into (null: 케이슨랜드's gate, which stays shut). */
+/** The room a lot door opens into (null: 케이슨랜드's gate, which stays shut). A room with no way out (an upstairs) is never a door's. */
 export function lotRoomOfDoor(doorId: string): LotRoom | null {
-  return LOT_ROOMS.find((r) => r.door.id === doorId) ?? null;
+  return LOT_ROOMS.find((r) => r.door.id === doorId && !r.spec.noExit) ?? null;
+}
+
+/** Whether a room has a way out of its own (every room but the café's upstairs salon). */
+export function lotRoomHasExit(r: LotRoom): boolean {
+  return !r.spec.noExit;
 }
 
 /** A room-frame point in the world. */
@@ -1437,6 +1532,7 @@ export function useLotDoor(area: string, x: number, z: number): { area: "village
   if (area === "village") {
     let best: { r: LotRoom; d: number } | null = null;
     for (const r of LOT_ROOMS) {
+      if (r.spec.noExit) continue;
       const p = lotDoorPoint(r.lot, r.door).pad;
       const d = Math.hypot(x - p.x, z - p.z);
       if (d <= p.radius + LOT_DOOR_REACH_M && (!best || d < best.d)) best = { r, d };
@@ -1446,11 +1542,68 @@ export function useLotDoor(area: string, x: number, z: number): { area: "village
     return { area: best.r.area, x: a.x, z: a.z, yaw: a.yaw };
   }
   const r = lotRoomOf(area);
-  if (!r) return null;
+  if (!r || r.spec.noExit) return null;
   const pad = lotRoomDoor(r).exitPad;
   const d = Math.hypot(x - pad.x, z - pad.z);
   if (d > pad.radius + LOT_DOOR_REACH_M) return null;
   if (d > pad.radius && (Math.abs(x - pad.x) > LOT_DOOR_INSIDE_HALF_WIDTH_M || z < pad.z)) return null;
   const out = lotDoorPoint(r.lot, r.door).arrival;
   return { area: "village", x: out.x, z: out.z, yaw: out.yaw };
+}
+
+// ─────────────────────────────── a building's own stair (the café's, 2026-11-21) ───────────────────────────────
+
+/** How far past a stair pad's edge (m) it is still used, from the side away from the stair (the houses' HOUSE_PAD_REACH). */
+export const LOT_STAIR_REACH_M = 1.3;
+/** How much nearer (m) the client offers the button than the server accepts (the houses' OFFER_REACH_MARGIN). */
+export const LOT_STAIR_OFFER_MARGIN = 0.1;
+const FACE_DIR: Readonly<Record<"in" | "out" | "left" | "right", Point2>> = { in: { x: 0, z: 1 }, out: { x: 0, z: -1 }, left: { x: -1, z: 0 }, right: { x: 1, z: 0 } };
+/** The game's yaw (atan2(dirX, dirZ)) of a room-frame facing. */
+export function lotFacingYaw(faces: "in" | "out" | "left" | "right"): number {
+  const d = FACE_DIR[faces];
+  return Math.atan2(d.x, d.z);
+}
+
+/** A room's stair (world): its pad, the room it leads to and where one lands there; null for a room without one. */
+export function lotRoomStair(r: LotRoom): { pad: { x: number; z: number; radius: number; facing: number }; to: LotRoom; dir: "up" | "down"; footprint: { minX: number; maxX: number; minZ: number; maxZ: number } } | null {
+  const st = r.spec.stair;
+  if (!st) return null;
+  const to = LOT_ROOMS.find((q) => q.unit.id === st.to);
+  if (!to || !to.spec.stair) return null;
+  const p = lotRoomPoint(r, st.pad.x, st.pad.z);
+  const stairSolid = r.spec.solids.find((s) => s.name === "stair" || s.name === "stairwell");
+  const a = stairSolid ? lotRoomPoint(r, stairSolid.rect.x0, stairSolid.rect.z0) : p;
+  const b = stairSolid ? lotRoomPoint(r, stairSolid.rect.x1, stairSolid.rect.z1) : p;
+  return {
+    pad: { x: p.x, z: p.z, radius: st.pad.radius, facing: lotFacingYaw(st.faces) },
+    to,
+    dir: r.spec.noExit ? "down" : "up",
+    footprint: { minX: a.x, maxX: b.x, minZ: a.z, maxZ: b.z },
+  };
+}
+
+/** Whether (x, z) (world) is within `reach` past a stair pad's edge, on the side away from the stair (never past it). */
+export function lotStairPadReach(pad: { x: number; z: number; radius: number; facing: number }, x: number, z: number, reach = LOT_STAIR_REACH_M): boolean {
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return false;
+  const dx = x - pad.x;
+  const dz = z - pad.z;
+  const d = Math.hypot(dx, dz);
+  if (d <= pad.radius) return true;
+  if (d > pad.radius + reach) return false;
+  // past the edge: only from in front of the stair (the user faces it: the stair is ahead, the user behind the pad)
+  return dx * Math.sin(pad.facing) + dz * Math.cos(pad.facing) <= 0;
+}
+
+/**
+ * Using a building's stair (pure, the server's rule, as `useStair` for a house): in a room with a stair, within reach of its pad → the other
+ * room's arrival spot (world, its facing). Null for anything else.
+ */
+export function useLotStair(area: string, x: number, z: number): { area: LotAreaId; x: number; z: number; yaw: number } | null {
+  const r = lotRoomOf(area);
+  if (!r) return null;
+  const st = lotRoomStair(r);
+  if (!st || !lotStairPadReach(st.pad, x, z)) return null;
+  const arr = st.to.spec.stair!.arrival;
+  const p = lotRoomPoint(st.to, arr.x, arr.z);
+  return { area: st.to.area, x: p.x, z: p.z, yaw: lotFacingYaw(arr.faces) };
 }

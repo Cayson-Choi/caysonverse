@@ -1,5 +1,5 @@
 import type { Material, Texture } from "three";
-import { FLAME_GLSL, houseFireTime, houseHearthMax, houseHearthMin } from "./houseFire";
+import { FLAME_GLSL, houseEmberY, houseFireLight, houseFireTime, houseHearthMax, houseHearthMin } from "./houseFire";
 
 /**
  * A house at night (집 실내 G): the baked light of a house changes with the village's clock, like the memorial hall's (hallNight.ts).
@@ -22,6 +22,8 @@ const patched = new WeakSet<Material>();
 
 const PARS = /* glsl */ `uniform float uHouseNight;
 uniform sampler2D uHouseNightMap;
+uniform vec4 uHouseFire;
+varying vec3 vHouseFireW;
 void main() {`;
 const TEXEL_FROM = "vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );";
 // Both maps are always read (no branch around a texture fetch); the night map is a 1 x 1 black placeholder until its file is in and the
@@ -29,15 +31,43 @@ const TEXEL_FROM = "vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );";
 const TEXEL_TO = /* glsl */ `vec4 lightMapTexel = vec4( texture2D( lightMap, vLightMapUv ).rgb * ( 1.0 - uHouseNight ) + texture2D( uHouseNightMap, vLightMapUv ).rgb * uHouseNight, 1.0 );`;
 
 /** Let a light-mapped material blend the night map in (idempotent). */
+/**
+ * Curtains (`LM_drape` / `E_H_drape`) read as thin cloth with the day behind them: by day the light map's texel is lifted a little
+ * (daylight comes through the weave), at night not. A cheap stand-in for translucency in an unlit-under-light-map house.
+ */
+const DRAPE_TEXEL_TO = TEXEL_TO.replace("* uHouseNight, 1.0 );", "* uHouseNight, 1.0 ) * vec4( vec3( 1.0 + 0.3 * ( 1.0 - uHouseNight ) ), 1.0 );");
+
+/**
+ * The fireplace's flickering light on the room (houses-real pass 2026-11-21): a warm fake point light (houseFire.ts houseFireLight, w = 0
+ * in a house without a fire) added to the light map's texel, so it is multiplied by the albedo like the baked light. The model has no
+ * normals (unlit, light-mapped): distance only, a smooth ~2.6 m falloff.
+ */
+const FIRE_LIGHT = /* glsl */ `
+	float houseFireD = length( vHouseFireW - uHouseFire.xyz );
+	float houseFireK = uHouseFire.w * pow( max( 0.0, 1.0 - houseFireD / 2.6 ), 2.2 );
+	lightMapTexel.rgb += vec3( 1.0, 0.5, 0.18 ) * houseFireK * 0.4;`;
+
+const FIRE_WORLD = /* glsl */ `#include <project_vertex>
+	vec4 houseFireP = vec4( transformed, 1.0 );
+#ifdef USE_INSTANCING
+	houseFireP = instanceMatrix * houseFireP;
+#endif
+	vHouseFireW = ( modelMatrix * houseFireP ).xyz;`;
+
 export function patchHouseLightmapMaterial(material: Material): void {
   if (patched.has(material)) return;
   patched.add(material);
+  const drape = material.name === "LM_drape" || material.name === "E_H_drape";
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uHouseNight = houseNightUniform;
     shader.uniforms.uHouseNightMap = houseNightMapUniform;
-    shader.fragmentShader = shader.fragmentShader.replace("void main() {", PARS).replace(TEXEL_FROM, TEXEL_TO);
+    shader.uniforms.uHouseFire = houseFireLight;
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vHouseFireW;")
+      .replace("#include <project_vertex>", FIRE_WORLD);
+    shader.fragmentShader = shader.fragmentShader.replace("void main() {", PARS).replace(TEXEL_FROM, (drape ? DRAPE_TEXEL_TO : TEXEL_TO) + FIRE_LIGHT);
   };
-  material.customProgramCacheKey = () => "house-lightmap-night";
+  material.customProgramCacheKey = () => (drape ? "house-lightmap-night-drape" : "house-lightmap-night");
   material.needsUpdate = true;
 }
 
@@ -74,28 +104,56 @@ export const GLOW_DAY = 0.72;
 const GLOW_PARS = /* glsl */ `uniform float uHouseNight;
 uniform vec3 uHearthMin;
 uniform vec3 uHearthMax;
+uniform float uEmberY;
 uniform float uHouseFireTime;
 varying vec3 vHouseWorld;
 void main() {`;
 const GLOW_COLOR = /* glsl */ `#include <color_fragment>
 	diffuseColor.rgb *= mix( ${GLOW_DAY.toFixed(3)}, 1.0, uHouseNight );${FLAME_GLSL}`;
+/**
+ * A lamp's bulb at night: a warm white that is over 1 (the PC post chain's bloom makes it glow; the phone just sees it bright).
+ * By day it is the plain dimmed bulb.
+ */
+const BULB_COLOR = /* glsl */ `#include <color_fragment>
+	diffuseColor.rgb *= mix( ${GLOW_DAY.toFixed(3)}, 1.0, uHouseNight );
+	diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 1.5, 1.15, 0.7 ), uHouseNight );${FLAME_GLSL}`;
+/**
+ * A lamp shade at night (owner 2026-11-21: the house-5 floor lamp read as flat cream paint, not switched on): lit fabric — a warm
+ * glow, brightest at the bottom rim where the bulb shines down through (vGlowT 0 at the rim .. 1 at the top, a vertex attribute
+ * houseLampGlow.ts adds), a faint weave so it reads as cloth. By day it stays as it was.
+ */
+const SHADE_COLOR = /* glsl */ `#include <color_fragment>
+	vec3 shadeDay = diffuseColor.rgb * ${GLOW_DAY.toFixed(3)};
+	float shadeWeave = 1.0 + 0.035 * sin( ( vHouseWorld.x + vHouseWorld.z ) * 310.0 ) * sin( vHouseWorld.y * 290.0 );
+	vec3 shadeNight = diffuseColor.rgb * mix( vec3( 1.85, 1.45, 0.95 ), vec3( 0.98, 0.66, 0.34 ), smoothstep( 0.0, 0.85, vGlowT ) ) * shadeWeave;
+	diffuseColor.rgb = mix( shadeDay, shadeNight, uHouseNight );${FLAME_GLSL}`;
 
 /** Let a bulb / lamp-shade material glow at night and calm down by day (idempotent). */
 export function patchHouseGlowMaterial(material: Material): void {
   if (patched.has(material)) return;
   patched.add(material);
+  const legacy = import.meta.env.DEV && (globalThis as { __cvLampOld?: boolean }).__cvLampOld; // dev: the old flat lamp look (before shots)
+  const shade = !legacy && material.name.endsWith("shade");
+  const bulb = !legacy && !shade && material.name.endsWith("lamp");
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uHouseNight = houseNightUniform;
     shader.uniforms.uHearthMin = houseHearthMin;
     shader.uniforms.uHearthMax = houseHearthMax;
+    shader.uniforms.uEmberY = houseEmberY;
     shader.uniforms.uHouseFireTime = houseFireTime;
-    // the world position of the fragment: the fireplace's flame cones are coloured as a fire (houseFire.ts)
+    // Locate the model's ember bed and old flame cards inside the exported hearth.
+    const NL = "\n";
+    const vPars = "varying vec3 vHouseWorld;" + (shade ? NL + "attribute float glowT;" + NL + "varying float vGlowTv;" : "");
+    const vSet = "vHouseWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;" + (shade ? NL + "vGlowTv = glowT;" : "");
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vHouseWorld;")
-      .replace("#include <project_vertex>", "#include <project_vertex>\nvHouseWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
-    shader.fragmentShader = shader.fragmentShader.replace("void main() {", GLOW_PARS).replace("#include <color_fragment>", GLOW_COLOR);
+      .replace("#include <common>", "#include <common>" + NL + vPars)
+      .replace("#include <project_vertex>", "#include <project_vertex>" + NL + vSet);
+    const fPars = shade ? GLOW_PARS.replace("varying vec3 vHouseWorld;", "varying vec3 vHouseWorld;" + NL + "varying float vGlowTv;" + NL + "#define vGlowT vGlowTv") : GLOW_PARS;
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", fPars)
+      .replace("#include <color_fragment>", shade ? SHADE_COLOR : bulb ? BULB_COLOR : GLOW_COLOR);
   };
-  material.customProgramCacheKey = () => "house-glow-night-fire";
+  material.customProgramCacheKey = () => (shade ? "house-glow-shade" : bulb ? "house-glow-bulb" : "house-glow-night-fire");
   material.needsUpdate = true;
 }
 

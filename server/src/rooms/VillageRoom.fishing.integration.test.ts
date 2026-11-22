@@ -11,7 +11,8 @@ import {
   type FishingStatePayload,
   type FishingTrophyPayload,
 } from "@caysonverse/shared/village/messages";
-import { FISHING, fishingPhaseId, type FishKind, type FishingState } from "@caysonverse/shared/village/fishing";
+import { FISHING, fightSeedOf, fishingPhaseId, type FishKind, type FishingState } from "@caysonverse/shared/village/fishing";
+import { fightCommand, fightSchedule } from "@caysonverse/shared/village/fishFight";
 import { LAKE_RENTAL_PAD } from "@caysonverse/shared/village/lakeLayout";
 import { LAKE_SEAT_BASE, VILLAGE_SEATS, fishingSeatIndex } from "@caysonverse/shared/village/benchSeats";
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
@@ -281,9 +282,9 @@ describe("a fishing round (design 12.4, server side)", () => {
     expect(a.player.fishPhase).toBe(fishingPhaseId("ready"));
   });
 
-  it("a big fish: hold to the net (a lost 'up' counts for 1.5 s only), then the board", async () => {
+  it("a big fish: the pull / release fight (do what the prompt says), then the board", async () => {
     const { fishing, visitor, advance, clock } = await setup();
-    fishing.force = "carp"; // random 0: 35 cm, hold 1.5 s
+    fishing.force = "carp"; // random 0: 35 cm, a 2-cycle fight
     const a = await visitor();
     await rent(a);
     await sitAt(a, 6, advance);
@@ -298,21 +299,28 @@ describe("a fishing round (design 12.4, server side)", () => {
     advance(FISHING.hookedMs);
     expect(a.player.fishPhase).toBe(fishingPhaseId("fighting"));
     await until(() => a.log.states().at(-1)?.phase === "fighting", "the fighting state");
-    expect(a.log.states().at(-1)).toMatchObject({ phase: "fighting", holdNeedMs: 1500, catch: { needsNet: true } });
+    expect(a.log.states().at(-1)).toMatchObject({ phase: "fighting", holdNeedMs: 1000, catch: { needsNet: true } });
 
-    a.client.send(VillageMsg.FishingHold, { down: true });
-    await sleep(30);
-    advance(900);
-    a.client.send(VillageMsg.FishingHold, { down: true });
-    await sleep(30);
-    advance(700);
+    const st = fishing.stateOf(a.sid)!;
+    const sched = fightSchedule(st.catch!.cm, fightSeedOf(st));
+    const t0 = st.fightStartAt;
+    let down = false;
+    for (let k = 0; k < 700 && a.player.fishPhase === fishingPhaseId("fighting"); k++) {
+      const want = fightCommand(sched, clock.t - t0 - 150).kind === "pull";
+      if (want !== down || (want && k % 5 === 0)) {
+        a.client.send(VillageMsg.FishingHold, { down: want });
+        down = want;
+        await sleep(15);
+      }
+      advance(100);
+    }
     expect(a.player.fishPhase).toBe(fishingPhaseId("lifting"));
     advance(FISHING.liftMs);
     expect(a.player.fishPhase).toBe(fishingPhaseId("landed"));
     expect(fishing.boardEntries()).toMatchObject([{ kind: "carp", cm: 35 }]);
   });
 
-  it("a fish that is never fought is lost after 6 s of no pressing", async () => {
+  it("a fish that is never pulled in escapes (the fight is lost: lostWhy escape)", async () => {
     const { fishing, visitor, advance, clock } = await setup();
     fishing.force = "carp";
     const a = await visitor();
@@ -326,10 +334,10 @@ describe("a fishing round (design 12.4, server side)", () => {
     a.client.send(VillageMsg.FishingStrike, {});
     await until(() => a.player.fishPhase === fishingPhaseId("hooked"), "hooked");
     advance(FISHING.hookedMs);
-    advance(FISHING.fightIdleMs);
+    for (let k = 0; k < 120 && a.player.fishPhase !== fishingPhaseId("missed"); k++) advance(100); // nobody pulls: the fish gains its distance back
     expect(a.player.fishPhase).toBe(fishingPhaseId("missed"));
     await until(() => a.log.states().at(-1)?.phase === "missed", "the lost state");
-    expect(a.log.states().at(-1)).toMatchObject({ phase: "missed", lastResult: "lost", catch: null });
+    expect(a.log.states().at(-1)).toMatchObject({ phase: "missed", lastResult: "lost", lostWhy: "escape", catch: null });
     expect(a.player.fishKind).toBe(0);
   });
 
@@ -354,13 +362,19 @@ describe("a fishing round (design 12.4, server side)", () => {
       a.client.send(VillageMsg.FishingStrike, {});
       await until(() => a.player.fishPhase === fishingPhaseId("hooked"), "hooked");
       advance(FISHING.hookedMs);
-      const need = fishing.stateOf(a.sid)!.holdNeedMs;
-      a.client.send(VillageMsg.FishingHold, { down: true });
-      await sleep(20);
-      for (let i = 0; i < Math.ceil(need / 1000) + 1 && a.player.fishPhase === fishingPhaseId("fighting"); i++) {
-        advance(1000);
-        a.client.send(VillageMsg.FishingHold, { down: true });
-        await sleep(20);
+      // the fight is a pull / release rhythm (fishFight.ts): do what the prompt says, with a human's 150 ms reaction
+      const st = fishing.stateOf(a.sid)!;
+      const sched = fightSchedule(st.catch!.cm, fightSeedOf(st));
+      const t0 = st.fightStartAt;
+      let down = false;
+      for (let k = 0; k < 700 && a.player.fishPhase === fishingPhaseId("fighting"); k++) {
+        const want = fightCommand(sched, clock.t - t0 - 150).kind === "pull";
+        if (want !== down || (want && k % 5 === 0)) {
+          a.client.send(VillageMsg.FishingHold, { down: want });
+          down = want;
+          await sleep(15);
+        }
+        advance(100);
       }
       advance(FISHING.liftMs);
       expect(a.player.fishPhase).toBe(fishingPhaseId("landed"));
@@ -451,7 +465,7 @@ describe("two clients and the cheats (design 12.10)", () => {
   it("a hold storm: over 8 messages a second are dropped and only counted, and no progress comes from spam", async () => {
     const { fishing, visitor, advance, clock } = await setup();
     fishing.force = "carp";
-    fishing.random = () => 0.999999; // 85 cm: needs 5 s of hold
+    fishing.random = () => 0.999999; // 85 cm: a 5-cycle fight
     const a = await visitor();
     await rent(a);
     await sitAt(a, 14, advance);
@@ -464,14 +478,14 @@ describe("two clients and the cheats (design 12.10)", () => {
     await until(() => a.player.fishPhase === fishingPhaseId("hooked"), "hooked");
     advance(FISHING.hookedMs);
     expect(a.player.fishPhase).toBe(fishingPhaseId("fighting"));
-    clock.t += 15_000; // a quiet spell: the rate windows are empty again
+    clock.t += 1100; // a quiet spell: the short rate window is empty again
     const before = fishing.warningsOf(a.sid);
     for (let i = 0; i < 60; i++) a.client.send(VillageMsg.FishingHold, { down: true });
     await until(() => fishing.warningsOf(a.sid) - before >= 50, "the dropped messages");
-    // 60 messages at one instant: no time passed since the last integration... the 15 s quiet spell had nobody pressing
-    expect(fishing.stateOf(a.sid)!.holdMs).toBe(0);
+    // 60 messages at one instant: no time passes by sending, so no distance is gained; and the first stages' grace keeps 0.3 s free
+    expect(fishing.stateOf(a.sid)!.fightProgress).toBeLessThan(0.2);
     advance(300);
-    expect(fishing.stateOf(a.sid)!.holdMs).toBeLessThanOrEqual(300);
+    expect(fishing.stateOf(a.sid)!.fightProgress).toBeLessThan(0.3);
   });
 
   it("dropping the connection (a transient drop) keeps the same session: the stage, the spot and the rod are still there", async () => {

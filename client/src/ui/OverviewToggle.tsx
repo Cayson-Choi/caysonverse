@@ -1,5 +1,6 @@
 import { useViewStore } from "../stores/viewStore";
 import { HudButton } from "./HudButton";
+import { afterPaint } from "./afterPaint";
 
 /**
  * The 🗺 map button — second of the top-right group, every device (the `M` key still works;
@@ -11,7 +12,7 @@ import { HudButton } from "./HudButton";
 export function OverviewToggle({ onToggle, disabled }: { onToggle: () => void; disabled?: boolean }) {
   const isOv = useViewStore((s) => s.isOv);
   return (
-    <HudButton label="지도 보기" pressed={isOv} disabled={disabled} onClick={onToggle}>
+    <HudButton label="지도 보기" pressed={isOv} disabled={disabled} onClick={() => afterPaint(onToggle)}>
       🗺
     </HudButton>
   );

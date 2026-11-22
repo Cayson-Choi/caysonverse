@@ -76,6 +76,49 @@ export const SHOULDER = {
   minHeadDist: 2.1,
 } as const;
 
+/**
+ * The centred view (owner 2026-11-19, in the 대웅전: "머리 정 가운데 뒤쪽에서 불상을 바라보고 싶은데 무조건 왼쪽이나 오른쪽으로
+ * 이동한 카메라만 가능"). The side offset was made for a wall right behind the head (the cubby banks, 0.7 m). Where the wall leaves
+ * the arm `from` m or more behind the head (a hall's cushion row, a pew, 1.5-2 m from the wall) the camera stays on the player's own
+ * view axis — right behind the head, a little over it, the look level so what the player faces (the Buddha) sits in the middle of the
+ * screen and the head is a small dome at the bottom edge. Between `from` and `full` the two views blend, eased like every shoulder
+ * change; against a close wall (arm under `from`) the over-the-shoulder view above is unchanged.
+ */
+export const CENTER = {
+  /** The arm's length behind the head (m) where the centred view starts… */
+  from: -1,
+  /** …and is whole from here on. */
+  full: 0,
+  /** How far behind the head (m) the centred camera stands at most (the arm's own spot is never passed). */
+  maxBack: 2.6,
+  /** Height of the chibi's hair top over HEAD_HEIGHT (m), measured from the game's own shots (about 2.25 m), and the head's radius (m). */
+  headTop: 1.05,
+  headRadius: 0.45,
+  /** Where the head's top lands on screen vertically (NDC): the back of the head and the shoulders fill the bottom ~25 %, solid. */
+  headTopV: -0.46,
+  /** The look's tilt below the horizon (rad). */
+  tilt: 0.02,
+  /** Never closer to the head than this (m): a close wall raises the lens, the head slides down out of the frame. */
+  minHeadDist: 1.6,
+  /** Easing time constant (s) of the blend between the centred and the side view. */
+  tau: 0.3,
+} as const;
+
+/**
+ * How much of the centred view the last follow-camera frame drew (0 .. 1; written by followRig). LocalPlayer reads it to fade the
+ * own body while the lens sits right behind the head, so the head does not stand in front of what the player faces.
+ */
+export const centerLive = { weight: 0 };
+
+/** How far under the place's ceiling (m) the centred view's lens stays. */
+export const CENTER_CEILING_GAP = 0.5;
+
+/** The centred blend wanted for an arm `armBack` m long behind the head: 0 (side view) .. 1 (centred), smooth in between. */
+export function centerWeight(armBack: number): number {
+  const c = Math.min(1, Math.max(0, (armBack - CENTER.from) / (CENTER.full - CENTER.from)));
+  return c * c * (3 - 2 * c);
+}
+
 /** The vertical field of view the game's camera is drawn with (deg, PlayShell's `fov`). */
 export const BASE_FOV = 55;
 
@@ -90,6 +133,12 @@ export function shoulderTarget(dist: number): number {
 export function stepShoulderSide(current: number, side: number, dt: number): number {
   const next = side + (current - side) * Math.exp(-Math.min(Math.max(dt, 0), 0.1) / SHOULDER.sideTau);
   return Math.abs(next - side) < 1e-3 ? side : next;
+}
+
+/** One frame of the eased centred-view weight (`dt` s): slower than the shoulder blend — it swings the lens across the room. */
+export function stepShoulderCenter(current: number, target: number, dt: number): number {
+  const next = target + (current - target) * Math.exp(-Math.min(Math.max(dt, 0), 0.1) / CENTER.tau);
+  return Math.abs(next - target) < 1e-3 ? target : next;
 }
 
 /** One frame of the eased shoulder blend (`dt` s). */
@@ -108,6 +157,8 @@ export interface ShoulderPose {
   lookZ: number;
   /** Look target height over HEAD_HEIGHT + CAMERA_LOOK_LIFT (m): what FollowSpot.lookLift carries. */
   lookLift: number;
+  /** The centred-view weight wanted (0 side .. 1 centred): the caller eases it and passes it back as `centerEase`. */
+  center: number;
   /** The side chosen: +1 = the view's right, −1 = its left. */
   side: number;
   /** Degrees added to the vertical field of view (portrait screens only). */
@@ -115,7 +166,7 @@ export interface ShoulderPose {
 }
 
 export function createShoulderPose(): ShoulderPose {
-  return { x: 0, y: 0, z: 0, lookX: 0, lookZ: 0, lookLift: 0, side: 1, fovAdd: 0 };
+  return { x: 0, y: 0, z: 0, lookX: 0, lookZ: 0, lookLift: 0, center: 0, side: 1, fovAdd: 0 };
 }
 
 /** 0 on a wide screen (aspect ≥ 1), 1 on a tall portrait one (aspect ≤ 0.5), linear between. */
@@ -150,6 +201,8 @@ export function shoulderPose(
   out: ShoulderPose,
   /** The eased side actually drawn (−1 .. 1; NaN = `out.side` at once): a side switch swings over, never pops. */
   sideEase = Number.NaN,
+  /** The eased centred-view weight actually drawn (NaN = the wanted one at once). */
+  centerEase = Number.NaN,
 ): ShoulderPose {
   const pw = portraitWeight(aspect);
   const bx = Math.sin(yaw);
@@ -193,10 +246,25 @@ export function shoulderPose(
   const ease = Number.isNaN(sideEase) ? side : Math.max(-1, Math.min(1, sideEase));
   const lateral = ease >= 0 ? right * ease : left * ease;
   const backUsed = ease >= 0 ? lerp(backFull, rightB, ease) : lerp(backFull, leftB, -ease);
-  const offX = bx * backUsed + rx * lateral;
-  const offZ = bz * backUsed + rz * lateral;
-  const horiz = Math.hypot(offX, offZ);
-  const lift = Math.max(baseLift, Math.sqrt(Math.max(0, SHOULDER.minHeadDist ** 2 - horiz * horiz)));
+  let offX = bx * backUsed + rx * lateral;
+  let offZ = bz * backUsed + rz * lateral;
+  let horiz = Math.hypot(offX, offZ);
+  let lift = Math.max(baseLift, Math.sqrt(Math.max(0, SHOULDER.minHeadDist ** 2 - horiz * horiz)));
+  // The centred view where the wall leaves room: on the view axis, the side offset fading out with it (see CENTER).
+  const cwWanted = centerWeight(armBack);
+  const cw = Number.isNaN(centerEase) ? cwWanted : Math.min(1, Math.max(0, centerEase));
+  if (cw > 0) {
+    const cb = Math.min(CENTER.maxBack, armBack);
+    // Where the lens must be so the back of the head and the shoulders sit solid in the bottom of the frame: the head's top lands at
+    // NDC CENTER.headTopV with the look tilted CENTER.tilt down. Raised further where the wall is close (the head then slides out below).
+    const tanVc = Math.tan(((BASE_FOV + SHOULDER.portraitFovAdd * pw) * Math.PI) / 360);
+    const alpha = CENTER.tilt + Math.atan(-CENTER.headTopV * tanVc);
+    const cLift = Math.max(CENTER.headTop + Math.max(0.3, cb - CENTER.headRadius) * Math.tan(alpha), Math.sqrt(Math.max(0, CENTER.minHeadDist ** 2 - cb * cb)));
+    offX = lerp(offX, bx * cb, cw);
+    offZ = lerp(offZ, bz * cb, cw);
+    horiz = Math.hypot(offX, offZ);
+    lift = lerp(lift, cLift, cw);
+  }
   // the whole line from the head must be clear too (the two legs were): a slanted wall or a corner pulls it in
   const whole = segmentHitFraction(x, HEAD_HEIGHT, z, x + offX, HEAD_HEIGHT + lift, z + offZ, boxes, WALL_HEIGHT, pad);
   out.x = x + offX * whole;
@@ -207,7 +275,7 @@ export function shoulderPose(
   const fovAdd = SHOULDER.portraitFovAdd * pw;
   const tanV = Math.tan(((BASE_FOV + fovAdd) * Math.PI) / 360);
   const tanH = tanV * Math.max(0.1, aspect);
-  const u = lerp(SHOULDER.headU, SHOULDER.headUPortrait, pw);
+  const u = lerp(SHOULDER.headU, SHOULDER.headUPortrait, pw) * (1 - cw);
   const v = lerp(SHOULDER.headV, SHOULDER.headVPortrait, pw);
   const hx = x - out.x;
   const hz = z - out.z;
@@ -223,10 +291,13 @@ export function shoulderPose(
   // vertical: the head below the middle by v
   const elevHead = Math.atan2(hy, hHoriz);
   let elev = elevHead + Math.atan(-v * tanV);
-  const cramped = Math.min(1, Math.max(0, (SHOULDER.minHeadDist - horiz) / 1.2));
+  const cramped = Math.min(1, Math.max(0, (SHOULDER.minHeadDist - horiz) / 1.2)) * (1 - cw);
   const maxDown = (lerp(SHOULDER.maxLookDown, SHOULDER.maxLookDownCramped, cramped) * Math.PI) / 180;
   if (elev < -maxDown) elev = -maxDown;
+  // never looking up (the side view); the centred view tilts down a little more (about 6 deg) so a low ceiling above stays a small strip
   if (elev > 0) elev = 0;
+  // the centred view looks level with a slight tilt down (CENTER.tilt)
+  elev = lerp(elev, -CENTER.tilt, cw);
   const ahead = 6;
   const tx = out.x + vx * ahead * Math.cos(elev);
   const tz = out.z + vz * ahead * Math.cos(elev);
@@ -235,6 +306,7 @@ export function shoulderPose(
   out.lookZ = tz - z;
   out.lookLift = ty - HEAD_HEIGHT - CAMERA_LOOK_LIFT;
   out.side = side;
+  out.center = cwWanted;
   out.fovAdd = fovAdd;
   return out;
 }

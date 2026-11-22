@@ -11,6 +11,7 @@ const listeners = new Set<() => void>();
 export function setParkReady(v: boolean): void {
   if (ready === v) return;
   ready = v;
+  if (!v) stage = 0;
   for (const l of listeners) l();
 }
 export function parkReady(): boolean {
@@ -24,5 +25,26 @@ export function useParkReady(): boolean {
     },
     parkReady,
     parkReady,
+  );
+}
+
+/** How far the park has come once its files are in: 0 nothing, 1 mounted, 2 its first frames drawn (the loading screen's stage line, areaLoading.ts). */
+let stage: 0 | 1 | 2 = 0;
+export function setParkStage(v: 0 | 1 | 2): void {
+  if (stage === v) return;
+  stage = v;
+  for (const l of listeners) l();
+}
+export function parkStage(): 0 | 1 | 2 {
+  return stage;
+}
+export function useParkStage(): 0 | 1 | 2 {
+  return useSyncExternalStore(
+    (l) => {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+    parkStage,
+    parkStage,
   );
 }

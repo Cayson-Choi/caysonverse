@@ -6,9 +6,11 @@ import { LOT_DETAIL_LOD, LOT_INTERIORS, LOT_ROOMS, VILLAGE_LOTS, lotFootprint, l
 import { pbrSetInfo } from "../pbr/pbrLibrary";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { LOT_TREE_SPECS } from "../veg/treeSkeleton";
-import { PHONE_GOODS_REACH, innerHingePivot, lotSurfaceMaterial, mergeReady, pickLotLevels, setLotDoor, type LotLevel } from "./lotsPrep";
+import { PHONE_GOODS_REACH, VESTIBULE_FLOOR_MIN_Y, innerHingePivot, lotSurfaceMaterial, mergeReady, pickLotLevels, setLotDoor, vestibuleFloor, type LotLevel } from "./lotsPrep";
 import { LOT_DOOR_PADS, LOT_SLOT_HOOKS, lotDoorNotice, lotDoorTarget, lotExitTarget, lotSlotHandlers, onLotSlot } from "./lotTargets";
 import { lotTrimFootprints } from "./LotsVillagePatch";
+import { parkGateDoor } from "@caysonverse/shared/village/parkArea";
+import { parkGateTarget } from "../villageTargets";
 import { manifestPaths } from "./lotTextures";
 import { LOT_ROOM_PHONE_FILES, SACRED_MAP_MAX, capMips, isSacredHero, sacredCaps, sacredFile, sacredUrl } from "./LotRoom";
 
@@ -21,7 +23,7 @@ function glbJson(file: string): { asset: { extras?: Record<string, unknown> }; m
 }
 
 /** The lots with the triangle counts the game measured (L5v2, window.__cvLots, 2026-11-17). */
-const MEASURED: Record<LotId, [number, number]> = {
+const MEASURED: Record<Exclude<LotId, "lot_cafe">, [number, number]> = {
   lot_school: [7622, 8570],
   lot_chapel: [6467, 8427],
   lot_library: [6758, 10500],
@@ -29,7 +31,7 @@ const MEASURED: Record<LotId, [number, number]> = {
   lot_church: [5411, 2772],
   lot_gate: [7130, 7630],
 };
-const LOTS = VILLAGE_LOTS.map((l) => ({ id: l.id, box: lotFootprint(l), detailTris: MEASURED[l.id][0], goodsTris: MEASURED[l.id][1] }));
+const LOTS = VILLAGE_LOTS.map((l) => ({ id: l.id, box: lotFootprint(l), detailTris: MEASURED[l.id as keyof typeof MEASURED][0], goodsTris: MEASURED[l.id as keyof typeof MEASURED][1] }));
 const at = (x: number, z: number) => [{ x, z }];
 
 describe("lot LOD (one pool, nearest first)", () => {
@@ -57,6 +59,7 @@ describe("lot LOD (one pool, nearest first)", () => {
 });
 
 describe("the v2 models and their manifests", () => {
+  // (the café's hall and salon are baked GLB rooms too since 2026-11-21: cafe_room_kit.py)
   const models = [...VILLAGE_LOTS.map((l) => l.id as string), ...LOT_INTERIORS.map((i) => i.unit)];
   it("every model names its texture manifest, and every material it has is in it (a library set that exists, or a kind)", () => {
     for (const m of models) {
@@ -68,7 +71,7 @@ describe("the v2 models and their manifests", () => {
         const spec = man.materials[mat.name];
         expect(spec, `${m} ${mat.name}`).toBeDefined();
         if (spec!.pbr) expect(() => pbrSetInfo(spec!.pbr!)).not.toThrow();
-        else expect(["glass", "screen", "fire", "own", "lightpool", "lamp", "emit"]).toContain(spec!.kind);
+        else expect(["glass", "screen", "garden", "fire", "own", "lightpool", "lamp", "emit"]).toContain(spec!.kind);
         if (spec!.maps?.albedo) expect(existsSync(join(LOTS_DIR, "..", paths[0]!.replace(/[^/]+$/, ""), spec!.maps.albedo)), spec!.maps.albedo).toBe(true);
       }
     }
@@ -153,21 +156,30 @@ describe("swing doors turn on their inner hinge corner (the door check's finding
 });
 
 describe("lot doors, the rooms' ways out, the slots", () => {
-  it("five room doors (들어가기) and the gate (곧 문을 열어요)", () => {
+  it("five room doors (들어가기) and the café's; the park gate is not a lot door (the park is open: parkGateTarget offers 케이슨랜드 들어가기)", () => {
     expect(LOT_DOOR_PADS.map((p) => `${p.door}:${p.kind}`).sort()).toEqual(
-      ["lot_chapel_main:enter", "lot_church_main:enter", "lot_gate_main:soon", "lot_library_main:enter", "lot_school_main:enter", "lot_temple_main:enter"].sort(),
+      ["lot_cafe_main:enter", "lot_chapel_main:enter", "lot_church_main:enter", "lot_library_main:enter", "lot_school_main:enter", "lot_temple_main:enter"].sort(),
     );
     const church = LOT_DOOR_PADS.find((p) => p.door === "lot_church_main")!;
     expect(lotDoorTarget(church.x, church.z)).toMatchObject({ kind: "door", id: "lotenter:lot_church_main", label: "교회 들어가기", short: "들어가기" });
     const temple = LOT_DOOR_PADS.find((p) => p.door === "lot_temple_main")!;
     expect(lotDoorTarget(temple.x, temple.z)!.label).toBe("절 들어가기");
-    const gate = LOT_DOOR_PADS.find((p) => p.door === "lot_gate_main")!;
-    expect(lotDoorTarget(gate.x, gate.z)).toMatchObject({ kind: "object", label: "곧 문을 열어요" });
-    expect(lotDoorNotice(gate)).toMatch(/곧 문을 열어요/);
+    // the gate: no "곧 문을 열어요" anywhere (owner 2026-11-21), its pad offers the park's door
+    expect(LOT_DOOR_PADS.some((p) => p.lot === "lot_gate")).toBe(false);
+    const gate = parkGateDoor().pad;
+    expect(lotDoorTarget(gate.x, gate.z)).toBeNull();
+    expect(parkGateTarget(gate.x, gate.z)).toMatchObject({ kind: "door", label: "케이슨랜드 들어가기" });
+    expect(lotDoorNotice(church)).toBe("케이슨 마을 교회에 들어가요.");
     expect(lotDoorTarget(0, 0)).toBeNull();
   });
   it("inside, the way out is offered on its pad and straight in front of the door, not from the side or deeper in", () => {
     for (const r of LOT_ROOMS) {
+      if (r.spec.noExit) {
+        // the café's salon upstairs: no way out of its own (its stair is the way), nothing offered where a door would be
+        const d = lotRoomDoor(r);
+        expect(lotExitTarget(r.area, d.exitPad.x, d.exitPad.z)).toBeNull();
+        continue;
+      }
       const d = lotRoomDoor(r);
       expect(lotExitTarget(r.area, d.exitPad.x, d.exitPad.z)).toMatchObject({ kind: "door", label: "밖으로 나가기" });
       expect(lotExitTarget(r.area, d.arrival.x, d.arrival.z)).not.toBeNull();
@@ -212,7 +224,7 @@ describe("sacred pieces' maps: capped by dropping mips (L5v2 budget pass)", () =
     expect(sacredCaps("lotstatue__lot_chapel_nave_mary", true)).toMatchObject({ color: 1024, normal: 1024 });
     expect(sacredCaps("lotstatue__lot_chapel_nave_crucifix", false)).toMatchObject({ normal: 1024 });
     expect(sacredCaps("lotart__lot_chapel_nave_station_07", false).color).toBe(768);
-    expect(sacredCaps("lotart__lot_church_nave_bloch_sermon", false).color).toBe(1280);
+    expect(sacredCaps("lotart__lot_church_nave_bloch_sermon", false).color).toBe(1024);
     expect(sacredCaps("lotstatue__lot_chapel_nave_saint", false)).toEqual(SACRED_MAP_MAX.desktop);
     expect(sacredCaps("lotglass__lot_chapel_nave_rose", true)).toEqual(SACRED_MAP_MAX.mobile);
     expect(sacredCaps("lotstatue__lot_temple_hall_buddha", false)).toEqual(SACRED_MAP_MAX.desktop);
@@ -255,5 +267,33 @@ describe("the chapel's cream limestone (albedoGain on the set's albedo)", () => 
   it("the chapel's manifest carries it on its stone", () => {
     const j = JSON.parse(readFileSync(resolve(__dirname, "../../../public/models/village/lots/chapel/lot_chapel_textures.json"), "utf8"));
     expect(j.materials.LM_chapel_stone.albedoGain).toHaveLength(3);
+  });
+});
+
+describe("the vestibule behind a lot's open door (owner 2026-11-19: grass inside the open chapel door)", () => {
+  // the chapel's door faces west; its inside runs +x from the door line at x = 43
+  const chapel = VILLAGE_LOTS.find((l) => l.id === "lot_chapel")!;
+  const door = chapel.doors[0]!;
+  const granite = () => new MeshStandardMaterial({ name: "LM_chapel_granite" });
+  const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, name = "LM_chapel_granite") => {
+    const m = new Mesh(new BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), new MeshStandardMaterial({ name }));
+    return m;
+  };
+  const room = (floors: Mesh[]) => {
+    const root = new Group();
+    // the inner wall and the side walls (what the floor's extent is measured against)
+    root.add(box(46, 46.3, 0, 4, -41, -33), box(43, 46, 0, 4, -40.3, -40), box(43, 46, 0, 4, -34, -33.7), ...floors);
+    root.updateMatrixWorld(true);
+    return root;
+  };
+  it("a 12 cm threshold with the village lawn beyond it still gets a floor, at the ground (not grass)", () => {
+    const root = room([box(43, 44, 0, 0.12, -38, -36)]);
+    const f = vestibuleFloor(root, chapel, door, granite());
+    expect(f).not.toBeNull();
+    expect(f!.geometry.getAttribute("position").getY(0)).toBeCloseTo(VESTIBULE_FLOOR_MIN_Y, 5);
+  });
+  it("a kit floor raised all the way in (the temple's 마루) needs none", () => {
+    const root = room([box(43, 46, 0, 0.9, -40, -34)]);
+    expect(vestibuleFloor(root, chapel, door, granite())).toBeNull();
   });
 });

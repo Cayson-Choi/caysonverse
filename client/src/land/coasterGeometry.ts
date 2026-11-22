@@ -12,7 +12,8 @@
  */
 import type { BufferGeometry } from "three";
 import { SEAT_HALF_GAP, SEAT_TOP, type CoasterTrack } from "@caysonverse/shared/land/coaster";
-import { GeoBuilder, cross, norm, type V3 } from "./geoBuilder";
+import { coasterSupports, type CoasterSupport } from "@caysonverse/shared/land/coasterSupports";
+import { GeoBuilder, cross, type V3 } from "./geoBuilder";
 
 export const COLORS = {
   rail: [0.78, 0.8, 0.84] as V3,
@@ -41,6 +42,8 @@ const RAIL_R = 0.065;
 const SPINE_R = 0.17;
 const SPINE_DROP = 0.5;
 export const CHUNKS = 24;
+/** How much bend + roll (rad) one ring of the rails' sweep may span (a ring every 1-3 m: dense in the curves, sparse on the straights). */
+const RING_BEND = 0.05;
 
 export type TrackDetail = "full" | "light";
 
@@ -53,6 +56,8 @@ export interface TrackChunk {
 export interface TrackBuild {
   chunks: TrackChunk[];
   triangles: number;
+  /** Where the triangles go: the rails and spine, the ties, the supports, the lift's catwalk and chain. */
+  parts: { rails: number; ties: number; supports: number; lift: number };
 }
 
 const at = (track: CoasterTrack, i: number): V3 => {
@@ -68,47 +73,37 @@ const tanAt = (track: CoasterTrack, i: number): V3 => {
   return [track.tan[3 * k]!, track.tan[3 * k + 1]!, track.tan[3 * k + 2]!];
 };
 
-/** The horizontal direction across the track (the rider's right, flattened): where a support's legs spread. */
-function lateral(track: CoasterTrack, i: number): V3 {
-  const r = cross(tanAt(track, i), upAt(track, i));
-  const h = Math.hypot(r[0], r[2]);
-  return h > 0.2 ? [r[0] / h, 0, r[2] / h] : norm([tanAt(track, i)[2], 0, -tanAt(track, i)[0]]);
-}
-
-const lerp3 = (a: V3, b: V3, f: number): V3 => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
-const off = (p: V3, d: V3, k: number): V3 => [p[0] + d[0] * k, p[1] + d[1] * k, p[2] + d[2] * k];
-
-/** The horizontal direction along the track at sample `i` (flattened). */
-function alongH(track: CoasterTrack, i: number): V3 {
-  const t = tanAt(track, i);
-  const h = Math.hypot(t[0], t[2]);
-  return h > 0.2 ? [t[0] / h, 0, t[2] / h] : norm([-lateral(track, i)[2], 0, lateral(track, i)[0]]);
-}
-
 /**
- * One support: on a phone a pair of thick tapered tubular columns; on a PC a BOX TRUSS (four thick tapered corner tubes, two lateral and two
- * along the track) laced with horizontal rings and X braces every panel, collars at the joints, a saddle under the spine, and base flanges with
- * bolts on concrete footings. At gameplay distance it reads as a thick painted steel column.
+ * One support (shared/land/coasterSupports.ts places them and checks they keep clear). A COLUMN: on a phone a pair of thick tapered tubular
+ * columns; on a PC a lattice tower: four tapered corner tubes laced with horizontal rings and X braces every panel, collars at the joints,
+ * a saddle under the spine, and base flanges with bolts on concrete footings. A C-ARM (under an upside-down stretch): one tapered mast with
+ * collars and a brace, the arm across to the spine's saddle.
  */
-function support(steel: GeoBuilder, spine: V3, lat: V3, along: V3, detail: TrackDetail): void {
+function support(steel: GeoBuilder, sp: CoasterSupport, detail: TrackDetail): void {
+  const { spine, lat } = sp;
+  if (sp.kind === "arm") {
+    const leg = sp.legs[0]!;
+    const h = leg.top[1];
+    steel.cylinder(leg.foot, leg.top, detail === "full" ? 0.34 : 0.42, (detail === "full" ? 0.46 : 0.55) + Math.min(0.2, h * 0.006), detail === "full" ? 10 : 6, COLORS.support);
+    steel.cylinder(leg.top, spine, 0.22, 0.2, detail === "full" ? 8 : 5, COLORS.support); // the arm
+    steel.box(spine, lat, [0, 1, 0], 0.6, 0.12, 0.45, COLORS.collar);
+    const brace: V3 = lerp3(leg.top, leg.foot, Math.min(0.35, 4 / Math.max(4, h)));
+    steel.cylinder(brace, lerp3(leg.top, spine, 0.6), 0.1, 0.1, 5, COLORS.strut);
+    if (detail === "full") for (let y = 5; y < h - 1; y += 5) steel.cylinder(lerp3(leg.foot, leg.top, (y - 0.12) / h), lerp3(leg.foot, leg.top, (y + 0.12) / h), 0.56, 0.56, 10, COLORS.collar, true);
+    steel.box([leg.foot[0], 0.16, leg.foot[2]], [1, 0, 0], [0, 1, 0], 0.95, 0.16, 0.95, COLORS.foot);
+    return;
+  }
   const h = spine[1];
-  const spread = 1.1 + h * 0.08;
   const rTop = detail === "full" ? 0.2 : 0.3;
   const rBot = (detail === "full" ? 0.28 : 0.42) + Math.min(0.12, h * 0.005);
   const sides = detail === "full" ? 8 : 6;
-  const corners: [number, number][] = detail === "full" ? [[1, 1], [1, -1], [-1, 1], [-1, -1]] : [[1, 0], [-1, 0]];
-  const top: V3[] = [];
-  const gnd: V3[] = [];
-  for (const [l, a] of corners) {
-    const t0: V3 = [spine[0] + lat[0] * l * 0.34 + along[0] * a * 0.4, spine[1] - 0.14, spine[2] + lat[2] * l * 0.34 + along[2] * a * 0.4];
-    const g0: V3 = [spine[0] + lat[0] * l * spread + along[0] * a * (0.4 + h * 0.03), 0.34, spine[2] + lat[2] * l * spread + along[2] * a * (0.4 + h * 0.03)];
-    top.push(t0);
-    gnd.push(g0);
-    steel.cylinder(t0, g0, rTop, rBot, sides, COLORS.support);
-  }
+  const top = sp.legs.map((l) => l.top);
+  const gnd = sp.legs.map((l) => l.foot);
+  for (const l of sp.legs) steel.cylinder(l.top, l.foot, rTop, rBot, sides, COLORS.support);
   // a saddle plate under the spine
   steel.box([spine[0], spine[1] - 0.3, spine[2]], lat, [0, 1, 0], 0.6, 0.05, 0.4, COLORS.collar);
-  const panels = Math.max(1, Math.floor(h / 5));
+  // a panel every 5 m (7 m on the tall towers)
+  const panels = Math.max(1, Math.floor(h / (h > 28 ? 7 : 5)));
   const strutR = detail === "full" ? 0.07 : 0.09;
   for (let k = 1; k <= panels; k++) {
     const f = k / (panels + 1);
@@ -117,10 +112,10 @@ function support(steel: GeoBuilder, spine: V3, lat: V3, along: V3, detail: Track
     const ring0 = gnd.map((g, i) => lerp3(g, top[i]!, f0));
     // lateral pair across (corners 0-2 / 1-3 are the two sides along the track), X-braced
     const link = (i: number, j: number, i0: number, j0: number): void => {
-      steel.cylinder(ring[i]!, ring[j]!, strutR, strutR, 5, COLORS.strut);
+      steel.cylinder(ring[i]!, ring[j]!, strutR, strutR, 4, COLORS.strut);
       if (detail === "full") {
-        steel.cylinder(ring0[i0]!, ring[j]!, strutR * 0.8, strutR * 0.8, 4, COLORS.strut);
-        steel.cylinder(ring0[j0]!, ring[i]!, strutR * 0.8, strutR * 0.8, 4, COLORS.strut);
+        steel.cylinder(ring0[i0]!, ring[j]!, strutR * 0.8, strutR * 0.8, 3, COLORS.strut);
+        steel.cylinder(ring0[j0]!, ring[i]!, strutR * 0.8, strutR * 0.8, 3, COLORS.strut);
       }
     };
     if (detail === "full") {
@@ -128,7 +123,8 @@ function support(steel: GeoBuilder, spine: V3, lat: V3, along: V3, detail: Track
       link(1, 3, 1, 3); // the -lat side
       link(0, 1, 0, 1); // the +along face, left-right
       link(2, 3, 2, 3);
-      for (const r of ring) steel.cylinder([r[0], r[1] - 0.11, r[2]], [r[0], r[1] + 0.11, r[2]], rTop + 0.1, rTop + 0.1, 8, COLORS.collar, true);
+      // collars at the joints (every other panel on the tall towers: the lift's lattice has ~13 panels)
+      if (panels < 7 || k % 2 === 0) for (const r of ring) steel.cylinder([r[0], r[1] - 0.11, r[2]], [r[0], r[1] + 0.11, r[2]], rTop + 0.1, rTop + 0.1, 6, COLORS.collar);
     } else {
       steel.cylinder(ring[0]!, ring[1]!, strutR, strutR, 5, COLORS.strut);
       const a0 = ring0[0]!;
@@ -136,33 +132,53 @@ function support(steel: GeoBuilder, spine: V3, lat: V3, along: V3, detail: Track
       steel.cylinder(ring0[1]!, ring[0]!, 0.07, 0.07, 4, COLORS.strut);
     }
   }
-  // base flange on a concrete footing, each leg; four bolts on a PC
+  // base flange on a concrete footing, each leg
   for (const g of gnd) {
     steel.box([g[0], 0.16, g[2]], [1, 0, 0], [0, 1, 0], 0.7, 0.16, 0.7, COLORS.foot);
     steel.box([g[0], 0.37, g[2]], [1, 0, 0], [0, 1, 0], 0.46, 0.05, 0.46, COLORS.collar);
-    if (detail === "full") {
-      for (const [dx, dz] of [[-0.34, -0.34], [0.34, -0.34], [-0.34, 0.34], [0.34, 0.34]] as const) steel.cylinder([g[0] + dx, 0.42, g[2] + dz], [g[0] + dx, 0.5, g[2] + dz], 0.045, 0.045, 6, COLORS.bolt, true);
-    }
   }
 }
+
+const lerp3 = (a: V3, b: V3, f: number): V3 => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+const off = (p: V3, d: V3, k: number): V3 => [p[0] + d[0] * k, p[1] + d[1] * k, p[2] + d[2] * k];
 
 export function buildTrack(track: CoasterTrack, detail: TrackDetail = "full"): TrackBuild {
   const chunks: TrackChunk[] = [];
   const per = Math.ceil(track.n / CHUNKS);
   const step = detail === "full" ? 2 : 3; // a ring every metre (1.5 on a phone)
-  const loopFrom = track.marks.loopFrom ?? -1;
-  const loopTo = track.marks.loopTo ?? -1;
-  const supportEvery = detail === "full" ? 20 : 28; // samples (8 m / 12 m)
-  const tieEvery = Math.max(1, Math.round((detail === "full" ? 1.4 : 2.4) / track.ds));
+  const supports = coasterSupports(track, detail);
+  const tieEvery = Math.max(1, Math.round((detail === "full" ? 2.0 : 2.5) / track.ds));
   let triangles = 0;
+  const parts = { rails: 0, ties: 0, supports: 0, lift: 0 };
+  let mark = 0;
+  const tally = (k: keyof typeof parts, b: GeoBuilder): void => {
+    parts[k] += b.triangles - mark;
+    mark = b.triangles;
+  };
   for (let c = 0; c < CHUNKS; c++) {
     const from = c * per;
     const to = Math.min(track.n, from + per);
     if (from >= to) break;
     const steel = new GeoBuilder();
     const idxs: number[] = [];
-    for (let i = from; i <= to; i += step) idxs.push(i);
-    if (idxs[idxs.length - 1] !== to) idxs.push(to);
+    // a ring where the track bends or rolls (every `step` samples at most), sparser on the straights (every 3 m at least)
+    {
+      let last = from;
+      idxs.push(from);
+      const maxGap = Math.round(3 / track.ds);
+      for (let i = from + step; i < to; i += step) {
+        const ta = tanAt(track, last);
+        const tb = tanAt(track, i);
+        const ua = upAt(track, last);
+        const ub = upAt(track, i);
+        const bend = Math.acos(Math.min(1, ta[0] * tb[0] + ta[1] * tb[1] + ta[2] * tb[2])) + Math.acos(Math.min(1, ua[0] * ub[0] + ua[1] * ub[1] + ua[2] * ub[2]));
+        if (bend > RING_BEND || i - last >= maxGap) {
+          idxs.push(i);
+          last = i;
+        }
+      }
+      idxs.push(to);
+    }
     const centreL: V3[] = [];
     const centreR: V3[] = [];
     const centreS: V3[] = [];
@@ -181,6 +197,7 @@ export function buildTrack(track: CoasterTrack, detail: TrackDetail = "full"): T
     steel.sweep(centreL, ba, bb, RAIL_R, 6, COLORS.rail, 0.5);
     steel.sweep(centreR, ba, bb, RAIL_R, 6, COLORS.rail, 0.5);
     steel.sweep(centreS, ba, bb, SPINE_R, detail === "full" ? 10 : 8, COLORS.spine, 0.35);
+    tally("rails", steel);
 
     // steel cross-ties with a rail seat under each rail, and a V-truss from the spine under every third tie
     let tieCount = 0;
@@ -199,18 +216,10 @@ export function buildTrack(track: CoasterTrack, detail: TrackDetail = "full"): T
       tieCount++;
     }
 
-    // supports
-    for (let i = from; i < to; i += supportEvery) {
-      const p = at(track, i);
-      const u = upAt(track, i);
-      const spine = off(p, u, -SPINE_DROP);
-      if (spine[1] < 2.6) continue;
-      if (i > loopFrom && i < loopTo) {
-        const rel = (i - loopFrom) / (loopTo - loopFrom);
-        if (!(Math.abs(rel - 0.25) < 0.04 || Math.abs(rel - 0.75) < 0.04)) continue;
-      }
-      support(steel, spine, lateral(track, i), alongH(track, i), detail);
-    }
+    tally("ties", steel);
+    // supports (placed and checked clear in shared/land/coasterSupports.ts)
+    for (const sp of supports) if (sp.i >= from && sp.i < to) support(steel, sp, detail);
+    tally("supports", steel);
 
     // the lift hill: catwalk + handrails on the right, the chain and the anti-rollback rack
     if (detail === "full" && to > track.liftFrom && from < track.liftTo) {
@@ -254,10 +263,12 @@ export function buildTrack(track: CoasterTrack, detail: TrackDetail = "full"): T
         if (i % 2 === 0) steel.box(off(off(p, u, -0.36), r, 0.24), r, u, 0.03, 0.04, 0.05, COLORS.bolt);
       }
     }
+    tally("lift", steel);
+    mark = 0;
     triangles += steel.triangles;
     chunks.push({ steel: steel.build(), from, to });
   }
-  return { chunks, triangles };
+  return { chunks, triangles, parts };
 }
 
 /**

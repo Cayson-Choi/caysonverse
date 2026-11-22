@@ -29,6 +29,7 @@ import {
   BUS_STOP_SIGN,
   boxAt,
   buildVillageGeometry,
+  withParkWall,
   busShelterBenchCollider,
   busShelterColliders,
   busShelterRoofSlab,
@@ -882,7 +883,8 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
     expect(HOUSES_BLOCK).toEqual({ minX: 359.7, maxX: 586.9, minZ: -8.1, maxZ: 30.3 });
     for (const w of hallWalls(L)) expect(villageGeometry.cameraBoxes).toContainEqual(w);
     // + the guides (Task 9A) and the parked bus's mirrors (bus review r3)
-    expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS, [...guideColliders()], houseColliders(), lotGeometryColliders()));
+    // + 케이슨랜드's castle wall round the park's skyline (parkWall.ts), appended last
+    expect(villageGeometry).toEqual(withParkWall(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS, [...guideColliders()], houseColliders(), lotGeometryColliders())));
     // the model's old parked-bus box (square to the map, over the centre line) is left out: the bus is its slices
     // A8 hand-over: the A7 houses' boxes swapped for the contract's until village.glb is rebuilt with the new houses (a8Staging.ts);
     // vrb2's rebuild (release 4) has no col__bus box any more (the filter stays for older models)

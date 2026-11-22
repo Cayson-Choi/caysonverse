@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { EMOJIS } from "@caysonverse/shared/constants";
-import { useQuiet } from "../game/quiet";
+import { useEmojiQuiet } from "../game/quiet";
 import { useUiStore } from "../stores/uiStore";
 import { addChatLayoutTargets } from "./chatLayoutTargets";
 import { useEmojiFire } from "./EmojiPalette";
@@ -27,7 +27,7 @@ export function EmojiFan() {
   const layout = useTouchHudLayout();
   const [open, setOpen] = useState(false);
   const menuOpen = useUiStore((s) => s.menuOpen);
-  const quiet = useQuiet();
+  const quiet = useEmojiQuiet();
 
   // Something else took the screen (or the place went quiet): fold up.
   useEffect(() => {
@@ -53,7 +53,7 @@ export function EmojiFan() {
     };
   }, [open]);
 
-  if (quiet) return null; // no reactions in the quiet hall (quiet.ts)
+  if (quiet) return null; // no reactions where the server drops them (quiet.ts isEmojiQuiet; the memorial hall takes them)
   return (
     <div className="cv-emoji-fan" role="group" aria-label="이모지 리액션">
       {open &&

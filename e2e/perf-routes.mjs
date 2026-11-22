@@ -16,7 +16,9 @@
  *   hall      to the memorial's door, in, a walk inside, out again
  *   house     to house 1, the keypad (1004), in, out
  *   lake      to the lake, rent the rod, sit at a fishing chair, cast once, get up
- *   bus       to the stop; boards if the boarding window is open and the bus leaves within --bus-wait s, rides a lap
+ *   wheel     (after park) one whole ride on the 하늘 등불 바퀴
+ *   park      (after lake) to the gate, into Caysonland, along the promenade to the carousel and the wheel and back
+ *   bus       to the stop, board within --bus-wait s and ride until the bus returns; run before entering the park
  *
  * Verdict (exit 1 on failure): after the warm-up (--warmup, default 4 s after the vegetation veil lifts), no frame
  * interval over --max-hitch ms (default 100) while nothing covers the screen (the door fade, the house cover and the veil
@@ -80,7 +82,7 @@ run.allow("WebGL performance warnings (GPU stall readback)", /GPU stall due to R
 // Installed before any page script: wraps the WebGL contexts' expensive calls and keeps one record per animation frame.
 function recorder() {
   const R = (window.__perf = {
-    phase: "boot",
+    phase: "entry",
     t: [], // rAF timestamps
     ph: [], // phase of each frame
     cover: [], // 1 when a loading cover was up at that frame
@@ -149,7 +151,7 @@ function recorder() {
   // loading covers (polled, never per frame): the vegetation veil, the door fade, the house cover, the hall curtain
   setInterval(() => {
     let c = 0;
-    for (const sel of [".cv-veg-veil", ".cv-door-fade", ".cv-house-cover", ".cv-curtain", ".cv-loading"]) {
+    for (const sel of [".cv-veg-veil", ".cv-door-fade", ".cv-house-cover", ".cv-curtain", ".cv-loader", "[data-testid=park-loading]"]) {
       const e = document.querySelector(sel);
       if (!e) continue;
       const o = parseFloat(getComputedStyle(e).opacity || "1");
@@ -317,23 +319,30 @@ const session = await cdp(p);
 if (THROTTLE > 1) await session.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE });
 await session.send("Profiler.enable");
 await session.send("Profiler.setSamplingInterval", { interval: 500 });
+if (PROFILE) await session.send("Performance.enable");
 
 const setPhase = (ph) => p.page.evaluate((x) => (window.__perf.phase = x), ph).catch(() => {});
 const profiles = {};
 const pageNow = () => p.page.evaluate(() => performance.now());
 let judgeFrom = Infinity;
 
+// V8 CPU samples and CDP NavigationStart use Chromium's monotonic clock.
+// Subtract the current document's origin to align samples to its rAF timestamps.
+async function saveProfile(name) {
+  const { profile } = await session.send("Profiler.stop");
+  const { metrics } = await session.send("Performance.getMetrics");
+  const origin = metrics.find((m) => m.name === "NavigationStart");
+  if (!origin) throw new Error("Missing NavigationStart for CPU profile");
+  profiles[name] = { profile, offset: origin.value * 1000 };
+  writeFileSync(join(OUT, `${tagName}-${name}.cpuprofile`), JSON.stringify(profile));
+}
+
 async function phase(name, body) {
   if (!ROUTES.includes(name)) return;
   console.log(`— ${name}`);
-  let offset = null;
   if (PROFILE) {
     // starting the profiler stalls the page once (V8 logs its code): that frame belongs to no phase
-    const before = await pageNow();
-    const wall0 = Date.now();
     await session.send("Profiler.start");
-    const after = await pageNow();
-    offset = { pageAt: (before + after) / 2, wall: Date.now() - wall0 };
     await sleep(800);
   }
   await setPhase(name);
@@ -345,11 +354,7 @@ async function phase(name, body) {
     run.check(`${name}: route done`, false, String(e?.message ?? e).slice(0, 300));
   }
   await setPhase("between");
-  if (PROFILE) {
-    const { profile } = await session.send("Profiler.stop");
-    profiles[name] = { profile, offset: profile.startTime / 1000 - offset.pageAt };
-    writeFileSync(join(OUT, `${tagName}-${name}.cpuprofile`), JSON.stringify(profile));
-  }
+  if (PROFILE) await saveProfile(name);
   console.log(`  ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   await setPhase("between");
 }
@@ -382,16 +387,32 @@ const dragOrbit = async (dx, steps = 30) => {
   }
 };
 const areaNow = () => p.page.evaluate(async () => (await window.__imp("/src/village/villageArea.ts")).localArea());
+const interactionState = () => p.page.evaluate(async () => {
+  const room = (await window.__imp("/src/net/connection.ts")).getRoom();
+  const me = room?.state?.players?.get(room.sessionId);
+  const local = window.__cv.getPos();
+  const offered = (await window.__imp("/src/game/interactTargets.ts")).getTargets(local);
+  const button = document.querySelector(".cv-action-btn");
+  const rect = button?.getBoundingClientRect();
+  const hit = rect && document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  return {
+    local: { area: (await window.__imp("/src/village/villageArea.ts")).localArea(), x: local.x, z: local.z, seat: local.seatIndex },
+    server: me && { area: me.area, x: me.x, z: me.z, seat: me.seatIndex },
+    targets: offered.map((t) => ({ id: t.id, label: t.label })),
+    action: button?.getAttribute("aria-label") ?? null,
+    actionHit: hit && { tag: hit.tagName, css: hit.getAttribute("class"), onButton: button.contains(hit) },
+  };
+});
 const waitArea = async (a, ms = 20000) => {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
     if ((await areaNow()) === a) return;
     await sleep(120);
   }
-  throw new Error(`never reached area ${a}`);
+  throw new Error(`never reached ${a}: ${JSON.stringify(await interactionState())}`);
 };
 const waitCoversGone = () =>
-  p.page.waitForFunction(() => window.__perf.covered === 0, null, { timeout: 30000 }).catch(() => {});
+  p.page.waitForFunction(() => window.__perf.covered === 0, null, { timeout: 30000 });
 const tapButton = async (b) => {
   if (p.touch) await p.page.touchscreen.tap(b.x + b.w / 2, b.y + b.h / 2);
   else await p.page.mouse.click(b.x + b.w / 2, b.y + b.h / 2);
@@ -405,7 +426,7 @@ const pressBig = async (label, ms = 15000) => {
 const entry = {};
 try {
   // ── entry (always: the other routes need the village) ──
-  await setPhase("entry");
+  if (PROFILE) await session.send("Profiler.start");
   const tEntry = Date.now();
   await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(args.time)}${args.query ? `&${args.query}` : ""}`, { waitUntil: "domcontentloaded" });
   await entryReady(p);
@@ -419,16 +440,18 @@ try {
   const tVeil = Date.now();
   while ((await veilUp()) && Date.now() - tVeil < 90000) await sleep(200);
   entry.veilMs = Date.now() - tJoin;
-  entry.lakeModelMs = await p.page
-    .waitForFunction(() => performance.getEntriesByType("resource").some((r) => /lake.*\.glb/.test(r.name)), null, { timeout: 60000 })
-    .then(() => p.page.evaluate(() => Math.round(performance.getEntriesByType("resource").find((r) => /lake.*\.glb/.test(r.name)).responseEnd)))
-    .catch(() => null);
   entry.vegStats = await p.page.evaluate(() => {
     const s = window.__cvVeg?.();
     return s ? { buildMs: s.buildMs ?? null, trees: Object.values(s.trees ?? {}).reduce((a, k) => a + (k.trees ?? 0), 0) } : null;
   });
   await sleep(WARMUP);
+  entry.lakeModelMs = await p.page.evaluate(() => {
+    const lake = performance.getEntriesByType("resource").find((r) => /lake.*\.glb/.test(r.name));
+    return lake ? Math.round(lake.responseEnd) : null;
+  });
   judgeFrom = await pageNow();
+  await setPhase("between");
+  if (PROFILE) await saveProfile("entry");
   console.log(`entry: screen ${entry.entryScreenMs} ms, village ${entry.villageScreenMs} ms, veil lifted after ${entry.veilMs} ms`);
 
   await phase("plaza", async () => {
@@ -478,7 +501,10 @@ try {
   await phase("hall", async () => {
     await enterHall(p);
     await waitCoversGone();
-    for (const [x, z] of [[300, -2], [303, -6], [297, -6], [300, 0]]) await walkAndWait(p, x, z, 20000, 1.0);
+    for (const [x, z] of [[300, -3.8], [303.3, -3.8], [303.3, 0.5], [300, 1.5]]) {
+      const at = await walkAndWait(p, x, z, 20000, 0.4);
+      if (Math.hypot(at.x - x, at.z - z) >= 0.4) throw new Error(`hall waypoint (${x}, ${z}) missed at (${at.x}, ${at.z})`);
+    }
     await sleep(1500);
     await leaveHall(p);
     await waitCoversGone();
@@ -497,16 +523,31 @@ try {
     await walkAndWait(p, 365.3, -4.9, 20000, 0.8);
     await dragOrbit(PHONE_DEV ? 250 : 400);
     await sleep(1500);
-    // out: the way-out pad inside the front door (e2e/village-house.mjs)
-    await walkAndWait(p, 365.3, -0.9, 20000, 0.5);
-    await sleep(400);
-    await act(p);
+    const pad = await p.page.evaluate(async () => (await window.__imp("/village/houseAreas.ts")).HOUSE_PLACES[1].exitPad);
+    const at = await walkAndWait(p, pad.x, pad.z, 20000, 0.5);
+    const state = await interactionState();
+    console.log(`house exit: pad (${pad.x}, ${pad.z}), ${JSON.stringify(state)}`);
+    const exit = state.targets.find((t) => t.id === "house_exit");
+    if (Math.hypot(at.x - pad.x, at.z - pad.z) >= 0.5 || !exit) throw new Error("House exit pad or its action was not reached");
+    // The door checks the synced position. Wait for our last movement to register before using the HUD.
+    await p.page.waitForFunction(async ({ x, z, radius, area }) => {
+      const room = (await window.__imp("/src/net/connection.ts")).getRoom();
+      const me = room?.state?.players?.get(room.sessionId);
+      return me?.area === area && Math.hypot(me.x - x, me.z - z) <= radius;
+    }, pad, { polling: 250, timeout: 10000 }).catch(async () => {
+      throw new Error(`House exit position failed to sync: ${JSON.stringify(await interactionState())}`);
+    });
+    const exitButton = p.page.locator(".cv-action-btn").and(p.page.getByRole("button", { name: exit.label, exact: true }));
+    if (p.touch) await exitButton.tap({ timeout: 10000 });
+    else await exitButton.click({ timeout: 10000 });
     await waitArea("village", 20000);
     await waitCoversGone();
     await sleep(2500);
   });
 
   await phase("lake", async () => {
+    const area = await areaNow();
+    if (area !== "village") throw new Error(`Lake route started in ${area}`);
     for (const [x, z] of [[0, 14], [40, 0], [80, -9], [100, -12]]) await walkAndWait(p, x, z, 40000, 2);
     await walkAndWait(p, 102, -14.6, 20000, 1);
     await sleep(800);
@@ -533,17 +574,141 @@ try {
     await sleep(2000);
   });
 
-  await phase("bus", async () => {
+  // click-move inside the park with the click planner's detour round the park's solids (as e2e/wheel-ride.mjs goTo)
+  const walkWithDetour = async (x, z, tol = 2.5) => {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await p.page.evaluate(
+        async ([x, z]) => {
+          const plan = await window.__imp("/src/game/clickPlan.ts");
+          const move = await window.__imp("/src/game/clickMove.ts");
+          const am = await window.__imp("/src/game/activeMap.ts");
+          const P = window.__cv.getPos();
+          const via = plan.findDetour(P.x, P.z, x, z, am.getActiveMap().geometry.obstacles, am.activeBounds(), undefined, { ratio: 6, slack: 40, margin: 40 });
+          move.setClickTarget(x, z, 0, via ?? undefined);
+        },
+        [x, z],
+      );
+      await sleep(400);
+      const t0 = Date.now();
+      while (Date.now() - t0 < 120000 && (await p.page.evaluate(() => window.__cvClickTarget?.() ?? null)) !== null) await sleep(150);
+      await sleep(300);
+      const at = await pos(p);
+      if (Math.hypot(at.x - x, at.z - z) < tol) return at;
+    }
+    const at = await pos(p);
+    throw new Error(`Waypoint (${x}, ${z}) missed at (${at.x}, ${at.z})`);
+  };
+  const enterPark = async () => {
+    const area = await areaNow();
+    if (area !== "village" && area !== "park") throw new Error(`Park gate route started in ${area}`);
+    if ((await pos(p)).seatIndex >= 0) {
+      await p.page.evaluate(() => window.__cv.stand());
+      await sleep(1500);
+    }
+    if (area === "park") return;
+    const g = await p.page.evaluate(async () => (await window.__imp("/village/parkArea.ts")).parkGateDoor().pad);
+    if ((await pos(p)).x > 75) {
+      for (const [x, z] of [[80, -9], [40, 0]]) await walkWithDetour(x, z, 1.5);
+    }
+    const at = await walkWithDetour(g.x, g.z - 0.5, 1.0);
+    console.log(`park gate: at ${JSON.stringify(at)} pad ${JSON.stringify(g)}`);
+    await act(p);
+    await waitArea("park", 20000);
+    await waitCoversGone();
+    await sleep(3000);
+  };
+
+  // The bus stop uses village coordinates. Finish its route before leaving through the park gate.
+  await phase("bus", runBus);
+  await phase("park", async () => {
+    await enterPark();
+    // the promenade, the carousel, the wheel, back across the park (park-local metres)
+    for (const [x, z] of [[40, -150], [60, -125], [110, -119], [160, -125], [211, -131], [260, -100], [200, -60]]) {
+      await walkWithDetour(x, z, 3);
+      await dragOrbit(PHONE_DEV ? 200 : 300, 20);
+      await sleep(800);
+    }
+    await sleep(2000);
+  });
+
+  // one whole ride on the 하늘 등불 바퀴 (the top is where the whole park is in view)
+  await phase("wheel", async () => {
+    await enterPark();
+    const pad = await p.page.evaluate(async () => (await window.__imp("/village/parkArea.ts")).WHEEL_PAD);
+    await walkWithDetour(pad.x, pad.z, 1.5);
+    const st = () =>
+      p.page.evaluate(async (pad) => {
+        const { wheelAt, WHEEL_RIDE_CYCLES } = await window.__imp("/land/wheel.ts");
+        const { selfRide, rideNotice, landPose } = await window.__imp("/src/land/coasterRide.ts");
+        const { RIDE } = await window.__imp("/land/rides.ts");
+        const { villageClock } = await window.__imp("/src/village/villageClock.ts");
+        const room = (await window.__imp("/src/net/connection.ts")).getRoom();
+        const me = room?.state?.players?.get(room.sessionId);
+        const { status, cycle } = wheelAt(villageClock.liveMs());
+        const slot = me?.rideSeat ?? null;
+        return {
+          status, cycle, cyclesPerLap: WHEEL_RIDE_CYCLES,
+          slot, serverRide: me?.rideId ?? null, clientSlot: selfRide.slot, clientRide: selfRide.ride,
+          aboard: slot !== null && slot >= 0 && me.rideId === RIDE.wheel && selfRide.ride === RIDE.wheel && selfRide.slot === slot,
+          atPad: me?.area === "park" && Math.hypot(me.x - pad.x, me.z - pad.z) <= pad.radius,
+          notice: rideNotice.reason, hudPose: { ...landPose },
+        };
+      }, pad);
+    const boardingDiagnostics = async (message, state) => {
+      console.log(`wheel ${message}: ${JSON.stringify({ pad, state, interaction: await interactionState() })}`);
+    };
+    const openDeadline = Date.now() + 60000;
+    let state = await st();
+    while ((!state.atPad || state.status !== "boarding") && Date.now() < openDeadline) {
+      await sleep(250);
+      state = await st();
+    }
+    const interaction = await interactionState();
+    const wheel = interaction.targets.find((t) => t.id === "ride_board:wheel");
+    if (!state.atPad || state.status !== "boarding" || !wheel || interaction.action !== wheel.label) {
+      await boardingDiagnostics("station not ready", state);
+      throw new Error("Wheel boarding needs the synced player at the open station and its action button");
+    }
+    console.log(`wheel board: ${JSON.stringify({ pad, state, interaction })}`);
+    if (p.touch) await p.page.locator(".cv-action-btn").and(p.page.getByRole("button", { name: wheel.label, exact: true })).tap({ timeout: 10000 });
+    else await act(p);
+    const boardDeadline = Date.now() + 60000;
+    do {
+      await sleep(250);
+      state = await st();
+    } while (!state.aboard && Date.now() < boardDeadline);
+    if (!state.aboard) {
+      await boardingDiagnostics("boarding failed", state);
+      throw new Error(`Wheel boarding failed: ${JSON.stringify(state)}`);
+    }
+    const boarded = state;
+    let turned = false;
+    const rideDeadline = Date.now() + 220000;
+    while (state.aboard && state.slot === boarded.slot && Date.now() < rideDeadline) {
+      if (state.status === "riding") turned = true;
+      await sleep(500);
+      state = await st();
+    }
+    if (!turned || state.slot !== -1 || state.clientSlot !== -1 || state.cycle - boarded.cycle < boarded.cyclesPerLap) {
+      throw new Error(`Incomplete wheel lap: boarded=${JSON.stringify(boarded)} end=${JSON.stringify(state)}`);
+    }
+    run.check("wheel: same seat through a full revolution and automatic unload", true, { slot: boarded.slot, boardedCycle: boarded.cycle, unloadedCycle: state.cycle });
+    await sleep(2500);
+  });
+
+  async function runBus() {
     // off the lake chair first (the lake phase leaves the player seated)
     if ((await pos(p)).seatIndex >= 0) {
       await p.page.evaluate(() => window.__cv.stand());
       await sleep(1500);
     }
-    for (const [x, z] of [[80, -9], [40, 0], [38.5, -0.5], [36.9, -6.0]]) await walkAndWait(p, x, z, 40000, 1);
+    if ((await areaNow()) !== "village") throw new Error("Bus route started outside the village");
+    const approach = (await pos(p)).x > 75 ? [[80, -9], [40, 0]] : [];
+    for (const [x, z] of [...approach, [38.5, -0.5], [36.9, -6.0]]) await walkWithDetour(x, z, 0.6);
     const sync = () => p.page.evaluate(async () => {
       const s = (await window.__imp("/src/net/transitSync.ts")).getTransitState();
       const snap = s.snapshot;
-      return { boarded: s.boarded, snap: snap ? { tripId: snap.tripId, departAt: snap.departAt ?? snap.departureMs ?? null, phase: snap.phase ?? null } : null };
+      return { boarded: s.boarded, tripId: snap?.tripId, status: snap?.status };
     });
     const t0 = Date.now();
     let boarded = false;
@@ -559,19 +724,21 @@ try {
       }
       await sleep(2000);
     }
-    run.check("bus: boarded (or the bus was not boarding in the wait)", true, { boarded, state: await sync() });
-    if (!boarded) {
-      await sleep(5000);
-      return;
-    }
+    if (!boarded) throw new Error(`No boarding observed within ${args["bus-wait"]} s: ${JSON.stringify(await sync())}`);
     // wait for the ride to start and finish (lap ≈ 50 s + the signal holds)
     const tRide = Date.now();
-    while ((await sync()).boarded && Date.now() - tRide < 300000) {
+    let departed = false;
+    let state = await sync();
+    while (state.boarded && Date.now() - tRide < 300000) {
+      if (state.status === "inTransit") departed = true;
       if (Date.now() - tRide > 20000 && Date.now() - tRide < 24000) await dragOrbit(PHONE_DEV ? 200 : 300);
       await sleep(1500);
+      state = await sync();
     }
+    if (!departed || state.boarded) throw new Error(`Incomplete bus lap: departed=${departed}, boarded=${state.boarded}`);
+    run.check("bus: boarded, rode and dismounted", true, { departed, final: state });
     await sleep(3000);
-  });
+  }
 } catch (e) {
   run.check("routes ran", false, String(e?.stack ?? e).slice(0, 600));
 }

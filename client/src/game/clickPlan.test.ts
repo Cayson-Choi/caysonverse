@@ -387,6 +387,18 @@ describe("clickPlan — a walk that cannot arrive stops where it meets the obsta
     expect(simulateWalk(0, 0, plan.x, plan.z, [wall], BOUNDS).arrived).toBe(true);
   });
 
+  it("a stalled frame finishes the half-metre walk without overshooting the goal", () => {
+    expect(simulateWalk(0, 0, 0.5, 0, [], BOUNDS, R, [], 0.5)).toMatchObject({ x: 0.5, z: 0, arrived: true });
+  });
+
+  it("keeps the collision lookup inside the room when a destination lies far beyond the map", () => {
+    const boxes = Array.from({ length: 16 }, (_, i) => ({ minX: i + 1, maxX: i + 1.5, minZ: 8, maxZ: 9 }));
+    const target = 1_000_000;
+    const simple = simulateWalk(0, 0, target, target, boxes.slice(0, 15), BOUNDS);
+    expect(simple.arrived).toBe(false);
+    expect(simulateWalk(0, 0, target, target, boxes, BOUNDS)).toEqual(simple);
+  });
+
   it("simulateWalk reports the first contact (null when nothing was in the way)", () => {
     expect(simulateWalk(0, 0, 5, 5, [], BOUNDS).contact).toBeNull();
     const c = simulateWalk(0, 6, 0, -6, [BOX], BOUNDS).contact!;

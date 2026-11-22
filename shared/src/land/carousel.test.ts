@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   CAROUSEL_CENTER,
@@ -5,7 +7,10 @@ import {
   CAROUSEL_DWELL_MS,
   CAROUSEL_OMEGA_MAX,
   CAROUSEL_RIDE_ANGLE,
+  CAROUSEL_DECK_Y,
   CAROUSEL_RINGS,
+  HORSE_BOB,
+  HORSE_HOOF_DROP,
   CAROUSEL_SEATS,
   carouselAt,
   carouselBoardingOpen,
@@ -88,5 +93,37 @@ describe("carousel timeline", () => {
     const mx = b.x - a.x;
     const mz = b.z - a.z;
     expect(mx * a.fx + mz * a.fz).toBeGreaterThan(0);
+  });
+});
+
+/** The lowest vertex y of a GLB (the POSITION accessors' min). */
+function glbMinY(file: string): number {
+  const buf = readFileSync(path.join(__dirname, "../../../client/public/models/land", file));
+  const jsonLen = buf.readUInt32LE(12);
+  const j = JSON.parse(buf.subarray(20, 20 + jsonLen).toString("utf8"));
+  let min = Infinity;
+  for (const m of j.meshes) for (const p of m.primitives) min = Math.min(min, j.accessors[p.attributes.POSITION].min[1]);
+  return min;
+}
+
+describe("horse hooves clear the platform", () => {
+  it("the models' lowest point is the hoof drop below the saddle", () => {
+    expect(glbMinY("carousel_horse.glb")).toBeCloseTo(-HORSE_HOOF_DROP, 2);
+    expect(glbMinY("carousel_horse_lod.glb")).toBeCloseTo(-HORSE_HOOF_DROP, 2);
+  });
+  it("the minimum hoof height over the bob cycle is at least 5 cm for every horse", () => {
+    for (const lod of ["carousel_horse.glb", "carousel_horse_lod.glb"]) {
+      const hoof = glbMinY(lod); // lowest point relative to the saddle (negative)
+      for (let seat = 0; seat < 20; seat++) {
+        let low = Infinity;
+        // the whole ride at full speed, finely sampled (the bob is a sine of the ride time, scaled by the turning speed)
+        for (let t = 0; t < 12; t += 0.01) {
+          const y = carouselSeatPose(seat, T0 + CAROUSEL_DWELL_MS + (20 + t) * 1000).y;
+          low = Math.min(low, y + hoof - CAROUSEL_DECK_Y);
+        }
+        expect(low).toBeGreaterThanOrEqual(0.05);
+      }
+    }
+    expect(HORSE_BOB.amp).toBeLessThan(0.3);
   });
 });

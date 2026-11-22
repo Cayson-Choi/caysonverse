@@ -1,16 +1,22 @@
 import { useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, useTexture } from "@react-three/drei";
-import { BufferGeometry, Color, DoubleSide, Mesh, Group, InstancedMesh, Matrix4, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, type Texture } from "three";
+import { BufferGeometry, Color, DoubleSide, Mesh, Group, InstancedMesh, Matrix4, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector2, type Texture } from "three";
 import { COASTER_CARS, carArc, coasterTrack, emptyFrame, frameAt, STATION_Y } from "@caysonverse/shared/land/coaster";
 import { isTouchDevice } from "../device";
 import { buildTrack, type TrackBuild, type TrackDetail } from "./coasterGeometry";
+import { buildTunnel } from "./coasterTunnel";
 import { coasterNow } from "./coasterRide";
 import { parkMaterial, pickSet } from "./pbr";
+import { applyFarSteel, farSteelUniform } from "./farSteel";
 import { signTexture } from "./canvasTextures";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 
 const DETAIL: TrackDetail = isTouchDevice ? "light" : "full";
+
+/** The car parts a phone drops for far cars (by material name in the car GLB), and how near (m) a car must be to keep them. */
+const CAR_SMALL_PARTS: ReadonlySet<string> = new Set(["car_rubber", "car_dark", "car_chrome", "car_pad"]);
+const CAR_DETAIL_M = 70;
 
 export const CAR_URL = "/models/land/coaster_car.glb";
 export const CAR_AO_URL = "/models/land/coaster_car_ao.webp";
@@ -41,20 +47,34 @@ function Train({ env, ao }: { env: Texture; ao: Texture }) {
   const m = useMemo(() => new Matrix4(), []);
   const f = useMemo(() => emptyFrame(), []);
   const track = useMemo(() => coasterTrack(), []);
-  useFrame(() => {
+  // a phone draws a car's small parts (wheels, undercarriage, chrome, pads: ~45 of its ~60 k triangles for the train) only for the cars within
+  // CAR_DETAIL_M of the camera: the wheel's top sees the whole park, where they are specks. The first nNear instances of those meshes are drawn.
+  const small = useMemo(() => parts.map((p) => CAR_SMALL_PARTS.has(p.material.name)), [parts]);
+  useFrame(({ camera }) => {
     const now = coasterNow();
+    let nNear = 0;
     for (let i = 0; i < COASTER_CARS; i++) {
       frameAt(track, carArc(now.s, i), f);
       // car space: +x is the car's LEFT (a right-handed basis: left x up = forward), +z forward
       m.set(-f.rx, f.ux, f.tx, f.x, -f.ry, f.uy, f.ty, f.y, -f.rz, f.uz, f.tz, f.z, 0, 0, 0, 1);
-      for (const mesh of refs.current) mesh?.setMatrixAt(i, m);
+      const near = !isTouchDevice || Math.hypot(f.x - camera.position.x, f.y - camera.position.y, f.z - camera.position.z) < CAR_DETAIL_M;
+      refs.current.forEach((mesh, k) => {
+        if (!mesh) return;
+        if (!small[k]) mesh.setMatrixAt(i, m);
+        else if (near) mesh.setMatrixAt(nNear, m);
+      });
+      if (near) nNear++;
     }
-    for (const mesh of refs.current) if (mesh) mesh.instanceMatrix.needsUpdate = true;
+    refs.current.forEach((mesh, k) => {
+      if (!mesh) return;
+      if (small[k]) mesh.count = nNear;
+      mesh.instanceMatrix.needsUpdate = true;
+    });
   });
   return (
     <group>
       {parts.map((p, i) => (
-        <instancedMesh key={i} ref={(r) => { refs.current[i] = r; }} args={[p.geometry, p.material, COASTER_CARS]} frustumCulled={false} castShadow receiveShadow />
+        <instancedMesh key={i} name={p.material.name === "car_paint" ? "ride-coaster-car" : undefined} ref={(r) => { refs.current[i] = r; }} args={[p.geometry, p.material, COASTER_CARS]} frustumCulled={false} castShadow receiveShadow />
       ))}
     </group>
   );
@@ -89,8 +109,8 @@ function BoardingGates({ cx, z, y }: { cx: number; z: number; y: number }) {
   );
 }
 
-/** The station: a timber platform on the train's LEFT (-z, the queue's side), a canopy, posts, the name board and the boarding gates. */
-function Station({ concrete, pine }: { concrete: ReturnType<typeof pickSet>; pine: Texture }) {
+/** The station: a timber platform on the train's LEFT (-z, the steps' side), a canopy, posts, the name board and the boarding gates. */
+function Station({ concrete, paving, pine }: { concrete: ReturnType<typeof pickSet>; paving: ReturnType<typeof pickSet>; pine: Texture }) {
   const deck = useMemo(() => {
     const t = pine.clone();
     t.wrapS = t.wrapT = RepeatWrapping;
@@ -99,8 +119,8 @@ function Station({ concrete, pine }: { concrete: ReturnType<typeof pickSet>; pin
     t.needsUpdate = true;
     return new MeshStandardMaterial({ map: t, roughness: 0.78, color: new Color("#e6d3b5") });
   }, [pine]);
-  const base = useMemo(() => parkMaterial(concrete, 1, { vertexColors: true, color: new Color("#e6dfd2"), normalScale: 0.7 }), [concrete]);
-  // the platform's two stone-faced walls (the track side and the queue side), built with metre UVs so the concrete keeps its grain
+  const base = useMemo(() => parkMaterial(concrete, 1, { vertexColors: true, color: new Color(1.4, 1.35, 1.25), normalScale: 0.7 }), [concrete]);
+  // the platform's two stone-faced walls (the track side and the steps' side), built with metre UVs so the concrete keeps its grain
   // at every size (a stretched unit-box UV smeared it), with a plinth, a cap course and a yellow edge strip
   const baseGeo = useMemo(() => {
     const b = new GeoBuilder();
@@ -114,8 +134,47 @@ function Station({ concrete, pine }: { concrete: ReturnType<typeof pickSet>; pin
     b.box([2, 0.08, -4.1], X, Y, 17.08, 0.08, 2.78, [0.62, 0.6, 0.56], 2);
     b.box([2, top - 0.04, -4.1], X, Y, 17.08, 0.04, 2.76, [0.96, 0.94, 0.9], 2);
     b.box([2, top + 0.005, -1.45], X, Y, 17, 0.012, 0.12, [0.95, 0.78, 0.2], 1);
+    // the north steps (the way up from the boarding pad at z -12): a wide staircase of eight treads (a light tread slab with a nosing over a darker riser),
+    // cheek walls on both sides stepping up with it and capped, and a yellow edge strip at the top
+    const N = 8;
+    const run = 0.5;
+    const half = 2.9;
+    for (let i = 0; i < N; i++) {
+      const h = (top * (N - i)) / N;
+      const zc = -6.95 - run * (i + 0.5);
+      // the riser block stops inside the tread slab (3.5 cm under the tread's top): its top used to share the tread's plane, and the two
+      // coplanar faces (light tread, dark riser) z-fought over the whole step, crawling as the camera moved (owner 2026-11-21)
+      b.box([2, (h - 0.035) / 2, zc], X, Y, half, (h - 0.035) / 2, run / 2, [0.74, 0.71, 0.66], 2); // the riser block
+      b.box([2, h - 0.035, zc - 0.03], X, Y, half + 0.02, 0.035, run / 2 + 0.03, [0.97, 0.95, 0.9], 2); // the tread with its nosing
+      for (const sx of [-1, 1]) {
+        b.box([2 + sx * (half + 0.3), (h + 0.5) / 2, zc], X, Y, 0.3, (h + 0.5) / 2, run / 2, [0.84, 0.81, 0.76], 2); // a cheek wall
+        b.box([2 + sx * (half + 0.3), h + 0.5 + 0.04, zc], X, Y, 0.36, 0.04, run / 2 + 0.01, [0.97, 0.95, 0.9], 2); // its cap
+      }
+    }
+    b.box([2, top + 0.005, -6.95], X, Y, half, 0.012, 0.1, [0.95, 0.78, 0.2], 1);
     return b.build();
   }, []);
+  // the north face in stone: a cobbled-block plate with a pilaster every 4 m, a plinth under it and a coping over it (metre UVs: a stone is ~0.25 m)
+  const faceGeo = useMemo(() => {
+    const b = new GeoBuilder();
+    const X: V3 = [1, 0, 0];
+    const Y: V3 = [0, 1, 0];
+    const top = STATION_Y + 0.2;
+    b.box([2, (top - 0.1 + 0.3) / 2, -6.86], X, Y, 16.9, (top - 0.1 - 0.3) / 2, 0.04, [0.96, 0.94, 0.9], 2.2);
+    for (let k = -4; k <= 4; k++) b.box([2 + k * 4, (top - 0.1 + 0.3) / 2, -6.9], X, Y, 0.32, (top - 0.1 - 0.3) / 2, 0.07, [0.9, 0.87, 0.82], 2.2);
+    return b.build();
+  }, []);
+  const trimGeo = useMemo(() => {
+    const b = new GeoBuilder();
+    const X: V3 = [1, 0, 0];
+    const Y: V3 = [0, 1, 0];
+    const top = STATION_Y + 0.2;
+    b.box([2, 0.15, -6.9], X, Y, 17.05, 0.15, 0.11, [0.62, 0.6, 0.56], 2); // the plinth (its face 1 cm proud of the apron kerb's at z -7: in one plane the two z-fought)
+    b.box([2, top - 0.05, -6.92], X, Y, 17.1, 0.05, 0.13, [0.97, 0.95, 0.9], 2); // the coping
+    b.box([2, top - 0.13, -6.88], X, Y, 17, 0.03, 0.08, [0.8, 0.77, 0.72], 2); // its shadow line
+    return b.build();
+  }, []);
+  const stone = useMemo(() => parkMaterial(paving, 1, { vertexColors: true, color: new Color(1.7, 1.6, 1.45), normalScale: 1.0 }), [paving]);
   const post = useMemo(() => new MeshPhysicalMaterial({ color: "#eee7d8", roughness: 0.45, metalness: 0.15, clearcoat: 0.4 }), []);
   const roof = useMemo(() => new MeshPhysicalMaterial({ color: "#5b60d4", emissive: new Color("#262a78"), emissiveIntensity: 0.4, roughness: 0.5, metalness: 0.2, clearcoat: 0.5, side: DoubleSide }), []);
   const sign = useMemo(() => signTexture(), []);
@@ -125,6 +184,8 @@ function Station({ concrete, pine }: { concrete: ReturnType<typeof pickSet>; pin
   return (
     <group>
       <mesh geometry={baseGeo} material={base} castShadow receiveShadow />
+      <mesh geometry={faceGeo} material={stone} castShadow receiveShadow />
+      <mesh geometry={trimGeo} material={base} castShadow receiveShadow />
       <mesh position={[cx, deckTop + 0.04, -4.1]} material={deck} castShadow receiveShadow>
         <boxGeometry args={[34.2, 0.08, 5.6]} />
       </mesh>
@@ -153,9 +214,20 @@ export function CoasterWorld({ all, pine, env }: { all: Texture[]; pine: Texture
   const ao = useTexture(CAR_AO_URL) as Texture;
   const track = useMemo(() => coasterTrack(), []);
   const built: TrackBuild = useMemo(() => buildTrack(track, DETAIL), [track]);
-  const maps = useMemo(() => ({ metal: pickSet(all, "PaintedMetal013"), concrete: pickSet(all, "Concrete034") }), [all]);
+  const maps = useMemo(() => ({ metal: pickSet(all, "PaintedMetal013"), concrete: pickSet(all, "Concrete034"), paving: pickSet(all, "PavingStones070") }), [all]);
   // painted steel: the vertex colours are the paint; the set gives the surface (orange-peel bump, the gloss that varies)
   const steelMat = useMemo(() => parkMaterial(maps.metal, 0.5, { useColor: false, vertexColors: true, metalness: 0.25, normalScale: 0.35, envMap: env, envMapIntensity: 0.45 }), [maps, env]);
+  // the far rails stay a steady dark line instead of crawling light dashes (farSteel.ts)
+  useMemo(() => applyFarSteel(steelMat), [steelMat]);
+  const gl = useThree((st) => st.gl);
+  const buf = useMemo(() => new Vector2(), []);
+  useFrame(() => {
+    const h = gl.getDrawingBufferSize(buf).y;
+    if (h > 0) farSteelUniform.value = 2 / h;
+  });
+  // the tunnel on the brake run (coasterTunnel.ts): painted render over the concrete set's grain
+  const tunnelGeo = useMemo(() => buildTunnel(track), [track]);
+  const tunnelMat = useMemo(() => parkMaterial(maps.concrete, 1, { vertexColors: true, color: new Color(1.3, 1.26, 1.2), normalScale: 0.5 }), [maps]);
   // (no dispose on cleanup: React's dev double-mount would delete the programs the memoised materials still use)
   if (import.meta.env.DEV && typeof window !== "undefined") (window as unknown as { __cvCoasterTris?: number }).__cvCoasterTris = built.triangles;
   return (
@@ -163,8 +235,9 @@ export function CoasterWorld({ all, pine, env }: { all: Texture[]; pine: Texture
       {built.chunks.map((ch, i) => (
         <mesh key={i} geometry={ch.steel} material={steelMat} receiveShadow />
       ))}
+      {tunnelGeo && <mesh geometry={tunnelGeo} material={tunnelMat} castShadow receiveShadow />}
       <Train env={env} ao={ao} />
-      <Station concrete={maps.concrete} pine={pine} />
+      <Station concrete={maps.concrete} paving={maps.paving} pine={pine} />
     </group>
   );
 }

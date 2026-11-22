@@ -30,13 +30,14 @@ import {
   indoorArmAt,
   indoorCameraClamp,
   limitedDistance,
+  limitedY,
   limitsDiffer,
   stepCapEngage,
   type CameraLimit,
   type Vec3,
 } from "./indoorCamera";
-import { ARM_FREE, armBoxes, armHeightScaleAt, armLookLiftAt, cameraPad, indoorArmShape, segmentHitFraction, springArmDistance, stepArmLimit } from "./cameraCollision";
-import { createShoulderPose, portraitWeight, shoulderPose, shoulderTarget, stepShoulder, stepShoulderSide } from "./cameraShoulder";
+import { ARM_FREE, armBoxes, armHeightScaleAt, armLookLiftAt, cameraPad, hurdleLift, indoorArmShape, segmentHitFraction, springArmDistance, stepArmLimit, stepHurdleLift } from "./cameraCollision";
+import { CENTER_CEILING_GAP, centerLive, createShoulderPose, portraitWeight, shoulderPose, shoulderTarget, stepShoulder, stepShoulderCenter, stepShoulderSide } from "./cameraShoulder";
 import { getActiveMap } from "./activeMap";
 import { HUNG, cameraSolids } from "./cameraSolids";
 import type { Orbit } from "./types";
@@ -59,8 +60,12 @@ export interface FollowRig {
   shoulderSide: number;
   /** The side drawn, eased toward `shoulderSide` (a switch swings over). */
   shoulderSideEase: number;
+  /** The centred-view weight drawn (cameraShoulder.ts CENTER), eased toward what the arm's length wants. */
+  shoulderCenter: number;
   /** The clear length of the line from the head through the place's solid model (cameraSolids.ts), eased like the arm (m). */
   solidLimit: number;
+  /** How far (m) the camera is raised over a low solid between it and the avatar (cameraCollision.ts hurdleLift), eased. */
+  hurdleLift: number;
 }
 
 /** One frame's third-person camera spot. */
@@ -91,7 +96,9 @@ export function createFollowRig(orbit: Readonly<Orbit>): FollowRig {
     shoulder: 0,
     shoulderSide: 0,
     shoulderSideEase: 0,
+    shoulderCenter: 0,
     solidLimit: ARM_FREE,
+    hurdleLift: 0,
   };
 }
 
@@ -117,7 +124,9 @@ export function noteAreaLimit(rig: FollowRig, orbit: Readonly<Orbit>, areaLimit:
   rig.shoulder = 0;
   rig.shoulderSide = 0;
   rig.shoulderSideEase = 0;
+  rig.shoulderCenter = 0;
   rig.solidLimit = ARM_FREE;
+  rig.hurdleLift = 0;
   return true;
 }
 
@@ -249,8 +258,9 @@ export function stepFollowRig(
   rig.shoulder = stepShoulder(rig.shoulder, shoulderWanted, dt);
   if (rig.shoulder > 0) {
     const fresh = rig.shoulderSide === 0;
-    const sh = shoulderPose(x, z, orbit.yaw, tpX, tpZ, aspect, rig.shoulderSide, armBoxes(), cameraPad(), shoulderSpot, fresh ? Number.NaN : rig.shoulderSideEase);
+    const sh = shoulderPose(x, z, orbit.yaw, tpX, tpZ, aspect, rig.shoulderSide, armBoxes(), cameraPad(), shoulderSpot, fresh ? Number.NaN : rig.shoulderSideEase, fresh ? Number.NaN : rig.shoulderCenter);
     rig.shoulderSideEase = fresh ? sh.side : stepShoulderSide(rig.shoulderSideEase, sh.side, dt);
+    rig.shoulderCenter = fresh ? sh.center : stepShoulderCenter(rig.shoulderCenter, sh.center, dt);
     rig.shoulderSide = sh.side;
     const s = rig.shoulder;
     tpX += (sh.x - tpX) * s;
@@ -263,7 +273,13 @@ export function stepFollowRig(
   } else {
     rig.shoulderSide = 0;
     rig.shoulderSideEase = 0;
+    rig.shoulderCenter = 0;
   }
+
+  centerLive.weight = rig.shoulder * rig.shoulderCenter;
+  // the centred view's raised lens stays under the place's ceiling like every spot (indoorCamera.ts)
+  // (half a metre under it, so the ceiling's underside does not fill the top of the frame)
+  if (rig.shoulder > 0 && engage > 0) tpY = limitedY(tpY, { ...rig.limit, maxY: Math.max(head + 0.4, rig.limit.maxY - CENTER_CEILING_GAP) }, engage);
 
   // Under what hangs from the hall's ceiling (the lounge's louvres, the soffit: round 8 review) the camera is held below it — a
   // ceiling, so it may (owner 2026-11-16). The hall's furniture (sofa backs, tables) no longer pulls the arm in: props never do.
@@ -273,6 +289,12 @@ export function stepFollowRig(
     if (tpY > cap) tpY = Math.max(head, cap);
   }
   rig.solidLimit = ARM_FREE;
+
+  // Over the low things (a fountain's bowl, a garden wall): outdoors, with no ceiling in play, the lens rises until the line to the
+  // body clears them (cameraCollision.ts hurdleLift), eased, never written to the player's orbit.
+  const lifting = armActive && engage === 0 && !indoorArmAt(map, limitNow);
+  rig.hurdleLift = stepHurdleLift(rig.hurdleLift, lifting ? hurdleLift(x, z, lift, tpX, tpY, tpZ) : 0, dt);
+  if (rig.hurdleLift > 0) tpY += rig.hurdleLift;
 
   // The last word: never inside a wall's own box. A thin partition's end beside a doorway (12 cm, 집 실내 G house 2 upstairs) could take
   // the shoulder's side leg past the padded corner and leave the lens in the board: pulled back along the head's line to just before it.

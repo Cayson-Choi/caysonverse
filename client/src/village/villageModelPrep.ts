@@ -1,4 +1,5 @@
 import { versionedUrl } from "./modelUrl";
+import { SETTS_MATERIALS, SETTS_RELIEF, fixSettsUv } from "./settsRelief";
 import { GRASS_MATERIALS, GROUND_SMOOTH_MATERIAL, GROUND_GRAIN_MATERIALS, GROUND_PARS, groundGrainTexture, groundMapFragment } from "./groundDetail";
 import {
   Box3,
@@ -236,6 +237,12 @@ export function setNightLightmap(texture: Texture | null): void {
 /** The light tier's largest colour-texture side. Keep 2048 so close first-person paving stays crisp on phones. */
 export const LIGHT_TIER_MAX_TEXTURE = 2048;
 
+/**
+ * Materials whose colour map the phone caps below the tier's 2048 (perf/phone-library, 2026-11-21): a 2048 RGBA map is 21 MB on the GPU
+ * and these two never show texels: the bus stop's pad top is a few square metres of flat grey, the backdrop the far horizon.
+ */
+export const LIGHT_TIER_MATERIAL_CAPS: Readonly<Record<string, number>> = { M_stop_pad: 512, M_backdrop: 1024 };
+
 /** The slice of a canvas `capTextureSize` draws into. */
 export interface CanvasLike {
   width: number;
@@ -450,6 +457,8 @@ export function liftMaterial(
   // the lawns also get the anti-tiling and macro tint of grassVariation.ts (the village and the lake share one grass)
   const vary = ground && GRASS_MATERIALS.includes(material.name);
   const catmull = material.name === GROUND_SMOOTH_MATERIAL;
+  // the plaza's setts and the pavements: relief out of the stones' own picture, lit by the live sun (settsRelief.ts)
+  const setts = !own && SETTS_MATERIALS.includes(material.name);
   material.onBeforeCompile = (shader) => {
     if (ground) {
       shader.uniforms.uVillageGrain = { value: groundGrainTexture() };
@@ -470,13 +479,13 @@ export function liftMaterial(
       .replace("void main() {", foliage ? LIFT_PARS.replace("void main() {", NEAR_FADE_PARS) : LIFT_PARS)
       .replace(LIGHTMAP_TEXEL_FROM, lightmapTexelTo(vary, vary && !!own))
       .replace("void main() {", ground ? GROUND_PARS : "void main() {")
-      .replace("#include <map_fragment>", ground ? groundMapFragment(catmull, vary, vary && !own, vary && !!own) : "#include <map_fragment>")
+      .replace("#include <map_fragment>", ground ? groundMapFragment(catmull, vary, vary && !own, vary && !!own) : setts ? SETTS_RELIEF : "#include <map_fragment>")
       .replace("#include <color_fragment>", LIFT_ALBEDO)
       .replace("#include <aomap_fragment>", LIFT_LIGHT)
       .replace("void main() {", `${SS_FRAGMENT_PARS}${SS_DAY_FUNCTION}void main() {\n${SS_MAIN_TOP}`);
   };
   material.customProgramCacheKey = () =>
-    (foliage ? "village-light-foliage" : ground ? (catmull ? "village-light-ground-smooth" : vary ? "village-light-ground-grass" : "village-light-ground") : "village-light") + (own ? `-${own.key}` : "");
+    (foliage ? "village-light-foliage" : setts ? "village-light-setts" : ground ? (catmull ? "village-light-ground-smooth" : vary ? "village-light-ground-grass" : "village-light-ground") : "village-light") + (own ? `-${own.key}` : "");
   material.needsUpdate = true;
 }
 
@@ -898,7 +907,17 @@ export function prepareVillage(
   // left out, the current one stays; null clears it.
   if (nightLightmap !== undefined) setNightLightmap(nightLightmap);
   // The light (phone) tier caps oversized colour textures at 2048 px while retaining close floor detail.
-  if (tier === "low") capModelTextures(source, LIGHT_TIER_MAX_TEXTURE, undefined, isUploaded);
+  if (tier === "low") {
+    capModelTextures(source, LIGHT_TIER_MAX_TEXTURE, undefined, isUploaded);
+    source.traverse((o) => {
+      if (!isMesh(o)) return;
+      for (const m of materialsOf(o)) {
+        const cap = LIGHT_TIER_MATERIAL_CAPS[m.name];
+        const map = (m as unknown as { map?: Texture | null }).map;
+        if (cap && map) capTextureSize(map, cap, undefined, isUploaded);
+      }
+    });
+  }
   const own: VillageNodes["own"] = [];
   const hazed: MeshBasicMaterial[] = [];
   const graded: VillageNodes["graded"] = [];
@@ -910,6 +929,15 @@ export function prepareVillage(
       return;
     }
     if (!isMesh(o)) return;
+    // the plaza's inner court of setts, relaid straight (the build's rings smear there: settsRelief.ts)
+    if (materialsOf(o).some((m) => m.name === "LM_setts")) {
+      o.updateWorldMatrix(true, false);
+      const fixed = fixSettsUv(o.geometry, o.matrixWorld);
+      if (fixed.relaid > 0) {
+        o.geometry = fixed.geometry;
+        own.push(fixed.geometry);
+      } else fixed.geometry.dispose();
+    }
     for (const m of materialsOf(o)) {
       if (!found.has(m.name)) found.set(m.name, m);
       if (m.name.startsWith(LIGHTMAP_MATERIAL_PREFIX) || (FOLIAGE_MATERIALS.includes(m.name) && !o.name.startsWith(BACKDROP_FOREST_PREFIX))) {
@@ -1146,21 +1174,26 @@ export function makeStars(count = STAR_COUNT): Points {
   return stars;
 }
 
+/** Both the village and the separate park scene use these uniforms for live plants. */
+export function applyVegetationDayNight(s: DayNightState): void {
+  liftUniform.value = s.lift;
+  foliageTintUniform.value.set(s.foliageTint[0], s.foliageTint[1], s.foliageTint[2]);
+  cherryTintUniform.value.set(s.cherryTint[0], s.cherryTint[1], s.cherryTint[2]);
+  vegNightUniform.value = s.night;
+  litUniform.value = s.lights;
+}
+
 /**
  * Per frame: the time of day's numbers into the model (plain number writes, no shader change): the shared light
  * uniforms (the light maps' blend, the dusk tint, the lift), the lamps' and windows' glow, the tints of the dome,
  * hills and falls, the water's tint, glint and the fountain's lights, the stars.
  */
 export function applyDayNight(nodes: VillageNodes, s: DayNightState): void {
-  liftUniform.value = s.lift;
+  applyVegetationDayNight(s);
   liftTintUniform.value.set(s.liftTint[0], s.liftTint[1], s.liftTint[2]);
   dayTintUniform.value.set(s.dayTint[0], s.dayTint[1], s.dayTint[2]);
-  foliageTintUniform.value.set(s.foliageTint[0], s.foliageTint[1], s.foliageTint[2]);
-  cherryTintUniform.value.set(s.cherryTint[0], s.cherryTint[1], s.cherryTint[2]);
-  vegNightUniform.value = s.night;
   // No night map yet (it loads when night is near, final fix I2b): the day map alone, never a black blend.
   nightBlendUniform.value = nightMapUniform.value ? s.night : 0;
-  litUniform.value = s.lights;
   nodes.sky?.color.setRGB(s.domeTint[0], s.domeTint[1], s.domeTint[2]);
   for (const m of nodes.hazed) m.color.setRGB(s.hazeTint[0], s.hazeTint[1], s.hazeTint[2]);
   for (const g of nodes.graded) {

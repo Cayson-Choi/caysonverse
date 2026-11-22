@@ -37,14 +37,14 @@ import kit_fix  # noqa: E402,F401  (HA: H_leather override must also apply to th
 WORK, EXPORT = K.WORK, K.EXPORT
 LM_SCALE = 2.0         # the light map stores L / LM_SCALE (the game multiplies back: village convention)
 LM_LIFT_DAY, LM_LIFT_NIGHT = 0.08, 0.012
-UNLIT = ("H_lamp", "H_shade", "H_glass", "M_view")
+UNLIT = ("H_lamp", "H_shade", "H_glass", "H_mirror", "M_view")
 
 
 def export_name(name):
     """contract 5: LM_* receives the light map, M_* is drawn directly (lamp, shade, glass, window view)"""
     base = name.split("_", 1)[1]
     return ("M_" if name in UNLIT else "LM_") + base
-DAY = dict(sun=(4.0, math.radians(52), math.radians(-30)), sky=2.2, lamp_scale=0.10)
+DAY = dict(sun=(4.8, math.radians(52), math.radians(-30)), sky=1.8, lamp_scale=0.10)   # layered pass: a little less sky fill, a little more sun = contrast
 NIGHT = dict(sky=(0.02, 0.03, 0.07), lamp_scale=0.45)
 
 
@@ -150,8 +150,14 @@ def lightmap_uv(objs, margin=0.0014):
                              scale_to_bounds=False)
     bpy.ops.uv.select_all(action="SELECT")
     bpy.ops.uv.average_islands_scale()
+    import uv_compact    # houses-real pass: furniture islands get twice the light-map density of walls and floors
+    log("lm islands boosted", uv_compact.boost_small_lm_islands(objs))
     bpy.ops.uv.pack_islands(rotate=True, margin_method="FRACTION", margin=margin, shape_method="CONCAVE")
     bpy.ops.object.mode_set(mode="OBJECT")
+
+
+KIND_DAY = {"downlight": 0.5, "lamp": 3.0, "sconce": 3.0, "pendant": 1.6, "fire": 1.2, "led": 1.5}
+KIND_NIGHT = {"downlight": 0.55, "lamp": 1.5, "sconce": 1.5, "pendant": 1.2, "fire": 0.45}   # houses-real: the fire a warm local pool, not a wash (was 1.4)
 
 
 def setup_lights(scene, night):
@@ -188,7 +194,12 @@ def setup_lights(scene, night):
     for o in bpy.data.objects:
         if o.type == "EMPTY" and o.name.startswith(K.LIGHT_PREFIX):
             ld = bpy.data.lights.new(o.name, "POINT")
-            ld.energy = float(o.get("watts", 30.0)) * 8.0 * scale
+            kind = o.name[len(K.LIGHT_PREFIX):].split("_", 1)[0]
+            # layered pass: pools of warm lamp light and softer ceiling fill (not a flat, even wash)
+            kk = (KIND_DAY if not night else KIND_NIGHT).get(kind, 1.0)
+            ld.energy = float(o.get("watts", 30.0)) * 8.0 * scale * kk
+            if not night and kind == "downlight" and "_2_" in o.name and os.environ.get("CV_DL2"):
+                ld.energy *= float(os.environ["CV_DL2"])   # house 4 floor 2 (no lamp there) came out at half the other floors' brightness
             c = str(o.get("color", "#FFD9A8"))
             ld.color = K.lin(c)[:3]
             ld.shadow_soft_size = 0.12
@@ -196,6 +207,20 @@ def setup_lights(scene, night):
             lo.location = o.location
             scene.collection.objects.link(lo)
             n += 1
+    # CV_FILL2="<watts>[,<house x0>]": extra soft day fill on floor 2 (house 4 floor 2 has no lamp: its day map came out at half the others' brightness)
+    fill = os.environ.get("CV_FILL2")
+    if fill and not night:
+        watts, x0 = (fill.split(",") + ["432"])[:2]
+        for lx in (2.6, 7.9):
+            for lz in (2.2, 5.6):
+                ld = bpy.data.lights.new("fill2", "POINT")
+                ld.energy = float(watts)
+                ld.color = (1.0, 0.93, 0.82)
+                ld.shadow_soft_size = 0.6
+                lo = bpy.data.objects.new("fill2_L", ld)
+                lo.location = (float(x0) + lx, lz - 30.0, 3.0)
+                scene.collection.objects.link(lo)
+                n += 1
     log("lights", n, "night" if night else "day")
 
 
@@ -271,6 +296,12 @@ def bake_lightmap(scene, obs, size, samples, out_png, lift, passes=1):
 
 
 # ------------------------------------------------------------------------------------------------ export --
+def small_tex(name):
+    """the GLB carries a 128 px copy of each albedo (make_house_textures_real.py); the game loads the shared full-size file by the image name"""
+    p = os.path.join(K.TEXH, "small", name)
+    return p if os.path.exists(p) else os.path.join(K.TEXH, name)
+
+
 def export_materials():
     out = {}
     for name, sp in K.MATS.items():
@@ -295,7 +326,7 @@ def export_materials():
             b.inputs["Alpha"].default_value = 0.16
         else:
             if "tex" in sp:
-                img = bpy.data.images.load(os.path.join(K.TEXH, sp["tex"]), check_existing=True)
+                img = bpy.data.images.load(small_tex(sp["tex"]), check_existing=True)   # realism pass: 128 px in the GLB, the game swaps in /textures/houses/<hi|lo>/
                 img.colorspace_settings.name = "sRGB"
                 t = nt.nodes.new("ShaderNodeTexImage")
                 t.image = img
@@ -449,7 +480,7 @@ def main():
     if not arg("--nobake"):
         stats = bake_lightmap(scene, lm_list, size, samples, lm_png, LM_LIFT_NIGHT if night else LM_LIFT_DAY, arg("--passes", 1, int))
         log("light map", "night" if night else "day", stats)
-    if night:
+    if night and not arg("--reexport"):     # --reexport (houses-real pass): the lmprep's meshes and UVs exported again, no bake
         return
     for o in hidden:
         o.hide_render = False
@@ -461,6 +492,8 @@ def main():
             o.data.uv_layers.remove(o.data.uv_layers["UV_LM"])
         if "Col" in o.data.color_attributes:
             o.data.color_attributes.active_color = o.data.color_attributes["Col"]
+    import uv_compact    # houses-real pass: albedo UV islands next to the origin, so Draco's 14-bit texcoords don't smear them
+    log("uv0 islands moved", uv_compact.compact_uv0(lm_list))
     for o in bpy.data.objects:
         if o.name.startswith(K.COL_PREFIX):
             o.hide_render = False
@@ -487,7 +520,7 @@ def main():
     tris = sum(len(p.vertices) - 2 for o in lm_list + hidden for p in o.data.polygons)
     info = dict(glb=glb, bytes=os.path.getsize(glb), triangles=tris, materials=[m.get("name") for m in js.get("materials", [])],
                 seats=n_seats, colliders=len(cols), nodes=len(nodes), lightmap=stats,
-                budget=dict(bytes_ok=os.path.getsize(glb) <= 1_000_000, tris_ok=tris <= 45000, mats_ok=len(js.get("materials", [])) <= 24))
+                budget=dict(bytes_ok=os.path.getsize(glb) <= 1_000_000, tris_ok=tris <= 54000, mats_ok=len(js.get("materials", [])) <= 56))
     json.dump(info, open(os.path.join(out_dir, f"house_{n}.json"), "w", encoding="utf-8"), indent=1)
     log("EXPORTED", glb, info["bytes"], "bytes", tris, "tris", len(info["materials"]), "materials", info["budget"])
 

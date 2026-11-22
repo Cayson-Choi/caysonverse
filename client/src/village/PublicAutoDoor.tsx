@@ -1,6 +1,7 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial } from "three";
+import { BoxGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial } from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { CLOSED_AUTO_DOOR, PUBLIC_AUTO_DOOR, stepAutoDoor, type AutoDoorState } from "@caysonverse/shared/village/autoDoor";
 import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import type { Pose } from "../game/types";
@@ -42,6 +43,11 @@ export function PublicAutoDoor({ area, pose }: { area: AreaId; pose: Pose }) {
   const pad = hall ? VILLAGE_LAYOUT.memorial.interior.doorPad : VILLAGE_LAYOUT.memorial.exterior.doorPad;
   const rig = useMemo<DoorRig>(() => (hall ? hallDoorRig() : entranceRig()), [hall]);
   const mats = useDoorMaterials(hall);
+  const boxes = useMemo(() => {
+    if (hall) return null;
+    const part = (name: string) => rig.parts.find((p) => p.name === name)!.box;
+    return { leaves: rig.leaves.map((leaf, i) => panelBoxes(leaf.closed, i === 0 ? "max" : "min")), fixed: staticBoxes(part("header"), part("sensor"), part), sensor: part("sensor") };
+  }, [hall, rig]);
 
   useFrame(({ clock }) => {
     const nowMs = clock.elapsedTime * 1000;
@@ -83,43 +89,69 @@ export function PublicAutoDoor({ area, pose }: { area: AreaId; pose: Pose }) {
       </group>
     );
   }
-  const part = (name: string) => rig.parts.find((p) => p.name === name)!.box;
-  const header = part("header");
-  const sensorBox = part("sensor");
+  const { leaves, fixed, sensor: sensorBox } = boxes!;
   return (
     <group name="public_auto_door__village">
       {rig.leaves.map((leaf, i) => (
         <group key={leaf.name} name={leaf.name} ref={(g) => void (leafRefs.current[i] = g)}>
-          <GlassPanel b={leaf.closed} frame={mats.alu} glass={mats.glass} band={mats.band} seal={mats.seal} meetingEdge={i === 0 ? "max" : "min"} />
+          <MergedBoxes boxes={leaves[i]!} mats={mats} />
         </group>
       ))}
-      <GlassPanel b={part("side_light_l")} frame={mats.alu} glass={mats.glass} band={mats.band} seal={mats.seal} />
-      <GlassPanel b={part("side_light_r")} frame={mats.alu} glass={mats.glass} band={mats.band} seal={mats.seal} />
-      <group name="auto_door__header">
-        <BoxMesh b={header} material={mats.alu} />
-        {/* the cover's shadow line and its end caps: an extruded housing, not a plain block */}
-        <BoxMesh b={{ min: [header.min[0] + 0.02, header.min[1] + 0.2, header.max[2]], max: [header.max[0] - 0.02, header.min[1] + 0.208, header.max[2] + 0.002] }} material={mats.seal} />
-        <BoxMesh b={{ min: [header.min[0], header.min[1], header.min[2]], max: [header.min[0] + 0.012, header.max[1], header.max[2] + 0.004] }} material={mats.cap} />
-        <BoxMesh b={{ min: [header.max[0] - 0.012, header.min[1], header.min[2]], max: [header.max[0], header.max[1], header.max[2] + 0.004] }} material={mats.cap} />
-      </group>
-      <group name="auto_door__sensor">
-        <BoxMesh b={sensorBox} material={mats.seal} />
-        {/* its lens and the status light */}
-        <BoxMesh
-          b={{ min: [sensorBox.min[0] + 0.03, sensorBox.min[1] + 0.012, sensorBox.max[2]], max: [sensorBox.max[0] - 0.07, sensorBox.max[1] - 0.012, sensorBox.max[2] + 0.004] }}
-          material={mats.lens}
-        />
-        <mesh ref={sensor} position={[sensorBox.max[0] - 0.035, (sensorBox.min[1] + sensorBox.max[1]) / 2, sensorBox.max[2] + 0.004]}>
-          <sphereGeometry args={[0.009, 10, 6]} />
-          <meshStandardMaterial color="#9dffcf" emissive="#38e08e" emissiveIntensity={0.25} toneMapped={false} />
-        </mesh>
-      </group>
-      <group name="auto_door__track">
-        <BoxMesh b={part("track")} material={mats.cap} />
-        {/* the guide channel the leaves' shoes run in */}
-        <BoxMesh b={{ min: [part("track").min[0], part("track").max[1], -52.215], max: [part("track").max[0], part("track").max[1] + 0.001, -52.195] }} material={mats.seal} />
-      </group>
+      {/* the fixed parts (side-lights, the operator header and its end caps, the sensor, the floor track): one mesh per material */}
+      <MergedBoxes boxes={fixed} mats={mats} />
+      <mesh ref={sensor} name="auto_door__status_light" position={[sensorBox.max[0] - 0.035, (sensorBox.min[1] + sensorBox.max[1]) / 2, sensorBox.max[2] + 0.004]}>
+        <sphereGeometry args={[0.009, 10, 6]} />
+        <meshStandardMaterial color="#9dffcf" emissive="#38e08e" emissiveIntensity={0.25} toneMapped={false} />
+      </mesh>
     </group>
+  );
+}
+
+type DoorMats = ReturnType<typeof useDoorMaterials>;
+type MatKey = "alu" | "cap" | "seal" | "lens" | "band" | "glass";
+interface KeyedBox {
+  b: Box;
+  m: MatKey;
+}
+
+/** The fixed parts' boxes: both side-lights' panels, the header with its shadow line and end caps, the sensor with its lens, the track and its guide channel. */
+function staticBoxes(header: Box, sensorBox: Box, part: (name: string) => Box): KeyedBox[] {
+  const track = part("track");
+  return [
+    ...panelBoxes(part("side_light_l")),
+    ...panelBoxes(part("side_light_r")),
+    { b: header, m: "alu" },
+    // the cover's shadow line and its end caps: an extruded housing, not a plain block
+    { b: { min: [header.min[0] + 0.02, header.min[1] + 0.2, header.max[2]], max: [header.max[0] - 0.02, header.min[1] + 0.208, header.max[2] + 0.002] }, m: "seal" },
+    { b: { min: [header.min[0], header.min[1], header.min[2]], max: [header.min[0] + 0.012, header.max[1], header.max[2] + 0.004] }, m: "cap" },
+    { b: { min: [header.max[0] - 0.012, header.min[1], header.min[2]], max: [header.max[0], header.max[1], header.max[2] + 0.004] }, m: "cap" },
+    { b: sensorBox, m: "seal" },
+    // its lens (the status light is its own mesh: its glow changes)
+    { b: { min: [sensorBox.min[0] + 0.03, sensorBox.min[1] + 0.012, sensorBox.max[2]], max: [sensorBox.max[0] - 0.07, sensorBox.max[1] - 0.012, sensorBox.max[2] + 0.004] }, m: "lens" },
+    { b: track, m: "cap" },
+    // the guide channel the leaves' shoes run in
+    { b: { min: [track.min[0], track.max[1], -52.215], max: [track.max[0], track.max[1] + 0.001, -52.195] }, m: "seal" },
+  ];
+}
+
+/** Boxes merged into one mesh per material (perf/phone-village: the door was 43 draws for ~600 triangles). */
+function MergedBoxes({ boxes, mats }: { boxes: KeyedBox[]; mats: DoorMats }) {
+  const geos = useMemo(() => {
+    const by = new Map<MatKey, BoxGeometry[]>();
+    for (const { b, m } of boxes) {
+      const g = new BoxGeometry(b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]);
+      g.translate((b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2);
+      (by.get(m) ?? by.set(m, []).get(m)!).push(g);
+    }
+    return [...by].map(([m, list]) => ({ m, geo: list.length === 1 ? list[0]! : mergeGeometries(list)! }));
+  }, [boxes]);
+  useEffect(() => () => geos.forEach(({ geo }) => geo.dispose()), [geos]);
+  return (
+    <>
+      {geos.map(({ m, geo }) => (
+        <mesh key={m} geometry={geo} material={mats[m]} castShadow={mats[m] instanceof MeshStandardMaterial} receiveShadow />
+      ))}
+    </>
   );
 }
 
@@ -138,46 +170,31 @@ const TOP_RAIL = 0.07;
 const BOTTOM_RAIL = 0.11;
 
 /** One aluminium-framed glass panel filling `b` (x wide, y tall, z deep): stiles, rails, the pane in their middle, a frosted band. */
-function GlassPanel({
-  b,
-  frame,
-  glass,
-  band,
-  seal,
-  meetingEdge,
-}: {
-  b: Box;
-  frame: MeshStandardMaterial;
-  glass: MeshBasicMaterial;
-  band: MeshStandardMaterial;
-  seal: MeshStandardMaterial;
-  meetingEdge?: "min" | "max";
-}) {
+function panelBoxes(b: Box, meetingEdge?: "min" | "max"): KeyedBox[] {
   const [x0, y0, z0] = b.min;
   const [x1, y1, z1] = b.max;
   const zc = (z0 + z1) / 2;
   const pane = { x0: x0 + STILE, x1: x1 - STILE, y0: y0 + BOTTOM_RAIL, y1: y1 - TOP_RAIL };
-  return (
-    <group>
-      <BoxMesh b={{ min: [x0, y0, z0], max: [x0 + STILE, y1, z1] }} material={frame} />
-      <BoxMesh b={{ min: [x1 - STILE, y0, z0], max: [x1, y1, z1] }} material={frame} />
-      <BoxMesh b={{ min: [pane.x0, y1 - TOP_RAIL, z0], max: [pane.x1, y1, z1] }} material={frame} />
-      <BoxMesh b={{ min: [pane.x0, y0, z0], max: [pane.x1, y0 + BOTTOM_RAIL, z1] }} material={frame} />
-      {/* the glazing beads either side of the pane */}
-      <BoxMesh b={{ min: [pane.x0, pane.y0, z0 + 0.008], max: [pane.x1, pane.y0 + 0.012, z1 - 0.008] }} material={seal} />
-      <BoxMesh b={{ min: [pane.x0, pane.y1 - 0.012, z0 + 0.008], max: [pane.x1, pane.y1, z1 - 0.008] }} material={seal} />
-      <BoxMesh b={{ min: [pane.x0, pane.y0 + 0.012, zc - 0.005], max: [pane.x1, pane.y1 - 0.012, zc + 0.005] }} material={glass} />
-      {/* the safety band printed on the glass at eye height (both faces) */}
-      <BoxMesh b={{ min: [pane.x0, 1.38, zc - 0.0062], max: [pane.x1, 1.46, zc + 0.0062] }} material={band} />
-      {/* the meeting stile's rubber seal */}
-      {meetingEdge && (
-        <BoxMesh
-          b={meetingEdge === "max" ? { min: [x1 - 0.004, y0 + 0.02, z0 + 0.012], max: [x1, y1 - 0.02, z1 - 0.012] } : { min: [x0, y0 + 0.02, z0 + 0.012], max: [x0 + 0.004, y1 - 0.02, z1 - 0.012] }}
-          material={seal}
-        />
-      )}
-    </group>
-  );
+  const out: KeyedBox[] = [
+    { b: { min: [x0, y0, z0], max: [x0 + STILE, y1, z1] }, m: "alu" },
+    { b: { min: [x1 - STILE, y0, z0], max: [x1, y1, z1] }, m: "alu" },
+    { b: { min: [pane.x0, y1 - TOP_RAIL, z0], max: [pane.x1, y1, z1] }, m: "alu" },
+    { b: { min: [pane.x0, y0, z0], max: [pane.x1, y0 + BOTTOM_RAIL, z1] }, m: "alu" },
+    // the glazing beads either side of the pane
+    { b: { min: [pane.x0, pane.y0, z0 + 0.008], max: [pane.x1, pane.y0 + 0.012, z1 - 0.008] }, m: "seal" },
+    { b: { min: [pane.x0, pane.y1 - 0.012, z0 + 0.008], max: [pane.x1, pane.y1, z1 - 0.008] }, m: "seal" },
+    { b: { min: [pane.x0, pane.y0 + 0.012, zc - 0.005], max: [pane.x1, pane.y1 - 0.012, zc + 0.005] }, m: "glass" },
+    // the safety band printed on the glass at eye height (both faces)
+    { b: { min: [pane.x0, 1.38, zc - 0.0062], max: [pane.x1, 1.46, zc + 0.0062] }, m: "band" },
+  ];
+  // the meeting stile's rubber seal
+  if (meetingEdge) {
+    out.push({
+      b: meetingEdge === "max" ? { min: [x1 - 0.004, y0 + 0.02, z0 + 0.012], max: [x1, y1 - 0.02, z1 - 0.012] } : { min: [x0, y0 + 0.02, z0 + 0.012], max: [x0 + 0.004, y1 - 0.02, z1 - 0.012] },
+      m: "seal",
+    });
+  }
+  return out;
 }
 
 /** The doors' materials: anodised aluminium (the hall's door is white like its leaves), black gaskets, clear glass. */

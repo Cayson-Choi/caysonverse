@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BufferGeometry, Float32BufferAttribute, Group, Mesh, MeshBasicMaterial } from "three";
-import { DRESS_RULES, SURFACES, boxUv, clusterCentres, findSplits, geometryWithout, selectFaces, takeFaces, type FaceRule } from "./exteriorFaces";
+import { DRESS_RULES, SURFACES, boxUv, findSplits, geometryWithout, selectFaces, takeFaces, type FaceRule } from "./exteriorFaces";
+import { terraceParasol } from "./cafe/terraceParasol";
 import { cullBeyondZ } from "./lots/lotsPrep";
 import { pbrIdsOf } from "./exteriorFacesTestUtil";
 
@@ -72,10 +73,17 @@ describe("exteriorFaces", () => {
     expect(keep.geometry.boundingSphere!.radius).toBeGreaterThan(0);
   });
 
-  it("clusters parasol faces by their middles", () => {
-    const c = clusterCentres([[0, 0], [1, 0.5], [0.5, 1], [10, 10], [10.5, 9.5]]);
-    expect(c).toHaveLength(2);
-    expect(c[0]![0]).toBeCloseTo(0.5, 0);
+  it("fits the ribbed cloth to the baked pole and keeps the hem above head height", () => {
+    // Draco can rotate a triangle's first vertex. The peak is determined by its height.
+    const panel = new BufferGeometry();
+    panel.setAttribute("position", new Float32BufferAttribute([43.8, 2.95, -20.1, 42.3, 3.6, -20.1, 43.361, 2.95, -19.039], 3));
+    const g = terraceParasol(panel);
+    expect(g.boundingBox!.min.y).toBeGreaterThan(2.75);
+    expect(g.boundingBox!.min.y).toBeLessThan(2.875);
+    expect(g.boundingBox!.max.y).toBeCloseTo(3.641, 3);
+    expect(g.boundingBox!.max.x).toBeCloseTo(43.8, 1);
+    expect(g.getAttribute("position").count / 3).toBeLessThan(180);
+    expect([...g.getAttribute("normal").array].every(Number.isFinite)).toBe(true);
   });
 
   it("every rule names a known surface, and every surface's library set exists", () => {

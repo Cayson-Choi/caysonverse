@@ -1,9 +1,11 @@
+import { armRide } from "../land/rideBoard";
+import { disarmHouseUse } from "../village/houseTap";
 import { useEffect, useMemo, useRef } from "react";
 import { MessageType, type StandRejectedPayload } from "@caysonverse/shared/messages";
 import { useClickHint } from "../stores/clickHintStore";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useAnimations, useKeyboardControls } from "@react-three/drei";
-import { Group, LoopOnce, type AnimationAction, type AnimationClip, type Plane } from "three";
+import { Group, LoopOnce, Quaternion, Vector3, type AnimationAction, type AnimationClip, type Bone, type Plane } from "three";
 import { setPreferredSeat } from "./seatPreference";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
@@ -25,6 +27,8 @@ import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
 import { useBenchClipWarmUp } from "./benchClipWarmUp";
 import { vegDressing } from "../village/vegDressing";
 import { stepLean } from "./leanBack";
+import { stepBackSquash } from "./backSquash";
+import { CHAIR_BACK_BAND, backBandOf, seatBackFace } from "@caysonverse/shared/village/seatBack";
 import { isFloorSeat, seatClipBase } from "./seatClips";
 import { readIntent, worldDirection } from "./input";
 import type { Intent, MoveInput } from "./input";
@@ -88,7 +92,6 @@ import {
   INDOOR_SELF_HIDE_DISTANCE,
   INDOOR_SELF_SHOW_DISTANCE,
   MODEL_FACING_OFFSET,
-  SELF_CAMERA_HIDE_DISTANCE,
   SELF_COVER_FADE_DISTANCE,
   SELF_COVER_FADE_OPACITY,
   SELF_COVER_SHOW_DISTANCE,
@@ -98,9 +101,12 @@ import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
 import { getTransitRenderPose, useTransitState } from "../net/transitSync";
-import { busWalk, busCamState, busSeatGoal, busSeatPreferred, selfBusRide } from "./busRide";
+import { busWalk, busCamState, busSeatGoal, busSeatPreferred, busWalkGoal, selfBusRide } from "./busRide";
+import { SELF_GAP, SELF_GAP_OUTDOOR, SELF_HEAD_CENTRE, selfGap, stepSelfGapHidden } from "./selfGap";
 import { selfRide } from "../land/coasterRide";
-import { busRiderPoints, takenBusSpots } from "./remoteStore";
+import { rideSeatPose } from "../land/rideSeats";
+import { FP_BODY_BLEND, fpBody, fpBodyOff, installFpBody, restoreHead } from "./fpBody";
+import { busRiderPoints, forEachRemotePosition, takenBusSpots } from "./remoteStore";
 import {
   BUS_SEATS,
   seatApproachPoint,
@@ -108,6 +114,7 @@ import {
   BUS_WALK_RADIUS,
   busLocalToWorld,
   busPlaceOf,
+  busSeatBackFace,
   busRiderWorldPose,
   cabinFloorAt,
   normalizeYaw,
@@ -298,6 +305,10 @@ export function LocalPlayer({
   const selfFadeRef = useRef(createSelfFade());
   /** Hidden because the camera is right at the head indoors (see the per-frame visibility below). */
   const closeHiddenRef = useRef(false);
+  /** The third-person camera within 0.6 m of the own head and body (selfGap.ts): the body is hidden, with its hysteresis. */
+  const gapHiddenRef = useRef(false);
+  /** The floor-tap walk in the bus (busWalkGoal): where the rider was when it last moved, and when (a rider in the way stops it). */
+  const busGoalProgressRef = useRef({ ahead: 0, right: 0, at: 0 });
   const coverFadeRef = useRef(false);
   useEffect(() => {
     const group = groupRef.current;
@@ -364,6 +375,12 @@ export function LocalPlayer({
       () => gaitRef.current,
       () => sessionId,
     );
+    // e2e (bus-controls): the own avatar's group, to measure how near the camera is to the head and whether the body is drawn
+    // and the live orbit (`__cv.getOrbit` hands out a copy): the e2e sets a zoom / tilt to sample the camera at
+    if (import.meta.env.DEV) {
+      (window as unknown as { __cvSelfGroup?: () => Group | null }).__cvSelfGroup = () => groupRef.current;
+      (window as unknown as { __cvOrbitLive?: () => typeof orbit }).__cvOrbitLive = () => orbit;
+    }
     return () => {
       removeHook();
       // Stop the clips this look actually plays (the resolved names, e.g. *_LongSkirt): the objects resolved above.
@@ -627,6 +644,7 @@ export function LocalPlayer({
   /** Off the bus: on the ground where the server put me down (outside the door), Idle, the seat state as synced. */
   function endRide(): void {
     busWalk.valid = false;
+    busWalkGoal.active = false;
     busDrawRef.current.init = false;
     busDrawRef.current.kind = "none";
     busCamState.active = false;
@@ -663,9 +681,37 @@ export function LocalPlayer({
     [avatar],
   );
 
+  // True first person (fpBody.ts): the own body stays drawn from the neck down, its head shrunk for the drawing and the eye at
+  // the head's eyes. The scene's render hook does both after every frame callback; the head bone and what to keep are set here.
+  const scene = useThree((s) => s.scene);
+  useEffect(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    let head: Bone | null = null;
+    avatar.root.traverse((o) => {
+      if (!head && (o as Bone).isBone && o.name === "head") head = o as Bone;
+    });
+    fpBody.head = head;
+    fpBody.group = group;
+    fpBody.keep = shadowRef.current ? [model, shadowRef.current] : [model];
+    fpBody.forEachNeighbour = forEachRemotePosition; // the other players as drawn: the eye slides back from a head beside it
+    const uninstall = installFpBody(scene, group);
+    return () => {
+      uninstall();
+      if (fpBody.head === head) fpBody.head = null;
+      if (fpBody.group === group) fpBody.group = null;
+    };
+  }, [scene, avatar, model]);
+  const ridePos = useRef(new Vector3()).current;
+  const rideQuat = useRef(new Quaternion()).current;
+  /** Seated in a 케이슨랜드 ride's seat (selfRide): the body is drawn there, in the held seated pose. */
+  const onRideRef = useRef(false);
+
   useFrame((state, delta) => {
     const group = groupRef.current;
     if (!group) return;
+    // the head the render hook shrank for the last frame's drawing: back as the mixer posed it, before anything reads the body
+    restoreHead();
 
     // Own-avatar hiding (design 19): in first-person the LOCAL avatar GROUP is
     // hidden past the mid-blend point — body AND blob shadow together
@@ -680,13 +726,16 @@ export function LocalPlayer({
     // Hide immediately on FP entry because the mode flips before the blend reaches HIDE_BLEND. In TP, also hide when
     // a wall or shelter has shortened the spring arm into the avatar's head.
     const indoorTp = viewState.mode === "tp" && getActiveMap().cameraLimit !== undefined;
-    // Outdoors a wall or shelter that has shortened the spring arm into the avatar's head hides it (SELF_CAMERA_HIDE_DISTANCE).
-    const cameraInsideSelf =
-      !indoorTp &&
-      viewState.mode === "tp" &&
-      viewState.blend < HIDE_BLEND &&
-      cameraProbe.distance > 0 &&
-      cameraProbe.distance < SELF_CAMERA_HIDE_DISTANCE;
+    // Anywhere (the bus stop with the parked bus behind, a wall, a room): a third-person camera the spring arm or a wall has pushed
+    // within 0.6 m of the own head and body (0.9 m outdoors) would show the inside of the head or fill the screen with it (owner
+    // 2026-11-18). The body is hidden instead — measured from the drawn camera to the avatar's head-and-body capsule (selfGap.ts),
+    // not from the zoom the player asked for.
+    gapHiddenRef.current = stepSelfGapHidden(
+      gapHiddenRef.current,
+      selfGap(cameraProbe.x, cameraProbe.y, cameraProbe.z, group.position.x, group.position.z, group.position.y + SELF_HEAD_CENTRE),
+      getActiveMap().cameraLimit === undefined ? SELF_GAP_OUTDOOR : SELF_GAP,
+    );
+    const cameraInsideSelf = viewState.mode === "tp" && viewState.blend < HIDE_BLEND && gapHiddenRef.current;
     // A memorial cubby's close-up (cubbyFocus.ts) puts the lens at the cubby's height in front of it, where the own body may
     // stand: hidden while the close-up is more than a third of the way in.
     const inCloseUp = cubbyFocusWeight() > 0.33;
@@ -696,12 +745,19 @@ export function LocalPlayer({
     const headDist = Math.hypot(cameraProbe.x - pose.x, cameraProbe.y - (group.position.y + HEAD_HEIGHT), cameraProbe.z - pose.z);
     closeHiddenRef.current = indoorCloseHidden(closeHiddenRef.current, indoorTp, headDist, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE);
     const closeIndoors = closeHiddenRef.current && viewState.ovBlend <= OV_VIS_BLEND;
-    // On the 별똥별 급행 the rider's body is drawn by the others in the car; my own eye is the camera (land/coasterRide.ts).
-    group.visible =
-      selfRide.slot < 0 &&
-      (viewState.ovBlend > OV_VIS_BLEND
+    // First person (owner 2026-11-20, fpBody.ts): the own body is drawn from the neck down once the camera is all the way in at
+    // the eye — the head, hair and hat are shrunk away for the drawing — so looking down shows the feet walking, the lap on a
+    // bench, the legs in a ride's seat. On the way in and out (the camera crossing the head) it is hidden as before.
+    const ovShown = viewState.ovBlend > OV_VIS_BLEND;
+    const fpShown = !ovShown && viewState.mode === "fp" && viewState.blend >= FP_BODY_BLEND && !inCloseUp && !fpBodyOff();
+    // A 케이슨랜드 ride: the camera is the ride's own rider eye (land/coasterRide.ts and the others), the body sits in the seat below it.
+    const riding = selfRide.slot >= 0;
+    group.visible = riding
+      ? !ovShown && !fpBodyOff()
+      : ovShown
         ? true
-        : viewState.mode !== "fp" && viewState.blend < HIDE_BLEND && !cameraInsideSelf && !inCloseUp && !closeIndoors);
+        : fpShown || (viewState.mode !== "fp" && viewState.blend < HIDE_BLEND && !cameraInsideSelf && !inCloseUp && !closeIndoors);
+    fpBody.active = group.visible && !ovShown && (riding || fpShown);
     // The destination ring straight ahead, behind the body (a click on the body itself, a walk away from the camera):
     // the body fades and is drawn after the ring, so the ring shows through it (round 6 review: only its dashes showed,
     // on the body, all the way there).
@@ -716,6 +772,30 @@ export function LocalPlayer({
       delta,
       cover ? Math.min(SELF_COVER_FADE_OPACITY, selfBody.hidingRing ? SELF_FADE_OPACITY : 1) : undefined,
     );
+
+    // A 케이슨랜드 ride (the coaster, the carousel, the wheel, the moon boat, the drop tower): the body sits in my seat, on the
+    // shared clock, in the held seated pose — where every other viewer draws me (RemotePlayer, rideSeats.ts) — under the ride's
+    // own first-person eye. Nothing else moves it meanwhile.
+    if (riding) {
+      if (!onRideRef.current) {
+        onRideRef.current = true;
+        startRide("seat");
+      }
+      rideSeatPose(selfRide.ride, selfRide.slot, ridePos, rideQuat);
+      group.position.copy(ridePos);
+      group.quaternion.copy(rideQuat);
+      publishLocalJump(0, true);
+      return;
+    }
+    if (onRideRef.current) {
+      // off the ride: upright again where the server put me down, on my feet
+      onRideRef.current = false;
+      group.rotation.set(0, 0, 0);
+      action(CLIP.sitIdle)?.fadeOut(ANIM_FADE);
+      loopRef.current = null; // the loco step puts a loop back on
+      animStateRef.current = "loco";
+      if (shadowRef.current) shadowRef.current.visible = true;
+    }
 
     // Focus guard: while the chat input owns keyboard input — OR while the
     // resilience driver is reconnecting (world frozen behind the overlay) —
@@ -762,8 +842,11 @@ export function LocalPlayer({
     // Getting up from a bench: the stand-up clip carries the body to the dismount spot (stepGlide below); a click
     // target set meanwhile is steered toward once it is there.
     const gliding = seatMotionRef.current.glide !== null;
+    let remaining = Infinity; // manual input has no destination
     if (manual) {
       clearClickTarget();
+      disarmHouseUse(); // ... and a stair / door tapped inside a house is no longer used on reaching its pad
+      armRide(null); // the keys / stick took over: a ride tapped before is no longer boarded on reaching its pad (owner 2026-11-19)
       setPreferredSeat(-1); // the keys / stick took over: the chair tapped before no longer outranks a nearer one
     } else if (!suspended && !busBoarded && selfRide.slot < 0 && !seated && !gliding && !isUiCaptured()) {
       // ui-capture gate (review v2-14 M1): while the chat input owns the keyboard
@@ -771,6 +854,7 @@ export function LocalPlayer({
       // avatar keeps walking while the user types (asymmetric input freeze).
       const autoDir = stepClickMove(pose.x, pose.z, delta);
       if (autoDir) {
+        remaining = autoDir.remaining;
         const auto = dirToIntent(autoDir, activeYaw);
         intent.forward = auto.forward;
         intent.right = auto.right;
@@ -802,7 +886,7 @@ export function LocalPlayer({
           wasFpBeforeRideRef.current = viewState.mode === "fp";
           // bus v3 QA: boarding looks FORWARD (the windscreen and both rows of side windows), not at the rear seats
           orbit.yaw = Math.PI;
-          orbit.pitch = 0.6; // the player's zoom stays as they set it (owner 2026-11-16)
+          orbit.pitch = 0.3; // the third person's aim: a little down the aisle (the player's zoom stays as they set it, owner 2026-11-16)
           enterFp(Math.PI); // the look yaw is bus-relative: PI looks to the front (BUS_VIEW_YAW.front)
           viewState.fpPitch = 0.05;
           busWalk.ahead = selfBusRide.ahead;
@@ -820,6 +904,7 @@ export function LocalPlayer({
       }
     }
     if (kindNow !== "none" && placeNow) {
+      stepBackSquash(avatar.root, avatar.materials, placeNow.kind === "seat" ? busSeatBackFace(BUS_SEATS[placeNow.index]!) : 0, CHAIR_BACK_BAND, delta);
       const bus = getTransitRenderPose();
       let groundSpeedBus = 0;
       let movedBusX = 0;
@@ -878,6 +963,49 @@ export function LocalPlayer({
                 if (!inFp && groundSpeedBus > 0.05) busWalk.yaw = normalizeYaw(stepYaw(busWalk.yaw + bus.yaw, bus.yaw + Math.atan2(-mR, mA), TURN_SPEED * delta) - bus.yaw);
                 seatWalk = groundSpeedBus > 0.05;
               }
+            }
+          }
+        }
+        // Owner 2026-11-18 ("버스안에서 이동이 잘 안되고"): a click or a tap on the cabin's floor (busWalkGoal) walks there — down the
+        // aisle's middle first, across once level with the spot — like the village's click-to-walk. A key or the stick takes over; a
+        // rider in the way (no progress for a moment) or 12 s end it.
+        if (busWalkGoal.active && busSeatGoal.index < 0 && !suspended) {
+          const nowG = performance.now();
+          const prog = busGoalProgressRef.current;
+          if (moving || nowG - busWalkGoal.at > 12000) busWalkGoal.active = false;
+          else {
+            // down the aisle's middle while the spot is still ahead or behind, across to it once level (the seats' rows are solid)
+            const level = Math.abs(busWalkGoal.ahead - busWalk.ahead) < 0.12;
+            const tA = busWalkGoal.ahead;
+            const tR = level ? busWalkGoal.right : 0;
+            const dA = tA - busWalk.ahead;
+            const dR = tR - busWalk.right;
+            const len = Math.hypot(dA, dR);
+            const left = Math.hypot(busWalkGoal.ahead - busWalk.ahead, busWalkGoal.right - busWalk.right);
+            if (left < 0.06) {
+              busWalkGoal.active = false;
+              sendBusMove(busWalk.ahead, busWalk.right, busWalk.yaw);
+              busSendRef.current.at = nowG;
+              busSendRef.current.moving = false;
+            } else if (len > 1e-4) {
+              if (Math.hypot(busWalk.ahead - prog.ahead, busWalk.right - prog.right) > 0.02) {
+                prog.ahead = busWalk.ahead;
+                prog.right = busWalk.right;
+                prog.at = nowG;
+              } else if (nowG - prog.at > 700 && nowG - busWalkGoal.at > 700) busWalkGoal.active = false; // blocked (a rider, a seat)
+              const stepLen = Math.min(len, moveSpeed(false) * delta);
+              const next = stepInCabin(busWalk, { ahead: busWalk.ahead + (dA / len) * stepLen, right: busWalk.right + (dR / len) * stepLen }, BUS_WALK_RADIUS, busStepTmp, busRiderPoints(busOthersTmp));
+              const mA = next.ahead - busWalk.ahead;
+              const mR = next.right - busWalk.right;
+              busWalk.ahead = next.ahead;
+              busWalk.right = next.right;
+              if (delta > 0) groundSpeedBus = Math.hypot(mA, mR) / delta;
+              const fx = Math.sin(bus.yaw);
+              const fz = Math.cos(bus.yaw);
+              movedBusX = mA * fx - mR * fz;
+              movedBusZ = mA * fz + mR * fx;
+              if (!inFp && groundSpeedBus > 0.05) busWalk.yaw = normalizeYaw(stepYaw(busWalk.yaw + bus.yaw, bus.yaw + Math.atan2(-mR, mA), TURN_SPEED * delta) - bus.yaw);
+              seatWalk = groundSpeedBus > 0.05;
             }
           }
         }
@@ -943,7 +1071,7 @@ export function LocalPlayer({
         // tap on my own seat is nothing.
         if (busSeatGoal.index === placeNow.index) busSeatGoal.index = -1;
         busSeatPreferred.index = -1;
-        if ((moving || busSeatGoal.index >= 0) && !suspended && (!busStandSentRef.current || performance.now() - standAtRef.current > STAND_RETRY_MS)) {
+        if ((moving || busSeatGoal.index >= 0 || busWalkGoal.active) && !suspended && (!busStandSentRef.current || performance.now() - standAtRef.current > STAND_RETRY_MS)) {
           sendBusStand();
           busStandSentRef.current = true;
           standAtRef.current = performance.now();
@@ -994,7 +1122,11 @@ export function LocalPlayer({
       group.rotation.y = rp.yaw + MODEL_FACING_OFFSET;
       busCamState.avatar = group;
       busCamState.avatar = group;
-      group.visible = !busCamState.firstPerson; // first person (the camera all the way in) is the rider's own eye
+      // first person (the camera all the way in) is the rider's own eye; a third-person lens the cabin pushed within 0.6 m of the head
+      // hides the body too (transitCamera.ts busSelfHidden): never the inside of the head on the screen
+      // (first person: the body in the seat or the aisle, headless, the eye at its head: fpBody.ts)
+      group.visible = busCamState.firstPerson ? !fpBodyOff() : !busCamState.selfHidden;
+      fpBody.active = busCamState.firstPerson && group.visible;
       pose.x = rp.x;
       pose.z = rp.z;
       pose.yaw = rp.yaw;
@@ -1115,10 +1247,11 @@ export function LocalPlayer({
     fishRig.update(delta, {
       seatMode: animStateRef.current === "sitDown" ? "sitting" : animStateRef.current === "sitIdle" ? "seated" : animStateRef.current === "standUp" ? "standing" : "up",
       baseSit: action(CLIP.sitIdle) ?? null,
-      // first person hides the own body: the catch is held up in front of the camera instead (lake v2)
-      fpCamera: viewState.mode === "fp" ? state.camera : null,
+      // first person keeps the own body (fpBody.ts): the rod and the catch are in its own hands, as everyone else sees them
+      fpCamera: null,
       fpLook: { skin: look.colors.skin, top: look.colors.top },
     });
+    fishRig.afterMixer(delta); // the wrist, after the mixer (the animations are ticked before this frame hook)
 
     // Hide what hangs inside the bench while on it: from the moment the avatar stands on the seat's spot (the
     // walk onto it is over) until the stand-up clip has carried it off (benchClip.ts).
@@ -1134,6 +1267,11 @@ export function LocalPlayer({
     }
     // A backed seat (sofa, armchair, chair): lean back into the backrest while sitting idle (leanBack.ts).
     stepLean(avatar.root, animStateRef.current === "sitIdle" ? (activeSeats()[seatIndex]?.lean ?? 0) : 0, delta);
+    // ...and its back is flattened against the backrest's face, so thick clothes never poke out behind it (seatBack.ts).
+    {
+      const seatNow = animStateRef.current === "sitIdle" ? activeSeats()[seatIndex] : undefined;
+      stepBackSquash(avatar.root, avatar.materials, seatBackFace(seatNow), backBandOf(seatNow), delta);
+    }
 
     // Seated → fully server-positioned: no integration, no moveSender. Standing up
     // is explicit — any movement intent (keys or joystick) sends ONE Stand. 착석
@@ -1172,7 +1310,7 @@ export function LocalPlayer({
     let movedZ = 0;
     if (moving) {
       const dir = worldDirection(intent, activeYaw);
-      const speed = moveSpeed(run);
+      const distance = Math.min(moveSpeed(run) * delta, remaining);
       const fromX = pose.x;
       const fromZ = pose.z;
       // Slide the body (circle-vs-AABB) along walls/furniture from the SAME
@@ -1182,8 +1320,8 @@ export function LocalPlayer({
       const next = resolveCollision(
         pose.x,
         pose.z,
-        dir.x * speed * delta,
-        dir.z * speed * delta,
+        dir.x * distance,
+        dir.z * distance,
         PLAYER_RADIUS,
         collectObstacles(pose.x, pose.z),
       );

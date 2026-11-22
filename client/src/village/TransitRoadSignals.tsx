@@ -7,6 +7,7 @@ import { projectMetreUV } from "../land/parkShapes";
 import { signalPoleSpots } from "@caysonverse/shared/village/crossings";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { transitNowMs } from "../net/transitSync";
+import { mergeStaticByMaterial } from "./mergeStatic";
 import { lampKey, lampsAt, type LampState } from "./signalLamps";
 
 /**
@@ -154,8 +155,9 @@ function cabinetDetail(): Group {
   const east = new ThreeMesh(frameW, dark);
   east.position.set(0.124, 2.5, -0.25);
   g.add(west, back, east);
+  const slatMat = new StdMaterial({ color: "#2b3036", roughness: 0.5, metalness: 0.35 }); // one material for all slats: they merge into one draw
   for (let i = 0; i < 9; i++) {
-    const w = new ThreeMesh(slat, new StdMaterial({ color: "#2b3036", roughness: 0.5, metalness: 0.35 }));
+    const w = new ThreeMesh(slat, slatMat);
     w.position.set(-0.784, 2.37 + i * 0.033, -0.25);
     w.rotation.z = 0.35;
     const b = new ThreeMesh(slatB, w.material);
@@ -198,19 +200,19 @@ function SignalUnits() {
   }, [gltf]);
   const detail = useMemo(cabinetDetail, []);
   const spots = useMemo(() => signalPoleSpots(), []);
-  const units = useMemo(
-    () =>
-      spots.map(() => {
-        const u = gltf.scene.clone(true);
-        u.add(detail.clone(true));
-        u.traverse((o) => {
-          const mesh = o as Mesh;
-          if (mesh.isMesh) mesh.castShadow = /sig_zinc|sig_black/.test(mesh.name);
-        });
-        return u;
-      }),
-    [gltf, spots, detail],
-  );
+  // One template, its parts merged per material (perf/phone-village: the units were 80+ tiny draws in view), cloned per crossing corner
+  // (the clones share the merged geometry and the shared lamp materials).
+  const template = useMemo(() => {
+    const t = gltf.scene.clone(true);
+    t.add(detail.clone(true));
+    t.traverse((o) => {
+      const mesh = o as Mesh;
+      if (mesh.isMesh) mesh.castShadow = /sig_zinc|sig_black/.test(mesh.name);
+    });
+    mergeStaticByMaterial(t);
+    return t;
+  }, [gltf, detail]);
+  const units = useMemo(() => spots.map(() => template.clone(true)), [template, spots]);
   const lamps = useMemo(() => lampMaterials(gltf.scene), [gltf]);
   const display = useMemo(() => {
     if (typeof document === "undefined") return null;
@@ -223,7 +225,7 @@ function SignalUnits() {
     tex.flipY = false; // glTF UVs run from the top, like the file's own textures
     return { ctx, tex };
   }, []);
-  const last = useMemo(() => ({ key: "" }), []);
+  const last = useMemo(() => ({ key: "", at: -1 }), []);
   useEffect(() => {
     if (!lamps) return;
     lamps.count.color = new Color("#ffffff");
@@ -242,8 +244,12 @@ function SignalUnits() {
       display?.tex.dispose();
     };
   }, [lamps, display, last]);
-  useFrame(() => {
+  useFrame(({ clock }) => {
     if (!lamps) return;
+    // The lamps change at most twice a second (the flashing figure's 500 ms blink): look every 100 ms, not every frame.
+    const now = clock.elapsedTime;
+    if (now - last.at < 0.1 && now >= last.at) return;
+    last.at = now;
     const override = import.meta.env.DEV ? window.__cvSignals : null;
     const state = lampsAt(transitNowMs(), override);
     const key = lampKey(state);

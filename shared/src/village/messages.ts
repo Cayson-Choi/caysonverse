@@ -23,6 +23,12 @@ export const VillageMsg = {
    * hall, in every room of the village (`VillageServerMsg.CandleLit`). Anything else is dropped silently.
    */
   LightCandle: "LightCandle",
+  /**
+   * Put out a burning candle (owner 2026-11-20: "촛불을 밝힐 수도 있고 끌 수도 있게"). Allowed for whoever lit it (the same device key,
+   * else the same tab, else the same session) and for the family of a claimed cubby; at most `CANDLE_OUT_RATE` per client. The server
+   * forgets the candle and tells every hall (`VillageServerMsg.CandleOut`). Anything else is dropped silently.
+   */
+  PutOutCandle: "PutOutCandle",
   /** Rent the session's one rod (free) within `FISHING.rentReachM` of the rental pad. Empty payload. */
   FishingRentRod: "FishingRentRod",
   /** Give the rod back within `FISHING.returnReachM` of the pad (standing); leaving the lake does it by itself. Empty payload. */
@@ -77,6 +83,7 @@ export interface VillageMsgPayloads {
   [VillageMsg.UseDoor]: UseDoorPayload;
   [VillageMsg.UseStair]: UseStairPayload;
   [VillageMsg.LightCandle]: LightCandlePayload;
+  [VillageMsg.PutOutCandle]: LightCandlePayload;
   [VillageMsg.FishingRentRod]: FishingEmptyPayload;
   [VillageMsg.FishingReturnRod]: FishingEmptyPayload;
   [VillageMsg.FishingSit]: FishingSitPayload;
@@ -106,6 +113,8 @@ export interface FishingHoldPayload {
 export const CANDLE_REACH_M = 20;
 /** Per-client candle cap: at most `count` accepted candles per `windowMs`. */
 export const CANDLE_RATE = { count: 1, windowMs: 5000 } as const;
+/** Per-client cap on putting candles out: at most `count` per `windowMs` (lighting keeps its own 1-per-5-seconds cap). */
+export const CANDLE_OUT_RATE = { count: 2, windowMs: 5000 } as const;
 /**
  * How long a lit candle burns (ms): an hour (owner 2026-11-13: "초를 켜면 1시간 정도 켜졌다가 꺼지게 … 누가 와서 켜고 갔는지 알잖아").
  * The server keeps it (who, when) and tells a visitor who walks into the hall later; a cubby's candle cannot be lit again while
@@ -125,6 +134,8 @@ export const VillageServerMsg = {
   CandleLit: "CandleLit",
   /** Every candle burning now (`CandleStatePayload`): sent to a visitor who comes into the hall, or rejoins inside it. */
   CandleState: "CandleState",
+  /** A candle was put out by the one who lit it or by the cubby's family (`CandleOutPayload`): sent to every client in the hall. */
+  CandleOut: "CandleOut",
   /** The owner's fishing state (a personal message): sent on every stage change, on join/reconnect, and ~4 times a second in a fight. */
   FishingState: "FishingState",
   /** A personal rejection for an invalid fishing action (a reason code; the HUD turns it into a short Korean line). */
@@ -144,16 +155,33 @@ export type VillageServerMsg = (typeof VillageServerMsg)[keyof typeof VillageSer
 /** Server → client: the server's `Date.now()` at the moment of sending (Unix epoch milliseconds, UTC). */
 export interface ServerTimePayload {
   serverTimeMs: number;
+  /** The server's ride timetable fingerprint (land/rides.ts `rideScheduleKey`); absent from an older server. */
+  rideSchedule?: string;
 }
 
-/** How often the server re-sends its clock to everyone in a village room (5 minutes). */
-export const SERVER_TIME_INTERVAL_MS = 5 * 60 * 1000;
+/**
+ * How often the server re-sends its clock to everyone in a village room (30 s; it was 5 minutes). The rides run on this clock to the
+ * hundredth of a second, and a reading that waited in a busy page (the park's scene being built) arrives seconds late: the rides audit
+ * (2026-11-20) measured a client 15 s behind the server, its seat taken away "mid-ride" on its own screen. A fresh reading every 30 s puts
+ * that right within half a minute (client/src/village/villageClock.ts keeps the best of them). One small message per visitor per 30 s.
+ */
+export const SERVER_TIME_INTERVAL_MS = 30 * 1000;
 
 /** Server → hall clients: the cubby whose candle was lit, who lit it (their nickname) and how long ago (ms; 0 for a new one). */
 export interface CandleLitPayload {
   cubby: string;
   by: string;
   agoMs: number;
+  /** The lighter's session id (a broadcast `CandleLit`): the lighter's own client knows the candle is its own. Absent from an old server. */
+  sid?: string;
+  /** In a `CandleState` (one client's own copy): true when this client lit the candle (same device key / tab / session). */
+  mine?: boolean;
+}
+
+/** Server → hall clients: the candle of `cubby` was put out, by `by` (a nickname). */
+export interface CandleOutPayload {
+  cubby: string;
+  by: string;
 }
 
 /** Server → one client: the candles burning now. */
@@ -179,10 +207,14 @@ export interface FishingStatePayload {
   signal: FishSignal | null;
   windowOpensInMs: number | null;
   windowClosesInMs: number | null;
-  /** In `fighting`: the progress of the hold (ms), what it needs (ms) and whether the server counts the button as down. */
+  /** In `fighting`: how close the fish is (holdMs of holdNeedMs = 1000: 0..1000) and whether the server counts the button as down. */
   holdMs: number;
   holdNeedMs: number;
   holdDown: boolean;
+  /** In `fighting`: the line tension 0..1000 (snaps at 1000). */
+  fightTension?: number;
+  /** After a lost fight: why ("snap" the line broke, "escape" it was never pulled in, "idle"). */
+  lostWhy?: "none" | "snap" | "escape" | "idle";
   lastResult: FishingResultKind;
   /** The fish, from `hooked` on (a landed or released fish stays until the next stage `ready`). */
   catch: FishCatchPayload | null;
@@ -255,7 +287,9 @@ export interface RideNoticePayload {
   reason: "closed" | "full" | "busy" | "aloft" | "reserved" | "far";
 }
 
-/** Client → server: get on the ride `ride` ("coaster" | "carousel" | "wheel"; absent = the coaster, an older client). */
+/** Client → server: get on the ride `ride` ("coaster" | "carousel" | "wheel" | "moonboat" | "droptower"; absent = the coaster, an older client). */
 export interface RideBoardPayload {
   ride?: string;
+  /** the rider's seat choice where the ride has one (the moon boat: "end" = 맨 끝 자리, the default; "middle" = 가운데 자리) */
+  pref?: string;
 }

@@ -72,20 +72,65 @@ def deckbox(i):
 # ---------------------------------------------------------------------------------------------------- decks
 
 
-def planks(mb, rng, x0, x1, z0, z1, run, top=0.0, th=0.04, w=0.14, gap=0.012, col=None, jit_amt=0.09):
-    """Deck boards. run='x': boards run along x and are stacked along z; run='z': the other way."""
-    col = col or P["deck"]
+class Deck(MB):
+    """Cut the rim boards, piers and joists from the same stock as the walking surface."""
+    def finish(self, collection=None, name=None):
+        timber = set()
+        for i, (indices, mat, smooth, uv) in enumerate(self.faces):
+            if mat != "wood":
+                continue
+            timber.update(indices)
+            pts = [self.v[k] for k in indices]
+            x, z, y = ([p[0] for p in pts], [-p[1] for p in pts], [p[2] for p in pts])
+            dx, dz = max(x) - min(x), max(z) - min(z)
+            along, across = (x, z) if dx >= dz else (z, x)
+            cross = across if max(y) - min(y) < 0.002 else y
+            uv = [((a - min(along)) / 1.4 + 0.17, 1 - (s - min(cross)) / 1.4 - 0.31) for a, s in zip(along, cross)]
+            self.faces[i] = (indices, "deck", smooth, uv)
+        for i in timber:
+            r, g, b, a = self.col[i]
+            self.col[i] = (min(1, 2.49 * r), min(1, 4.05 * g), min(1, 7.1 * b), a)
+        return super().finish(collection, name)
+
+
+def planks(mb, rng, x0, x1, z0, z1, run, top=0.0, th=0.04, w=0.14, gap=0.012):
+    """Sawn decking with eased arrises and staggered butt joints. The oak grain runs along each board."""
     lo, hi = (z0, z1) if run == "x" else (x0, x1)
+    start, end = (x0, x1) if run == "x" else (z0, z1)
     n = int((hi - lo + gap) // (w + gap))
     pitch = (hi - lo) / n
     for i in range(n):
         a = lo + i * pitch
         b = a + pitch - gap
-        c = jit(rng, col, jit_amt)
-        if run == "x":
-            boxw(mb, x0, x1, top - th, top, a, b, c, "wood", skip="LRDFB")
-        else:
-            boxw(mb, a, b, top - th, top, z0, z1, c, "wood", skip="LRDFB")
+        color = jit(rng, (0.76, 0.80, 0.83, 1), 0.09)
+        profile = [(a, -th), (a, -0.006), (a + 0.005, 0), (b - 0.005, 0), (b, -0.006), (b, -th)]
+        def point(along, across, height):
+            return V(along, across, top + height) if run == "x" else V(across, along, top + height)
+        cuts = [start]
+        if end - start > 3.8:
+            seam = start + (1.6 if i % 2 else 3.2)
+            while seam < end - 0.55:
+                cuts.append(seam)
+                seam += 3.2
+        cuts.append(end)
+        for j, (left, right) in enumerate(zip(cuts, cuts[1:])):
+            u0 = (i * 0.618034 + j * 0.37) % 1
+            v0 = (i * 0.414214 + j * 0.27) % 1
+            left += 0.004 if j else 0
+            right -= 0.004 if j + 1 < len(cuts) - 1 else 0
+            for k, (p, q) in enumerate(zip(profile, profile[1:])):
+                corners = [(left, *p), (left, *q), (right, *q), (right, *p)]
+                if run == "z":
+                    corners.reverse()
+                pts = [point(*v) for v in corners]
+                uv = [(u0 + (l - left) / 1.4, 1 - v0 - (s - a + h) / 1.4) for l, s, h in corners]
+                shade = (0.58, 0.91, 1, 0.91, 0.58)[k]
+                mb.quad_uv(*pts, uv, mulc(color, shade), "deck")
+            for l in (left, right):
+                section = profile if ((l == right) == (run == "x")) else profile[::-1]
+                pts = [point(l, s, h) for s, h in section]
+                uv = [(u0 + (s - a) / 1.4, 1 - v0 - h / 1.4) for s, h in section]
+                mb.face(mb.verts(pts, mulc(color, 0.65)), "deck", False, uv)
     boxw(mb, x0, x1, top - th - 0.004, top - th, z0, z1, hexc("#2a2018"), "matte", skip="D")  # the dark seen through the gaps
 
 
@@ -221,7 +266,7 @@ def instance(name, data, collection, x, z, yaw, y=0.0):
 
 def build_pier(rng):
     d = deckbox("pier")
-    mb = MB("lake_pier")
+    mb = Deck("lake_pier")
     x0, x1, z0, z1 = d["minX"], d["maxX"], d["minZ"], d["maxZ"]
     planks(mb, rng, x0, x1, z0, z1, "z")
     # joists run along x, bearers across at every post line, posts into the water
@@ -261,7 +306,7 @@ def lifebuoy(mb, x, z):
 
 def build_pier_t(rng):
     d = deckbox("pier_t")
-    mb = MB("lake_pier_t")
+    mb = Deck("lake_pier_t")
     x0, x1, z0, z1 = d["minX"], d["maxX"], d["minZ"], d["maxZ"]
     planks(mb, rng, x0, x1, z0, z1, "x")
     for x in (x0 + 0.08, x0 + 1.5, (x0 + x1) / 2, x1 - 1.5, x1 - 0.08):
@@ -295,9 +340,9 @@ def build_pier_t(rng):
 
 def walkway(rng, key):
     d = deckbox(key)
-    mb = MB("lake_" + key)
+    mb = Deck("lake_" + key)
     x0, x1, z0, z1 = d["minX"], d["maxX"], d["minZ"], d["maxZ"]
-    planks(mb, rng, x0, x1, z0, z1, "x", w=0.12, col=P["deck"])
+    planks(mb, rng, x0, x1, z0, z1, "x", w=0.12)
     n = 8
     pitch = (z1 - z0) / n
     for x in (x0 + 0.08, x1 - 0.08):
@@ -328,7 +373,7 @@ def jwadae(rng, key, hut_key, face_in):
     """A floating platform: board deck on a timber frame over blue drums, pipe railings opened in front of the chairs and at the
     walkway. face_in = 'n' if the walkway joins its north edge (좌대 B), 's' if its south edge (좌대 A)."""
     d = deckbox(key)
-    mb = MB("lake_" + key)
+    mb = Deck("lake_" + key)
     x0, x1, z0, z1 = d["minX"], d["maxX"], d["minZ"], d["maxZ"]
     planks(mb, rng, x0, x1, z0, z1, "x", w=0.15)
     # frame under the boards: joists along z, edge beams, drums along the edges
@@ -411,6 +456,56 @@ def corrugated(mb, P0, across, down, period, amp, col, mat):
     L.surface(mb, fn, nu, 1, col, mat, up=True, smooth=True)
 
 
+def hew_hut_logs(mb, x0, x1, z0, z1, pitch):
+    """Dress the outside of the existing walls and gables, including the narrow strips beside their openings."""
+    # Fraction of a log course and inset from the outermost wood. The narrow joint is 37 mm behind the crown.
+    profile = [(0, 0.037), (0.27, 0.005), (0.62, 0), (1, 0.037)]
+
+    def clip(points, height, above):
+        out = []
+        for a, b in zip(points[-1:] + points[:-1], points):
+            if (a.z < height < b.z) or (b.z < height < a.z):
+                out.append(a.lerp(b, (height - a.z) / (b.z - a.z)))
+            if (above and b.z >= height) or (not above and b.z <= height):
+                out.append(b)
+        return out
+
+    panels = list(mb.faces)
+    mb.faces.clear()
+    for face in panels:
+        indices, mat, _, _ = face
+        if mat != "log":
+            mb.faces.append(face)
+            continue
+        pts = [Vector(mb.v[i]) for i in indices]
+        normal = (pts[1] - pts[0]).cross(pts[2] - pts[0]).normalized()
+        axis = 0 if abs(normal.x) > abs(normal.y) else 1
+        lo, hi = (x0, x1) if axis == 0 else (-z1, -z0)
+        plane = hi if normal[axis] > 0 else lo
+        if abs(normal[axis]) < 0.99 or any(abs(p[axis] - plane) > 0.001 for p in pts):
+            mb.faces.append(face)
+            continue
+        mb.tris -= len(indices) - 2
+        bottom, top = min(p.z for p in pts), max(p.z for p in pts)
+        for row in range(math.floor(bottom / pitch), math.ceil(top / pitch)):
+            for (t0, d0), (t1, d1) in zip(profile, profile[1:]):
+                low, high = (row + t0) * pitch, (row + t1) * pitch
+                if high <= bottom or low >= top:
+                    continue
+                band = clip(clip(pts, low, True), high, False)
+                if len(band) < 3:
+                    continue
+                uv, vertices = [], []
+                for p in band:
+                    inset = d0 + (d1 - d0) * (p.z - low) / (high - low)
+                    shade = 1 - 0.25 * inset / 0.037
+                    r, g, b, a = mb.col[indices[0]]
+                    along = -p.y - z0 if axis == 0 else p.x - x0
+                    uv.append((along / 1.6 + (row * 0.37) % 1, 1 - ((p.z - row * pitch) / 1.6 + (row * 0.23) % 1)))
+                    vertices += mb.verts([p - normal * inset], (1.18 * r * shade, 2.3 * g * shade, 3.7 * b * shade, a))
+                mb.face(vertices, "log", uv=uv)
+
+
 def hut(rng, key):
     h = next(x for x in LAYOUT["huts"] if x["id"] == "hut_" + key[-1])
     mb = MB("lake_hut_" + key[-1])
@@ -435,10 +530,12 @@ def hut(rng, key):
     over = 0.62
     ey = H + 0.05
     ridge_y = ey + math.tan(pitch_ang) * ((z1 - z0) / 2 + over)
-    # the log walls are flat panels carrying the log-wall texture; only the corner log ends stick out as geometry
+    # At the wall (inside the overhang) the soffit sits higher than the outer eave.
+    plate_y = ey + math.tan(pitch_ang) * over - 0.04
+    # Build the wall cores and openings first; the outer faces and gables are hewn to match the corner ends below.
     logc = P["log"]
     def wall(frame, a0, a1, holes):
-        for (r0, r1, b0, b1) in L.rects_minus((a0, a1, 0.0, H), holes):
+        for (r0, r1, b0, b1) in L.rects_minus((a0, a1, 0.0, plate_y), holes):
             box(mb, frame, r0, r1, b0, b1, -d, 0.0, jit(rng2, logc, 0.05), "log", skip="")
     fdoor = F(0, 0, door_wall_z, 0 if not A else math.pi)
     fbench = F(0, 0, bench_wall_z, math.pi if not A else 0)
@@ -465,12 +562,12 @@ def hut(rng, key):
                     tubew(mb, (xx - sx * d / 2, y, zz - sz * d / 2), (xx - sx * d / 2, y, zz + sz * 0.12), d / 2, jit(rng2, P["log_dark"], 0.1), "wood", 6, caps=(False, True))
     # gable ends: textured triangles above the walls
     for xx, sg in ((x0, -1), (x1, 1)):
-        zl, zr_ = cz - ((z1 - z0) / 2 - 0.01), cz + ((z1 - z0) / 2 - 0.01)
-        a, b, c = V(xx, zl, H), V(xx, zr_, H), V(xx, cz, ridge_y - 0.07)
+        a, b, c = V(xx, z0, plate_y), V(xx, z1, plate_y), V(xx, cz, ridge_y - 0.04)
         if sg > 0:
-            mb.tri(a, b, c, logc, "log")
-        else:
             mb.tri(b, a, c, logc, "log")
+        else:
+            mb.tri(a, b, c, logc, "log")
+    hew_hut_logs(mb, x0, x1, z0, z1, pitch)
     # door + window on the door wall: a frame facing outward (local +z = outward, local x = east on B, west on A)
     fr = F(0, 0, door_wall_z, 0 if not A else math.pi)
 
@@ -505,7 +602,7 @@ def hut(rng, key):
     corrugated(mb, V(ex0, ez0, ey), across, V(ex0, cz, ridge_y) - V(ex0, ez0, ey), 0.17, 0.014, P["roof_or"], "paint")
     corrugated(mb, V(ex0, cz, ridge_y), across, V(ex0, ez1, ey) - V(ex0, cz, ridge_y), 0.17, 0.014, jit(rng, P["roof_or"], 0.03), "paint")
     for (za, ya, zb, yb) in ((ez0, ey, cz, ridge_y), (cz, ridge_y, ez1, ey)):
-        mb.quad(V(ex0, za, ya - 0.05), V(ex0, zb, yb - 0.05), V(ex1, zb, yb - 0.05), V(ex1, za, ya - 0.05), P["roof_or_dark"], "matte")
+        mb.quad(V(ex0, za, ya - 0.05), V(ex1, za, ya - 0.05), V(ex1, zb, yb - 0.05), V(ex0, zb, yb - 0.05), P["roof_or_dark"], "matte")
     mb.quad(V(ex0, ez1, ey - 0.12), V(ex1, ez1, ey - 0.12), V(ex1, ez1, ey + 0.02), V(ex0, ez1, ey + 0.02), P["roof_or_dark"], "paint")
     mb.quad(V(ex1, ez0, ey - 0.12), V(ex0, ez0, ey - 0.12), V(ex0, ez0, ey + 0.02), V(ex1, ez0, ey + 0.02), P["roof_or_dark"], "paint")
     for xx, flip in ((ex0, False), (ex1, True)):

@@ -61,8 +61,8 @@ await run.step(boarding ? "boarding window: by the bus's doors E boards" : "betw
     run.check("the pill says board now, by the bus", text.includes("지금 탈 수 있어요") && text.includes("버스 앞에서"), text);
     run.check("the action button boards", /버스 타기|탑승/.test(label) && !/뒤 출발|분 뒤|초 뒤/.test(label), label);
   } else {
-    run.check("the pill says how soon boarding opens", /뒤부터 탈 수 있어요/.test(text), text);
-    run.check("the button counts down to the bus", /뒤/.test(label), label);
+    run.check("the pill says how soon boarding opens", /(뒤부터|전부터) 탈 수 있어요/.test(text), text);
+    run.check("between buses the action button does not offer boarding (hidden: 545d862 / the pill carries the countdown: 8bffba6)", !/버스 타기|탑승/.test(label), label);
   }
 });
 

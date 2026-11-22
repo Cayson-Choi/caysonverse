@@ -35,6 +35,10 @@ const BESIDE_ONLY: Record<string, readonly string[]> = {
   lots: [
     ...[2, 3, 5, 6, 8, 9, 11, 12].map((k) => `lotin:lot_school_chair_${k}:1`),
     ...[1, 2, 3, 4, 5, 6, 7, 8].map((k) => `lotin:lot_library_chair_${k}:1`),
+    // the café's bentwood chairs at their bistro tables: the table is the front, so the sitter stands up beside (the terrace's rule); the banquette and the stools in front
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((k) => `lotin:lot_cafe_chair_${k}:1`),
+    // the café's salon upstairs (2026-11-21): its chairs at their tables too
+    ...Array.from({ length: 10 }, (_, k) => `lotin:lot_cafe_up_chair_${k + 1}:1`), // (11 and 12, at the sofa's tables, have room in front)
   ],
   lake: [
     "P01", "P02", "P03", "P04", "P05", "P06", "P07", "P08", "P09", "P10", "P11", "P12", "P13", "P14", "P15", "P16",

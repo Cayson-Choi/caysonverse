@@ -1,12 +1,20 @@
 import { useSyncExternalStore } from "react";
 import type { AreaId } from "@caysonverse/shared/village/villageLayout";
 import { localArea, subscribeLocalArea } from "./villageArea";
-import { CANDLE_BURN_MS, VillageServerMsg, type CandleLitPayload, type CandleStatePayload } from "@caysonverse/shared/village/messages";
+import {
+  CANDLE_BURN_MS,
+  VillageServerMsg,
+  type CandleLitPayload,
+  type CandleOutPayload,
+  type CandleStatePayload,
+} from "@caysonverse/shared/village/messages";
 
 /**
  * The candles burning in the memorial hall (케이슨 마을 Task 9), as this client sees them. The server keeps them (an hour each,
  * who lit it: server/src/rooms/candleBook.ts) and tells this client: `CandleState` (all of them, with how long ago each was lit)
- * when it comes into the hall, `CandleLit` for each new one. The client counts the rest of the hour down from what it was told.
+ * when it comes into the hall, `CandleLit` for each new one, `CandleOut` when one is put out early (owner 2026-11-20: whoever lit it,
+ * or the cubby's family). The client counts the rest of the hour down from what it was told, and remembers which candles are its
+ * own (`mine`: it may put those out).
  *
  * Module state like villageArea.ts: the hall's scene reads `burningCandles` every frame (no React), the close-up card
  * through `useCandles` (re-rendered when a candle is lit or goes out). Cleared when the hall is left.
@@ -28,7 +36,16 @@ subscribeLocalArea(() => {
 /** The time base (ms): the page's monotonic clock. */
 export const candleClock = (): number => performance.now();
 
-const lit = new Map<string, { at: number; by: string }>();
+export interface BurningCandle {
+  /** When it was lit (candleClock ms). */
+  at: number;
+  /** Who lit it (nickname; "" unknown). */
+  by: string;
+  /** This visitor lit it (the server said so): "촛불 끄기" is offered. */
+  mine: boolean;
+}
+
+const lit = new Map<string, BurningCandle>();
 const listeners = new Set<() => void>();
 let version = 0;
 
@@ -38,15 +55,23 @@ function bump(): void {
 }
 
 /** Someone lit the candle of `cubby` `agoMs` ago (the server said so). */
-export function noteCandleLit(cubby: string, by: string, now: number = candleClock(), agoMs = 0): void {
-  lit.set(cubby, { at: now - Math.max(0, agoMs), by });
+export function noteCandleLit(cubby: string, by: string, now: number = candleClock(), agoMs = 0, mine = false): void {
+  lit.set(cubby, { at: now - Math.max(0, agoMs), by, mine });
   bump();
+}
+
+/** The candle of `cubby` was put out (the server said so); true when it was burning here. */
+export function noteCandleOut(cubby: string): boolean {
+  if (!lit.delete(cubby)) return false;
+  bump();
+  return true;
 }
 
 /** The candles burning now, as the server listed them (replaces what this client had). */
 export function setCandles(list: readonly CandleLitPayload[], now: number = candleClock()): void {
   lit.clear();
-  for (const c of list) if (validCandle(c)) lit.set(c.cubby, { at: now - Math.max(0, c.agoMs || 0), by: typeof c.by === "string" ? c.by : "" });
+  for (const c of list)
+    if (validCandle(c)) lit.set(c.cubby, { at: now - Math.max(0, c.agoMs || 0), by: typeof c.by === "string" ? c.by : "", mine: c.mine === true });
   bump();
 }
 
@@ -75,7 +100,7 @@ export function isCandleBurning(cubby: string, now: number = candleClock()): boo
 }
 
 /** The candles burning at `now` (cubby id → when it was lit, by whom). Read-only view; prune first to drop the old ones. */
-export function burningCandles(): ReadonlyMap<string, { at: number; by: string }> {
+export function burningCandles(): ReadonlyMap<string, BurningCandle> {
   return lit;
 }
 
@@ -101,6 +126,8 @@ export function useCandles(): number {
 /** What `bindHallCandles` needs of a room. */
 export interface CandleRoom {
   onMessage<T>(type: string, callback: (message: T) => void): () => void;
+  /** Our own session id: a `CandleLit` carrying it is our own candle. */
+  sessionId?: string;
 }
 
 /**
@@ -109,7 +136,17 @@ export interface CandleRoom {
  */
 export function bindHallCandles(room: CandleRoom): () => void {
   const offLit = room.onMessage<CandleLitPayload>(VillageServerMsg.CandleLit, (m) => {
-    if (validCandle(m)) noteCandleLit(m.cubby, typeof m.by === "string" ? m.by : "", candleClock(), Number.isFinite(m.agoMs) ? m.agoMs : 0);
+    if (validCandle(m))
+      noteCandleLit(
+        m.cubby,
+        typeof m.by === "string" ? m.by : "",
+        candleClock(),
+        Number.isFinite(m.agoMs) ? m.agoMs : 0,
+        typeof m.sid === "string" && m.sid !== "" && m.sid === room.sessionId,
+      );
+  });
+  const offOut = room.onMessage<CandleOutPayload>(VillageServerMsg.CandleOut, (m) => {
+    if (m && typeof m.cubby === "string") noteCandleOut(m.cubby);
   });
   const offState = room.onMessage<CandleStatePayload>(VillageServerMsg.CandleState, (m) => {
     if (m && Array.isArray(m.candles)) setCandles(m.candles);
@@ -117,6 +154,7 @@ export function bindHallCandles(room: CandleRoom): () => void {
   return () => {
     offLit();
     offState();
+    offOut();
   };
 }
 

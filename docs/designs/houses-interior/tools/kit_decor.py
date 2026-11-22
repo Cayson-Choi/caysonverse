@@ -139,16 +139,15 @@ def plant_hanging(F, seed=5, drop=0.8):
 
 
 # ------------------------------------------------------------------------------------------------- lamps ----------
-def shade(F, cx, cz, y0, r0, r1, h, tn=None, segs=28):
+def shade(F, cx, cz, y0, r0, r1, h, tn=None, segs=14):
     tn = tn or (1, 0.95, 0.85, 1)
     lathe(F, cx, cz, y0, [(r0, 0.0), (r1, h)], "H_shade", segs, tn=tn)
     lathe(F, cx, cz, y0, [(r1, h), (r0, 0.0)], "H_shade", segs, tn=tn)
-    tube(F, [(cx + r0 * math.cos(a), cz + r0 * math.sin(a), y0) for a in [i * 2 * math.pi / segs for i in range(segs + 1)]], 0.003, "H_metal", 4, tn=(0.8, 0.7, 0.4, 1), caps=False)
 
 
 def floor_lamp(F, h=1.55, tn=None):
     """플로어 스탠드 (1번 집): round steel base, slim pole, drum linen shade with a bulb glow (light empty)."""
-    lathe(F, 0, 0, 0.0, [(0, 0), (0.16, 0.0), (0.17, 0.01), (0.15, 0.025), (0, 0.025)], "H_metal", 24, tn=BLK)
+    lathe(F, 0, 0, 0.0, [(0, 0), (0.16, 0.0), (0.17, 0.01), (0.15, 0.025), (0, 0.025)], "H_metal", 14, tn=BLK)
     tube(F, [(0, 0, 0.02), (0, 0, h - 0.25)], 0.01, "H_metal", 8, tn=BLK)
     shade(F, 0, 0, h - 0.27, 0.15, 0.17, 0.28)
     lathe(F, 0, 0, h - 0.2, [(0, 0), (0.035, 0.015), (0.04, 0.06), (0.02, 0.09), (0, 0.095)], "H_lamp", 10)
@@ -159,7 +158,7 @@ def floor_lamp(F, h=1.55, tn=None):
 def table_lamp(F, tn=None):
     """스탠드 (협탁 위): ceramic gourd base, drum shade."""
     tn = tn or (0.9, 0.85, 0.75, 1)
-    lathe(F, 0, 0, 0.0, [(0, 0), (0.07, 0.0), (0.09, 0.03), (0.095, 0.1), (0.06, 0.2), (0.03, 0.26), (0.018, 0.3), (0.018, 0.33)], "H_ceramic", 20, tn=tn)
+    lathe(F, 0, 0, 0.0, [(0, 0), (0.07, 0.0), (0.09, 0.03), (0.095, 0.1), (0.06, 0.2), (0.03, 0.26), (0.018, 0.3), (0.018, 0.33)], "H_ceramic", 12, tn=tn)
     shade(F, 0, 0, 0.3, 0.1, 0.13, 0.18)
     lathe(F, 0, 0, 0.32, [(0, 0), (0.025, 0.01), (0.03, 0.04), (0.015, 0.06), (0, 0.065)], "H_lamp", 8)
     light(F, "lamp", 0, 0, 0.38, 25.0, "#FFD6A0")
@@ -178,7 +177,9 @@ def pendant_dome(F, drop=1.0, r=0.2, tn=None):
 def pendant_globe(F, drop=1.1, r=0.14):
     tube(F, [(0, 0, 0.0), (0, 0, -drop + r)], 0.004, "H_rubber", 5, caps=False)
     cyl(F, 0, 0, -0.03, 0.0, 0.05, "H_paint", 14, tn=(0.9, 0.9, 0.9, 1))
-    lathe(F, 0, 0, -drop - r * 0.0, [(0, -r), (r * 0.5, -r * 0.88), (r * 0.87, -r * 0.5), (r, 0.0), (r * 0.87, r * 0.5), (r * 0.5, r * 0.88), (0.025, r * 0.99)], "H_lamp", 20)
+    # a round glass globe: a 16-ring profile (every 11.25 deg) x 32 segments, not the old 6-ring faceted ball
+    prof = [(0.0, -r)] + [(r * math.sin(a), -r * math.cos(a)) for a in [math.pi * k / 16.0 for k in range(1, 15)]] + [(0.025, r * 0.99)]
+    lathe(F, 0, 0, -drop - r * 0.0, prof, "H_lamp", 32)
     cyl(F, 0, 0, -drop + r * 0.9, -drop + r + 0.05, 0.03, "H_metal", 10, tn=(0.9, 0.8, 0.5, 1))
     light(F, "pendant", 0, 0, -drop, 40.0, "#FFD6A0")
 
@@ -188,6 +189,7 @@ def pendant_bar(F, w=1.3, drop=1.0, n=3):
     rbox(F, -w / 2, w / 2, -0.025, 0.025, -drop - 0.03, -drop + 0.03, "H_wood_oak", r=0.01, seg=2, tn=WOOD["walnut"])
     for x in (-w / 2 + 0.1, w / 2 - 0.1):
         tube(F, [(x, 0, 0.0), (x, 0, -drop + 0.03)], 0.004, "H_rubber", 5, caps=False)
+        cyl(F, x, 0, -0.03, 0.0, 0.04, "H_paint", 12, cap=True, tn=(0.9, 0.9, 0.9, 1))      # the ceiling rose each cord ends in
     for i in range(n):
         x = -w / 2 + w * (i + 0.5) / n
         tube(F, [(x, 0, -drop - 0.03), (x, 0, -drop - 0.12)], 0.004, "H_rubber", 5, caps=False)
@@ -227,7 +229,7 @@ def rug_rect(F, w=2.4, d=1.7, tn=None, border_tn=None, th=0.014, fringe=True):
     tn = tn or PAL["rug_cream"]
     bt = border_tn or tuple(c * 0.7 for c in tn[:3]) + (1,)
     hw, hd = w / 2, d / 2
-    rbox(F, -hw, hw, -hd, hd, 0.0, th, "H_rug", r=0.005, seg=2, tile=0.8, tn=bt, cuts=2)
+    rbox(F, -hw, hw, -hd, hd, 0.0, th, "H_rug", r=0.005, seg=2, tile=0.8, tn=bt)
     rbox(F, -hw + 0.12, hw - 0.12, -hd + 0.12, hd - 0.12, th - 0.001, th + 0.002, "H_rug", r=0.0, seg=1, tile=0.8, tn=tn)
     if fringe:
         for sx in (-1, 1):
@@ -237,16 +239,24 @@ def rug_rect(F, w=2.4, d=1.7, tn=None, border_tn=None, th=0.014, fringe=True):
     col_ = None
 
 
-def rug_round(F, d=1.6, tn=None, th=0.014):
+def rug_round(F, d=1.6, tn=None, th=0.014, border_tn=None):
+    """round rug: a flat up-facing disc (layered pass 2: the old lathe top baked black under the light map), a bound edge and a border ring"""
     tn = tn or PAL["rug_cream"]
     r = d / 2
-    lathe(F, 0, 0, 0.0, [(0, th), (r * 0.99, th), (r, th * 0.5), (r, 0.0)], "H_rug", 40, tn=tuple(c * 0.75 for c in tn[:3]) + (1,), tile=0.8) if False else None
-    lathe(F, 0, 0, 0.0, [(r, 0.0), (r, th * 0.6), (r * 0.985, th), (r * 0.7, th), (0, th)][::-1], "H_rug", 40, tn=tn, tile=0.8)
-    lathe(F, 0, 0, th, [(r * 0.85, 0.0015), (r * 0.9, 0.0015)], "H_rug", 40, tn=tuple(c * 0.7 for c in tn[:3]) + (1,)) if False else None
-    for k in range(1):
-        rr = r * (0.88 - 0.1 * k)
-        pts = [(rr * math.cos(a), rr * math.sin(a), th + 0.0015) for a in [i * 2 * math.pi / 28 for i in range(29)]]
-        tube(F, pts, 0.012, "H_rug", 4, tn=tuple(c * 0.65 for c in tn[:3]) + (1,), caps=False)
+    n = 32
+    ring = [(r * math.cos(2 * math.pi * i / n), r * math.sin(2 * math.pi * i / n)) for i in range(n)]
+    gface(F, [(x, z, th) for (x, z) in ring], "H_rug", (1, 0, 0), 0.8, (0, 0, 1), tn=tn)
+    for i in range(n):
+        (ax, az), (bx, bz) = ring[i], ring[(i + 1) % n]
+        gface(F, [(ax, az, 0.0), (bx, bz, 0.0), (bx, bz, th), (ax, az, th)], "H_rug", (1, 0, 0), 0.8, ((ax + bx) / 2, (az + bz) / 2, 0.0),
+              tn=tuple(c * 0.8 for c in tn[:3]) + (1,))
+    rr = r * 0.86
+    inner = [(rr * math.cos(2 * math.pi * i / n), rr * math.sin(2 * math.pi * i / n)) for i in range(n)]
+    for i in range(n):
+        (ax, az), (bx, bz) = inner[i], inner[(i + 1) % n]
+        k = 0.92
+        gface(F, [(ax, az, th + 0.001), (bx, bz, th + 0.001), (bx * k, bz * k, th + 0.001), (ax * k, az * k, th + 0.001)], "H_rug", (1, 0, 0), 0.8,
+              (0, 0, 1), tn=border_tn or tuple(c * 0.68 for c in tn[:3]) + (1,))
 
 
 def rug_check(F, w=2.0, d=1.4, a_tn=None, b_tn=None, n=6, th=0.012):
@@ -264,36 +274,23 @@ def rug_check(F, w=2.0, d=1.4, a_tn=None, b_tn=None, n=6, th=0.012):
 
 # ------------------------------------------------------------------------------------------------ wall decor -----
 def frame_art(F, w=0.5, h=0.65, art=0, tn=None, mat_m=True):
-    """액자 (wall plane z = 0): wood frame, cream mat, abstract painting (colour cells of the atlas, no text/logo)."""
-    tn = tn or WOOD["walnut"]
-    f = 0.03
-    rbox(F, -w / 2, w / 2, 0.0, 0.025, 0.0, h, "H_wood_oak", r=0.004, seg=1, tn=tn)
-    rbox(F, -w / 2 + f, w / 2 - f, 0.025, 0.027, f, h - f, "H_paint", r=0.0, seg=1, tn=PAL["cream"])
-    mw = 0.06
-    # abstract: 3 colour blocks
-    cells = [[16, 22, 26], [13, 24, 20], [9, 12, 21], [27, 23, 2]][art % 4]
-    iw, ih = w - 2 * (f + mw), h - 2 * (f + mw)
-    for k, c in enumerate(cells):
-        rbox(F, -w / 2 + f + mw, w / 2 - f - mw, 0.027, 0.029, f + mw + k * ih / 3, f + mw + (k + 1) * ih / 3, "H_atlas", r=0.0, seg=1, uvc=acell(c))
+    """액자 (wall plane z = 0): a real public-domain painting in a moulded frame (kit_paint.py; `art` is kept for the old call sites)."""
+    import kit_paint as KP
+    KP.framed(F, w, h, frame_tn=tn or WOOD["walnut"])
 
 
 def frame_family(F, w=0.3, h=0.4):
-    """가족사진 액자: slim gold-brown frame with a warm sepia 'photo' of soft shapes (no faces)."""
-    rbox(F, -w / 2, w / 2, 0.0, 0.025, 0.0, h, "H_wood_oak", r=0.004, seg=1, tn=(0.55, 0.38, 0.22, 1))
-    rbox(F, -w / 2 + 0.025, w / 2 - 0.025, 0.025, 0.027, 0.025, h - 0.025, "H_atlas", r=0.0, seg=1, uvc=acell(21))
-    for (x, y, rr) in ((-0.05, 0.22, 0.03), (0.05, 0.21, 0.032), (0.0, 0.13, 0.035)):
-        lathe(F, x, 0.027, y, [(0.0, 0.0)], "H_atlas", 4) if False else None
-        pts = [(x + rr * math.cos(a), 0.0285, y + rr * math.sin(a)) for a in [i * 2 * math.pi / 14 for i in range(14)]]
-        gface(F, pts, "H_atlas", None, 1.0, (0, 1, 0), uv=[acell(19)] * 14)
-    rbox(F, -w / 2 + 0.05, w / 2 - 0.05, 0.0285, 0.0295, 0.05, 0.11, "H_atlas", r=0.0, seg=1, uvc=acell(30))
+    """작은 액자: a real painting in a slim gilt-brown frame (the old sepia 'family photo' is gone)."""
+    import kit_paint as KP
+    KP.framed(F, w, h, frame_tn=(0.55, 0.38, 0.22, 1), mat=False)
 
 
 def wall_clock(F, r=0.17):
     """벽시계: round wood case, white face with 12 tick bars, two hands and a centre cap (no brand text)."""
     lathe(F, 0, 0, 0, [(0, 0)], "H_wood_oak", 4) if False else None
-    n = 36
+    n = 24
     ring = [(r * math.cos(2 * math.pi * i / n), 0.0, r * math.sin(2 * math.pi * i / n)) for i in range(n)]
-    tube(F.sub(0, 0.02, r, 0), ring + [ring[0]], 0.012, "H_wood_oak", 8, tn=(0.5, 0.35, 0.22, 1), caps=False)
+    tube(F.sub(0, 0.02, r, 0), ring + [ring[0]], 0.012, "H_wood_oak", 6, tn=(0.5, 0.35, 0.22, 1), caps=False)
     gface(F.sub(0, 0.0, r, 0), [(r * 0.97 * math.cos(2 * math.pi * i / n), 0.018, r * 0.97 * math.sin(2 * math.pi * i / n)) for i in range(n)], "H_paper", (1, 0, 0), 1.0, (0, 1, 0))
     G = F.sub(0, 0.02, r, 0)
     for k in range(12):
@@ -317,11 +314,19 @@ def calendar_wall(F, w=0.3, h=0.42):
 
 
 def mirror_round(F, r=0.4):
+    """round wall mirror (back at z = 0): a brass ring on a shallow bevelled dish and a SILVERED glass (H_mirror, opaque: it used to be
+    H_glass, 84 % see-through, so the ring looked like an empty hoop on the wall: owner 2026-11-20 '왜 이런 원들이 여기 저기 있는거야')."""
     n = 40
     G = F.sub(0, 0.0, r, 0)
-    ring = [(r * math.cos(2 * math.pi * i / n), 0.015, r * math.sin(2 * math.pi * i / n)) for i in range(n)]
+    ang = [2 * math.pi * i / n for i in range(n)]
+    # a thin backing board the size of the ring, so nothing but the mirror shows through it
+    gface(G, [(r * 1.0 * math.cos(a), 0.004, r * 1.0 * math.sin(a)) for a in ang], "H_wood_oak", (1, 0, 0), 1.0, (0, 1, 0), tn=(0.32, 0.22, 0.14, 1))
+    ring = [(r * math.cos(a), 0.016, r * math.sin(a)) for a in ang]
     tube(G, ring + [ring[0]], 0.014, "H_metal", 8, tn=(0.8, 0.7, 0.45, 1), caps=False)
-    gface(G, [(r * 0.96 * math.cos(2 * math.pi * i / n), 0.012, r * 0.96 * math.sin(2 * math.pi * i / n)) for i in range(n)], "H_glass", (1, 0, 0), 1.0, (0, 1, 0))
+    # a dark bevel just inside the ring (the glass' edge shadow), then the glass
+    rim = [(r * 0.955 * math.cos(a), 0.0105, r * 0.955 * math.sin(a)) for a in ang]
+    tube(G, rim + [rim[0]], 0.006, "H_rubber", 5, tn=(0.2, 0.17, 0.14, 1), caps=False)
+    gface(G, [(r * 0.945 * math.cos(a), 0.0115, r * 0.945 * math.sin(a)) for a in ang], "H_mirror", (1, 0, 0), 1.0, (0, 1, 0))
 
 
 # -------------------------------------------------------------------------------------------- stove & others ----

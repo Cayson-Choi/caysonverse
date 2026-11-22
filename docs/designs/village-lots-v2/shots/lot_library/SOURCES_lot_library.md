@@ -34,3 +34,22 @@
 | pd_hobbema | [Meindert Hobbema - The Alley at Middelharnis - WGA11427.jpg](https://commons.wikimedia.org/wiki/File:Meindert_Hobbema_-_The_Alley_at_Middelharnis_-_WGA11427.jpg) | Meindert Hobbema | Public domain (PD-Art) | 문 벽 위 작은 풍경화 |
 | pd_corot | [Souvenir de Mortefontaine (Camille Corot).jpg](https://commons.wikimedia.org/wiki/File:Souvenir_de_Mortefontaine_(Camille_Corot).jpg) | Jean-Baptiste Camille Corot | Public domain (PD-Art) | 문 벽 위 작은 풍경화 |
 | pd_ruisdael | [De molen bij Wijk bij Duurstede Rijksmuseum SK-C-211.jpeg](https://commons.wikimedia.org/wiki/File:De_molen_bij_Wijk_bij_Duurstede_Rijksmuseum_SK-C-211.jpeg) | Jacob Isaacksz. van Ruisdael | Public domain (PD-Art) | 문 벽 위 작은 풍경화 |
+
+## 교실과 열람실의 창밖 (실제 케이슨 마을)
+
+2026-11-20부터 두 방의 창에는 외부 사진이 아니라 **게임 속 실제 케이슨 마을**이 보인다(소유자: "교실에서 창문으로 내다보면 실제 케이슨마을의 외부와 똑같이 보여야"). 실행 중인 마을에서 각 방이 실제로 있는 자리(학교·도서관 1층 한가운데, 눈높이 1.6 m)에 카메라를 세우고, 건물 자신의 벽과 지붕만 잘라 낸 채 큐브 6면을 노출·톤 매핑 전의 선형 빛으로 굽는다. 낮(12:30), 저녁 황금 시간(해가 약 3° 높이), 밤(22:30) 세 장을 굽고 게임 시계의 낮·황금빛·밤 가중치로 섞는다(아침 황금 시간은 낮과 밤만). 각 장은 창 차트(눈높이 아래 22°~위 24° 띠를 180°씩 두 장, 나머지는 극지 두 구역) 3072×1536, sRGB ETC1S KTX2(밉맵 12단계)다. 창의 셰이더는 유리에서 나가는 시선을 땅(반경 22 m까지)과 그 바깥 원기둥에 맞힌 뒤, 그 점을 굽기 눈 위치에서 본 방향으로 읽어 창 앞 마당의 시차도 맞춘다. 외부 자료는 쓰지 않는다.
+
+마을이 바뀌면 저장소 루트에서 다시 굽는다(개발 서버·클라이언트를 띄운 뒤):
+
+```sh
+CV_CLIENT_URL=http://localhost:5495 node e2e/window-view-bake.mjs --out=<임시 폴더>
+node docs/designs/village-lots-v2/tools/window_view_atlas.mjs --in=<임시 폴더> [--preview=<폴더>]
+```
+
+## 열람실 지구본 지도
+
+육지와 강의 윤곽은 Natural Earth의 1:110m 퍼블릭 도메인 자료를 사용했다. 경위도망과 해안 음영을 더한 1024×512 지도를 구에 감고, 원본의 북극과 남극을 지구본 축에 맞췄다. [육지](https://www.naturalearthdata.com/downloads/110m-physical-vectors/110m-land/) · [강](https://www.naturalearthdata.com/downloads/110m-physical-vectors/110m-rivers-lake-centerlines/) · [생성 스크립트](../../tools/b1_globe_map.mjs)
+
+## 열람실 책과 깔개 (2026-11-20)
+
+책등·책장 단면·펼친 책·깔개는 사진이나 남의 그림 없이 [b1_book_atlas.mjs](../../tools/b1_book_atlas.mjs)가 노이즈와 규칙으로 직접 그린 것이다(가죽 결, 책 천의 씨실·날실, 양피지, 종이 커버, 띠·금박 줄·꽃무늬 도장, 제목 조각의 글자 비슷한 금박 획 — 실제 책 제목이나 글자는 없다). 페르시아풍 깔개(메달리온·테두리·덩굴·매듭·염색 얼룩)도 같은 스크립트가 그린다. 아틀라스 칸은 `tools/library_book_atlas.json`, 책 모양(둥근 책등·책장 덩어리·표지판·세트·기운 책·눕힌 더미)은 [library_books.py](../../tools/library_books.py).

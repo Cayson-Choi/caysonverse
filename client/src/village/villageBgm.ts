@@ -539,6 +539,9 @@ export class VillageBgm {
     } catch {
       // ignore
     }
+    // Silent at the node too, not only paused: the level of a stopped music is 0 (a resume fades in from 0 again).
+    if (this.gain) this.gain.set(0);
+    else a.volume = 0;
     if (!keepStarted) {
       this.started = false;
       this.arm(); // switched on again by a click, or by the next gesture

@@ -164,11 +164,11 @@ describe("the reel-in (owner 2026-11-17: the fish dragged in as the line is pull
     underPos(v(40), 3, free, 0.4);
     expect(free.y).toBeLessThan(held.y);
   });
-  it("the wire carries the fight: fishReel is the hold bit and the progress, only while fighting", async () => {
+  it("the wire carries the fight: fishReel is the progress, the hold bit and the line tension, only while fighting", async () => {
     const { fishingSync, createFishingState } = await import("@caysonverse/shared/village/fishing");
-    const s = { ...createFishingState(), phase: "fighting" as const, holdMs: 1500, holdNeedMs: 3000, holdDown: true };
-    expect(fishingSync(s).fishReel).toBe(128 | 50);
-    expect(fishingSync({ ...s, holdDown: false }).fishReel).toBe(50);
+    const s = { ...createFishingState(), phase: "fighting" as const, fightProgress: 0.5, fightTension: 0.3, holdDown: true };
+    expect(fishingSync(s).fishReel).toBe(128 | 50 | (30 << 8));
+    expect(fishingSync({ ...s, holdDown: false }).fishReel).toBe(50 | (30 << 8));
     expect(fishingSync({ ...s, phase: "lifting" as const }).fishReel).toBe(0);
   });
 });

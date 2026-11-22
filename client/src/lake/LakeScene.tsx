@@ -4,7 +4,6 @@ import { useGLTF, useTexture } from "@react-three/drei";
 import {
   type MeshStandardMaterial,
   BufferGeometry,
-  CircleGeometry,
   Color,
   CylinderGeometry,
   Float32BufferAttribute,
@@ -13,6 +12,7 @@ import {
   LineSegments,
   Matrix4,
   Mesh,
+  Object3D,
   MeshBasicMaterial,
   Quaternion,
   RingGeometry,
@@ -29,18 +29,18 @@ import { clearNpcCache } from "../village/npcAvatar";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { dayNight } from "../village/dayNightDriver";
 import type { Pose } from "../game/types";
-import { LAKE_AREA, LAKE_FACE_DIR, LAKE_FISHING_SPOTS, LAKE_LAMPS, LAKE_RENTAL_PAD, LAKE_SHORE, LAKE_WATER_Y, insidePolygon } from "@caysonverse/shared/village/lakeLayout";
+import { LAKE_AREA, LAKE_FACE_DIR, LAKE_FISHING_SPOTS, LAKE_LAMPS, LAKE_SHORE, LAKE_WATER_Y, insidePolygon } from "@caysonverse/shared/village/lakeLayout";
 import { LAKE_URLS, lakeAssetWanted } from "./lakeAssets";
 import { createDrops } from "./lakeDrops";
 import { LakeGreybox } from "./LakeGreybox";
 import { createLakeWater, type LakeWater, type LakeWaterLook } from "./lakeWater";
-import { DEFAULT_SEAM, disposeLake, lakeDayNight, prepareLakeStructures, prepareLakeTerrain, type LakeSeam } from "./lakeModelPrep";
+import { DEFAULT_SEAM, disposeLake, dressTrailMesh, isTrailMesh, lakeDayNight, prepareLakeStructures, prepareLakeTerrain, type LakeDressed, type LakeSeam } from "./lakeModelPrep";
 import type { VillageTier } from "../village/villageModelPrep";
 import { lakeFloatParts, loadLakeGear } from "./lakeProps";
 import { LakeSigns } from "./LakeSigns";
 import { LakeShopInterior } from "./LakeShopInterior";
 import { LakeShore } from "./LakeShore";
-import { floraOld, installLakeFlora } from "./lakeFlora";
+import { floraOld, installLakeFlora, runLakeFloraSteps } from "./lakeFlora";
 import { CAST_S, floatPose, scatter, tugIndex, type FloatPose, type Pt } from "./lakeFloat";
 import { elapsedSince, forEachAngler, selfId } from "./lakeNet";
 import { FISH_PHASE, type FishView } from "./lakeProtocol";
@@ -119,21 +119,65 @@ function LakeGlb({ tier, pose }: { tier: VillageTier; pose: Pose }) {
     LAKE_URLS.structuresLm,
     LAKE_URLS.structuresLmNight,
   ]) as Texture[];
-  const dressed = useMemo(() => {
-    const terrain = gltf.scene.clone(true);
-    const facilities = structs.scene.clone(true);
-    const t = prepareLakeTerrain(terrain, lmDay!, lmNight!, tier, gltf.scene.userData);
-    const f = prepareLakeStructures(facilities, sLmDay!, sLmNight!);
-    return { terrain, facilities, ...t, ...f };
-  }, [gltf, structs, lmDay, lmNight, sLmDay, sLmNight, tier]);
-  useEffect(() => () => disposeLake(dressed), [dressed]);
-  // the forest, willows, reeds and grass drawn again as real branching trees and card bunches on the file's own places (lakeFlora.ts)
-  const flora = useMemo(() => (floraOld(window.location.search, import.meta.env.DEV) ? null : installLakeFlora(dressed.terrain, tier)), [dressed, tier]);
+  // Dressed over several tasks, not in one (INP: a key pressed while the lake loads must not wait ~2 s at a 4x slower CPU, 1.9 s even at 1x):
+  // clone A, clone B, each trail mesh's worn edge, the rest of A's dressing, B's dressing. Nothing is drawn until all of it is done, as before.
+  const [dressed, setDressed] = useState<LakeDressedAll | null>(null);
   useEffect(() => {
+    let dead = false;
+    let made: LakeDressedAll | null = null;
+    void (async () => {
+      const terrain = gltf.scene.clone(true);
+      await nextTask();
+      const facilities = structs.scene.clone(true);
+      await nextTask();
+      const trail: Mesh[] = [];
+      terrain.traverse((o) => {
+        if ((o as Mesh).isMesh && isTrailMesh(o as Mesh)) trail.push(o as Mesh);
+      });
+      for (const m of trail) {
+        if (dead) return;
+        dressTrailMesh(m);
+        await nextTask();
+      }
+      if (dead) return;
+      const t = prepareLakeTerrain(terrain, lmDay!, lmNight!, tier, gltf.scene.userData);
+      await nextTask();
+      if (dead) return;
+      const f = prepareLakeStructures(facilities, sLmDay!, sLmNight!);
+      made = { terrain, facilities, ...t, ...f };
+      setDressed(made);
+    })();
+    return () => {
+      dead = true;
+      if (made) disposeLake(made);
+    };
+  }, [gltf, structs, lmDay, lmNight, sLmDay, sLmNight, tier]);
+  return dressed ? <LakeDressedView dressed={dressed} tier={tier} pose={pose} structs={structs.scene} tex={{ lmDay: lmDay!, lmNight: lmNight!, reflDay: reflDay!, reflNight: reflNight! }} /> : null;
+}
+
+type LakeDressedAll = LakeDressed & { terrain: Object3D; facilities: Object3D };
+
+/** A macrotask boundary: input events that arrived meanwhile are handled before the next piece of work. */
+const nextTask = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+function LakeDressedView({ dressed, tier, pose, structs, tex }: { dressed: LakeDressedAll; tier: VillageTier; pose: Pose; structs: Object3D; tex: { lmDay: Texture; lmNight: Texture; reflDay: Texture; reflNight: Texture } }) {
+  const { lmDay, lmNight, reflDay, reflNight } = tex;
+  const [flora, setFlora] = useState<ReturnType<typeof installLakeFlora>>(null);
+  // the forest, willows, reeds and grass drawn again as real branching trees and card bunches on the file's own places (lakeFlora.ts); built a
+  // few steps per task and swapped in at once when complete (the file's own trees stay drawn until then: no gap, no pop-in)
+  useEffect(() => {
+    if (floraOld(window.location.search, import.meta.env.DEV)) return;
+    const flora = installLakeFlora(dressed.terrain, tier);
     if (!flora) return;
     dressed.terrain.add(flora.group);
-    return () => flora.dispose();
-  }, [flora, dressed]);
+    setFlora(flora);
+    const cancel = runLakeFloraSteps(flora, () => undefined);
+    return () => {
+      cancel();
+      setFlora((cur) => (cur === flora ? null : cur));
+      flora.dispose();
+    };
+  }, [dressed, tier]);
   useFrame(({ camera }) => flora?.update(camera.position));
   const look = useMemo<LakeWaterLook>(
     () => ({ reflDay: reflDay!, reflNight: reflNight!, lightmap: lmDay!, lightmapNight: lmNight!, lamps: dressed.lampHeads.map((p) => ({ x: p.x, z: p.z })) }),
@@ -157,21 +201,31 @@ function LakeGlb({ tier, pose }: { tier: VillageTier; pose: Pose }) {
   useFrame(() => {
     lakeDayNight(dressed, dayNight.applied);
   });
+  // The parts mount one per task (stage 0..3), not all in one React commit (the ground's attach, the shore's build + shader compile and the
+  // shopkeeper are each 0.1-0.4 s at 1x): a key pressed meanwhile is handled between them. They arrive within ~4 task turns (tens of ms).
+  const [stage, setStage] = useState(0);
+  useEffect(() => {
+    if (stage >= 3) return;
+    const id = setTimeout(() => setStage((n) => n + 1), 0);
+    return () => clearTimeout(id);
+  }, [stage]);
   return (
     <>
       <primitive object={dressed.terrain} dispose={null} />
-      <primitive object={dressed.facilities} dispose={null} />
+      {stage >= 1 && <primitive object={dressed.facilities} dispose={null} />}
       {/* the shallows and the shore: the bed's real depth for the water, the wet bank, reeds and lily pads (LakeShore.tsx) */}
-      <LakeShore terrain={dressed.terrain} water={water} tier={tier} />
-      <LakeShopInterior />
+      {stage >= 2 && <LakeShore terrain={dressed.terrain} water={water} tier={tier} />}
+      {stage >= 3 && <LakeShopInterior />}
       {/* the rental's shopkeeper behind the office window (owner 2026-11-16): npc.glb waits in a Suspense of its own; a failed one is no shopkeeper */}
-      <LoadBoundary fallback={null} onReset={clearNpcCache} notice="대여점 주인 모습을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
-        <Suspense fallback={null}>
-          <LakeShopkeeper structures={structs.scene} pose={pose} />
-          {/* the shopkeeper's materials (npc.glb) compiled in idle time once he is in, not the first time he comes into view */}
-          <SceneWarmUp />
-        </Suspense>
-      </LoadBoundary>
+      {stage >= 3 && (
+        <LoadBoundary fallback={null} onReset={clearNpcCache} notice="대여점 주인 모습을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+          <Suspense fallback={null}>
+            <LakeShopkeeper structures={structs} pose={pose} />
+            {/* the shopkeeper's materials (npc.glb) compiled in idle time once he is in, not the first time he comes into view */}
+            <SceneWarmUp />
+          </Suspense>
+        </LoadBoundary>
+      )}
     </>
   );
 }
@@ -264,35 +318,6 @@ function LakeFromFile({ tier, pose }: { tier: VillageTier; pose: Pose }) {
 }
 
 // ───────────────────────────────────────── the rental pad and the chair markers ─────────────────────────────────────────
-
-/**
- * The yellow circle in front of the office (design 7.1): stand in it to rent the rod. Always drawn: it is the way in.
- * (The mint discs under the free fishing chairs and the arrow over the nearest one are gone, owner 2026-11-16: no floor discs or
- * floating markers at seats; a chair is used by walking up to it + the button / E, or by tapping it.)
- */
-function RentalPad() {
-  const g = useMemo(() => ({ ring: new RingGeometry(LAKE_RENTAL_PAD.radius - 0.28, LAKE_RENTAL_PAD.radius, 48), disc: new CircleGeometry(LAKE_RENTAL_PAD.radius - 0.28, 48) }), []);
-  const mat = useMemo(() => new MeshBasicMaterial({ color: "#ffd23a", transparent: true, opacity: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }), []);
-  const fill = useMemo(() => new MeshBasicMaterial({ color: "#ffd23a", transparent: true, opacity: 0.16, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 }), []);
-  useFrame(({ clock }) => {
-    mat.opacity = 0.62 + 0.2 * Math.sin(clock.elapsedTime * 2.4);
-  });
-  useEffect(
-    () => () => {
-      g.ring.dispose();
-      g.disc.dispose();
-      mat.dispose();
-      fill.dispose();
-    },
-    [g, mat, fill],
-  );
-  return (
-    <group position={[LAKE_RENTAL_PAD.x, 0.04, LAKE_RENTAL_PAD.z]} rotation={[-Math.PI / 2, 0, 0]}>
-      <mesh geometry={g.ring} material={mat} />
-      <mesh geometry={g.disc} material={fill} />
-    </group>
-  );
-}
 
 // ───────────────────────────────────────── the floats, lines, rings and splashes ─────────────────────────────────────────
 
@@ -398,7 +423,10 @@ function LakeAnglers() {
     const lineGeo = new BufferGeometry();
     const linePos = new Float32Array(MAX_FLOATS * SEGMENTS * 2 * 3).fill(-1000);
     lineGeo.setAttribute("position", new Float32BufferAttribute(linePos, 3));
-    const lineMat = new LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.8 });
+    // the line's colour shows the tension in the big fish's fight (white; yellow when tight; red near the snap)
+    const lineCol = new Float32Array(linePos.length).fill(1);
+    lineGeo.setAttribute("color", new Float32BufferAttribute(lineCol, 3));
+    const lineMat = new LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.8, vertexColors: true });
     const lines = new LineSegments(lineGeo, lineMat);
     lines.frustumCulled = false;
     const haloGeo = new RingGeometry(0.3, 0.37, 32);
@@ -409,7 +437,7 @@ function LakeAnglers() {
     // lake v2: the spray of a splash and the drips off a fish (soft round drops, lakeDrops.ts)
     const spray = createDrops(MAX_SPLASH, 0.085, 0.9);
     const drips = createDrops(160, 0.035, 0.95);
-    return { slots, floatGeo, floatMat, floatMesh, chemiGeo, chemiMat, chemiMesh, chemiBase, originDown, lineGeo, linePos, lineMat, lines, haloGeo, haloMat, halo, spray, drips, ambient: 12 + Math.random() * 20 };
+    return { slots, floatGeo, floatMat, floatMesh, chemiGeo, chemiMat, chemiMesh, chemiBase, originDown, lineGeo, linePos, lineCol, lineMat, lines, haloGeo, haloMat, halo, spray, drips, ambient: 12 + Math.random() * 20 };
   }, [gearIn]);
   useEffect(
     () => () => {
@@ -589,6 +617,16 @@ function LakeAnglers() {
           py = ny;
           pz = nz;
         }
+        // the line's colour: the tension of a fight (Player.fishReel bits 8..14)
+        const tn = v.phase === FISH_PHASE.fighting ? ((v.reel >> 8) & 127) / 100 : 0;
+        const cr = 1;
+        const cg = tn < 0.45 ? 1 : Math.max(0.15, 1 - (tn - 0.45) * 2.4);
+        const cb = tn < 0.45 ? 1 : Math.max(0.1, 1 - (tn - 0.45) * 3);
+        for (let c = base; c < base + SEGMENTS * 6; c += 3) {
+          parts.lineCol[c] = cr;
+          parts.lineCol[c + 1] = tn >= 0.75 ? 0.2 : cg;
+          parts.lineCol[c + 2] = tn >= 0.75 ? 0.15 : cb;
+        }
       } else parts.linePos.fill(-1000, base, base + SEGMENTS * 6);
     });
     // anglers who left take their float and line with them (design 12.5)
@@ -606,6 +644,7 @@ function LakeAnglers() {
       if (parts.chemiMat) parts.chemiMat.emissiveIntensity = parts.chemiBase * (0.05 + 1.6 * dayNight.applied.lights);
     }
     (parts.lineGeo.getAttribute("position") as Float32BufferAttribute).needsUpdate = true;
+    (parts.lineGeo.getAttribute("color") as Float32BufferAttribute).needsUpdate = true;
     parts.halo.visible = haloShown;
     // the drops: ballistic, gone when they fall back to the water
     parts.spray.step(delta, LAKE_WATER_Y);
@@ -651,7 +690,7 @@ export function LakeWorld({ pose, tier }: { pose: Pose; tier: VillageTier }) {
     <>
       <LakeModel tier={tier} pose={pose} />
       <LakeSigns />
-      <RentalPad />
+      {/* the yellow rental ring is gone (owner 2026-11-19: "노란색원 이것도 없애자"); renting still happens at the counter spot */}
       <LakeAnglers />
     </>
   );

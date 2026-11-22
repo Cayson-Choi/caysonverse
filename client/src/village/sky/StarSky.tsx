@@ -268,18 +268,26 @@ function syncPlanets(g: BufferGeometry): void {
   mag.needsUpdate = true;
 }
 
-let glowing = false;
+const glowingStars = new WeakMap<BufferGeometry, readonly number[]>();
 /** The reveal's pulse on the found figure's stars (1.5× for `GLOW_SECONDS`), then back to 1. */
-function syncGlow(g: BufferGeometry): void {
+export function syncGlow(g: BufferGeometry): void {
   const age = glow.start < 0 ? Infinity : glow.now - glow.start;
   const active = age < GLOW_SECONDS;
-  if (!active && !glowing) return;
+  const previous = glowingStars.get(g);
+  if (!active && !previous) return;
   const a = g.getAttribute("aGlow") as Float32BufferAttribute;
-  const v = active ? 1 + 0.5 * Math.sin((Math.PI * age) / GLOW_SECONDS) : 1;
-  for (const k of glow.stars) a.setX(PLANET_SLOTS + k, v);
+  if (previous && (!active || previous !== glow.stars)) {
+    for (const k of previous) a.setX(PLANET_SLOTS + k, 1);
+  }
+  if (active) {
+    const v = 1 + 0.5 * Math.sin((Math.PI * age) / GLOW_SECONDS);
+    for (const k of glow.stars) a.setX(PLANET_SLOTS + k, v);
+    if (previous !== glow.stars) glowingStars.set(g, glow.stars);
+  } else {
+    glowingStars.delete(g);
+    glow.start = -1;
+  }
   a.needsUpdate = true;
-  glowing = active;
-  if (!active) glow.start = -1;
 }
 
 /** Most segments drawn at once (every figure, the pointer's dashes and the Pleiades' ring fit well inside). */
@@ -347,6 +355,15 @@ const lb: Vec3 = [0, 0, 0];
 const lp: Vec3 = [0, 0, 0];
 const lq: Vec3 = [0, 0, 0];
 
+/** How visible star `i` is now (0..1): the shader's own twilight limit (starShader.ts), so a line never outlives its stars. */
+function starVisibility(i: number): number {
+  const mag = sky.catalog?.mag[i];
+  if (mag === undefined) return 1;
+  const a = sky.limit - 0.25;
+  const t = Math.min(1, Math.max(0, (mag - a) / 0.5));
+  return 1 - t * t * (3 - 2 * t);
+}
+
 /** Fill the line buffers from `lineSpec`; returns the segment count. */
 function writeLines(geom: LineSegmentsGeometry, cx: number, cy: number, cz: number): number {
   if (!sky.catalog || lineSpec.length === 0) return 0;
@@ -406,8 +423,14 @@ function writeLines(geom: LineSegmentsGeometry, cx: number, cy: number, cz: numb
       const frac = l.revealAge === Infinity ? 1 : Math.min(1, Math.max(0, (l.revealAge - step * REVEAL_STEP) / REVEAL_DRAW));
       if (frac <= 0) return;
       const [ia, ib] = l.geom.lines[li]!;
+      // a found figure's line is as visible as its stars: while the twilight hides them the line would hang in the sky alone
+      const vis = l.focus ? 1 : Math.min(starVisibility(ia), starVisibility(ib));
+      if (vis < 0.02) return;
       starDirection(ia, la);
       starDirection(ib, lb);
+      // the stars near the horizon are dimmed by the air (starShader.ts): the line fades out over the lowest ~5 degrees as well
+      const low = l.focus ? 1 : Math.min(1, Math.max(0, Math.min(la[1], lb[1]) / 0.09));
+      if (low < 0.02) return;
       const theta = Math.acos(Math.min(1, la[0] * lb[0] + la[1] * lb[1] + la[2] * lb[2])) * (180 / Math.PI);
       if (theta < 2 * LINE_GAP_DEG + 0.3) return;
       const t0 = LINE_GAP_DEG / theta;
@@ -417,12 +440,12 @@ function writeLines(geom: LineSegmentsGeometry, cx: number, cy: number, cz: numb
         for (let t = t0; t < t1; t += period) {
           mixDir(la, lb, t, lp);
           mixDir(la, lb, Math.min(t1, t + DASH_DEG / theta), lq);
-          seg(lp, lq, col, k);
+          seg(lp, lq, col, k * vis * low);
         }
       } else {
         mixDir(la, lb, t0, lp);
         mixDir(la, lb, t1, lq);
-        seg(lp, lq, col, k);
+        seg(lp, lq, col, k * vis * low);
       }
     });
   }

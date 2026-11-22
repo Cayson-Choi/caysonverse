@@ -3,6 +3,35 @@
   "format": "ktx2",
   "note": "Every LM_ material is a shared PBR library set (client/src/village/pbr/pbrLibrary.ts getPbrSet(id, tier, gl) -> createPbrMaterial(set, { repeatMeters: [1, 1] })): the model's UVs are metres, COLOR_0 multiplies the albedo (the tint of the neutral sets), roughness = the ORM's G times roughnessScale. The lot has no maps of its own (letters, clock and numerals are geometry). M_glass is the game's glass; lotnight__ nodes take the game's glow.",
   "materials": {
+    "LM_school_alu": {
+      "pbr": "aluminium_brushed",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 0.6,
+      "normalScale": 1.0,
+      "metal": true
+    },
+    "LM_school_fabric": {
+      "pbr": "fabric_upholstery",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 0.5,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false,
+      "albedoGain": [
+        2.3,
+        2.3,
+        2.3
+      ]
+    },
     "LM_school_floor": {
       "pbr": "floor_wood",
       "repeatMeters": [
@@ -11,7 +40,7 @@
       ],
       "tileMeters": 1.7,
       "vertexColor": true,
-      "roughnessScale": 1.0,
+      "roughnessScale": 0.8,
       "normalScale": 1.0,
       "metal": false
     },
@@ -39,6 +68,23 @@
       "normalScale": 1.0,
       "metal": true
     },
+    "LM_school_linen": {
+      "pbr": "fabric_upholstery",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 0.5,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false,
+      "albedoGain": [
+        8.6,
+        8.9,
+        11.0
+      ]
+    },
     "LM_school_oak": {
       "pbr": "wood_oak",
       "repeatMeters": [
@@ -47,7 +93,7 @@
       ],
       "tileMeters": 1.83,
       "vertexColor": true,
-      "roughnessScale": 0.85,
+      "roughnessScale": 0.7,
       "normalScale": 1.0,
       "metal": false
     },
@@ -75,6 +121,18 @@
       "normalScale": 1.0,
       "metal": false
     },
+    "LM_school_plastic": {
+      "pbr": "plaster_painted",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 2.0,
+      "vertexColor": true,
+      "roughnessScale": 0.5,
+      "normalScale": 0.3,
+      "metal": false
+    },
     "LM_school_render": {
       "pbr": "stucco_white",
       "repeatMeters": [
@@ -87,16 +145,52 @@
       "normalScale": 1.0,
       "metal": false
     },
+    "M_garden": {
+      "kind": "garden",
+      "maps": {
+        "albedo": "../windowview/lot_school_class_day.ktx2"
+      }
+    },
     "M_glass": {
       "kind": "glass"
     },
-    "M_screen": {
-      "kind": "screen",
-      "note": "the garden-and-sky view behind interior windows: unlit, COLOR_0 is the colour"
+    "M_globe": {
+      "kind": "own",
+      "maps": {
+        "albedo": "../library/lot_library_globe.ktx2"
+      },
+      "uv": "atlas (TEXCOORD_0 0..1, no repeat)",
+      "colorSpace": "srgb",
+      "note": "the library's globe chart (Natural Earth land and rivers; SOURCES_lot_library.md)"
+    },
+    "M_school_art": {
+      "kind": "own",
+      "maps": {
+        "albedo": "lot_school_class_art.ktx2",
+        "normal": "lot_school_class_art_normal.ktx2",
+        "orm": "lot_school_class_art_orm.ktx2"
+      },
+      "uv": "atlas (TEXCOORD_0 0..1, no repeat)",
+      "colorSpace": "srgb",
+      "note": "procedural (school_kidart.mjs): sixteen children's drawings on paper (crayon, pencil, felt-tip, paint), albedo 4096 x 2896 ETC1S sRGB, normal + ORM (G roughness) 2048 x 1448 UASTC linear"
+    },
+    "M_school_print": {
+      "kind": "own",
+      "maps": {
+        "albedo": "lot_school_class_print.ktx2",
+        "normal": "lot_school_class_print_normal.ktx2",
+        "orm": "lot_school_class_print_orm.ktx2"
+      },
+      "uv": "atlas (TEXCOORD_0 0..1, no repeat)",
+      "colorSpace": "srgb",
+      "note": "procedural (school_kidart.mjs): the chalkboard's chalk, the hangul cards, bin labels, clock dial, timetable, cork, exercise book, tape, paper backs, picture-book spines; albedo 2048 UASTC sRGB, normal + ORM 1024 UASTC linear; COLOR_0 tints the book covers",
+      "vertexColor": true
     }
   },
   "pbrSets": [
+    "aluminium_brushed",
     "cast_iron",
+    "fabric_upholstery",
     "floor_wood",
     "grass",
     "plaster_painted",

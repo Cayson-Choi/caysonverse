@@ -11,8 +11,9 @@ import type { Appearance } from "@caysonverse/shared/appearance";
 import { VillageMsg } from "@caysonverse/shared/village/messages";
 import { SERVER_URL } from "./endpoint";
 import { joinErrorNotice } from "./reconnectPolicy";
-import { attachResilience } from "./resilience";
+import { confirmVillageEntry } from "./resilience";
 import { readyDeviceKey } from "../village/memorial/deviceKey";
+import { moonSeatPref } from "../land/moonSeatPref";
 
 /** Options of a village (케이슨 마을) join: validated server-side against the join contract (no admin code). */
 export interface VillageJoinParams {
@@ -76,10 +77,7 @@ export async function joinVillage(params: VillageJoinParams): Promise<Room<World
     throw new Error(joinErrorNotice(err));
   }
 
-  setRoom(joined);
-  attachResilience(joined);
-  await waitForSelf(joined);
-  return joined;
+  return confirmVillageEntry(joined, params);
 }
 
 /**
@@ -114,6 +112,15 @@ export function sendKeypad(buildingId: string, code: string): void {
 export function sendLightCandle(cubby: string): void {
   if (!room) return;
   room?.send(VillageMsg.LightCandle, { cubby });
+}
+
+/**
+ * Put out a burning candle (owner 2026-11-20). The server allows it for whoever lit it and for the cubby's family, at most
+ * `CANDLE_OUT_RATE`, and tells everyone in the hall (`CandleOut`); anything else is dropped silently.
+ */
+export function sendPutOutCandle(cubby: string): void {
+  if (!room) return;
+  room.send(VillageMsg.PutOutCandle, { cubby });
 }
 
 // ─────────────────────────── Player messages: the ACTIVE room ───────────────────────────
@@ -207,27 +214,29 @@ function hasSelf(r: SelfWaitable): boolean {
  * arrives. Wait (briefly) for our player so the caller reads the real spawn, not
  * a default. Exported so the resilience drivers reuse the exact same gate.
  */
-export function waitForSelf(r: SelfWaitable): Promise<void> {
-  if (hasSelf(r)) return Promise.resolve();
+export function waitForSelf(r: SelfWaitable, closed?: AbortSignal): Promise<void> {
+  if (closed?.aborted || hasSelf(r)) return Promise.resolve();
   return new Promise((resolve) => {
-    const done = () => {
-      if (!hasSelf(r)) return;
-      r.onStateChange.remove(done);
+    const finish = () => {
+      r.onStateChange.remove(onState);
+      closed?.removeEventListener("abort", finish);
       clearTimeout(timer);
       resolve();
     };
+    const onState = () => {
+      if (hasSelf(r)) finish();
+    };
     // Fallback so a missed patch never strands the join promise.
-    const timer = setTimeout(() => {
-      r.onStateChange.remove(done);
-      resolve();
-    }, 2000);
-    r.onStateChange(done);
+    const timer = setTimeout(finish, 2000);
+    r.onStateChange(onState);
+    closed?.addEventListener("abort", finish);
   });
 }
 
 /** 케이슨랜드 별똥별 급행: get on / off (the server picks the seat while boarding is open; docs/designs/caysonland/DESIGN.md). */
-export function sendRideBoard(ride: "coaster" | "carousel" | "wheel" = "coaster"): void {
-  room?.send(VillageMsg.RideBoard, { ride });
+export function sendRideBoard(ride: "coaster" | "carousel" | "wheel" | "moonboat" | "droptower" = "coaster"): void {
+  // the moon boat carries the rider's seat choice (맨 끝 자리 / 가운데 자리: land/moonSeatPref.ts)
+  room?.send(VillageMsg.RideBoard, ride === "moonboat" ? { ride, pref: moonSeatPref() } : { ride });
 }
 export function sendRideLeave(): void {
   room?.send(VillageMsg.RideLeave, {});

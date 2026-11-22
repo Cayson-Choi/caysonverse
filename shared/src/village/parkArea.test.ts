@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   COASTER_BOARD_REACH_M,
-  COASTER_QUEUE_PAD,
+  COASTER_PAD,
   PARK_ARRIVAL,
   PARK_BOUNDS,
   PARK_EXIT_PAD,
@@ -16,6 +16,7 @@ import {
   useParkDoor,
 } from "./parkArea";
 import { arrivalArea, spreadArrival } from "./arrivalSpot";
+import { shopWindows, WINDOW_BOX } from "./parkShopWindowLayout";
 import { PLAYER_RADIUS } from "../constants";
 
 const inSolid = (x: number, z: number, r = PLAYER_RADIUS) => PARK_SOLIDS.some((b) => x > b.minX - r && x < b.maxX + r && z > b.minZ - r && z < b.maxZ + r);
@@ -40,8 +41,18 @@ describe("park area doors", () => {
 });
 
 describe("park layout", () => {
+  it("stops a walker at each shop trough while leaving room to walk beside its end", () => {
+    const stoppingDistance = WINDOW_BOX.offset + WINDOW_BOX.depth / 2 + PLAYER_RADIUS;
+    for (const s of PARK_SHOPS) for (const w of shopWindows(s)) {
+      const [nx, , nz] = w.out;
+      const near = (d: number, across: number) => inSolid(w.x + nx * d - nz * across, w.z + nz * d + nx * across);
+      expect(near(stoppingDistance - 0.01, 0)).toBe(true);
+      expect(near(stoppingDistance + 0.01, 0)).toBe(false);
+      expect(near(stoppingDistance - 0.01, WINDOW_BOX.width / 2 + PLAYER_RADIUS + 0.1)).toBe(false);
+    }
+  });
   it("keeps the arrival, both pads and the plaza free of solids and inside the bounds", () => {
-    for (const p of [PARK_ARRIVAL, PARK_EXIT_PAD, COASTER_QUEUE_PAD]) {
+    for (const p of [PARK_ARRIVAL, PARK_EXIT_PAD, COASTER_PAD]) {
       expect(p.x).toBeGreaterThan(PARK_BOUNDS.minX);
       expect(p.x).toBeLessThan(PARK_BOUNDS.maxX);
       expect(p.z).toBeGreaterThan(PARK_BOUNDS.minZ);
@@ -69,8 +80,8 @@ describe("park layout", () => {
     expect(PARK_LAMPS.length).toBeGreaterThan(30);
   });
   it("the queue gate stands within the server's boarding reach of itself and far from the plaza", () => {
-    expect(COASTER_BOARD_REACH_M).toBeGreaterThan(COASTER_QUEUE_PAD.radius);
-    expect(Math.hypot(COASTER_QUEUE_PAD.x - PARK_PLAZA.x, COASTER_QUEUE_PAD.z - PARK_PLAZA.z)).toBeGreaterThan(COASTER_BOARD_REACH_M * 3);
+    expect(COASTER_BOARD_REACH_M).toBeGreaterThan(COASTER_PAD.radius);
+    expect(Math.hypot(COASTER_PAD.x - PARK_PLAZA.x, COASTER_PAD.z - PARK_PLAZA.z)).toBeGreaterThan(COASTER_BOARD_REACH_M * 3);
   });
   it("the geometry is the park's own: bounds, solids, id", () => {
     expect(parkGeometry.id).toBe("park");

@@ -5,6 +5,8 @@ import { CanvasTexture, Color, DoubleSide, MeshStandardMaterial, SRGBColorSpace,
 import { PARK_SHOPS, type ParkShop } from "@caysonverse/shared/village/parkArea";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 import { parkMaterial, pickSet } from "./pbr";
+import { addShopWindow } from "./parkShopWindows";
+import { shopWindows } from "@caysonverse/shared/village/parkShopWindowLayout";
 
 const X: V3 = [1, 0, 0];
 const Y: V3 = [0, 1, 0];
@@ -42,35 +44,18 @@ function shopSignTexture(name: string, wall: V3): CanvasTexture {
  * The unseen faces of a shop (the back and the two gable ends): the riders and the walkers behind the row see them, so they get the same
  * half-timbering, windows with shutters and flower boxes (and a service door on the back), only plainer than the street front.
  */
-function addPlainFace(wall: GeoBuilder, s: ParkShop, F: V3, dist: number, latHalf: number, shut: V3, door: boolean): void {
+function addPlainFace(wall: GeoBuilder, wood: GeoBuilder, s: ParkShop, F: V3, dist: number, latHalf: number, door: boolean): void {
   const wallH = 4.4;
   const beam = s.beam;
   // lateral axis: horizontal, perpendicular to F (boxes are symmetric, so its sign does not matter)
   const L: V3 = [-F[2], 0, F[0]];
   const at = (f: number, y: number, l: number): V3 => [s.x + F[0] * (dist + f) + L[0] * l, y, s.z + F[2] * (dist + f) + L[2] * l];
-  const white: V3 = [0.95, 0.94, 0.9];
   // posts, rails, braces
   for (const l of [-latHalf + 0.25, 0, latHalf - 0.25]) wall.box(at(0.06, wallH / 2 + 0.5, l), F, Y, 0.1, wallH / 2 - 0.5, 0.15, beam);
   for (const y of [1.2, 2.75, wallH - 0.12]) wall.box(at(0.07, y, 0), F, Y, 0.11, 0.14, latHalf + 0.05, beam);
-  const winsAt = door ? [-latHalf * 0.55, latHalf * 0.55] : [0];
-  for (const l of winsAt) {
-    wall.box(at(0.05, 2.15, l), F, Y, 0.15, 0.7, 0.8, [0.2, 0.2, 0.22]);
-    wall.box(at(0.12, 2.15, l), F, Y, 0.05, 0.6, 0.68, [0.66, 0.82, 0.95]);
-    for (const e of [-1, 1]) wall.box(at(0.15, 2.15, l + e * 0.72), F, Y, 0.09, 0.72, 0.07, white);
-    for (const e of [-1, 1]) wall.box(at(0.15, 2.15 + e * 0.67, l), F, Y, 0.09, 0.07, 0.8, white);
-    wall.box(at(0.16, 2.15, l), F, Y, 0.05, 0.6, 0.025, white);
-    wall.box(at(0.16, 2.15, l), F, Y, 0.05, 0.025, 0.68, white);
-    wall.box(at(0.25, 1.42, l), F, Y, 0.22, 0.05, 0.94, [0.82, 0.8, 0.76]);
-    for (const e of [-1, 1]) {
-      wall.box(at(0.19, 2.15, l + e * 1.2), F, Y, 0.04, 0.72, 0.38, shut);
-      for (let sl = -3; sl <= 3; sl++) wall.box(at(0.235, 2.15 + sl * 0.2, l + e * 1.2), F, Y, 0.012, 0.022, 0.32, [shut[0] * 0.7, shut[1] * 0.7, shut[2] * 0.7]);
-    }
-    wall.box(at(0.38, 1.26, l), F, Y, 0.18, 0.12, 0.86, [0.4, 0.26, 0.16]);
-    for (let f = 0; f < 5; f++) wall.box(at(0.38, 1.47, l - 0.6 + f * 0.3), F, Y, 0.13, 0.12, 0.12, f % 2 ? [0.96, 0.5, 0.62] : [0.98, 0.82, 0.3]);
-  }
   if (door) {
     wall.box(at(0.04, 1.3, 0), F, Y, 0.17, 1.3, 0.75, [0.14, 0.09, 0.06]);
-    wall.box(at(0.11, 1.3, 0), F, Y, 0.06, 1.18, 0.54, [0.33, 0.2, 0.11]);
+    addDoorLeaf(wood, F, at, 0.20, 2.48);
     for (const e of [-1, 1]) wall.box(at(0.15, 1.3, e * 0.72), F, Y, 0.12, 1.35, 0.09, beam);
     wall.box(at(0.16, 2.7, 0), F, Y, 0.13, 0.11, 0.9, beam);
     wall.box(at(0.4, 0.1, 0), F, Y, 0.4, 0.1, 0.9, [0.62, 0.6, 0.56]);
@@ -78,7 +63,22 @@ function addPlainFace(wall: GeoBuilder, s: ParkShop, F: V3, dist: number, latHal
   }
 }
 
-function addShop(wall: GeoBuilder, roof: GeoBuilder, cloth: GeoBuilder, glass: GeoBuilder, s: ParkShop, shut: V3): void {
+/** A timber door seated between its jambs. The leaf and its grip clear the opening's dark lining. */
+function addDoorLeaf(wood: GeoBuilder, face: V3, at: (d: number, y: number, l: number) => V3, bottom: number, top: number): void {
+  const grain: V3 = [0.52, 0.30, 0.18];
+  const rail: V3 = [0.66, 0.42, 0.25];
+  const middle = (bottom + top) / 2;
+  wood.box(at(0.238, middle, 0), face, Y, 0.017, (top - bottom) / 2, 0.605, grain, 1.15);
+  for (const side of [-1, 1]) wood.box(at(0.261, middle, side * 0.55), face, Y, 0.014, (top - bottom) / 2, 0.055, rail, 1);
+  for (const y of [bottom + 0.08, middle, top - 0.08]) wood.box(at(0.261, y, 0), face, Y, 0.014, 0.068, 0.50, rail, 1);
+  const brass: V3 = [0.72, 0.50, 0.21];
+  const grip = bottom + 0.98;
+  wood.box(at(0.267, grip, 0.44), face, Y, 0.013, 0.079, 0.032, brass);
+  wood.cylinder(at(0.275, grip + 0.032, 0.44), at(0.332, grip + 0.032, 0.44), 0.023, 0.018, 8, brass);
+  wood.cylinder(at(0.332, grip + 0.032, 0.44), at(0.332, grip + 0.032, 0.314), 0.018, 0.015, 8, brass, true);
+}
+
+function addShop(wall: GeoBuilder, wood: GeoBuilder, roof: GeoBuilder, cloth: GeoBuilder, glass: GeoBuilder, s: ParkShop, shut: V3): void {
   const F: V3 = [s.faces, 0, 0];
   const wallH = 4.4;
   const half = s.d / 2;
@@ -96,28 +96,12 @@ function addShop(wall: GeoBuilder, roof: GeoBuilder, cloth: GeoBuilder, glass: G
   // door: a recessed dark opening in a thick frame, a transom, a step and a lantern
   const dz = -s.w / 4;
   wall.box(c(half + 0.04, 1.4, dz), F, Y, 0.18, 1.45, 0.85, [0.14, 0.09, 0.06]);
-  wall.box(c(half + 0.12, 1.4, dz), F, Y, 0.06, 1.3, 0.62, [0.36, 0.22, 0.12]);
+  addDoorLeaf(wood, F, (d, y, l) => c(half + d, y, dz + l), 0.20, 2.79);
   for (const e of [-1, 1]) wall.box(c(half + 0.16, 1.4, dz + e * 0.82), F, Y, 0.13, 1.5, 0.1, beam);
   wall.box(c(half + 0.18, 2.95, dz), F, Y, 0.15, 0.12, 1.0, beam);
-  wall.box(c(half + 0.18, 0.55, dz), F, Y, 0.45, 0.1, 0.95, [0.62, 0.6, 0.56]);
+  wall.box(c(half + 0.33, 0.10, dz), F, Y, 0.38, 0.10, 0.95, [0.62, 0.6, 0.56]);
   wall.box(c(half + 0.35, 2.4, dz + 1.1), F, Y, 0.1, 0.16, 0.1, [0.98, 0.86, 0.5]);
-  // windows: deep reveals, white frames with muntins, sills, shutters both sides, flower boxes
-  for (const k of [s.w / 6 + 0.4, s.w / 3 + 1.1]) {
-    if (k + 0.9 > s.w / 2) continue;
-    wall.box(c(half + 0.05, 2.1, k), F, Y, 0.16, 0.72, 0.84, [0.2, 0.2, 0.22]);
-    glass.box(c(half + 0.12, 2.1, k), F, Y, 0.05, 0.62, 0.72, [0.66, 0.82, 0.95]); // its own mesh: the panes glow at night
-    for (const e of [-1, 1]) wall.box(c(half + 0.16, 2.1, k + e * 0.76), F, Y, 0.1, 0.74, 0.07, [0.95, 0.94, 0.9]);
-    for (const y of [-1, 1]) wall.box(c(half + 0.16, 2.1 + y * 0.7, k), F, Y, 0.1, 0.07, 0.84, [0.95, 0.94, 0.9]);
-    wall.box(c(half + 0.17, 2.1, k), F, Y, 0.06, 0.62, 0.025, [0.95, 0.94, 0.9]);
-    wall.box(c(half + 0.17, 2.1, k), F, Y, 0.06, 0.025, 0.72, [0.95, 0.94, 0.9]);
-    wall.box(c(half + 0.26, 1.38, k), F, Y, 0.24, 0.05, 0.98, [0.82, 0.8, 0.76]);
-    for (const e of [-1, 1]) {
-      wall.box(c(half + 0.2, 2.1, k + e * 1.28), F, Y, 0.04, 0.74, 0.4, shut);
-      for (let sl = -3; sl <= 3; sl++) wall.box(c(half + 0.245, 2.1 + sl * 0.2, k + e * 1.28), F, Y, 0.012, 0.022, 0.34, [shut[0] * 0.7, shut[1] * 0.7, shut[2] * 0.7]);
-    }
-    wall.box(c(half + 0.4, 1.22, k), F, Y, 0.2, 0.12, 0.88, [0.4, 0.26, 0.16]);
-    for (let f = 0; f < 6; f++) wall.box(c(half + 0.4, 1.44, k - 0.7 + f * 0.28), F, Y, 0.14, 0.13, 0.12, f % 2 ? [0.96, 0.5, 0.62] : [0.98, 0.82, 0.3]);
-  }
+  for (const opening of shopWindows(s)) addShopWindow(opening, s.id, wood, cloth, glass, shut);
   // a striped fabric awning over the door: a sloped slab per stripe, a scalloped valance
   for (let i = 0; i < 8; i++) {
     const col: V3 = i % 2 === 0 ? [0.86, 0.3, 0.3] : [0.97, 0.94, 0.88];
@@ -147,30 +131,32 @@ function addShop(wall: GeoBuilder, roof: GeoBuilder, cloth: GeoBuilder, glass: G
   wall.box([chim[0], chim[1] + 1.25, chim[2]], X, Y, 0.38, 0.14, 0.38, [0.4, 0.3, 0.28]);
   wall.cylinder([chim[0], chim[1] + 1.4, chim[2]], [chim[0], chim[1] + 1.9, chim[2]], 0.22, 0.2, 8, [0.7, 0.4, 0.3]);
   // the back (service door, windows) and the two gable ends
-  addPlainFace(wall, s, [-s.faces, 0, 0], half, s.w / 2, shut, true);
-  addPlainFace(wall, s, [0, 0, 1], s.w / 2, half, shut, false);
-  addPlainFace(wall, s, [0, 0, -1], s.w / 2, half, shut, false);
+  addPlainFace(wall, wood, s, [-s.faces, 0, 0], half, s.w / 2, true);
+  addPlainFace(wall, wood, s, [0, 0, 1], s.w / 2, half, false);
+  addPlainFace(wall, wood, s, [0, 0, -1], s.w / 2, half, false);
   // the iron bracket of the hanging signboard, beside the door
   wall.box(c(half + 0.9, 3.75, dz + 1.7), F, Y, 0.9, 0.04, 0.05, [0.12, 0.12, 0.14]);
 }
 
 /** The promenade's six storybook shop fronts: real plaster PBR, half-timbering, deep reveals, shutters, flower boxes, awnings, signs. */
 export function Shops({ all }: { all: Texture[] }) {
-  const { wallGeo, roofGeo, clothGeo, glassGeos } = useMemo(() => {
+  const { wallGeo, woodGeo, roofGeo, clothGeo, glassGeos } = useMemo(() => {
     const w = new GeoBuilder();
+    const wood = new GeoBuilder();
     const r = new GeoBuilder();
     const cl = new GeoBuilder();
     const gl = PARK_SHOPS.map(() => new GeoBuilder());
-    PARK_SHOPS.forEach((s, i) => addShop(w, r, cl, gl[i]!, s, SHUTTERS[i % SHUTTERS.length]!));
-    return { wallGeo: w.build(), roofGeo: r.build(), clothGeo: cl.build(), glassGeos: gl.map((g) => g.build()) };
+    PARK_SHOPS.forEach((s, i) => addShop(w, wood, r, cl, gl[i]!, s, SHUTTERS[i % SHUTTERS.length]!));
+    return { wallGeo: w.build(), woodGeo: wood.build(), roofGeo: r.build(), clothGeo: cl.build(), glassGeos: gl.map((g) => g.build()) };
   }, []);
   // the shop windows light up with the night, each a little different (a warm lamp, a dimmer one, one shop with its light out)
-  const glassMats = useMemo(() => SHOP_GLOW.map((k, i) => ({ k, mat: new MeshStandardMaterial({ color: "#b9d4ee", roughness: 0.2, emissive: new Color(SHOP_WARM[i % SHOP_WARM.length]!), emissiveIntensity: 0 }) })), []);
+  const glassMats = useMemo(() => SHOP_GLOW.map((k, i) => ({ k, mat: new MeshStandardMaterial({ color: "#c7dee4", transparent: true, opacity: 0.21, depthWrite: false, roughness: 0.14, emissive: new Color(SHOP_WARM[i % SHOP_WARM.length]!), emissiveIntensity: 0 }) })), []);
   useFrame(() => {
     const l = dayNight.applied.lights;
     for (const g of glassMats) g.mat.emissiveIntensity = l * g.k;
   });
   const wallMat = useMemo(() => parkMaterial(pickSet(all, "Plaster003"), 0.7, { vertexColors: true, normalScale: 1.0, color: new Color("#ffffff") }), [all]);
+  const woodMat = useMemo(() => parkMaterial(pickSet(all, "WoodFloor051"), 1, { vertexColors: true, normalScale: 0.5 }), [all]);
   const roofMat = useMemo(() => parkMaterial(pickSet(all, "RoofingTiles013A"), 1, { color: new Color("#e29a7c"), normalScale: 1.0 }), [all]);
   const clothMat = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: DoubleSide }), []);
   const signs = useMemo(
@@ -184,11 +170,12 @@ export function Shops({ all }: { all: Texture[] }) {
   return (
     <group>
       <mesh geometry={wallGeo} material={wallMat} castShadow receiveShadow />
+      <mesh geometry={woodGeo} material={woodMat} castShadow receiveShadow />
       {glassGeos.map((g, i) => (
         <mesh key={i} geometry={g} material={glassMats[i % glassMats.length]!.mat} />
       ))}
       <mesh geometry={roofGeo} material={roofMat} castShadow receiveShadow />
-      <mesh geometry={clothGeo} material={clothMat} castShadow />
+      <mesh geometry={clothGeo} material={clothMat} castShadow receiveShadow />
       {signs.map(({ s, mat }) => (
         <mesh key={s.id} position={[s.x + s.faces * (s.d / 2 + 0.95), 3.45, s.z - s.w / 4 + 1.7]} material={mat} castShadow>
           <boxGeometry args={[1.5, 0.75, 0.06]} />

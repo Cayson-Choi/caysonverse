@@ -5,6 +5,7 @@ import { isTouchDevice } from "../device";
 import { useUiStore } from "../stores/uiStore";
 import type { Pose } from "../game/types";
 import { HudButton } from "./HudButton";
+import { afterPaint } from "./afterPaint";
 import { RosterPanel, useRosterCount, useRosterHotkey } from "./RosterPanel";
 import { ViewToggle } from "./ViewToggle";
 import { OverviewToggle } from "./OverviewToggle";
@@ -39,7 +40,8 @@ function HudInfo({ pose }: { pose: Pose }) {
         label={rosterOpen ? "접속자 목록 닫기" : `접속자 ${count}명 보기`}
         pressed={rosterOpen}
         className="cv-hud-people"
-        onClick={() => useUiStore.getState().setRosterOpen(!rosterOpen)}
+        // the list mounts after the press has painted (INP)
+        onClick={() => afterPaint(() => useUiStore.getState().setRosterOpen(!rosterOpen))}
       >
         <span className="cv-hud-people-icon">👥</span>
         <span className="cv-hud-people-count">{count}</span>
@@ -48,10 +50,13 @@ function HudInfo({ pose }: { pose: Pose }) {
   );
 }
 
-/** ☰ — opens the menu (Esc does too). Closing is the menu's own 닫기 / Esc / backdrop. */
+/**
+ * ☰ — opens the menu (Esc does too). Closing is the menu's own 닫기 / Esc / backdrop. The card is mounted after the press has
+ * painted (afterPaint): mounting it inside the click took ~100 ms on a 4x slower CPU (INP, e2e/inp-probe.mjs hudplaza).
+ */
 function MenuButton() {
   return (
-    <HudButton label="메뉴 열기" onClick={openMenu}>
+    <HudButton label="메뉴 열기" onClick={() => afterPaint(openMenu)}>
       ☰
     </HudButton>
   );

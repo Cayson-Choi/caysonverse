@@ -39,6 +39,8 @@ import {
   VILLAGE_CAMERA_PLANES,
   VILLAGE_GROUND_DECAL,
   applyDayNight,
+  applyVegetationDayNight,
+  vegNightUniform,
   cherryTintUniform,
   liftMaterial,
   dayTintUniform,
@@ -771,6 +773,18 @@ describe("applyDayNight: the clock's numbers into the model (Task 7A)", () => {
   beforeEach(() => setNightLightmap(new Texture()));
   afterEach(() => setNightLightmap(null));
   const at = (kst: string): DayNightState => dayNightAt(parseKstTime(kst)!);
+
+  it("updates all park plant lighting across daybreak without a mounted village model", () => {
+    for (const time of ["2026-06-21T23:30", "2026-06-22T12:30"]) {
+      const s = at(time);
+      applyVegetationDayNight(s);
+      expect(foliageTintUniform.value.toArray()).toEqual(s.foliageTint);
+      expect(cherryTintUniform.value.toArray()).toEqual(s.cherryTint);
+      expect(vegNightUniform.value).toBe(s.night);
+      expect(litUniform.value).toBe(s.lights);
+      expect(liftUniform.value).toBe(s.lift);
+    }
+  });
 
   it("noon: the day light map alone, nothing lit, no tint, the day's lift; the water and the stars at rest", () => {
     const f = fixture();

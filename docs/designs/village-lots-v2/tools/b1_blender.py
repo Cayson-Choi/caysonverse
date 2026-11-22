@@ -110,8 +110,25 @@ def make_materials(matdefs):
             t = nt.nodes.new("ShaderNodeTexImage")
             t.image = load_png(os.path.join(PNG, d["own"] + ".png"))
             t.interpolation = "Cubic"
-            nt.links.new(t.outputs["Color"], b.inputs["Base Color"])
+            if d.get("vertexColor"):
+                # (the books: COLOR_0 tints the atlas's neutral side boards)
+                vm = nt.nodes.new("ShaderNodeMix")
+                vm.data_type = "RGBA"
+                vm.blend_type = "MULTIPLY"
+                vm.inputs["Factor"].default_value = 1.0
+                nt.links.new(t.outputs["Color"], vm.inputs["A"])
+                nt.links.new(vc.outputs["Color"], vm.inputs["B"])
+                nt.links.new(vm.outputs["Result"], b.inputs["Base Color"])
+            else:
+                nt.links.new(t.outputs["Color"], b.inputs["Base Color"])
             b.inputs["Roughness"].default_value = 0.45
+            if d.get("normal") and os.path.exists(os.path.join(PNG or "", d["normal"] + ".png")):
+                tn = nt.nodes.new("ShaderNodeTexImage")
+                tn.image = load_png(os.path.join(PNG, d["normal"] + ".png"))
+                tn.image.colorspace_settings.name = "Non-Color"
+                nm = nt.nodes.new("ShaderNodeNormalMap")
+                nt.links.new(tn.outputs["Color"], nm.inputs["Color"])
+                nt.links.new(nm.outputs["Normal"], b.inputs["Normal"])
             mats[name] = m
             continue
         if d.get("fire"):
@@ -133,6 +150,25 @@ def make_materials(matdefs):
                 m.surface_render_method = "BLENDED"
             except Exception:
                 pass
+            mats[name] = m
+            continue
+        if d.get("garden"):
+            # Camera rays see the panorama. Other rays pass through so the sun still lights the room during bakes.
+            tex = nt.nodes.new("ShaderNodeTexEnvironment")
+            tex.image = load_png(os.path.join(PNG, "ninomaru_garden.png"))
+            direction = nt.nodes.new("ShaderNodeVectorMath")
+            direction.operation = "SCALE"
+            direction.inputs["Scale"].default_value = -1
+            nt.links.new(nt.nodes.new("ShaderNodeNewGeometry").outputs["Incoming"], direction.inputs[0])
+            nt.links.new(direction.outputs[0], tex.inputs["Vector"])
+            emit = nt.nodes.new("ShaderNodeEmission")
+            nt.links.new(tex.outputs[0], emit.inputs[0])
+            mix = nt.nodes.new("ShaderNodeMixShader")
+            nt.links.new(nt.nodes.new("ShaderNodeLightPath").outputs["Is Camera Ray"], mix.inputs[0])
+            nt.links.new(nt.nodes.new("ShaderNodeBsdfTransparent").outputs[0], mix.inputs[1])
+            nt.links.new(emit.outputs[0], mix.inputs[2])
+            out = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL")
+            nt.links.new(mix.outputs[0], out.inputs["Surface"])
             mats[name] = m
             continue
         if d.get("screen"):
@@ -276,13 +312,16 @@ def add_letters(kit):
             font = bpy.data.fonts.load(f, check_existing=True)
             break
     for L in kit.letters:
-        text, at, out, size, depth, surf, target = L
+        text, at, out, size, depth, surf, target = L[:7]
+        opts = L[7] if len(L) > 7 else {}
         cu = bpy.data.curves.new("txt", "FONT")
         cu.body = text
-        cu.font = font
-        cu.size = size / 0.72  # Blender's size is the em; a Hangul glyph is ~0.72 em tall
+        f_ = opts.get("font")
+        cu.font = bpy.data.fonts.load(f_, check_existing=True) if f_ and os.path.exists(f_) else font
+        # Blender's size is the em; a Hangul glyph is ~0.72 em tall, a Latin capital ~0.69 (`capital`: size is the cap height)
+        cu.size = size / (0.69 if opts.get("capital") else 0.72)
         cu.extrude = depth / 2
-        cu.align_x = "CENTER"
+        cu.align_x = opts.get("align", "CENTER")
         cu.align_y = "BOTTOM_BASELINE"
         cu.resolution_u = 2
         o = bpy.data.objects.new("txt", cu)
@@ -585,12 +624,21 @@ def write_manifest(kit, lot, path):
         if d.get("glass"):
             mats[name] = {"kind": "glass"}
             continue
+        if d.get("garden"):
+            mats[name] = {"kind": "garden", "maps": {"albedo": d["garden"]}}
+            continue
         if d.get("screen"):
             mats[name] = {"kind": "screen", "note": "the garden-and-sky view behind interior windows: unlit, COLOR_0 is the colour"}
             continue
         if d.get("own"):
             mats[name] = {"kind": "own", "maps": {"albedo": d["own"] + ".ktx2"}, "uv": "atlas (TEXCOORD_0 0..1, no repeat)", "colorSpace": "srgb",
                           "note": d.get("note", "")}
+            # optional: a tangent-space normal map and an ORM (G roughness, B metal) beside the albedo, linear; COLOR_0 tinting
+            for k in ("normal", "orm"):
+                if d.get(k):
+                    mats[name]["maps"][k] = d[k] + ".ktx2"
+            if d.get("vertexColor"):
+                mats[name]["vertexColor"] = True
             continue
         if d.get("fire"):
             mats[name] = {"kind": "fire", "note": "HOOK for L5v2: the fire__ nodes' flame cards. Draw additive (blending Additive, depthWrite "
@@ -908,7 +956,10 @@ def run_room(unit_id, kit_mod, viewdef, prefix, tex_dir):
     unit = next(u for u in lot["units"] if u["id"] == unit_id)
     org, size = unit["interior"]["origin"], unit["interior"]["size"]
     LOT, YAW, CX, CZ = unit_id, 0.0, org["x"], org["z"]
-    kit = kit_mod.build(spec, unit, L)
+    # --phone: the room's phone LOD (<unit>_phone.glb, LotRoom's LOT_ROOM_PHONE_FILES), for a kit whose build takes `phone`
+    phone = "--phone" in argv
+    kit = kit_mod.build(spec, unit, L, phone=True) if phone else kit_mod.build(spec, unit, L)
+    fid = unit_id + ("_phone" if phone else "")
     add_letters(kit)
     mats = make_materials(kit.mats)
     objs = []
@@ -972,16 +1023,25 @@ def run_room(unit_id, kit_mod, viewdef, prefix, tex_dir):
         SUN_DIR = getattr(kit, "sun_dir", None)
         SUN_ELEV = getattr(kit, "sun_elev", 38)
         night_lights(kit)
-        lm = bake_lots.bake_room(kit, objs, unit_id, arg("--lightmap"), setup_world, int(arg("--lm-size", "1024")), int(arg("--lm-samples", "96")))
+        lm = bake_lots.bake_room(kit, objs, unit_id, arg("--lightmap"), setup_world, int(arg("--lm-size", "1024")), int(arg("--lm-samples", "96")), fid)
         if lm:
-            lightmap = {"day": "lots/%s/%s_lm_day.ktx2" % (tex_dir, unit_id), "night": "lots/%s/%s_lm_night.ktx2" % (tex_dir, unit_id),
+            lightmap = {"day": "lots/%s/%s_lm_day.ktx2" % (tex_dir, fid), "night": "lots/%s/%s_lm_night.ktx2" % (tex_dir, fid),
                         "scale": lm["scale"], "channel": 1, "size": lm["size"],
                         "note": "irradiance = (texel in linear) * scale on TEXCOORD_1 of the lotroom__ shell (bake_lots.py)"}
-    out = arg("--out", os.path.join(LOTS, unit_id + ".glb"))
+    if arg("--lm-reuse") and not lightmap:
+        # --lm-reuse <scale>:<size>: the phone file shares the PC file's lightmaps (the shell is the same box room, so its unwrap is
+        # the same): unwrap TEXCOORD_1 the way the bake does, bake nothing, and point the extras at the PC's two files
+        import bake_lots
+        bake_lots._lightmap_uvs(bake_lots._targets(objs, unit_id))
+        sc, sz = arg("--lm-reuse").split(":")
+        lightmap = {"day": "lots/%s/%s_lm_day.ktx2" % (tex_dir, unit_id), "night": "lots/%s/%s_lm_night.ktx2" % (tex_dir, unit_id),
+                    "scale": float(sc), "channel": 1, "size": int(sz),
+                    "note": "irradiance = (texel in linear) * scale on TEXCOORD_1 of the lotroom__ shell (the PC file's maps, shared: same shell, same unwrap)"}
+    out = arg("--out", os.path.join(LOTS, fid + ".glb"))
     if "--no-export" not in argv:
         manifest = os.path.join(LOTS, tex_dir, "%s_textures.json" % unit_id)
         write_manifest(kit, {"id": unit_id}, manifest)
-        export(out, objs, {"caysonverse": "%s (lots v2 B1 room kit)" % unit_id, "textures": "lots/%s/%s_textures.json" % (tex_dir, unit_id),
+        export(out, objs, {"caysonverse": "%s (lots v2 B1 room kit%s)" % (unit_id, ", phone LOD" if phone else ""), "lod": "phone" if phone else "pc", "textures": "lots/%s/%s_textures.json" % (tex_dir, unit_id),
                            "origin": org, "size": size, **({"lightmap": lightmap} if lightmap else {})})
         report["glb"] = glb_stats(out)
         log("wrote", out, report["glb"])

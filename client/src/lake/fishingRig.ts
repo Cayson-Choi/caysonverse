@@ -11,10 +11,12 @@
 // The rod folds to 1.15 m for walking and opens to 3.6 m over 0.6 s when the angler sits.
 
 import { AnimationMixer, LoopOnce, LoopRepeat, Object3D, Quaternion, Vector3, type AnimationAction, type AnimationClip, type Camera } from "three";
+import { relaxWrist, restoreWrist, WRIST_RELAX } from "./wristRelax";
 import { FISHING_CLIPS, GRIP_OFFSET, ROD_AXIS_R, type FishingClip } from "@caysonverse/shared/village/fishingAnims";
 import type { BuiltAvatar } from "../game/characterAvatar";
 import { fishingAnimsNow, loadFishingAnims, withoutRightArm } from "./fishAnims";
 import { elapsedSince, readFishView } from "./lakeNet";
+import { reelTension } from "./fishFightView";
 import { FISH_PHASE, emptyFishView, type FishView } from "./lakeProtocol";
 import { createRod, lakeGearReady, loadLakeGear, type Rod } from "./lakeProps";
 import { createCatchRig, fpNarrow } from "./catchRig";
@@ -40,6 +42,12 @@ export interface RigContext {
 
 export interface FishingRig {
   update(delta: number, ctx: RigContext): void;
+  /**
+   * The wrist (owner 2026-11-19): the clips turn the hand far off the forearm; eased back, the rod keeping its world direction. MUST run
+   * after the frame's last mixer update (the mixer rewrites the bones, so a relax written before it is lost while the rod's
+   * compensation stays: a rod pointing sideways — the remote players' bug).
+   */
+  afterMixer(delta: number): void;
   /** A fishing clip is playing or fading: the mixer must tick. */
   needsTick(): boolean;
   /** 1 normally; eases to 0 while a clip that stands the avatar up plays (the chair's lift would float it). */
@@ -154,7 +162,11 @@ export function rodBend(view: FishView, t: number): number {
       return 0.5;
     case FISH_PHASE.fighting:
       // held: bent hard under the load; let go: the tension drops (the fish takes line)
-      return (view.reel & 128) !== 0 ? 0.82 + 0.14 * Math.sin(t * 6.5) + 0.04 * Math.sin(t * 17) : 0.42 + 0.12 * Math.sin(t * 3.1);
+      {
+        // the rod bends with the line's tension (Player.fishReel), a little more while the angler pulls; it trembles faster when it is tight
+        const tn = reelTension(view.reel);
+        return Math.min(1, 0.28 + 0.62 * tn + ((view.reel & 128) !== 0 ? 0.1 : 0) + 0.05 * Math.sin(t * (5 + 14 * tn)));
+      }
     case FISH_PHASE.lifting:
       // reeled in hard, then the fish's weight on the line as it swings, then the hand takes it
       if (t < REEL_S) return 0.72 + 0.14 * Math.sin(t * 9.5) + 0.06 * Math.sin(t * 23);
@@ -192,6 +204,9 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
   const q = new Quaternion();
   let handR: Object3D | null = null;
   let handL: Object3D | null = null;
+  let wristAmt = 0;
+  let wristWant = false;
+  const rodQ0 = new Quaternion();
 
   const ensureActions = (): boolean => {
     const clips = fishingAnimsNow();
@@ -222,6 +237,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     if (rod.real) rod.root.quaternion.identity();
     else rod.root.quaternion.copy(q.setFromUnitVectors(Y, new Vector3(...ROD_AXIS_R).normalize()));
     rod.root.position.set(GRIP_OFFSET[0], GRIP_OFFSET[1], GRIP_OFFSET[2]);
+    rodQ0.copy(rod.root.quaternion);
     // the held item goes to the shop: the rod hangs from the proxy of the shrunk hand slot
     if (hasItem && !stow) {
       stow = stowHandItem(handR);
@@ -237,6 +253,8 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     unregisterTip?.();
     unregisterTip = null;
     rodHost?.remove(rod.root);
+    restoreWrist(root);
+    wristAmt = 0;
     rod.dispose();
     rod = null;
     unfold = 0;
@@ -275,8 +293,21 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     liftFactor() {
       return lift;
     },
+    afterMixer(delta) {
+      if (!rod) return;
+      wristAmt += ((wristWant ? ((globalThis as { __cvWristRelax?: number }).__cvWristRelax ?? WRIST_RELAX) : 0) - wristAmt) * Math.min(1, delta * 10);
+      if (wristAmt < 1e-3) {
+        if (wristAmt > 0) restoreWrist(root);
+        wristAmt = 0;
+        rod.root.quaternion.copy(rodQ0);
+      } else {
+        const fix = relaxWrist(root, wristAmt, handR);
+        if (fix) rod.root.quaternion.copy(rodQ0).premultiply(fix);
+      }
+    },
     update(delta, ctx) {
       if (!readFishView(sid, view) || view.rod === 0) {
+        wristWant = false;
         if (rod || current) {
           play(null);
           dropFpRod();
@@ -341,6 +372,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
         rod.setUnfold(unfold);
         rod.setBend(atSpot ? rodBend(view, t) : 0);
       }
+      wristWant = atSpot && seated; // applied by afterMixer(), once the mixer has posed the bones this frame
       // the fish (lake v2, catchRig.ts): under the water, out on the line, into the hand, taken in the arms, let go
       handR = handR ?? bone(root, "handslot.r");
       handL = handL ?? bone(root, "handslot.l");

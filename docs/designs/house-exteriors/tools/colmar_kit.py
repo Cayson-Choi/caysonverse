@@ -546,6 +546,37 @@ class Colmar:
         if o is not None and self.wants_box(wname, r, storey):
             self.flower_box(W, r)
 
+    def board_shutter(self, W, a, b, bottom, top, front, back):
+        """Three edge-jointed boards. The middle board is pierced right through, with a visible sawn edge."""
+        de = self.de
+        width = (b - a) / 3
+        for i in range(3):
+            x0 = a + i * width + (0.002 if i else 0)
+            x1 = a + (i + 1) * width - (0.002 if i != 2 else 0)
+            colour = mul(self.shutter, (0.98, 1.05, 0.94)[i])
+            W.box(de, x0, x1, bottom, top, front, back, "timber_cladding", colour, faces="lr", along="y")
+            if i != 1:
+                W.box(de, x0, x1, bottom, top, front, back, "timber_cladding", colour, faces="f", along="y")
+                continue
+            cx, cy = (x0 + x1) / 2, top - 0.33
+            radius = min(0.067, width * 0.42)
+            # At each x fraction, lower and upper sawn contours of the heart.
+            profile = [(-1, 0.18, 0.18), (-0.83, -0.13, 0.61), (-0.53, -0.47, 0.83),
+                       (-0.25, -0.76, 0.74), (0, -1.06, 0.43), (0.25, -0.76, 0.74),
+                       (0.53, -0.47, 0.83), (0.83, -0.13, 0.61), (1, 0.18, 0.18)]
+            for lo, hi in [(x0, cx - radius), (cx + radius, x1)]:
+                W.box(de, lo, hi, bottom, top, front, back, "timber_cladding", colour, faces="f", along="y")
+            def timber(points, tint, hint):
+                face(de, [W.P(*p) for p in points], "timber_cladding", tint, hint, uax=UP,
+                     origin=W.P(cx, bottom, front), uoff=0.23, voff=0.0)
+            for left, right in zip(profile, profile[1:]):
+                x, y, h = cx + left[0]*radius, cy + left[1]*radius, cy + left[2]*radius
+                xx, yy, hh = cx + right[0]*radius, cy + right[1]*radius, cy + right[2]*radius
+                timber([(x,bottom,front), (xx,bottom,front), (xx,yy,front), (x,y,front)], colour, W.N)
+                timber([(x,h,front), (xx,hh,front), (xx,top,front), (x,top,front)], colour, W.N)
+                for y0, y1, direction in [(y, yy, UP), (h, hh, (0,-1,0))]:
+                    timber([(x,y0,front), (xx,y1,front), (xx,y1,back), (x,y0,back)], mul(colour, 0.68), direction)
+
     def shutters(self, W, r, sw, storey):
         """Two shutters folded back flat beside the window, 5 cm out (over the timber), in the house's paint: board shutters
         (vertical boards, a heart cut-out near the top, two black strap hinges) or louvred ones (horizontal slats in a raised
@@ -580,9 +611,16 @@ class Colmar:
                         W.quad(de, [(a + 0.065, y0s, dsh0 - 0.02), (b - 0.065, y0s, dsh0 - 0.02), (b - 0.065, y0s + 0.06, dsh1 - 0.004),
                                     (a + 0.065, y0s + 0.06, dsh1 - 0.004)], "timber_cladding", mul(pt, 1.0),
                                (0, 0.75, -0.66), uax=W.T)
+            elif storey == 1 and W.n == (0, 1):
+                # The former leaf and heart each drew one grain offset. Keep the UV variation
+                # of the rest of the house independent of the number of boards in this leaf.
+                de.rng.random()
+                de.rng.random()
+                after_leaf = de.rng.getstate()
+                self.board_shutter(W, a, b, v0 - 0.01, v1 + 0.01, dsh0, dsh1)
+                de.rng.setstate(after_leaf)
             else:
                 W.box(de, a, b, v0 - 0.01, v1 + 0.01, dsh0, dsh1, "timber_cladding", pt, faces="flr", along="y")
-            if not louvre:
                 # a heart cut-out (a dark diamond-and-lobes shape through the board)
                 cu, cy = (a + b) / 2, v1 - 0.32
                 pts = [(cu, cy - 0.07, dsh0 - 0.001), (cu + 0.06, cy + 0.01, dsh0 - 0.001), (cu + 0.035, cy + 0.06, dsh0 - 0.001),
@@ -591,7 +629,7 @@ class Colmar:
             for yy in (v0 + 0.18, v1 - 0.18):
                 ha, hb = (b - 0.34, b - 0.01) if side < 0 else (a + 0.01, a + 0.34)
                 W.box(de, ha, hb, yy - 0.018, yy + 0.018, dsh0 - 0.016, dsh0 - (0.012 if louvre else 0.0), "metal_painted",
-                      lin(IRON), faces="f", along="u")
+                      lin(IRON), faces="flrtu" if storey == 1 and W.n == (0, 1) else "f", along="u")
             self.reg_wall_box("shutter", W, a, b, v0 - 0.01, v1 + 0.01, dsh0 - 0.022, 0.0)
 
     def wants_box(self, wname, r, storey):

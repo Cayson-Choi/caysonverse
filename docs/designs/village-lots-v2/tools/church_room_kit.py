@@ -460,17 +460,34 @@ def organ(kit, sol):
 
 
 def hymn_board(kit, sol):
-    """The hymn board on the left wall: an oak board with a pointed top and three rows of gilt numbers (numbers only)."""
+    """The hymn board between the 2nd and 3rd west windows: an oak board with a pointed top, a navy plate and gilt 3D Korean
+    letters: the header "오늘의 찬송" and three rows, the hymn number (새찬송가, large, gilt) and its title (smaller, cream)."""
     D = kit.D
-    r = sol["hymn_board"]["rect"]
-    x0, x1, z0, z1 = r["x0"], r["x1"], r["z0"], r["z1"]
-    D.cbox(0.0, 0.04, 0.95, 1.75, z0, z1, OAK, c=0.01)
-    D.box(0.04, 0.048, 1.0, 1.7, z0 + 0.05, z1 - 0.05, S("LM_church_plaster", G.hexc("2F3E5E")))
-    f = P.F((0.0, 0.0, (z0 + z1) / 2), (0, 0, -1), (1, 0, 0))
-    pts = Q.pointed(0.0, 1.75, z1 - z0, 4, 1.0)
-    f.poly(D, [(-(z1 - z0) / 2, 1.75, 0.04), ((z1 - z0) / 2, 1.75, 0.04)] + [(p[0], p[1], 0.04) for p in reversed(pts)], OAK)
-    for k, num in enumerate(("12", "305", "148")):
-        kit.letters.append((num, (0.048, 1.52 - k * 0.2, (z0 + z1) / 2), (1, 0, 0), 0.12, 0.008, S("LM_church_brass", G.hexc("F2CE7A")), "D"))
+    zc, hw = 7.075, 0.8                       # centred between the windows (their midpoint, like the painting opposite)
+    z0, z1 = zc - hw, zc + hw
+    y0, ys, body = 0.72, 2.05, 0.06            # bottom, springing line of the point, oak frame width
+    D.cbox(0.0, 0.04, y0, ys, z0, z1, OAK, c=0.01)
+    D.box(0.04, 0.048, y0 + body, ys, z0 + body, z1 - body, S("LM_church_plaster", G.hexc("2F3E5E")))
+    f = P.F((0.0, 0.0, zc), (0, 0, -1), (1, 0, 0))     # u = the viewer's right (-z), w = out of the wall (+x)
+    navy = S("LM_church_plaster", G.hexc("2F3E5E"))
+    rise = 0.28                                 # a shallow gable: the sconce above the board sits at 2.4 m
+    f.poly(D, [(-hw, ys, 0.04), (0.0, ys + rise, 0.04), (hw, ys, 0.04)], OAK)
+    f.poly(D, [(-hw + body, ys, 0.048), (0.0, ys + rise - 0.075, 0.048), (hw - body, ys, 0.048)], navy)
+    gilt = S("LM_church_brass", G.hexc("F2CE7A"))
+    cream = S("LM_church_plaster", G.hexc("FFF4D6"))
+
+    def at(u, y):
+        return (0.048, y, zc - u)
+
+    def text(s, u, y, size, surf, align):
+        kit.letters.append((s, at(u, y), (1, 0, 0), size, 0.008, surf, "D", {"align": align}))
+
+    text("오늘의 찬송", 0.0, 2.0, 0.1, gilt, "CENTER")
+    f.box(D, -0.62, 0.62, 1.9, 1.915, 0.048, 0.054, gilt)                      # gilt rule under the header
+    for k, (num, title) in enumerate((("79장", "주 하나님 지으신"), ("288장", "예수를 나의 구주"), ("305장", "나 같은 죄인"))):
+        y = 1.66 - k * 0.3
+        text(num, -0.2, y, 0.13, gilt, "RIGHT")
+        text(title, -0.1, y, 0.08, cream, "LEFT")
 
 
 # ------------------------------------------------------------------------------------------------ lamps + glass --

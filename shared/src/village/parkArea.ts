@@ -8,15 +8,18 @@
  *
  *     z = -190  gate arch (the way out) ........ the main promenade south to the star plaza
  *     z = -112  star plaza (fountain), paths west to the coaster queue and east to the future rides
- *     z = -46   the coaster's queue gate (boarding pad) .. -8 the queue pavilion .. -1.4 the station platform
+ *     z = -12   the coaster's boarding pad, at the foot of the station platform's north steps (-6.8 .. -1.4 the platform)
  *     z >= 0    the coaster's circuit (fenced off: the park's south edge is z = -2.2)
  *
  * Seat ids: this file adds NONE to the village's seat table (docs/designs/caysonland/DESIGN.md section 2: 400+ is reserved, rides use rideSeat).
  */
+import { parkRideSolids } from "./parkRideSolids";
 import { LOT_DOOR_REACH_M, lotDoorPoint, villageLot } from "./villageLots";
-import type { AABB } from "../collision";
+import type { AABB, CameraBox } from "../collision";
+import { shopWindows, WINDOW_BOX } from "./parkShopWindowLayout";
 import type { Bounds, MapGeometry } from "../school/geometry";
 import { makeGeometry } from "../school/geometry";
+import { PARK_WALL_PLAN, PARK_WALL_SOLIDS, distanceToWall } from "./parkWall";
 
 export const PARK_AREA = "park" as const;
 export type ParkAreaId = typeof PARK_AREA;
@@ -30,19 +33,34 @@ export const PARK_BOUNDS: Bounds = Object.freeze({ minX: -170, maxX: 380, minZ: 
 
 /** The gate arch's way-out pad and the arrival spot inside (park-local). */
 export const PARK_EXIT_PAD = Object.freeze({ x: 40, z: -181, radius: 1.8 });
-export const PARK_ARRIVAL = Object.freeze({ x: 40, z: -171, yaw: Math.PI }); // facing north is yaw PI (villageLayout FACING_NORTH)
+// Arriving, one looks INTO the park: south (+z, yaw 0), the promenade and the star plaza ahead. (It was yaw PI, north: every visitor
+// arrived staring back at the arch they had just come through - owner 2026-11-21 "반대방향을 보도록".)
+export const PARK_ARRIVAL = Object.freeze({ x: 40, z: -171, yaw: 0 });
+
+/**
+ * The gate is ONE gate with two sides: the village's gatehouse (lot_gate, world metres, its line z 94 on the avenue x -24) stands in the
+ * park's north wall at x 40, z -186.5. A village point + this offset is the same point of the gate in the park's frame (the client draws
+ * the village's gatehouse there, and the village's picture beyond the arch by the same mapping).
+ */
+export const PARK_GATE_FROM_VILLAGE = Object.freeze({ dx: 64, dz: -280.5 });
 
 /** The star plaza and its fountain. */
 export const PARK_PLAZA = Object.freeze({ x: 40, z: -112, radius: 26, fountainHalf: 4 });
 
-/** The coaster's queue gate: the boarding pad (the server's RideBoard reach is `COASTER_BOARD_REACH_M` from its centre). */
-export const COASTER_QUEUE_PAD = Object.freeze({ x: -17, z: -46, radius: 3.2 });
+/** The coaster's boarding pad: on the paving at the foot of the station platform's north steps (the server's RideBoard reach is `COASTER_BOARD_REACH_M` from its centre). */
+export const COASTER_PAD = Object.freeze({ x: 2, z: -12, radius: 3.2 });
 export const COASTER_BOARD_REACH_M = 6;
 
 /** The carousel's boarding pad (its entrance gate, south of the platform) and the wheel's (phase 2c). */
 export const CAROUSEL_PAD = Object.freeze({ x: 110, z: -119, radius: 3 });
 /** The wheel's boarding pad: on the grass at the foot of the platform steps (the rider is lifted into the gondola; the avatar never walks on the deck). */
-export const WHEEL_PAD = Object.freeze({ x: 211, z: -130.8, radius: 3 });
+export const WHEEL_PAD = Object.freeze({ x: 205, z: -128.2, radius: 3 });
+/** The 달배's site (axle over its middle; the 달토끼 숲, the park's west) and its boarding pad: on the grass at the foot of its platform steps, east of the hull (shared/src/land/moonBoat.ts, moonBoatGeometry.ts). */
+export const MOON_BOAT_SITE_AT = Object.freeze({ x: -95, z: -140 });
+export const MOON_BOAT_PAD = Object.freeze({ x: -82.1, z: -140, radius: 3 });
+/** The cloud drop tower (shared/src/land/dropTower.ts): its axis and its boarding pad, on the grass east of its platform (the rider is lifted into the seat). */
+export const DROP_SITE_AT = Object.freeze({ x: -75, z: -88 });
+export const DROP_PAD = Object.freeze({ x: -61, z: -88, radius: 3 });
 
 /** The village side: the gate lot's door pad and where you stand coming out (world metres, from the gate lot). */
 export function parkGateDoor() {
@@ -98,8 +116,7 @@ export const PARK_SHOPS: readonly ParkShop[] = Object.freeze([
   { id: "photo", x: 63, z: -133, w: 12, d: 8, faces: -1, wall: [0.82, 0.8, 0.92], beam: [0.3, 0.2, 0.13], roofH: 3.8 },
 ]);
 
-/** The coaster's queue pavilion (a roofed hall the queue switchbacks through) and the station platform. */
-export const PARK_QUEUE_HALL = Object.freeze({ minX: -31, maxX: -3, minZ: -40, maxZ: -9 });
+/** The coaster's station platform (the queue hall that stood north of it was taken away: owner 2026-11-19; boarding is from the platform's steps, like every ride). */
 export const PARK_PLATFORM = Object.freeze({ minX: -14, maxX: 17, minZ: -6.8, maxZ: -1.4 });
 
 /** Trees: deterministic scatter on the lawn, never on a path, the plaza, a building or the coaster's ground. */
@@ -116,7 +133,8 @@ function onPath(x: number, z: number, m: number): boolean {
   if (x > 28 - m && x < 52 + m && z < -134 + m) return true; // the promenade
   if (x > -24 - m && x < 24 + m && z > -20 - m) return true; // the station's frontage
   if (z > -118 - m && z < -106 + m && x > -23 - m && x < 345 + m) return true; // the east-west avenue
-  if (x > -23 - m && x < -11 + m && z > -118 && z < -40) return true; // the queue approach
+  if (x > -4 - m && x < 8 + m && z > -118 && z < -26) return true; // the station approach (gravel)
+  if (x > -7 - m && x < 11 + m && z > -26 - m && z < -7) return true; // the station apron (paving)
   return false;
 }
 
@@ -128,10 +146,8 @@ function buildTrees(): ParkTree[] {
     if (x < PARK_BOUNDS.minX + 6 || x > PARK_BOUNDS.maxX - 6 || z < PARK_BOUNDS.minZ + 6 || z > -7) return false;
     if (onPath(x, z, 5)) return false;
     if (PARK_SHOPS.some((s) => Math.abs(x - s.x) < s.d / 2 + 5 && Math.abs(z - s.z) < s.w / 2 + 4)) return false;
-    const q = PARK_QUEUE_HALL;
-    if (x > q.minX - 8 && x < q.maxX + 8 && z > q.minZ - 8 && z < q.maxZ + 8) return false;
     if (Math.hypot(x - PARK_EXIT_PAD.x, z - PARK_EXIT_PAD.z) < 14) return false;
-    if (Math.hypot(x - 110, z + 135) < 30 || Math.hypot(x - 205, z + 135) < 34) return false; // the ride plots (the carousel's, the wheel's) stay open
+    if (Math.hypot(x - 110, z + 135) < 30 || Math.hypot(x - 205, z + 135) < 34 || Math.hypot(x - MOON_BOAT_SITE_AT.x - 4, z - MOON_BOAT_SITE_AT.z) < 32 || Math.hypot(x - DROP_SITE_AT.x - 6, z - DROP_SITE_AT.z) < 24) return false; // the ride plots (the carousel's, the wheel's, the moon boat's, the drop tower's) stay open
     return true;
   };
   // groves: clusters of trees with open lawn between them (lawns stay open beside the paths, the plaza and the ride plots)
@@ -158,7 +174,8 @@ function buildTrees(): ParkTree[] {
   }
   return out;
 }
-export const PARK_TREES: readonly ParkTree[] = Object.freeze(buildTrees());
+/** A tree whose crown would stand in the castle wall's stone (parkWall.ts) is left out (the rest keep their places). */
+export const PARK_TREES: readonly ParkTree[] = Object.freeze(buildTrees().filter((t) => distanceToWall(PARK_WALL_PLAN, t.x, t.z) > 3.2 + 1.4 * t.s));
 
 /** Lamp posts: both sides of the promenade, round the plaza, along the avenue and the queue approach. */
 function buildLamps(): { x: number; z: number }[] {
@@ -171,7 +188,7 @@ function buildLamps(): { x: number; z: number }[] {
   for (let x = -10; x >= -20; x -= 10) out.push({ x, z: -119 });
   // (none at x = 110: the carousel's entrance sign and its boarding pad sit on that axis)
   for (let x = 70; x <= 330; x += 20) if (x !== 110) out.push({ x, z: -119 }, { x, z: -105 });
-  for (let z = -100; z <= -52; z += 16) out.push({ x: -24, z }, { x: -10, z });
+  for (let z = -100; z <= -28; z += 18) out.push({ x: -6, z }, { x: 10, z });
   return out;
 }
 export const PARK_LAMPS: readonly { x: number; z: number }[] = Object.freeze(buildLamps());
@@ -181,8 +198,12 @@ export const PARK_KIOSK = Object.freeze({ x: 55, z: -177, w: 4.2, d: 3.4 });
 export const PARK_PLANTERS: readonly { x: number; z: number; w: number; d: number }[] = Object.freeze([
   { x: 33.5, z: -137, w: 3, d: 1.6 },
   { x: 46.5, z: -137, w: 3, d: 1.6 },
-  { x: 33.5, z: -182, w: 3, d: 1.6 },
-  { x: 46.5, z: -182, w: 3, d: 1.6 },
+  // (the two that flanked the old arch at z -182 went: the gatehouse's own turnstile canopy and planters stand there now)
+  // flower beds flanking the station apron (where the queue hall stood)
+  { x: -8.5, z: -20, w: 3, d: 1.6 },
+  { x: 12.5, z: -20, w: 3, d: 1.6 },
+  { x: -8.5, z: -9.5, w: 3, d: 1.6 },
+  { x: 12.5, z: -9.5, w: 3, d: 1.6 },
 ]);
 export const PARK_BINS: readonly { x: number; z: number }[] = Object.freeze([
   { x: 32.2, z: -164 },
@@ -222,28 +243,45 @@ export const PARK_TROUGHS: readonly ParkTrough[] = Object.freeze(buildTroughs())
 /** Everything a player body collides with. */
 function buildSolids(): AABB[] {
   const out: AABB[] = [];
-  for (const s of PARK_SHOPS) out.push(box(s.x - s.d / 2, s.x + s.d / 2, s.z - s.w / 2, s.z + s.w / 2));
-  const q = PARK_QUEUE_HALL;
-  // the queue pavilion: walled but for the entrance on its north side (the boarding pad stands in front of it)
-  out.push(box(q.minX, q.maxX, q.minZ + 3, q.maxZ));
+  for (const s of PARK_SHOPS) {
+    out.push(box(s.x - s.d / 2, s.x + s.d / 2, s.z - s.w / 2, s.z + s.w / 2));
+    // Each waist-high trough projects past the wall on its own brackets; the gaps between them stay walkable.
+    const halfDepth = (WINDOW_BOX.offset + WINDOW_BOX.depth / 2) / 2;
+    for (const w of shopWindows(s)) {
+      const cx = w.x + w.out[0] * halfDepth, cz = w.z + w.out[2] * halfDepth;
+      const hx = w.out[0] ? halfDepth : WINDOW_BOX.width / 2;
+      const hz = w.out[2] ? halfDepth : WINDOW_BOX.width / 2;
+      out.push(box(cx - hx, cx + hx, cz - hz, cz + hz));
+    }
+  }
   const p = PARK_PLATFORM;
   out.push(box(p.minX, p.maxX, p.minZ, p.maxZ));
+  out.push(box(2 - 3.6, 2 + 3.6, p.minZ - 4.3, p.minZ)); // the station's north steps (the boarding pad is just beyond them)
   // the fountain and its ring
   const f = PARK_PLAZA.fountainHalf;
   out.push(box(PARK_PLAZA.x - f, PARK_PLAZA.x + f, PARK_PLAZA.z - f, PARK_PLAZA.z + f));
-  // the gate arch's two towers
-  out.push(box(29.5, 33, -190, -183), box(47, 50.5, -190, -183));
+  // the gatehouse (the village's, seen from behind: PARK_GATE_FROM_VILLAGE): its wings and piers either side of the 6 m passage (x 37 .. 43),
+  // and the back planters under its flags
+  out.push(box(29.5, 37, -190, -185.3), box(43, 50.5, -190, -185.3));
+  out.push(box(31.9, 33.7, -184, -182.2), box(46.3, 48.1, -184, -182.2));
   out.push(box(PARK_KIOSK.x - PARK_KIOSK.w / 2, PARK_KIOSK.x + PARK_KIOSK.w / 2, PARK_KIOSK.z - PARK_KIOSK.d / 2, PARK_KIOSK.z + PARK_KIOSK.d / 2));
-  out.push(box(110 - 12.8, 110 + 12.8, -135 - 12.8, -135 + 12.8)); // the carousel's platform and its fence (the ride's own pad is outside it)
-  // the wheel: the four feet of its A-frames and the boarding platform's deck
-  for (const sx of [-1, 1]) for (const dz of [-2.75, 4.9]) out.push(box(205 + sx * 11 - 1, 205 + sx * 11 + 1, -140 + dz - 1, -140 + dz + 1));
-  out.push(box(205 + 2.0, 205 + 10.1, -140 + 0.8, -140 + 5.6));
+  // ── the rides (parkRideSolids.ts): every platform, flight of steps, railing, queue fence, post and name board of the carousel, the wheel, the 달배 and
+  // the 구름 낙하탑 (owner 2026-11-21: the fences and steps were walked through). One block of its own: a ride's barrier is added THERE, not here ──
+  out.push(...parkRideSolids());
   for (const t of PARK_TROUGHS) out.push(box(t.x0, t.x1, t.z0, t.z1));
   for (const p of PARK_PLANTERS) out.push(box(p.x - p.w / 2, p.x + p.w / 2, p.z - p.d / 2, p.z + p.d / 2));
   for (const b of PARK_BINS) out.push(box(b.x - 0.3, b.x + 0.3, b.z - 0.3, b.z + 0.3));
   for (const t of PARK_TREES) out.push(box(t.x - 0.45, t.x + 0.45, t.z - 0.45, t.z + 0.45));
+  // the castle wall round the park (parkWall.ts, owner 2026-11-20): its runs (the north ones sealed out to the bounds' edge) and towers
+  out.push(...PARK_WALL_SOLIDS.obstacles);
   return out;
 }
 export const PARK_SOLIDS: readonly AABB[] = Object.freeze(buildSolids());
 
-export const parkGeometry: MapGeometry = makeGeometry("park", PARK_BOUNDS, [], PARK_SOLIDS);
+/** The star plaza's low solids the camera rises over (QA 2026-11-20): the fountain's basin (its bowl hides an avatar's lower body) and the stone troughs (0.84 m). */
+export const PARK_HURDLES: readonly CameraBox[] = Object.freeze([
+  { minX: PARK_PLAZA.x - PARK_PLAZA.fountainHalf, maxX: PARK_PLAZA.x + PARK_PLAZA.fountainHalf, minZ: PARK_PLAZA.z - PARK_PLAZA.fountainHalf, maxZ: PARK_PLAZA.z + PARK_PLAZA.fountainHalf, height: 1.1 },
+  ...PARK_TROUGHS.map((t) => ({ minX: t.x0, maxX: t.x1, minZ: t.z0, maxZ: t.z1, height: t.y })),
+]);
+
+export const parkGeometry: MapGeometry = makeGeometry("park", PARK_BOUNDS, [], PARK_SOLIDS, PARK_WALL_SOLIDS.cameraBoxes, PARK_HURDLES);

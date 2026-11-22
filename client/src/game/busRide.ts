@@ -28,6 +28,12 @@ export function riderBusPoint(self: { ahead: number; right: number }, kind: "fre
 export const busSeatGoal = { index: -1, at: 0 };
 
 /**
+ * Owner 2026-11-18 ("버스안에서 이동이 잘 안되고"): a spot on the cabin's floor the rider clicked or tapped (bus-local), walked to by
+ * LocalPlayer like a seat goal (down the aisle, then across); `active` false when there is none. A key or the stick clears it.
+ */
+export const busWalkGoal = { ahead: 0, right: 0, at: 0, active: false };
+
+/**
  * The seat a tap walked the rider to (owner 2026-11-17: a tap never sits by itself): while the rider can still sit in it from
  * where they stand, the E key / the 앉기 button offers THAT seat, whatever else is near. -1: none.
  */
@@ -64,20 +70,9 @@ export const busCamState = {
   chest: [0, 0, 0] as [number, number, number],
   /** the arm's length (m) after the cabin shortened it */
   arm: 0,
+  /** the third-person lens is so near the head that the own body is hidden (transitCamera.ts busSelfHidden) */
+  selfHidden: false,
   /** the local avatar's three.js group (e2e measures its share of the screen); null off the bus */
   avatar: null as { visible: boolean } | null,
 };
 
-/** How the world orbit's zoom maps to the arm in the bus (m): the wheel / pinch keep working, the bus has its own range. */
-export const BUS_ARM = { near: 0.7, far: 2.6, orbitNear: 3.2, orbitFar: 10 } as const;
-
-/** The camera's elevation over the head (rad) from the world orbit's pitch. */
-export function busElevation(orbitPitch: number): number {
-  return Math.max(-0.5, Math.min(0.85, orbitPitch - 0.35));
-}
-
-/** The arm (m) the orbit's zoom asks for in the bus. */
-export function busArmFor(orbitDistance: number, portrait: boolean): number {
-  const k = Math.max(0, Math.min(1, (orbitDistance - BUS_ARM.orbitNear) / (BUS_ARM.orbitFar - BUS_ARM.orbitNear)));
-  return (BUS_ARM.near + (BUS_ARM.far - BUS_ARM.near) * k) * (portrait ? 1.12 : 1);
-}

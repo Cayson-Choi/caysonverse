@@ -33,7 +33,8 @@ export async function act(p) {
 let nickSeq = 0;
 /** Entry screen -> nickname -> 입장하기 -> the village scene is up. Returns what the entry screen showed after the press. */
 export async function joinVillage(p, prefix, time = NOON) {
-  await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(time)}`, { waitUntil: "domcontentloaded" });
+  // a fresh browser context fetches ~600 dev modules: 13-26 s on this machine under load, so the default 30 s is too tight
+  await p.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent(time)}`, { waitUntil: "domcontentloaded", timeout: 120000 });
   await entryReady(p);
   const nick = `${prefix}${++nickSeq}${Math.floor(Math.random() * 90 + 10)}`.slice(0, 10);
   await p.page.locator("input.cv-input").first().fill(nick);
@@ -164,8 +165,10 @@ export const showHud = (p) =>
     for (const el of window.__hidden ?? []) el.style.visibility = "";
   });
 
-/** A guide's question button by index (the dialog must be open). */
+/** A guide's question button by index (a topic page must be open). */
 export const question = (p, i) => p.page.locator(".cv-guide-questions button").nth(i);
+/** A topic card of the guide's home screen (guideTopics.ts id). */
+export const guideCard = (p, id) => p.page.locator(`.cv-guide-card[data-topic="${id}"]`);
 /** The music's state (the guides speak in words only since 2026-11-17: nothing ducks it). */
 export const audioState = (p) =>
   p.page.evaluate(() => {
@@ -174,10 +177,10 @@ export const audioState = (p) =>
     return { music: bgm ? { level: r(bgm.level()), duck: r(bgm.duckLevel()), paused: bgm.element()?.paused ?? null } : null };
   });
 
-/** The guide's answer as shown: the "나: …" line, the bubble's speaker and words, and whether the page ever asked for a voice clip. */
+/** The guide's open answer as shown (the bubble under its question): the asked question, the speaker and words, the Q&A divider, and whether the page ever asked for a voice clip. */
 export const guideAnswer = (p) =>
   p.page.evaluate(() => ({
-    me: (document.querySelector(".cv-guide-me")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+    asked: (document.querySelector(".cv-guide-questions button.is-asked")?.textContent ?? "").replace(/\s+/g, " ").trim(),
     speaker: document.querySelector(".cv-guide-speaker")?.textContent ?? null,
     answer: document.querySelector(".cv-guide-answer p")?.textContent ?? null,
     divider: document.querySelector(".cv-guide-divider")?.textContent ?? null,
@@ -293,11 +296,29 @@ export async function layoutOf(p, scope) {
   return { els, report: layoutReport(els, p.page.viewportSize()) };
 }
 
-/** Walk to 1.3 m south of the plaza guide (5, 12), going round it from the south (its collider keeps the player out), and face it. */
+/** Walk into speaking range of the plaza guide (5, 12), using a free side if another visitor blocks the approach. */
 export async function standAtPlazaGuide(p) {
-  for (const [x, z, tol] of [[0, 17, 1.5], [5, 17, 1.2], [5, 15.5, 0.8], [5, 13.7, 0.4]]) await walkAndWait(p, x, z, 30000, tol);
-  await turnCameraTo(p, 5, 12);
-  await sleep(600);
+  for (const stand of [[5, 13.35], [3.65, 12], [6.35, 12]]) {
+    await p.page.evaluate(async ([x, z]) => {
+      const { getActiveMap, activeBounds } = await window.__imp("/src/game/activeMap.ts");
+      const { collectObstacles } = await window.__imp("/src/game/playerObstacles.ts");
+      const { planClickMove } = await window.__imp("/src/game/clickPlan.ts");
+      const { clearClickTarget, setClickTarget } = await window.__imp("/src/game/clickMove.ts");
+      clearClickTarget();
+      const at = window.__cv.getPos();
+      const plan = planClickMove(at.x, at.z, { x, y: 0, z, ny: 1 }, collectObstacles(at.x, at.z), activeBounds(), false, { furniture: getActiveMap().furniture });
+      if (plan.ok) setClickTarget(plan.x, plan.z, plan.y, plan.via);
+    }, stand);
+    await waitIdle(p, 30000);
+    const at = await pos(p);
+    if (Math.hypot(at.x - 5, at.z - 12) <= 2) {
+      await turnCameraTo(p, 5, 12);
+      await sleep(600);
+      return;
+    }
+  }
+  const at = await pos(p);
+  throw new Error(`Could not reach the plaza guide on foot. Stopped at (${at.x}, ${at.z}).`);
 }
 
 const r3 = (n) => Math.round(n * 1000) / 1000;
@@ -352,14 +373,16 @@ export async function runVillageScenario({ name, device }) {
       await act(A);
       await A.page.locator(".cv-guide").waitFor({ state: "visible", timeout: 5000 });
       await sleep(500);
-      run.check("the dialog is the 마을 안내원's, with 6 questions (the 5th: the fishing lake, the 6th: the houses)", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "plaza_guide" && (await A.page.locator(".cv-guide-questions button").count()) === 6);
+      run.check("the dialog is the 마을 안내원's, opening on its 9 topic cards (2026-11-20)", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "plaza_guide" && (await A.page.locator(".cv-guide-card").count()) === 9);
       run.check("no AI 음성 label (the voice was taken out, 2026-11-17)", !(await A.page.locator(".cv-guide").textContent()).includes("AI 음성"));
+      await press(A, guideCard(A, "first"));
+      await A.page.waitForFunction(() => document.querySelector(".cv-guide")?.getAttribute("data-guide-page") === "first", null, { timeout: 3000 });
       await press(A, question(A, 0));
       await sleep(600);
       const g = await guideAnswer(A);
       const s = await audioState(A);
       summary.guide = { ...g, music: s.music };
-      run.check("the answer shows in the guide's bubble, the question above it as '나: …', then '다른 질문'", g.answer?.startsWith("여기는 케이슨 마을이에요.") && g.me === "나 여기는 어떤 곳이에요?" && g.speaker === "안내원" && g.divider === "다른 질문" && g.bubbleBg !== g.buttonBg, g);
+      run.check("처음 왔어요 → '여기는 어떤 곳이에요?': the answer shows in the guide's bubble under it", g.answer?.startsWith("여기는 케이슨 마을이에요.") && g.asked === "여기는 어떤 곳이에요?" && g.speaker === "안내원" && g.divider === "자주 묻는 질문" && g.bubbleBg !== g.buttonBg, g);
       run.check("no voice: no clip requested, the music is not ducked", g.voiceRequests.length === 0 && s.music && Math.abs(s.music.duck - 1) < 0.001, { req: g.voiceRequests, music: s.music });
       await run.shot(A, "guide-plaza-answer.png");
       await press(A, A.page.locator(".cv-guide-close"));
@@ -414,14 +437,22 @@ export async function runVillageScenario({ name, device }) {
       for (const [x, z] of DOOR_ROUTE) await walkAndWait(A, x, z, 40000, 1.2);
       const ts = await A.page.evaluate(async () => (await window.__imp("/src/game/interactTargets.ts")).getTargets(window.__cv.getPos()).map((t) => ({ id: t.id, label: t.label })));
       run.check("추모관 들어가기 is offered at the door", ts.some((t) => t.id === "memorial_door" && t.label === "추모관 들어가기"), ts);
-      await act(A);
       // the door's curtain (DoorFade.tsx, .cv-door-fade only: T11 review I2) closes while the hall loads, then opens
       const curtain = () => {
         const e = document.querySelector(".cv-door-fade");
         return e ? parseFloat(getComputedStyle(e).opacity) : -1;
       };
-      const veil = await A.page.waitForFunction(() => { const e = document.querySelector(".cv-door-fade"); return !!e && parseFloat(getComputedStyle(e).opacity) > 0.05; }, null, { timeout: 8000 }).then(() => true, () => false);
-      run.check("the door curtain (.cv-door-fade) showed", veil);
+      // The short transition can finish before keyboard.press or tap returns. Arm the frame poll inside the page first.
+      const watch = await A.page.evaluateHandle(() => ({ armed: false }));
+      const curtainShown = A.page.waitForFunction((watch) => {
+        watch.armed = true;
+        const e = document.querySelector(".cv-door-fade");
+        return !!e && parseFloat(getComputedStyle(e).opacity) > 0.05;
+      }, watch, { timeout: 8000 }).then(() => true, () => false);
+      await A.page.waitForFunction((watch) => watch.armed, watch, { timeout: 8000 });
+      await act(A);
+      run.check("the door curtain (.cv-door-fade) showed", await curtainShown);
+      await watch.dispose();
       await A.page.waitForFunction(async () => (await window.__imp("/src/village/villageArea.ts")).localArea() === "hall", null, { timeout: 15000 });
       await A.page.waitForFunction(() => !!window.__cvHall, null, { timeout: 60000 });
       // the curtain must open again: a timeout is a failure, not swallowed (T11 review I1)
@@ -467,18 +498,18 @@ export async function runVillageScenario({ name, device }) {
       await setOrbit(A, phone ? null : 3.6, 0.35);
     });
 
-    await run.step("7. inside the hall, an emoji is refused (quiet place)", async () => {
+    await run.step("7. inside the hall, an emoji goes through (owner 2026-11-20: 추모관 안에서도 이모티콘)", async () => {
       await A.page.evaluate(async () => (await window.__imp("/src/net/connection.ts")).sendEmoji(2));
-      await sleep(1800);
-      const seenB = await B.page.evaluate(() => window.__cv.getEmojis().length);
+      const seenB = await B.page.waitForFunction(() => window.__cv.getEmojis().length > 0, null, { timeout: 5000 }).then(() => true, () => false);
       const seenA = await A.page.evaluate(() => window.__cv.getEmojis().length);
-      run.check("nobody in the hall sees the emoji (the server dropped it)", seenB === 0 && seenA === 0, { seenA, seenB });
+      run.check("B in the hall sees A's emoji (and A sees its own)", seenB && seenA > 0, { seenA, seenB });
+      await sleep(2500); // let it float away before the next steps
     });
 
     const pick = await pickCubby(A);
     summary.pick = pick;
 
-    await run.step("8. a filled cubby: the card, then 촛불 켜기, which the other player sees", async () => {
+    await run.step("8. a filled cubby: the card, then 촛불 밝히기, which the other player sees", async () => {
       run.check("found a filled cubby to visit", pick !== null, pick);
       await standAtCubby(A, pick);
       await setOrbit(A, phone ? null : 2.6, 0.2);
@@ -499,7 +530,7 @@ export async function runVillageScenario({ name, device }) {
         text: document.querySelector(".cv-cubby")?.textContent ?? "",
       }));
       run.check("the card shows the sample's name, years and line", card.id === pick.id && card.name === pick.sample.name && card.years === `${pick.sample.born} – ${pick.sample.passed}` && card.line === pick.sample.line, card);
-      run.check("the button says 촛불 켜기, and the card has no '!'", card.button === "촛불 켜기" && !card.text.includes("!"), card);
+      run.check("the button says 촛불 밝히기, and the card has no '!'", card.button === "촛불 밝히기" && !card.text.includes("!"), card);
       await run.shot(A, "hall-card.png");
       if (phone) {
         const lay = await layoutOf(A, ".cv-cubby-panel");
@@ -511,12 +542,12 @@ export async function runVillageScenario({ name, device }) {
         window.__candleHeard = false;
         window.__imp("/src/village/hallCandles.ts").then((m) => m.subscribeCandles(() => (window.__candleHeard = true)));
       });
-      await press(A, A.page.getByRole("button", { name: "촛불 켜기", exact: true }));
+      await press(A, A.page.getByRole("button", { name: "촛불 밝히기", exact: true }));
       const gotB = await B.page.waitForFunction((id) => (window.__cvHall?.().candles ?? []).includes(id), pick.id, { timeout: 6000 }).then(() => true, () => false);
       run.check("B received CandleLit for that cubby (heard it, and the candle burns)", gotB, await B.page.evaluate(() => window.__candleHeard));
       await sleep(500);
       const lit = await A.page.evaluate(() => document.querySelector(".cv-cubby-light")?.textContent);
-      run.check("A's button now says 촛불이 켜져 있어요", lit === "촛불이 켜져 있어요", lit);
+      run.check("A's button now says 촛불 끄기 (A lit it)", lit === "촛불 끄기", lit);
       await run.shot(A, "hall-card-lit.png");
 
       // B goes to the same cubby and opens its card: the line says who lit it
@@ -531,6 +562,7 @@ export async function runVillageScenario({ name, device }) {
       const seen = await B.page.evaluate(() => ({ by: document.querySelector(".cv-cubby-by")?.textContent ?? null, id: document.querySelector(".cv-cubby")?.getAttribute("data-cubby"), button: document.querySelector(".cv-cubby-light")?.textContent, at: window.__cv.getPos() }));
       // the line names who lit it and when (cubbyCard.ts litByLabel: "<닉네임>님이 방금 켜 주셨어요")
       run.check("B's card says '<닉네임>님이 … 켜 주셨어요'", seen.by === `${A.nick}님이 방금 켜 주셨어요`, { ...seen, nick: A.nick, want: pick.id, rowB, pickRow: pick.row });
+      run.check("B (not the lighter) cannot put it out: 촛불이 켜져 있어요", seen.button === "촛불이 켜져 있어요", seen.button);
       await run.shot(B, "hall-card-seen-by-B.png");
       await B.page.keyboard.press("Escape");
       await B.page.waitForFunction(() => !document.querySelector(".cv-cubby"), null, { timeout: 4000 }).catch(() => {});

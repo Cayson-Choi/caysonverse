@@ -18,6 +18,7 @@ import {
   hasArrived,
   dirToIntent,
   setClickTarget,
+  setSeatWalk,
   getClickTarget,
   peekClickTarget,
   peekClickRing,
@@ -167,6 +168,16 @@ describe("clickMove — arrival", () => {
     setClickTarget(10, 0);
     expect(stepClickMove(10 - ARRIVE_DIST + 0.05, 0, 0.016)).toBeNull();
     expect(getClickTarget()).toBeNull();
+  });
+
+  it("a 20 fps run stops at a tapped chair when its remaining 16 cm is less than a frame's stride", () => {
+    setClickTarget(0.16, 0);
+    setSeatWalk();
+    const dt = 1 / 20;
+    const dir = stepClickMove(0, 0, dt)!;
+    const x = dir.x * Math.min(6.4 * dt, dir.remaining);
+    expect(x).toBeCloseTo(0.16, 9);
+    expect(stepClickMove(x, 0, dt)).toBeNull();
   });
 });
 

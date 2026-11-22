@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { useThree } from "@react-three/fiber";
+import { renderersBehindLoadingVeil } from "../game/programGate";
 import { vegDressing } from "./vegDressing";
 
 const dressed = () => vegDressing.dressed();
@@ -15,17 +16,20 @@ export const COVERED_FRAME_MS = 400;
  */
 export function VeilFrameThrottle({ active }: { active: boolean }) {
   const ready = useSyncExternalStore(vegDressing.subscribe, dressed, dressed);
+  const gl = useThree((s) => s.gl);
   const setFrameloop = useThree((s) => s.setFrameloop);
   const invalidate = useThree((s) => s.invalidate);
   const covered = active && !ready;
   useEffect(() => {
     if (!covered) return;
+    renderersBehindLoadingVeil.add(gl);
     setFrameloop("demand");
     const tick = window.setInterval(() => invalidate(), COVERED_FRAME_MS);
     return () => {
+      renderersBehindLoadingVeil.delete(gl);
       window.clearInterval(tick);
       setFrameloop("always");
     };
-  }, [covered, setFrameloop, invalidate]);
+  }, [covered, gl, setFrameloop, invalidate]);
   return null;
 }

@@ -83,14 +83,14 @@ beforeEach(() => {
 });
 afterEach(() => setActiveMap(VILLAGE_ACTIVE_MAP));
 
-describe("over-the-shoulder view shows the own avatar whole (round 7 review)", () => {
+describe("the camera stays centred right behind the head, never over a shoulder (owner 2026-11-19)", () => {
   for (const [label, aspect] of [
     ["PC", DESKTOP],
     ["PC wide", WIDE],
     ["phone", PHONE],
   ] as const) {
     for (const s of WALL_SPOTS7) {
-      it(`${s.name} (${label}): head and shoulders whole on screen, the room above them, a near-level look`, () => {
+      it(`${s.name} (${label}): on the view axis, looking straight ahead and level, under the ceiling`, () => {
         // the orbit is seldom square to the wall (a player turns by hand): ±0.12 rad either way too
         for (const [pitch, dyaw] of [
           [0.2, 0],
@@ -99,19 +99,17 @@ describe("over-the-shoulder view shows the own avatar whole (round 7 review)", (
           [0.35, 0.12],
           [0.35, -0.12],
         ] as const) {
-          const spot = settle(s.x, s.z, s.yaw + dyaw, aspect, pitch);
-          // the shoulder view is on (it looks ahead past the body, not at the head)
-          expect(Math.hypot(spot.lookX, spot.lookZ), `pitch ${pitch}: in the shoulder view`).toBeGreaterThan(1);
-          expect(spot.y).toBeLessThanOrEqual(HALL_CAMERA_LIMIT.maxY + 1e-9);
+          const yaw = s.yaw + dyaw;
+          const spot = settle(s.x, s.z, yaw, aspect, pitch);
+          const msg = `pitch ${pitch} yaw ${dyaw}`;
+          // lateral offset of the lens from the orbit's own axis (the line from the head straight back): none
+          const side = (spot.x - s.x) * Math.cos(yaw) - (spot.z - s.z) * Math.sin(yaw);
+          expect(Math.abs(side), `${msg}: lateral ${side}`).toBeLessThan(0.05);
+          expect(spot.y, msg).toBeLessThanOrEqual(HALL_CAMERA_LIMIT.maxY + 1e-9);
+          // the look runs along the axis, away from the wall: no sideways turn
+          const lookSide = spot.lookX * Math.cos(yaw) - spot.lookZ * Math.sin(yaw);
+          expect(Math.abs(lookSide), msg).toBeLessThan(0.05);
           const o = headShoulderOnScreen(spot, s.x, s.z, aspect);
-          const msg = `pitch ${pitch} yaw ${dyaw} ${JSON.stringify(o)}`;
-          expect(o.behind, msg).toBe(false);
-          expect(o.minX, msg).toBeGreaterThan(-0.98);
-          expect(o.maxX, msg).toBeLessThan(0.98);
-          expect(o.minY, msg).toBeGreaterThan(-0.98);
-          expect(o.maxY, msg).toBeLessThan(0.98);
-          // the room fills most of the view: the head-and-shoulders box takes well under half the screen
-          expect(o.area, msg).toBeLessThan(aspect > 1 ? 0.3 : 0.55);
           expect(o.down, msg).toBeGreaterThan(-0.5);
           expect(o.down, msg).toBeLessThan(17);
         }

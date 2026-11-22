@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // The components import the connection module, which builds a real SDK client at load (it needs a browser URL).
 vi.mock("../net/connection", () => ({ getActiveRoom: () => null, sendEmoji: vi.fn(), sendJump: vi.fn() }));
 
-import { isQuiet, setQuiet, subscribeQuiet } from "./quiet";
+import { isEmojiQuiet, isQuiet, setEmojiQuiet, setQuiet, subscribeQuiet } from "./quiet";
 import { pressJump, publishLocalJump, resetLocalJump } from "./jump";
 import { EmojiPalette, emojiMayFire } from "../ui/EmojiPalette";
 import { EmojiFan } from "../ui/EmojiFan";
@@ -13,6 +13,7 @@ import { JumpButton } from "../ui/JumpButton";
 
 afterEach(() => {
   setQuiet(false);
+  setEmojiQuiet(false);
   resetLocalJump();
 });
 
@@ -46,7 +47,7 @@ describe("the quiet hall on the client (케이슨 마을 — the server drops Em
     expect(emojiMayFire(10_600, 10_000, false)).toBe(true);
   });
 
-  it("the emoji bar, the touch emoji button and the touch jump button are drawn outside and gone inside", () => {
+  it("the touch jump button follows the quiet flag; the emoji bar and the touch emoji button follow the emoji flag", () => {
     const palette = () => renderToStaticMarkup(createElement(EmojiPalette));
     const fan = () => renderToStaticMarkup(createElement(EmojiFan));
     const jump = () => renderToStaticMarkup(createElement(JumpButton, { sessionId: "me" }));
@@ -55,12 +56,20 @@ describe("the quiet hall on the client (케이슨 마을 — the server drops Em
     expect(fan()).toContain("cv-emoji-toggle");
     expect(jump()).toContain("cv-jump-btn");
 
+    // the memorial hall (owner 2026-11-20): no jumping, but reactions stay
     setQuiet(true);
+    expect(jump()).toBe("");
+    expect(palette()).toContain("cv-emoji-palette");
+    expect(fan()).toContain("cv-emoji-toggle");
+    expect(isEmojiQuiet()).toBe(false);
+
+    // a house floor: neither
+    setEmojiQuiet(true);
     expect(palette()).toBe("");
     expect(fan()).toBe("");
-    expect(jump()).toBe("");
 
     setQuiet(false);
+    setEmojiQuiet(false);
     expect(palette()).toContain("cv-emoji-palette");
   });
 });

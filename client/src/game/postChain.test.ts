@@ -16,7 +16,7 @@ import {
   type WebGLRenderTarget,
   type WebGLRenderer,
 } from "three";
-import { PostChain, outputDefines } from "./postChain";
+import { GAUSS_SPREAD, GAUSS_TAPS, PostChain, bloomSigma, gaussianTapWeights, outputDefines } from "./postChain";
 import { BLOOM } from "./quality";
 import { renderScale } from "./renderScale";
 import { LABEL_LAYER, billboardSprite } from "./spriteCanvas";
@@ -302,5 +302,31 @@ describe("outputDefines (OutputPass's rule)", () => {
   it("the tone curve and the sRGB transfer", () => {
     expect(outputDefines(NeutralToneMapping, SRGBColorSpace)).toEqual({ SRGB_TRANSFER: "", NEUTRAL_TONE_MAPPING: "" });
     expect(outputDefines(ACESFilmicToneMapping, LinearSRGBColorSpace)).toEqual({ ACES_FILMIC_TONE_MAPPING: "" });
+  });
+});
+
+describe("the bloom's blur is a round Gaussian (owner 2026-11-20: a bright star's glow had a SQUARE outline)", () => {
+  it("every mip: weights sum to 1 and the kernel ends in a tail under 4 % of its peak (the stock one stopped at 0.6 of it: a box edge)", () => {
+    for (let i = 0; i < 5; i++) {
+      const sigma = bloomSigma(i);
+      const { stride, weights } = gaussianTapWeights(sigma);
+      expect(weights).toHaveLength(GAUSS_TAPS + 1);
+      expect(weights[0]! + 2 * weights.slice(1).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 10);
+      expect(weights[GAUSS_TAPS]! / weights[0]!).toBeLessThan(0.04);
+      expect((GAUSS_TAPS * stride) / sigma).toBeCloseTo(GAUSS_SPREAD, 10);
+      for (let k = 1; k <= GAUSS_TAPS; k++) expect(weights[k]!).toBeLessThan(weights[k - 1]!);
+    }
+  });
+
+  it("the 2-D kernel (the product of the two passes) is isotropic: along a diagonal it falls as fast as along an axis", () => {
+    const sigma = bloomSigma(2);
+    const { stride, weights } = gaussianTapWeights(sigma);
+    // distance 4 taps along an axis vs the diagonal tap (3, 3) at 4.24 taps: the same radius within a tap
+    const axis = weights[4]! * weights[0]!;
+    const diag = weights[3]! * weights[3]!;
+    const rAxis = 4 * stride;
+    const rDiag = Math.hypot(3, 3) * stride;
+    const expected = Math.exp(-0.5 * ((rDiag * rDiag - rAxis * rAxis) / (sigma * sigma)));
+    expect(diag / axis).toBeCloseTo(expected, 6);
   });
 });

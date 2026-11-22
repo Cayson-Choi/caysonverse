@@ -28,6 +28,7 @@
  * shares no object between two fields.
  */
 
+import { VILLAGE_WALL_SOLIDS } from "./parkWall";
 import type { AABB, CameraBox } from "../collision";
 import { DEFAULT_WALL_THICKNESS, makeGeometry, wallsAround } from "../school/geometry";
 import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColliders";
@@ -271,6 +272,18 @@ export interface CubbyWall {
  * wall's middle where the arched niche stood; A, B and E keep their ids.
  */
 export type CubbyBank = "A" | "B" | "C" | "E";
+
+/**
+ * The letter a visitor sees for a bank (구역 A, B, C, D in walking order, owner 2026-11-20: "A B C D 구역 이름이 순서대로 적히게"): the
+ * north wall west to east is A, C, B and the east wall is E in the ids, which never change (cubby ids, claims and the server's
+ * filled set use them), so the signs, the close-up card and the claim sheet show this letter instead.
+ */
+export const ZONE_LETTER: Readonly<Record<CubbyBank, string>> = Object.freeze({ A: "A", C: "B", B: "C", E: "D" });
+
+/** "A" .. "D" for a bank id (unknown ids are shown as they are). */
+export function zoneLetter(bank: string): string {
+  return (ZONE_LETTER as Record<string, string>)[bank] ?? bank;
+}
 
 /** The memorial hall's id of the hall in cubby ids (`M1-A-r3-c07`): a second hall would be `M2`. */
 export const HALL_ID = "M1";
@@ -1242,7 +1255,7 @@ export function buildVillageGeometry(
   /** The finished houses' colliders (housesGeometry.ts `houseColliders`); absent: the twenty rooms are empty (walls only). */
   houses?: GeneratedColliders,
   /** The lot buildings' boxes (villageLots.ts `lotGeometryColliders`, L5): only lots whose model holds them; absent: none. */
-  lots?: GeneratedColliders,
+  lots?: GeneratedColliders & { hurdles?: readonly CameraBox[] },
 ): MapGeometry {
   const village: GeneratedColliders =
     "obstacles" in colliders
@@ -1281,6 +1294,7 @@ export function buildVillageGeometry(
       ...(lots?.cameraBoxes ?? []),
       ...lotRoomColliders().cameraBoxes,
     ],
+    lots?.hurdles ?? [], // low things the camera rises over (the temple's wall, the fountains: villageLots.ts LOT_HURDLES)
   );
 }
 
@@ -1339,7 +1353,7 @@ export const HALL_MODEL_COLLIDERS: GeneratedColliders = hallInteriorColliders(VI
  * village area; Task 9: the hall's interior), the hall's walls and the blockers around it. `greyboxColliders(VILLAGE_LAYOUT)` stays the
  * layout's own list (the model must contain each of its boxes exactly: scripts/check-school-glb.ts).
  */
-export const villageGeometry: MapGeometry = buildVillageGeometry(
+export const villageGeometry: MapGeometry = withParkWall(buildVillageGeometry(
   VILLAGE_LAYOUT,
   VILLAGE_MODEL_COLLIDERS,
   HALL_MODEL_COLLIDERS,
@@ -1351,7 +1365,16 @@ export const villageGeometry: MapGeometry = buildVillageGeometry(
   houseColliders(),
   // 마을 부지 건물 (L5, 2026-11-17): the six lot buildings' boxes, appended last (no earlier obstacle's index moves)
   lotGeometryColliders(),
-);
+));
+
+/**
+ * 케이슨랜드's castle wall (parkWall.ts, owner 2026-11-20) round the park's skyline behind the gate: its runs and towers appended after
+ * everything else (no earlier obstacle's index moves). They stand beyond the walk bounds (z 95) — the wall's front face at z 95.45 — so
+ * they take no walkable ground; they keep the camera out of the stone.
+ */
+export function withParkWall(g: MapGeometry): MapGeometry {
+  return { ...g, obstacles: [...g.obstacles, ...VILLAGE_WALL_SOLIDS.obstacles], cameraBoxes: [...g.cameraBoxes, ...VILLAGE_WALL_SOLIDS.cameraBoxes] };
+}
 
 /**
  * The A8 house contract for the Blender kit and build (X1, X2, X4): per house its frame (centre, door side), porch kind, solid,

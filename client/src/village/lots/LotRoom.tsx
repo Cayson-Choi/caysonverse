@@ -16,6 +16,7 @@ import {
   PMREMGenerator,
   RGBAFormat,
   ShaderMaterial,
+  Vector2,
   Vector3,
   Vector4,
   DataUtils,
@@ -39,6 +40,8 @@ import { beginHouseEntry, houseEntryReady, houseEntryState } from "../houseEntry
 import { dayNight } from "../dayNightDriver";
 import { versionedUrl } from "../modelUrl";
 import { lotGltfLoader, loadManifestMaps, disposeLoadedLots } from "./lotsLoader";
+import { WINDOW_VIEWS, gardenWindow, windowViewWeights } from "./gardenWindow";
+import { LOT_ROOM_LIGHT } from "../DayNight";
 import { applyLotTextures, drawnTris, lotSurfaceMaterial } from "./lotsPrep";
 import { roomBaked } from "./roomBaked";
 import { LotTextureBank, capMips, fetchLotManifest, loadLotOwnMap, manifestPaths, type LotMatSpec } from "./lotTextures";
@@ -65,13 +68,53 @@ import { LotTextureBank, capMips, fetchLotManifest, loadLotOwnMap, manifestPaths
  * With the baked light (L6) the painted plaster is albedo-only on a PC too: the lightmap carries the walls' shading, and
  * its two 1K maps (2.8 MB) fit the same budgets.
  */
-export const ROOM_TEXTURES: Readonly<Record<string, { pcAlbedoOnly: readonly string[]; phoneFull: readonly string[] }>> = {
-  lot_school_class: { pcAlbedoOnly: ["grass", "cast_iron", "plaster_painted"], phoneFull: ["floor_wood"] },
-  lot_library_reading: { pcAlbedoOnly: ["aluminium_brushed", "wood_painted", "plaster_painted"], phoneFull: ["floor_wood"] },
+export const ROOM_TEXTURES: Readonly<Record<string, { pcAlbedoOnly: readonly string[]; phoneFull: readonly string[]; pc2k?: readonly string[] }>> = {
+  // the classroom (owner 2026-11-20 "학교 내부가 너무 허접하네 좀 실감나게"): the pupils' beech desks and chairs read from a metre —
+  // the oak set's 2048 albedo on a PC; the powder-coated frames, the brushed metal and the grass leaves are small parts: albedo only
+  lot_school_class: { pcAlbedoOnly: ["grass", "cast_iron", "plaster_painted", "steel_painted", "aluminium_brushed"], phoneFull: ["floor_wood"], pc2k: ["wood_oak"] },
+  // the reading room (owner 2026-11-20 "고해상도로 선명하게, 흐릿하게 보이는건 없어야 해"): on a PC the oak (bookcases, panelling,
+  // tables), the floor and the fireplace's limestone read at eye level from a metre: their 2048 albedo (1100 px/m on the oak's 1.83 m
+  // tile, was 560), the rest 1K; the painted wood (book spines before 2026-11-20) is now only frames: albedo only
+  lot_library_reading: { pcAlbedoOnly: ["aluminium_brushed", "wood_painted", "plaster_painted"], phoneFull: ["floor_wood"], pc2k: ["wood_oak", "floor_wood", "stone_ashlar"] },
   lot_chapel_nave: { pcAlbedoOnly: ["aluminium_brushed", "plaster_painted"], phoneFull: [] }, // (the phone's chapel: its statues' own maps take the rest of the 8 MB)
   lot_church_nave: { pcAlbedoOnly: ["plaster_painted"], phoneFull: [] }, // (the phone's church: its lightmap carries the floor)
   lot_temple_hall: { pcAlbedoOnly: [], phoneFull: ["wood_pine_natural"] },
+  // the café and its salon (owner 2026-11-21: "추모관 수준으로 아주 사실적이고 디테일하게", the Caysonland paving as the bar): on a PC every
+  // set in full (albedo, normal, ORM: the oak's grain, the velvet's pile, the brushed steel's lines catch the light) and the boards, the oak
+  // and the velvet at 2K (read from a stool at a metre); the leaves albedo only. A phone: albedo only but the floor
+  lot_cafe_room: { pcAlbedoOnly: ["grass"], phoneFull: ["floor_wood"], pc2k: ["wood_oak", "floor_wood", "fabric_upholstery"] },
+  lot_cafe_upstairs: { pcAlbedoOnly: ["grass"], phoneFull: ["floor_wood"], pc2k: ["wood_oak", "floor_wood", "fabric_upholstery", "wallpaper"] },
 };
+
+/** The tier a room set's near maps are read at: 2K for a PC room's close-up sets (`pc2k`), else 1K. */
+export function roomSetTier(unit: string, set: string, phone: boolean): "2k" | "1k" {
+  return !phone && ROOM_TEXTURES[unit]?.pc2k?.includes(set) ? "2k" : "1k";
+}
+
+/** Anisotropic filtering of a room's library sets (PC: 16, the most a desktop GPU offers; phone: 4 — its GPU's bandwidth). */
+export const ROOM_ANISOTROPY = { desktop: 16, mobile: 4 } as const;
+
+/** A room's own atlases on a phone (the reading room's 2048 books and rugs): colour 1024, normal / ORM 512 (top mips dropped). */
+export const ROOM_OWN_PHONE_MAX = { color: 1024, detail: 512 } as const;
+
+/**
+ * A room's own atlas that keeps more on a phone: the classroom's 4096 atlas of sixteen children's drawings (1024 px a sheet on a
+ * PC) at 2048 — 512 px a 39 cm sheet, still crisp on a phone's screen from a metre (at 1024 the crayon and the names were mush).
+ */
+export const ROOM_OWN_PHONE_MAX_BY_MAT: Readonly<Record<string, number>> = { M_school_art: 2048 };
+
+/** A room's lightmaps on a phone: their top mips dropped to this size (the 2048 bakes; 1024 is still 2 cm a texel). */
+export const ROOM_LIGHTMAP_PHONE_MAX = 1024;
+
+/** The windows' village panoramas on a phone (3072 x 1536 on a PC): 1536 wide, ~8.5 texels a degree round the eye-level band. */
+export const WINDOW_VIEW_PHONE_MAX = 1536;
+
+/**
+ * Rooms drawn at a higher pixel ratio on a phone than the light tier's 1 (the village keeps 1: 100 players, no stutter): the
+ * reading room's spines, gilt and wood grain at dpr 1 on a 3x phone were a third of the screen's pixels — soft. A room is a small
+ * scene (no village behind it), so 1.5 costs little.
+ */
+export const ROOM_PHONE_DPR: Readonly<Record<string, number>> = { lot_library_reading: 1.5, lot_school_class: 1.5, lot_cafe_room: 1.5, lot_cafe_upstairs: 1.5 };
 
 function roomSetFull(unit: string, set: string, phone: boolean): boolean {
   const plan = ROOM_TEXTURES[unit];
@@ -182,6 +225,50 @@ function sacredEnv(gl: WebGLRenderer): Texture {
 }
 
 /**
+ * The café's stainless, brass and glass (2026-11-21: the espresso machine, the pastry case, the cloches, the gilt letters): a small HDR
+ * panorama of a warm café (cream plaster, the bright shop windows, oak below, the pendants' warm spots), PMREM'd once and kept, as the
+ * sacred gilt's. Without it a polished steel machine read as flat grey paint.
+ */
+export const ROOM_ENV_UNITS: ReadonlySet<string> = new Set(["lot_cafe_room", "lot_cafe_upstairs"]);
+const cafeEnvs = new WeakMap<WebGLRenderer, Texture>();
+function cafeRadiance(x: number, y: number, z: number): [number, number, number] {
+  const lon = Math.atan2(z, x);
+  if (y > 0.75) return Math.sin(lon * 5) > 0.85 ? [3.0, 2.3, 1.4] : [0.75, 0.68, 0.58]; // the ceiling and the pendants
+  if (y < -0.3) return [0.42, 0.28, 0.17]; // the oak floor
+  if (Math.abs(Math.sin(lon * 2)) > 0.72 && y > -0.05 && y < 0.55) return [2.2, 2.3, 2.4]; // the windows' daylight
+  return y < 0.05 ? [0.32, 0.4, 0.34] : [0.95, 0.86, 0.72]; // the sage wainscot under the warm plaster
+}
+export function roomEnv(gl: WebGLRenderer): Texture {
+  const have = cafeEnvs.get(gl);
+  if (have) return have;
+  const w = 128;
+  const h = 64;
+  const data = new Uint16Array(w * h * 4);
+  for (let j = 0; j < h; j++) {
+    const lat = ((j + 0.5) / h - 0.5) * Math.PI;
+    for (let i = 0; i < w; i++) {
+      const lon = ((i + 0.5) / w - 0.5) * Math.PI * 2;
+      const [r, g, b] = cafeRadiance(Math.cos(lat) * Math.cos(lon), Math.sin(lat), Math.cos(lat) * Math.sin(lon));
+      const k = (j * w + i) * 4;
+      data[k] = DataUtils.toHalfFloat(r);
+      data[k + 1] = DataUtils.toHalfFloat(g);
+      data[k + 2] = DataUtils.toHalfFloat(b);
+      data[k + 3] = DataUtils.toHalfFloat(1);
+    }
+  }
+  const eq = new DataTexture(data, w, h, RGBAFormat, HalfFloatType);
+  eq.mapping = EquirectangularReflectionMapping;
+  eq.magFilter = LinearFilter;
+  eq.minFilter = LinearFilter;
+  eq.needsUpdate = true;
+  const pm = new PMREMGenerator(gl);
+  const rt = pm.fromEquirectangular(eq);
+  eq.dispose();
+  cafeEnvs.set(gl, rt.texture);
+  return rt.texture;
+}
+
+/**
  * The hero pieces (the statues and the framed prints: what a visitor walks up to and looks at from arm's length) keep their
  * 2K maps: at the budget caps above a 2048 normal map reached the screen as 512 (the marble's folds and the faces read as
  * soft clay). A phone keeps 1K colour and normal (the phone files carry 1K maps; the pieces are few).
@@ -199,7 +286,7 @@ export function sacredCaps(node: string, phone: boolean): { color: number; norma
   if (node === "lotstatue__lot_chapel_nave_mary") return { ...SACRED_HERO_MAP_MAX[tier], color: 1024, orm: phone ? 256 : 512 };
   if (node === "lotstatue__lot_chapel_nave_crucifix") return { color: 1024, normal: 1024, orm: 512 };
   if (node.startsWith("lotart__lot_chapel_nave_station")) return { ...SACRED_MAP_MAX[tier], color: phone ? 512 : 768 };
-  if (node.startsWith("lotart__lot_church_nave_")) return { ...SACRED_MAP_MAX[tier], color: phone ? 768 : 1280 };
+  if (node.startsWith("lotart__lot_church_nave_")) return { ...SACRED_MAP_MAX[tier], color: phone ? 768 : 1024 };
   return SACRED_MAP_MAX[tier];
 }
 
@@ -210,8 +297,9 @@ export function isSacredHero(node: string): boolean {
 
 export { capMips } from "./lotTextures";
 
-/** The rooms B2 made a phone file for (`<unit>_phone.glb`, its extras' `phone.file`). */
-export const LOT_ROOM_PHONE_FILES: ReadonlySet<string> = new Set(["lot_chapel_nave", "lot_church_nave"]);
+/** The rooms with a phone file (`<unit>_phone.glb`): B2's chapel and church, and the classroom (b1 `--phone`, 2026-11-20: the same
+ * room and atlases with lighter geometry — 33k triangles, 29 draws). */
+export const LOT_ROOM_PHONE_FILES: ReadonlySet<string> = new Set(["lot_chapel_nave", "lot_church_nave", "lot_school_class", "lot_library_reading", "lot_cafe_room", "lot_cafe_upstairs"]);
 
 /** How long (ms) a room's files stay after leaving it (a quick look outside and back in reads nothing again). */
 export const LOT_ROOM_KEEP_MS = 60_000;
@@ -256,10 +344,66 @@ interface RoomLights {
  * A per-room colour grade on the lit surfaces (a multiply, linear): the chapel's honey stone under a warm bake and warm lamps read
  * orange all over (the paintings and the stained glass lost their true colours); a slight cool pull brings the room to a neutral cream.
  */
+/**
+ * Triangles of a room's small goods that a sacred prop now replaces (room frame boxes [x0, x1, y0, y1, z0, z1]): the chapel's
+ * low-poly flowers (the lilies and roses are real petals now), the church organ's flat pipes. Applied to the `_goods` mesh.
+ */
+export const ROOM_STRIP: Readonly<Record<string, ReadonlyArray<readonly [number, number, number, number, number, number]>>> = {
+  lot_chapel_nave: [
+    [3.85, 4.25, 1.17, 1.95, 12.65, 13.05], [5.15, 5.55, 1.17, 1.95, 12.65, 13.05], // the altar's vases
+    [0.23, 0.53, 1.04, 1.7, 9.5, 9.8], [0.67, 0.97, 1.04, 1.7, 9.5, 9.8], [8.43, 8.73, 1.04, 1.7, 9.5, 9.8], [8.87, 9.17, 1.04, 1.7, 9.5, 9.8], // the side altars'
+    [2.35, 3.15, 1.4, 2.4, 12.15, 12.95], [6.25, 7.05, 1.4, 2.4, 10.85, 11.65], // the urns' arrangements
+  ],
+  lot_church_nave: [[7.3, 7.5, 1.24, 2.8, 7.6, 8.4]],
+};
+
+/** Drops the triangles whose centre is in one of the boxes from a room's goods meshes (a no-op when there are none). */
+export function stripRoomGoods(scene: Object3D, unit: string, origin: { x: number; z: number }): number {
+  const boxes = ROOM_STRIP[unit];
+  if (!boxes) return 0;
+  let dropped = 0;
+  scene.traverse((o) => {
+    if (!isMesh(o) || !o.name.includes("_goods")) return;
+    const g = o.geometry;
+    const idx = g.getIndex();
+    const pos = g.getAttribute("position");
+    if (!idx || !pos) return;
+    g.computeBoundingBox();
+    const ox = g.boundingBox && g.boundingBox.min.x > 100 ? origin.x : 0;
+    const oz = g.boundingBox && g.boundingBox.min.x > 100 ? origin.z : 0;
+    const keep: number[] = [];
+    const groups: Array<{ start: number; count: number; materialIndex: number }> = [];
+    const ranges = g.groups.length ? g.groups.map((r) => ({ start: r.start, end: r.start + r.count, materialIndex: r.materialIndex ?? 0 })) : [{ start: 0, end: idx.count, materialIndex: 0 }];
+    for (const r of ranges) {
+      const first = keep.length;
+      for (let i = r.start; i < r.end; i += 3) {
+        let cx = 0, cy = 0, cz = 0;
+        for (let k = 0; k < 3; k++) {
+          const v = idx.getX(i + k);
+          cx += pos.getX(v); cy += pos.getY(v); cz += pos.getZ(v);
+        }
+        cx = cx / 3 - ox; cy /= 3; cz = cz / 3 - oz;
+        if (boxes.some((bx) => cx >= bx[0] && cx <= bx[1] && cy >= bx[2] && cy <= bx[3] && cz >= bx[4] && cz <= bx[5])) dropped++;
+        else keep.push(idx.getX(i), idx.getX(i + 1), idx.getX(i + 2));
+      }
+      groups.push({ start: first, count: keep.length - first, materialIndex: r.materialIndex });
+    }
+    if (keep.length !== idx.count) {
+      g.setIndex(keep);
+      g.clearGroups();
+      if (ranges.length > 1 || g.groups.length) for (const r of groups) g.addGroup(r.start, r.count, r.materialIndex);
+    }
+  });
+  return dropped;
+}
+
 export const ROOM_GRADE: Readonly<Record<string, readonly [number, number, number]>> = { lot_chapel_nave: [0.80, 0.93, 1.18] };
 
 const ROOM_LIGHTS: Record<string, RoomLights> = {
   lot_school_class: { ambient: ["#fff4e6", 0.55, 0.28], points: [[5.2, 3.2, 5, "#fff1dc", 6, 9], [10.4, 3.2, 5, "#fff1dc", 6, 9]], spots: [] },
+  // the café: warm pendants over the tables and the counter (their steady light is in the bake; these keep the furniture lit)
+  lot_cafe_room: { ambient: ["#fff0dc", 0.5, 0.26], points: [[9.5, 2.6, 4.6, "#ffd8a8", 6, 8], [3.8, 2.6, 3.2, "#ffd8a8", 5, 8]], spots: [[9.2, 3.95, 6.6, 9.2, 3.6, 7.8, "#ffe2b8", 10]] },
+  lot_cafe_upstairs: { ambient: ["#fff0dc", 0.5, 0.26], points: [[6.0, 2.5, 4.0, "#ffd6a0", 6, 9], [8.6, 2.5, 8.6, "#ffd6a0", 6, 9]], spots: [] },
   lot_library_reading: { fire: [6.7, 0.61, 9.93], ambient: ["#fff0dc", 0.5, 0.24], points: [[4.5, 4.2, 5.5, "#ffd9a6", 7, 9], [9, 4.2, 5.5, "#ffd9a6", 7, 9]], spots: [] },
   lot_chapel_nave: {
     fire: [4.7, 1.6, 11.9],
@@ -505,14 +649,48 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
   // (no staging: the room uploads everything under its entry cover, below)
   // the 1K tier in every room (a room is seen from a few metres: 1K over a set's 1.5–2 m tile is the 512 px/m the surfaces need), and the
   // room's texture plan for which sets come in full (albedo, normal, ORM) or as their albedo only (ROOM_TEXTURES)
-  const bank = new LotTextureBank(gl, "1k", false);
+  const bank = new LotTextureBank(gl, "1k", false, { tierOf: (set) => roomSetTier(unit, set, phone), anisotropy: phone ? ROOM_ANISOTROPY.mobile : ROOM_ANISOTROPY.desktop });
   try {
     const gltf = await loader.loadAsync(versionedUrl(`/models/village/lots/${file}.glb`));
     const extras = (gltf.parser.json as { asset?: { extras?: { textures?: unknown; sacred?: SacredEntry[]; lightmap?: RoomLightmapSpec } } }).asset?.extras ?? {};
     const manifests = await Promise.all(manifestPaths(extras.textures).map((p) => fetchLotManifest(p)));
-    const { specs, own, textures } = await loadManifestMaps(manifests, gl, bank, (set) => roomSetFull(unit, set, phone));
+    const { specs, own, ownExtra, textures } = await loadManifestMaps(manifests, gl, bank, (set) => roomSetFull(unit, set, phone));
+    if (phone) {
+      // a phone: the room's own atlases at most 1024 (their normal / ORM 512), 4x anisotropy
+      for (const [name, t] of Object.entries(own)) {
+        t.anisotropy = Math.min(t.anisotropy, ROOM_ANISOTROPY.mobile);
+        capMips(t, specs[name]?.kind === "garden" ? WINDOW_VIEW_PHONE_MAX : ROOM_OWN_PHONE_MAX_BY_MAT[name] ?? ROOM_OWN_PHONE_MAX.color);
+      }
+      for (const x of Object.values(ownExtra))
+        for (const t of [x.normal, x.orm]) {
+          if (!t) continue;
+          t.anisotropy = Math.min(t.anisotropy, ROOM_ANISOTROPY.mobile);
+          capMips(t, ROOM_OWN_PHONE_MAX.detail);
+        }
+    }
+    // the village behind the windows: the evening's and the night's panoramas (the day's is the manifest's own M_garden map)
+    const view = WINDOW_VIEWS[unit];
+    // (index-aligned with the keys after the day's: a key that failed to load stays undefined and shows the day's)
+    const viewMaps: (Texture | undefined)[] = [];
+    if (view) {
+      const more = await Promise.allSettled(view.keys.slice(1).map((k) => loadLotOwnMap(gl, `/models/village/${k.file}`)));
+      for (const r of more) {
+        if (r.status !== "fulfilled") {
+          console.error("[lots] window view", unit, r.reason);
+          viewMaps.push(undefined);
+          continue;
+        }
+        if (phone) {
+          r.value.anisotropy = Math.min(r.value.anisotropy, ROOM_ANISOTROPY.mobile);
+          capMips(r.value, WINDOW_VIEW_PHONE_MAX);
+        }
+        textures.push(r.value);
+        viewMaps.push(r.value);
+      }
+    }
     const scene = gltf.scene;
     scene.updateMatrixWorld(true);
+    stripRoomGoods(scene, unit, (extras as { origin?: { x: number; z: number } }).origin ?? { x: 0, z: 0 });
     // the baked light (L6): both maps or none
     let lm: { day: Texture; night: Texture; scale: number; mix: { value: number } } | null = null;
     if (extras.lightmap) {
@@ -523,6 +701,7 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
         for (const t of [day, night]) {
           t.channel = spec.channel ?? 1;
           t.anisotropy = 1;
+          if (phone) capMips(t, ROOM_LIGHTMAP_PHONE_MAX);
           textures.push(t);
         }
         lm = { day, night, scale: spec.scale, mix: { value: 0 } };
@@ -570,6 +749,10 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
         const grade = ROOM_GRADE[unit];
         if (grade) sm.color.multiply(new Color(grade[0], grade[1], grade[2]));
         applyLotTextures(sm, bank);
+        if (ROOM_ENV_UNITS.has(unit) && (spec?.metal || /_metal$|_iron$/.test(src.name))) {
+          sm.envMap = roomEnv(gl);
+          sm.envMapIntensity = /_metal$/.test(src.name) ? 0.9 : 0.6;
+        }
         if (baked && lm) {
           sm.lightMap = lm.day;
           sm.lightMapIntensity = lm.scale * LIGHTMAP_GAIN;
@@ -580,6 +763,19 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
         m = sm;
       } else if (spec?.kind === "glass" || src.name === "M_glass") {
         m = new MeshStandardMaterial({ name: src.name, color: "#c9d6dc", roughness: 0.05, metalness: 0, transparent: true, opacity: 0.22, depthWrite: false });
+        if (ROOM_ENV_UNITS.has(unit)) {
+          // the café's display glass and cloches: nearly clear, the room's reflection on it (the sheen moves as one walks by)
+          const gm = m as MeshStandardMaterial;
+          gm.color.set("#f2f6f7");
+          gm.opacity = 0.1;
+          gm.envMap = roomEnv(gl);
+          gm.envMapIntensity = 1.2;
+          gm.side = DoubleSide;
+        }
+      } else if (spec?.kind === "garden") {
+        const b = gardenWindow([own[src.name], ...viewMaps], view, room.origin, 1 / LOT_ROOM_LIGHT.exposure);
+        screens.push(b);
+        m = b;
       } else if (spec?.kind === "screen") {
         const b = new MeshBasicMaterial({ name: src.name, vertexColors: colours, toneMapped: true });
         screens.push(b);
@@ -602,7 +798,21 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
         });
         m = fire;
       } else if (spec?.kind === "own" && own[src.name]) {
-        m = new MeshStandardMaterial({ name: src.name, map: own[src.name]!, roughness: 0.55, vertexColors: false, side: s.side });
+        // an atlas of the room's own (paintings, the globe; the reading room's books and rugs): with its normal map and ORM when
+        // it has them (the books' raised bands and tooling, the gilt's metal), COLOR_0 tinting when the manifest says so
+        const extra = ownExtra[src.name] ?? {};
+        const om = new MeshStandardMaterial({ name: src.name, map: own[src.name]!, roughness: 0.55, vertexColors: !!spec.vertexColor && colours, side: s.side });
+        if (extra.normal) {
+          om.normalMap = extra.normal;
+          om.normalScale = new Vector2(1, -1); // glTF tangent space without tangents
+        }
+        if (extra.orm) {
+          om.roughnessMap = extra.orm;
+          om.metalnessMap = extra.orm;
+          om.roughness = 1;
+          om.metalness = 1;
+        }
+        m = om;
       } else {
         m = s.clone();
       }
@@ -831,6 +1041,72 @@ function hold(e: CacheEntry): () => void {
   };
 }
 
+/**
+ * Holds a room's load for someone outside it (the café's facade shows its rooms through the glass: cafe/CafeShowcase.tsx): the same cache
+ * entry the room uses, so walking in reads nothing again. `release` lets it go (kept LOT_ROOM_KEEP_MS like any room).
+ */
+export function holdLotRoom(area: string, gl: WebGLRenderer, phone: boolean): { promise: Promise<LoadedRoom>; release: () => void } | null {
+  const room = lotRoomOf(area);
+  if (!room) return null;
+  const e = roomEntry(room, gl, phone);
+  return { promise: e.promise, release: hold(e) };
+}
+
+/** Whether a room's load (either tier) has finished (DEV hooks: the café's e2e waits on it). */
+export function lotRoomLoaded(area: string): boolean {
+  const room = lotRoomOf(area);
+  return !!room && [...rooms.values()].some((e) => e.key.startsWith(`${room.unit.id}@`) && e.value !== null);
+}
+
+/** The room's lamps and baked light at this hour (the room's own frame loop, and the café's facade showcase from outside). */
+export function driveRoomLights(loaded: LoadedRoom, t: number): void {
+  const o = dayNight.outdoor;
+  const day = Math.max(0, Math.min(1, 1 - o.night));
+  if (loaded.lightmap) loaded.lightmap.mix.value = 1 - day;
+  loaded.glow.opacity = Math.max(0.25, o.lights);
+  const lamps = loaded.lamps;
+  for (let i = 0; i < lamps.base.length; i++) {
+    const k = lamps.fire === i ? FIRE_INTENSITY * (0.82 + 0.12 * Math.sin(t * 5.65) + 0.06 * Math.sin(t * 44.0)) : lamps.base[i]! * (1 + 0.6 * (1 - day));
+    lamps.col.value[i]!.set(lamps.colour[i]!.r * k, lamps.colour[i]!.g * k, lamps.colour[i]!.b * k);
+  }
+}
+
+/**
+ * A room material drawn from OUTSIDE the room (the café's facade shows its rooms through the glass, cafe/CafeShowcase.tsx): a copy with the
+ * room's own light (the bake's day / night mix, the lamps) and the village's live sun and sky scaled by `direct` (they would reach the counter
+ * through the walls: the room has no shadow of its own walls). Materials of other kinds (the night glow) are shared as they are.
+ */
+export function showcaseMaterial(src: Material, loaded: LoadedRoom, direct: { value: number }, nightGain: { value: number } = { value: 0 }): Material {
+  const m = src as MeshStandardMaterial;
+  if (!m.isMeshStandardMaterial) return src;
+  // (Material.copy deep-copies userData through JSON: its night lightmap, a Texture, would be serialised — and warn — for nothing)
+  const ud = m.userData;
+  m.userData = {};
+  const c = m.clone();
+  m.userData = ud;
+  c.userData = { ...ud, lightmapMix: false, roomLamps: false };
+  const night = m.userData.lmNight as Texture | undefined;
+  if (night && loaded.lightmap && m.lightMap) patchLightmapMix(c, night, loaded.lightmap.mix);
+  patchRoomLamps(c, loaded.lamps);
+  const prev = c.onBeforeCompile;
+  c.onBeforeCompile = (shader, r) => {
+    prev?.call(c, shader, r);
+    shader.uniforms.uShowDirect = direct;
+    shader.uniforms.uShowNight = nightGain;
+    // (at night a lit room seen from the dark street: its own light warm and strong — the village's blue night fill is not the room's)
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", "uniform float uShowDirect;\nuniform float uShowNight;\nvoid main() {")
+      .replace(
+        "#include <lights_fragment_end>",
+        "#include <lights_fragment_end>\nreflectedLight.directDiffuse *= uShowDirect;\nreflectedLight.directSpecular *= uShowDirect;\nreflectedLight.indirectDiffuse *= mix(vec3(1.0), vec3(3.2, 2.5, 1.7), uShowNight);",
+      );
+  };
+  const key = c.customProgramCacheKey.bind(c);
+  c.customProgramCacheKey = () => `${key()}|showcase`;
+  c.needsUpdate = true;
+  return c;
+}
+
 /** Start reading a room's files (the player is at its door). Held for LOT_ROOM_KEEP_MS. */
 export function prefetchLotRoom(area: string, gl: WebGLRenderer, phone: boolean): void {
   const room = lotRoomOf(area);
@@ -847,7 +1123,7 @@ declare global {
 }
 
 /** The arrival camera: among 24 directions within 65° of straight behind, the one with the longest clear arm (the houses' rule). */
-function arrivalYaw(solid: SolidIndex, x: number, z: number, bodyYaw: number, wanted: number): number {
+export function arrivalYaw(solid: SolidIndex, x: number, z: number, bodyYaw: number, wanted: number): number {
   const pitch = 0.55;
   const behind = normalizeAngle(bodyYaw + Math.PI);
   const y = HEAD_HEIGHT + wanted * Math.sin(pitch);
@@ -889,7 +1165,17 @@ export function LotRoomArea({ area, pose }: { area: string; pose: Pose }) {
   const camera = useThree((s) => s.camera);
   const tier = useQualityTier();
   const phone = tier !== "high";
+  const setDpr = useThree((s) => s.setDpr);
   const [loaded, setLoaded] = useState<LoadedRoom | null>(null);
+
+  // a sharper picture in the rooms that ask for it on a phone (ROOM_PHONE_DPR), back to the tier's when the room goes
+  useEffect(() => {
+    const want = room && phone ? ROOM_PHONE_DPR[room.unit.id] : undefined;
+    if (!want || !loaded) return;
+    const before = gl.getPixelRatio();
+    setDpr(Math.max(before, Math.min(want, window.devicePixelRatio || 1)));
+    return () => setDpr(before);
+  }, [room, phone, loaded, gl, setDpr]);
 
   useEffect(() => {
     if (!room) return;
@@ -989,7 +1275,14 @@ export function LotRoomArea({ area, pose }: { area: string; pose: Pose }) {
     for (const m of loaded.lightpools) m.color.setScalar(0.9 * day * day);
     for (const g of loaded.glass) g.m.emissiveIntensity = g.night + (g.day - g.night) * day;
     colour.setScalar(0.22 + 0.78 * day);
-    for (const m of loaded.screens) m.color.copy(colour);
+    for (const m of loaded.screens) {
+      const v = m.userData.windowView as { uViewWeight: { value: Vector3 } } | undefined;
+      if (v) {
+        // the village's own light at this hour (evening: the sun in the west, -x)
+        const keys = WINDOW_VIEWS[loaded.unit]?.keys ?? [];
+        windowViewWeights(keys, o.night, o.golden, o.sunDir[0] < 0, v.uViewWeight.value);
+      } else if (m.name !== "M_garden") m.color.copy(colour);
+    }
     loaded.glow.opacity = Math.max(0.25, o.lights);
     // the room's lamps: brighter at night (they carry the room then), the fill lower
     const L = ROOM_LIGHTS[loaded.unit];

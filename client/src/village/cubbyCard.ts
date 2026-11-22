@@ -17,10 +17,18 @@ import { cubbyColumn } from "./villageTargets";
 export const CUBBY_COPY = {
   empty: "곧 이 자리에 우리 아이를 모실 수 있어요",
   emptyTitle: "비어 있는 칸",
-  light: "촛불 켜기",
+  /** owner 2026-11-20: a toggle — "촛불 밝히기" / "촛불 끄기". */
+  light: "촛불 밝히기",
   lighting: "촛불을 켜고 있어요",
+  putOut: "촛불 끄기",
+  puttingOut: "촛불을 끄고 있어요",
   burning: "촛불이 켜져 있어요",
+  onlyLighter: "켜 주신 분과 가족만 끌 수 있어요",
   wait: "잠시 뒤에 켤 수 있어요",
+  fold: "접기",
+  unfold: "펼치기",
+  foldLabel: "카드 접기",
+  unfoldLabel: "카드 펼치기",
   up: "위 칸",
   down: "아래 칸",
   close: "닫기",
@@ -53,9 +61,13 @@ export function agoLabel(agoMs: number): string {
   return `${Math.floor(min / 60)}시간 전에`;
 }
 
-/** "케이슨님이 32분 전에 켜 주셨어요" (owner 2026-11-13: so a family can see who came by). */
-export function litByLabel(by: string, agoMs = 0): string {
+/**
+ * "케이슨님이 32분 전에 켜 주셨어요" (owner 2026-11-13: so a family can see who came by); the visitor's own candle says so
+ * ("내가 방금 켜 두었어요", 2026-11-20: then the card offers "촛불 끄기").
+ */
+export function litByLabel(by: string, agoMs = 0, mine = false): string {
   const when = agoLabel(agoMs);
+  if (mine) return `내가 ${when} 켜 두었어요`;
   return by ? `${by}님이 ${when} 켜 주셨어요` : `${when} 켜진 촛불이에요`;
 }
 

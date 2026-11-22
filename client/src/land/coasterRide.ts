@@ -29,7 +29,7 @@ import {
   type CarFrame,
   type CoasterState,
 } from "@caysonverse/shared/land/coaster";
-import { villageClock } from "../village/villageClock";
+import { rideMs } from "./rideClock";
 import { COASTER_SITE } from "./site";
 
 /** My standing place (the scene copies the live pose here every frame: the HUD column has no pose of its own). */
@@ -42,7 +42,7 @@ export const selfRide = { slot: -1, ride: 0 };
 export const rideNotice: { reason: "closed" | "full" | "busy" | "aloft" | "reserved" | "far" | null; at: number } = { reason: null, at: 0 };
 
 /** The ride I reserved a seat in (pressed "board" outside its window: the server seats me when it next loads), and when. */
-export const rideReserved: { key: "coaster" | "carousel" | "wheel" | null; at: number } = { key: null, at: 0 };
+export const rideReserved: { key: "coaster" | "carousel" | "wheel" | "moonboat" | "droptower" | null; at: number } = { key: null, at: 0 };
 
 export type RideComfort = 0 | 1 | 2; // 0 = off (steady camera), 1 = gentle, 2 = full
 const COMFORT_KEY = "cv.rideComfort";
@@ -74,7 +74,7 @@ export function subscribeRideComfort(l: () => void): () => void {
 /** The train's state now, on the village clock (the clock the server sends; the same one everyone's train runs on). */
 const stateNow: CoasterState = { cycle: 0, phase: 0, status: "boarding", s: 0, departsInMs: 0 };
 export function coasterNow(): CoasterState {
-  return coasterAt(villageClock.liveMs(), stateNow);
+  return coasterAt(rideMs(), stateNow);
 }
 
 /** What the camera did last frame (read by the HUD, the audio and the e2e). */
@@ -145,10 +145,14 @@ export function resetRideCamera(): void {
 }
 
 function spring(x: number, v: number, target: number, dt: number, omega: number, zeta: number): [number, number] {
-  // semi-implicit damped spring toward `target`
-  const a = -2 * zeta * omega * v - omega * omega * (x - target);
-  const nv = v + a * dt;
-  return [x + nv * dt, nv];
+  // A 100 ms frame destabilizes the head spring. Use smaller integration steps on slow frames.
+  const steps = Math.max(1, Math.ceil(dt * 30));
+  const h = dt / steps;
+  for (let i = 0; i < steps; i++) {
+    v += (-2 * zeta * omega * v - omega * omega * (x - target)) * h;
+    x += v * h;
+  }
+  return [x, v];
 }
 
 const hash = (n: number): number => {

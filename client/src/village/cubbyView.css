@@ -227,3 +227,139 @@
   font-weight: 600;
   line-height: 1;
 }
+
+/* ── fold / unfold (owner 2026-11-20: "호두에 대한 정보를 접어 놓을 수도 있고 펼쳐볼 수도 있게") ── */
+.cv-cubby-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+.cv-cubby-head .cv-cubby-where {
+  text-align: left;
+  min-width: 0;
+}
+.cv-cubby-fold {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 48px;
+  padding: 0 14px 0 12px;
+  border: 1px solid #ddd2c4;
+  border-radius: 24px;
+  background: #fffdf9;
+  color: #3b322b;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.cv-cubby-fold:hover {
+  background: #f3ece2;
+}
+.cv-cubby-chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+.cv-cubby-chevron.is-up {
+  transform: translateY(2px) rotate(-135deg);
+}
+/* folded: a slim bar with the name; the cubby and its photo stay in view behind it */
+.cv-cubby.is-folded {
+  align-items: flex-end;
+  /* above the PC emoji bar (bottom right, emoji.css), which stays usable while the card is folded */
+  padding-bottom: 84px;
+}
+.cv-cubby-panel.is-folded {
+  width: min(380px, 100%);
+  padding: 6px 6px 6px 16px;
+  border-radius: 28px;
+  overflow: visible;
+}
+.cv-cubby-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.cv-cubby-bar-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  line-height: 1.25;
+}
+.cv-cubby-bar-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  font-size: 17px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cv-cubby-bar-where {
+  font-size: 12px;
+  color: #5c4a3a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.cv-cubby-bar-flame {
+  flex: none;
+  width: 9px;
+  height: 14px;
+  border-radius: 50% 50% 45% 45% / 62% 62% 38% 38%;
+  background: radial-gradient(circle at 50% 70%, #fff6d8 0 25%, #ffc56b 45%, rgba(255, 140, 50, 0.9) 70%, rgba(255, 120, 40, 0) 72%);
+  filter: drop-shadow(0 0 4px rgba(255, 180, 80, 0.85));
+  animation: cv-cubby-flicker 1.6s ease-in-out infinite alternate;
+}
+.cv-cubby-bar-close {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: #3b322b;
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+@media (max-width: 719px), (max-aspect-ratio: 1/1) {
+  /* a phone: above the bottom-right cluster (emoji, action) and the chat button, which stay usable while folded */
+  .cv-cubby.is-folded {
+    padding-bottom: calc(172px + env(safe-area-inset-bottom));
+  }
+  .cv-cubby-panel.is-folded {
+    width: min(480px, calc(100% - 16px));
+    max-height: none;
+    padding: 6px 6px 6px 16px;
+  }
+}
+
+/* ── the candle toggle (owner 2026-11-20): "촛불 밝히기" / "촛불 끄기" ── */
+.cv-cubby-light.is-out {
+  background: #fffdf9;
+  color: #3b322b;
+  border: 1.5px solid #c9a77c;
+}
+.cv-cubby-light.is-out:disabled {
+  background: #f1ebe2;
+  color: #6c5f53;
+}
+.cv-cubby-hint {
+  font-size: 12.5px;
+  color: #5c4a3a;
+}

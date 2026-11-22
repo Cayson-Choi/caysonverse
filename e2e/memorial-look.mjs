@@ -100,7 +100,7 @@ try {
           }
           if (LIGHT) {
             const btn = p.page.locator(".cv-cubby-light");
-            if ((await btn.textContent()) === "촛불 켜기") {
+            if ((await btn.textContent()) === "촛불 밝히기") {
               await btn.click();
               await sleep(2500);
               await hideHud(p);

@@ -1,0 +1,9 @@
+{
+  "width": 3072,
+  "height": 1536,
+  "horizonTileHeight": 640,
+  "gutter": 4,
+  "bottomLatitude": -22,
+  "topLatitude": 24,
+  "blendDegrees": 3
+}

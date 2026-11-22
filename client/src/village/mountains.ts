@@ -214,14 +214,15 @@ float mtnNoise( vec3 x ) {
     mix( mix( mtnHash( i + vec3( 0, 0, 1 ) ), mtnHash( i + vec3( 1, 0, 1 ) ), f.x ), mix( mtnHash( i + vec3( 0, 1, 1 ) ), mtnHash( i + vec3( 1, 1, 1 ) ), f.x ), f.y ), f.z );
 }
 `;
-// The atlas's leaf-scale grain reads as a repeating scale pattern on the near ridges: it is sampled from a blurrier mip, and the
-// forest's own broad light and dark stands (world-space noise at two scales) break the repetition.
+// Keep the atlas's broad rock and forest markings. Soften its repeating individual crowns,
+// then tint groups of trees across each slope and carry the finer grain along the contours.
 const FRAGMENT_MAP = /* glsl */ `
 #ifdef USE_MAP
 {
-  vec4 mtnTex = texture2D( map, vMapUv, 3.4 );
-  float mn = mtnNoise( vMtnWorld * 0.035 ) * 0.6 + mtnNoise( vMtnWorld * 0.11 + 7.0 ) * 0.4;
-  mtnTex.rgb *= 0.78 + 0.5 * mn;
+  vec4 mtnTex = texture2D( map, vMapUv, 3.2 );
+  float grove = smoothstep( 0.22, 0.78, mtnNoise( vMtnWorld * vec3( 0.027, 0.072, 0.027 ) ) );
+  float grain = mtnNoise( vMtnWorld * vec3( 0.10, 0.16, 0.10 ) + 7.0 );
+  mtnTex.rgb *= mix( vec3( 0.76, 0.87, 0.81 ), vec3( 1.26, 1.27, 1.02 ), grove ) * ( 0.91 + 0.18 * grain );
   diffuseColor *= mtnTex;
 }
 #endif
@@ -343,8 +344,9 @@ export interface BackdropCut {
  * Cut the old far range out of a CLONE of the village model: the backdrop's triangles wholly beyond `radius` (from the
  * world origin, in x/z) and the far forest's instances standing beyond it. The geometry belongs to the loader's cache:
  * the trimmed mesh gets a copy sharing its attributes with a new index; `restore` gives the original back.
+ * `drop(x, z)`: far-forest instances it answers true for are removed too (the park skyline's footprint).
  */
-export function cutFarBackdrop(root: Object3D, radius = BACKDROP_CUT_RADIUS, repose?: (x: number, z: number) => number): BackdropCut {
+export function cutFarBackdrop(root: Object3D, radius = BACKDROP_CUT_RADIUS, repose?: (x: number, z: number) => number, drop?: (x: number, z: number) => boolean): BackdropCut {
   const r2 = radius * radius;
   const undo: Array<() => void> = [];
   let trianglesRemoved = 0;
@@ -397,6 +399,8 @@ export function cutFarBackdrop(root: Object3D, radius = BACKDROP_CUT_RADIUS, rep
         const x = tmpM.elements[12]!;
         const z = tmpM.elements[14]!;
         const d2 = x * x + z * z;
+        // a far tree standing where something else is built (the park skyline): gone
+        if (drop && drop(x, z)) continue;
         // beyond the cut (repose gives the outer ground's height) or on the rim of the village (95 m out: kept where it stands)
         if (d2 > r2 || (repose && d2 > RIM_VARY_R2)) {
           // a far tree beyond the cut: stood again on the outer ground (repose gives its height), or gone where there is none

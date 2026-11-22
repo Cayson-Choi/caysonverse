@@ -1,14 +1,15 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { PerspectiveCamera, Vector3 } from "three";
+import { BufferGeometry, Float32BufferAttribute, PerspectiveCamera, Vector3 } from "three";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseKstTime } from "@caysonverse/shared/village/sunClock";
-import { altAzOf, angleDeg, type Vec3 } from "@caysonverse/shared/village/skyMath";
+import { altAzOf, angleDeg, PLANET_IDS, type Vec3 } from "@caysonverse/shared/village/skyMath";
 import { viewState } from "../../game/viewState";
-import { clearSelection, finderFrame, lineSpec, resetFinderRuntime, selectFigure } from "./finderRuntime";
+import { clearSelection, finderFrame, lineSpec, resetFinderRuntime, selectFigure, skyOverlay } from "./finderRuntime";
 import { parseStarCatalog } from "./starCatalog";
 import { anchorDirection, setSkyCatalog, sky, updateSky } from "./skyRuntime";
 import { closeFinder, openFinder, useStarFinder } from "./starFinderStore";
+import { syncGlow } from "./StarSky";
 
 const FILE = fileURLToPath(new URL("../../../public/sky/stars.v1.bin", import.meta.url));
 const bytes = readFileSync(FILE);
@@ -46,6 +47,8 @@ describe("the star finder's frame", () => {
     look([0, 0, -1]);
   });
   afterEach(() => {
+    skyOverlay.card = null;
+    skyOverlay.labels = [];
     closeFinder();
     setSkyCatalog(null);
     viewState.mode = "tp";
@@ -123,6 +126,28 @@ describe("the star finder's frame", () => {
     expect(viewState.fpYaw).toBe(1);
   });
 
+  it("restores stars from the first figure when a second is selected during its pulse", () => {
+    openFinder();
+    run(0.1, night);
+    const geometry = new BufferGeometry();
+    const brightness = new Float32BufferAttribute(new Float32Array(PLANET_IDS.length + catalog.count).fill(1), 1);
+    geometry.setAttribute("aGlow", brightness);
+    selectFigure("Cas");
+    run(0.3, night);
+    syncGlow(geometry);
+    const firstStar = PLANET_IDS.length + target().stars[0]!;
+    expect(brightness.getX(firstStar)).toBeCloseTo(1.5);
+    clearSelection();
+    selectFigure("polaris");
+    run(0.3, night);
+    syncGlow(geometry);
+    expect(brightness.getX(firstStar)).toBe(1);
+    expect(brightness.getX(PLANET_IDS.length + target().stars[0]!)).toBeCloseTo(1.5);
+    run(0.4, night);
+    syncGlow(geometry);
+    expect(brightness.array.every((n) => n === 1)).toBe(true);
+  });
+
   it("lets go of a pick that has gone below the hills, and the back button clears it", () => {
     openFinder();
     run(0.1, night);
@@ -159,5 +184,22 @@ describe("the star finder's frame", () => {
     useStarFinder.setState({ progress: { found: { Cas: "x", Peg: "y" }, showFound: false } });
     run(0.1, night);
     expect(lineSpec).toHaveLength(0);
+  });
+
+  it("shows a found constellation's name in the area freed by closing the finder card", () => {
+    const label = { textContent: "", dataset: {}, style: {}, hidden: true } as unknown as HTMLElement;
+    skyOverlay.labels = [label];
+    skyOverlay.card = { getBoundingClientRect: () => ({ left: 0, top: 0, right: W, bottom: H }) } as HTMLElement;
+    useStarFinder.setState({ progress: { found: { Cas: "x" }, showFound: true } });
+    openFinder();
+    run(0.1, night);
+    look(anchorDirection(sky.figures.find((g) => g.figure.id === "Cas")!));
+    run(0.3, night);
+    expect(label.hidden).toBe(true);
+    closeFinder();
+    skyOverlay.card = null;
+    run(0.1, night);
+    expect(label.hidden).toBe(false);
+    expect(label.textContent).toContain("카시오페이아");
   });
 });

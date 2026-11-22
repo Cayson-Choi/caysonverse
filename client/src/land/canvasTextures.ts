@@ -40,7 +40,7 @@ function star(ctx: CanvasRenderingContext2D, x: number, y: number, r1: number, r
   ctx.fill();
 }
 
-/** The park's gate board: "케이슨랜드" with a star, cream on indigo. */
+/** The lettering on the gate's enamel plaque. Its brass frame and stars are geometry. */
 export function gateSignTexture(): CanvasTexture {
   const c = document.createElement("canvas");
   c.width = 1024;
@@ -51,11 +51,6 @@ export function gateSignTexture(): CanvasTexture {
   grd.addColorStop(1, "#2f3399");
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, 1024, 256);
-  ctx.strokeStyle = "#f2c14e";
-  ctx.lineWidth = 10;
-  ctx.strokeRect(12, 12, 1000, 232);
-  star(ctx, 120, 128, 70, 30);
-  star(ctx, 904, 128, 70, 30);
   ctx.fillStyle = "#f3efea";
   ctx.font = "bold 140px 'Jua', 'Malgun Gothic', 'Noto Sans KR', sans-serif";
   ctx.textBaseline = "middle";
@@ -64,36 +59,6 @@ export function gateSignTexture(): CanvasTexture {
   ctx.font = "40px 'Jua', 'Malgun Gothic', 'Noto Sans KR', sans-serif";
   ctx.fillStyle = "#f2c14e";
   ctx.fillText("CAYSONLAND", 512, 214);
-  const t = new CanvasTexture(c);
-  t.colorSpace = SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
-}
-
-/** The queue hall's name board over the entrance: "줄 서는 곳" in cream on indigo with a gold rim and a star at each end. */
-export function queueBoardTexture(): CanvasTexture {
-  const c = document.createElement("canvas");
-  c.width = 1024;
-  c.height = 132;
-  const ctx = c.getContext("2d")!;
-  const grd = ctx.createLinearGradient(0, 0, 0, 132);
-  grd.addColorStop(0, "#4B4FD8");
-  grd.addColorStop(1, "#2f3399");
-  ctx.fillStyle = grd;
-  ctx.fillRect(0, 0, 1024, 132);
-  ctx.strokeStyle = "#f2c14e";
-  ctx.lineWidth = 6;
-  ctx.strokeRect(8, 8, 1008, 116);
-  star(ctx, 78, 66, 40, 17);
-  star(ctx, 946, 66, 40, 17);
-  ctx.fillStyle = "#f3efea";
-  ctx.font = "bold 70px 'Jua', 'Malgun Gothic', 'Noto Sans KR', sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("별똥별 급행  ·  줄 서는 곳", 512, 56);
-  ctx.font = "26px 'Jua', 'Malgun Gothic', 'Noto Sans KR', sans-serif";
-  ctx.fillStyle = "#f2c14e";
-  ctx.fillText("SHOOTING STAR EXPRESS  ·  QUEUE", 512, 106);
   const t = new CanvasTexture(c);
   t.colorSpace = SRGBColorSpace;
   t.anisotropy = 4;

@@ -166,7 +166,9 @@ void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   float r2 = dot(p, p);
   if (r2 > 1.0) discard;
-  gl_FragColor = vec4(vColor * exp(-2.77 * r2), 1.0);
+  // the Gaussian, lowered by its value at the sprite's rim so it reaches 0 there (a bright star's disc ended in a visible ring)
+  float g = max(exp(-2.77 * r2) - 0.0627, 0.0) * 1.0669;
+  gl_FragColor = vec4(vColor * g, 1.0);
   #include <colorspace_fragment>
 }
 `;

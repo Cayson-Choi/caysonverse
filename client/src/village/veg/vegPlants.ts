@@ -130,7 +130,7 @@ function uvTube(b: GeoBuilder, pts: Vec3[], radii: number[], sides: number, cell
     for (let s = 0; s <= sides; s++) {
       const a = (s / sides) * Math.PI * 2;
       const nr = add(mul(tx, Math.cos(a)), mul(ty, Math.sin(a)));
-      ring.push(b.v(add(pts[i]!, mul(nr, radii[i]!)), nr, col(t), plantUv(cell, s / sides, v0 + (v1 - v0) * t, 0.0)));
+      ring.push(b.v(add(pts[i]!, mul(nr, radii[i]!)), nr, col(t), cell === PLANT_CELL.solid ? SOLID_UV : plantUv(cell, s / sides, v0 + (v1 - v0) * t, 0.0)));
     }
     rings.push(ring);
   }
@@ -528,11 +528,77 @@ export function muscariPlant2(simple: boolean, seed = 3): BufferGeometry {
   return b.build();
 }
 
+/** Two whorls of open tepals with a pollen-bearing centre, seen looking down into a
+ * forecourt border. The low mesh keeps all six petals and the same perforated rim. */
+export function forecourtTulips(low: boolean, seed = 31): BufferGeometry {
+  const b = builder(0.35), rand = mulberry32(seed);
+  const stems = low ? 1 : 2;
+  for (let stem = 0; stem < stems; stem++) {
+    const az = stem * 2.8 + rand() * 0.6;
+    const dx = Math.cos(az), dz = Math.sin(az);
+    const base: Vec3 = [dx * 0.04, 0, dz * 0.04];
+    const h = 0.27 + rand() * 0.075;
+    const crown: Vec3 = [base[0] + dx * 0.042, h, base[2] + dz * 0.042];
+    const stemPath: Vec3[] = low ? [base, crown] : [base, [base[0], h * 0.53, base[2]], crown];
+    stalk(b, stemPath, 0.0041, 0.0032, rgba("#64873e"));
+    for (let k = 0; k < (low ? 1 : 2); k++) {
+      const a = az + (k ? 2.5 : -0.67);
+      strapLeaf(b, base, [Math.cos(a) * 0.64, 0.91, Math.sin(a) * 0.64], 0.22, 0.047, rgba("#7c9b69"), 0.39, low);
+    }
+    const up = norm([dx * 0.32, 1, dz * 0.32]);
+    const [x, z] = basis(up);
+    const roll = rand() * Math.PI * 2;
+    const radius = 0.037 + rand() * 0.004;
+    for (let k = 0; k < 6; k++) {
+      const a = roll + k * Math.PI / 3 + 0.06 * (k % 2);
+      const radial = add(mul(x, Math.cos(a)), mul(z, Math.sin(a)));
+      const side = cross(up, radial);
+      const r = radius * (k % 2 ? 0.86 : 1);
+      const height = radius * (k % 2 ? 0.98 : 0.79) * (0.94 + 0.10 * rand());
+      const shoulder = rgba(k % 2 ? "#e1a6a1" : "#edc2b3", 1);
+      const lip = rgba(k % 3 ? "#fff2dc" : "#f8cecc", 1);
+      const vertex = (out: number, rise: number, across: number, u: number, v: number, colour: Rgba) => {
+        const p = add(crown, add(mul(up, height * rise), add(mul(radial, r * out), mul(side, r * across))));
+        const normal = norm(add(mul(up, 0.50 + 0.39 * out), add(mul(radial, -0.86 + 0.41 * out), mul(side, -0.56 * across))));
+        return b.v(p, normal, colour, plantUv(PLANT_CELL.tulip, u, v));
+      };
+      const foot = vertex(0.07, 0, 0, 0.5, 0.98, rgba("#ca8b4f", 1));
+      const l = vertex(0.57, 0.55, -0.49, 0.03, 0.54, shoulder);
+      const rgt = vertex(0.57, 0.55, 0.49, 0.97, 0.54, shoulder);
+      const tl = vertex(1.00, 1.02, -0.32, 0.24, 0.08, lip);
+      const tr = vertex(1.00, 1.04, 0.32, 0.76, 0.08, lip);
+      if (low) {
+        b.tri(foot, l, tl); b.tri(foot, tl, tr); b.tri(foot, tr, rgt);
+      } else {
+        const rib = vertex(0.50, 0.35, 0, 0.5, 0.58, rgba("#f5cdb8", 1));
+        const tip = vertex(1.11, 1.14, 0, 0.5, 0.02, lip);
+        b.tri(foot, l, rib); b.tri(foot, rib, rgt); b.tri(rib, l, tl);
+        b.tri(rib, tl, tip); b.tri(rib, tip, tr); b.tri(rib, tr, rgt);
+      }
+    }
+    // Golden anthers lean apart above the darker throat. Their broad tips remain
+    // visible from above and the three low-tier anthers cost six triangles total.
+    for (let k = 0; k < (low ? 3 : 5); k++) {
+      const a = roll + k * Math.PI * 2 / (low ? 3 : 5);
+      const radial = add(mul(x, Math.cos(a)), mul(z, Math.sin(a)));
+      const side = cross(up, radial);
+      const middle = add(crown, add(mul(up, 0.014), mul(radial, 0.009)));
+      const foot = b.v(add(crown, mul(radial, 0.002)), up, rgba("#875c35"));
+      const left = b.v(add(middle, mul(side, -0.0035)), up, rgba("#e9aa43"));
+      const right = b.v(add(middle, mul(side, 0.0035)), up, rgba("#e9aa43"));
+      const tip = b.v(add(middle, add(mul(up, 0.005), mul(radial, 0.003))), up, rgba("#ffd367"));
+      b.tri(foot, left, right); b.tri(left, tip, right);
+    }
+  }
+  return b.build();
+}
+
+
 /** Two or three tulips (stems 25-35 cm), each with two broad strap leaves. */
-export function tulipPlant2(simple: boolean, seed = 4): BufferGeometry {
+export function tulipPlant2(simple: boolean, seed = 4, stems = simple ? 2 : 3): BufferGeometry {
   const b = builder(0.35);
   const rand = mulberry32(seed);
-  const n = simple ? 2 : 3;
+  const n = stems;
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + rand() * 0.8;
     const at: Vec3 = [Math.cos(a) * 0.05, 0, Math.sin(a) * 0.05];
@@ -543,6 +609,145 @@ export function tulipPlant2(simple: boolean, seed = 4): BufferGeometry {
       strapLeaf(b, at, [Math.cos(la) * Math.cos(el), Math.sin(el), Math.sin(la) * Math.cos(el)], 0.17 + rand() * 0.05, 0.045, rgba("#7A9E62"), 0.45, simple);
     }
     tulipCup(b, at, 0.26 + rand() * 0.1, lean, simple ? 0.026 : 0.021, rand() * 6.28, simple);
+  }
+  return b.build();
+}
+
+/** A rooted bedding sprig for shallow sill boxes and entrance borders, with each bloom
+ * and leaf growing from the same crown. Keep the pedicels even on the phone mesh. */
+export function planterSprig(species: "pansy" | "petunia", simple: boolean, seed = 7): BufferGeometry {
+  const b = builder(0.16);
+  const rand = mulberry32(seed);
+  const leaves = simple ? 4 : 7;
+  const tips = simple ? 2 : 3;
+  const pansy = species === "pansy";
+  for (let i = 0; i < leaves; i++) {
+    const a = i * 2.4 + rand() * 0.5;
+    texLeaf(b, [0, 0.012, 0], [Math.cos(a), 0.28 + rand() * 0.55, Math.sin(a)], [0, 1, 0],
+      0.08 + rand() * 0.045, 0.047 + rand() * 0.015, pansy ? PLANT_CELL.leafPansy : PLANT_CELL.leafPetunia,
+      grey(0.77 + rand() * 0.21, 0), { simple, fold: 0.27, droop: 0.38 });
+  }
+  for (let i = 0; i < tips; i++) {
+    const a = (i + rand() * 0.4) * 2 * Math.PI / tips;
+    const radius = 0.045 + rand() * 0.035;
+    const x = radius * Math.cos(a), z = radius * Math.sin(a), h = 0.12 + rand() * 0.055;
+    const tip: Vec3 = [x, h, z];
+    const stem: Vec3[] = simple ? [[0, 0, 0], tip] : [[0, 0, 0], [x * 0.75, h * 0.57, z * 0.75], tip];
+    stalk(b, stem, 0.0037, 0.0021, rgba("#58823b"));
+    const face = norm([Math.cos(a), 0.6 + rand() * 0.6, Math.sin(a)]);
+    if (pansy) pansyFace(b, tip, face, 0.033, a, simple);
+    else petuniaFlower(b, add(tip, mul(face, 0.025)), face, 0.038, a, simple);
+  }
+  return b.build();
+}
+
+/** A 45 cm clipped boxwood. The short woody scaffold stays visible underneath
+ * the shell of forked shoots; each atlas sprig carries opposite pairs of small leaves. */
+export function fountainBoxwood(simple: boolean): BufferGeometry {
+  const b = builder(0.28), rand = mulberry32(638);
+  const woody = rgba("#725e41");
+  const fork: Vec3 = [0.009, 0.080, -0.006];
+  stalk(b, [[0, -0.008, 0], fork], 0.017, 0.010, woody);
+  const limbs = simple ? 3 : 7;
+  for (let i = 0; i < limbs; i++) {
+    const a = i * 2.4 + rand() * 0.24;
+    const tip: Vec3 = [0.14 * Math.cos(a), 0.13 + rand() * 0.05, 0.14 * Math.sin(a)];
+    stalk(b, [fork, tip], 0.009, 0.003, woody);
+  }
+  const shoots = simple ? 24 : 84;
+  for (let i = 0; i < shoots; i++) {
+    const y = 1 - (i + 0.5) / shoots * 1.72;
+    const a = i * 2.39996 + rand() * 0.24;
+    const horizontal = Math.sqrt(1 - y * y);
+    const n: Vec3 = [horizontal * Math.cos(a), y, horizontal * Math.sin(a)];
+    const inner = i % 5 === 3;
+    const radius = (inner ? 0.14 : 0.198) * (0.93 + 0.11 * rand());
+    const surface: Vec3 = [n[0] * radius, 0.155 + n[1] * radius * 0.54, n[2] * radius];
+    // A branchlet emerges from under the adjacent flush. On the crown it leans
+    // sideways, preserving the low dome and exposing its leaves to the sky.
+    const tangent = norm(cross(n, [Math.sin(a + 0.8), 0.45, Math.cos(a - 0.7)]));
+    const axis = norm(add(mul(n, 0.58), tangent));
+    const size = (simple ? 0.185 : 0.145) * (0.88 + rand() * 0.2);
+    const shade = (inner ? 0.67 : 0.96) * (0.65 + 0.35 * (y + 0.72) / 1.72);
+    card(b, sub(surface, mul(axis, size * 0.52)), axis, n, size, size,
+      inner ? PLANT_CELL.boxIn : i % 2 ? PLANT_CELL.boxA : PLANT_CELL.boxB, grey(shade, 0),
+      { fold: simple ? 0 : 0.15, shadeN: n, colTop: grey(shade * 1.12, 0) });
+  }
+  return b.build();
+}
+
+/** Clipped border hedge. Shoots follow both flanks, the crown and the sheared ends. */
+export function borderBoxwood(length: number, height: number, simple: boolean, seed: number): BufferGeometry {
+  const b = builder(height), rand = mulberry32(seed);
+  const step = simple ? 0.19 : 0.135;
+  const cols = Math.ceil(length / step);
+  const sprig = (base: Vec3, axis: Vec3, normal: Vec3, shade: number) => {
+    const size = (simple ? 0.24 : 0.2) * (0.84 + rand() * 0.32);
+    card(b, base, axis, normal, size, size, rand() < 0.5 ? PLANT_CELL.boxA : PLANT_CELL.boxB,
+      grey(shade, 0), { fold: simple ? 0 : 0.14, shadeN: normal, colTop: grey(shade * 1.15, 0) });
+  };
+  for (let i = 0; i < cols; i++) {
+    const x = length * ((i + 0.5) / cols - 0.5);
+    for (const side of [-1, 1]) {
+      for (const y of [0.025, height * 0.47]) {
+        sprig([x + (rand() - 0.5) * 0.06, y, side * 0.158], [(rand() - 0.5) * 1.3, 1, side * 0.2],
+          [0, 0.22, side], y < 0.1 ? 0.7 : 0.89);
+      }
+      sprig([x, height + 0.008, side * (0.08 + rand() * 0.025)],
+        [(i % 2 ? 1 : -1) * (0.3 + rand()), 0.22, -side], [0, 1, 0], 0.95);
+    }
+  }
+  for (const side of [-1, 1]) for (const z of [-0.07, 0.07]) {
+    sprig([side * (length / 2 + 0.002), 0.04, z], [side * 0.22, 1, -z * 4], [side, 0.18, 0], 0.77);
+  }
+  return b.build();
+}
+
+/** A flowering lateral of a climbing rose. Its base attaches to a trained cane. */
+export function climbingRoseSpray(simple: boolean): BufferGeometry {
+  const b = builder(0.23);
+  const wood = rgba("#647743");
+  const fork: Vec3 = [0.012, 0.084, 0.052], tip: Vec3 = [-0.018, 0.17, 0.13];
+  stalk(b, [[0, 0, 0], fork, tip], 0.006, 0.003, wood);
+  for (const side of [-1, 1]) {
+    const base = side < 0 ? mul(fork, 0.72) : fork;
+    const twig: Vec3 = [side * 0.10, 0.045, side < 0 ? 0.022 : -0.035];
+    stalk(b, [base, add(base, twig)], 0.0026, 0.0014, wood);
+    const pairs = simple ? 1 : 2;
+    for (let pair = 0; pair < pairs; pair++) {
+      const axil = add(base, mul(twig, (pair + 1) / (pairs + 1)));
+      for (const facing of [-1, 1]) {
+        texLeaf(b, axil, [side * 0.35, 0.18 + pair * 0.14, facing], [0, 1, 0],
+          0.066, 0.038, PLANT_CELL.leafPetunia, grey(0.8 + pair * 0.1, 0), { simple, fold: 0.32 });
+      }
+    }
+    texLeaf(b, add(base, twig), twig, [0, 1, 0], 0.075, 0.043, PLANT_CELL.leafPetunia, grey(0.92, 0), { simple });
+  }
+  // The outer corolla opens wide. Smaller, offset petals curl up around its heart.
+  const { f, right, up } = faceBasis([0.18, 0.64, 1]);
+  for (let whorl = 0; whorl < (simple ? 2 : 3); whorl++) {
+    const petals = [5, 4, 3][whorl]!;
+    const r = 0.048 * (1 - whorl * 0.29), h = 0.027 + whorl * 0.008;
+    for (let i = 0; i < petals; i++) {
+      const a = i * Math.PI * 2 / petals + whorl * 0.73;
+      const radial = add(mul(right, Math.cos(a)), mul(up, Math.sin(a)));
+      const tangent = cross(f, radial);
+      const normal = norm(sub(f, mul(radial, 0.42)));
+      const vertex = (rr: number, side: number, lift: number, u: number, v: number, shade: number) =>
+        b.v(add(add(tip, mul(f, h * lift)), add(mul(radial, rr * r), mul(tangent, side * r))), normal, grey(shade, 1), plantUv(PLANT_CELL.tulip, u, v));
+      const foot = vertex(0.055, 0, whorl * 0.21, 0.5, 0.94, 0.44);
+      const left = vertex(0.63, -0.59, 0.76, 0.08, 0.56, 0.82);
+      const rightEdge = vertex(0.66, 0.59, 0.82, 0.92, 0.56, 0.83);
+      const rim = vertex(1, 0.07, 1, 0.5, 0.05, 1);
+      b.tri(foot, left, rightEdge);
+      b.tri(left, rim, rightEdge);
+      if (!simple) {
+        const lipL = vertex(0.85, -0.47, 0.98, 0.2, 0.17, 0.98);
+        const lipR = vertex(0.84, 0.48, 1.03, 0.8, 0.17, 1);
+        b.tri(left, lipL, rim);
+        b.tri(rim, lipR, rightEdge);
+      }
+    }
   }
   return b.build();
 }

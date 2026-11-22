@@ -7,6 +7,7 @@ import { useViewStore } from "../stores/viewStore";
 import type { Pose, SeatState } from "../game/types";
 import { MAP_PLACES } from "./villagePlaces";
 import { cancelMapWalk, startMapWalk } from "./mapWalk";
+import { mapPlaceKey, mapPlaceZRange } from "./mapPlaceStack";
 import "./mapPlaces.css";
 
 /**
@@ -33,6 +34,20 @@ function press(fn: () => void) {
  * avatar walks there along the paths (mapWalk.ts). Mounted only while the map is open; drawn once the camera is up (like
  * "내 위치").
  */
+const overlaps = (r: DOMRect, d: DOMRect) => r.left < d.right + 4 && r.right > d.left - 4 && r.top < d.bottom + 2 && r.bottom > d.top - 2;
+
+/** Where "내 위치" (its resting rect `base`) may move so it touches none of `drawn`: the nearest of a few steps up and aside, inside the screen. */
+export function meSpot(base: DOMRect, drawn: readonly DOMRect[], vw: number, vh: number): { dx: number; dy: number } | null {
+  if (!drawn.some((d) => overlaps(base, d))) return { dx: 0, dy: 0 };
+  const steps: ReadonlyArray<readonly [number, number]> = [[0, -34], [0, -68], [-84, 0], [84, 0], [-84, -34], [84, -34], [0, -102], [0, 40], [-84, -68], [84, -68], [0, -136]];
+  for (const [dx, dy] of steps) {
+    const r = { left: base.left + dx, right: base.right + dx, top: base.top + dy, bottom: base.bottom + dy } as DOMRect;
+    if (r.left < 4 || r.right > vw - 4 || r.top < 4 || r.bottom > vh - 4) continue;
+    if (!drawn.some((d) => overlaps(r, d))) return { dx, dy };
+  }
+  return null;
+}
+
 export function MapPlaces({ pose, seat }: { pose: Pose; seat: SeatState }) {
   const isOv = useViewStore((s) => s.isOv);
   const [picked, setPicked] = useState<string | null>(null);
@@ -44,12 +59,27 @@ export function MapPlaces({ pose, seat }: { pose: Pose; seat: SeatState }) {
   useEffect(() => () => cancelMapWalk(), []);
   const frame = useRef(0);
   useFrame(() => {
+    // the guide's "지도에서 보기" (viewState.showOnMap): its place's card opens with the map
+    if (viewState.ovPick && viewState.mode === "ov") {
+      const pick = viewState.ovPick;
+      viewState.ovPick = null;
+      setPicked(pick);
+    }
     const show = viewState.ovBlend > OV_VIS_BLEND;
     for (const t of tags.current) if (t) t.style.display = show ? "" : "none";
     // a crowded map (a phone sees the whole village from 200 m up): a name that would sit on one already drawn waits until
     // the map is zoomed in — the main places first (MAP_PLACES order), the picked one always
     if (!show || frame.current++ % 6 !== 0) return;
     const drawn: DOMRect[] = [];
+    // "내 위치" (QA 2026-11-20: place chips sat over it on a phone) is placed AFTER the chips, so every place keeps its chip: it
+    // steps up / aside to the first spot clear of them (meSpot), and only where there is none does a chip give way to it
+    const me = document.querySelector<HTMLElement>(".cv-map-me:not(.cv-lake-map-label)");
+    const meOn = !!me && me.style.display !== "none";
+    if (me) {
+      me.style.setProperty("--cv-me-dx", "0px");
+      me.style.setProperty("--cv-me-dy", "0px");
+    }
+    const meBase = meOn ? me!.getBoundingClientRect() : null;
     const order = tags.current.map((t, i) => ({ t, i })).sort((a, b) => Number(b.t?.classList.contains("is-picked")) - Number(a.t?.classList.contains("is-picked")) || a.i - b.i);
     const hits = (r: DOMRect) => drawn.some((d) => r.left < d.right + 4 && r.right > d.left - 4 && r.top < d.bottom + 2 && r.bottom > d.top - 2);
     for (const { t } of order) {
@@ -64,7 +94,21 @@ export function MapPlaces({ pose, seat }: { pose: Pose; seat: SeatState }) {
       }
       const hit = hits(r) && !t.classList.contains("is-picked");
       t.style.visibility = hit ? "hidden" : "";
-      if (!hit) drawn.push(r);
+      // the picked place keeps its card's room too (the card stays readable over the chips around it)
+      if (!hit) drawn.push(t.classList.contains("is-picked") ? t.getBoundingClientRect() : r);
+    }
+    if (me && meBase) {
+      const spot = meSpot(meBase, drawn, window.innerWidth, window.innerHeight);
+      if (spot) {
+        me.style.setProperty("--cv-me-dx", spot.dx + "px");
+        me.style.setProperty("--cv-me-dy", spot.dy + "px");
+      } else {
+        // no clear spot (a crowded map): "내 위치" stays on its marker and is the one on top; the chips it would cover give way
+        for (const { t } of order) {
+          const tag = t?.firstElementChild as HTMLElement | null;
+          if (t && tag && t.style.visibility !== "hidden" && !t.classList.contains("is-picked") && overlaps(tag.getBoundingClientRect(), meBase)) t.style.visibility = "hidden";
+        }
+      }
     }
   });
   if (!isOv) return null;
@@ -72,7 +116,7 @@ export function MapPlaces({ pose, seat }: { pose: Pose; seat: SeatState }) {
     <>
       {MAP_PLACES.map((m, i) => (
         <group key={m.id} position={[m.label.x, 1, m.label.z]}>
-          <Html center zIndexRange={[picked === m.id ? 14 : 13, 0]} style={{ pointerEvents: "none" }}>
+          <Html key={mapPlaceKey(picked === m.id)} center zIndexRange={mapPlaceZRange(picked === m.id)} style={{ pointerEvents: "none" }}>
             <div
               ref={(el) => {
                 tags.current[i] = el;

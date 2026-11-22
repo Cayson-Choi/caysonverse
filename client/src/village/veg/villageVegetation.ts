@@ -394,6 +394,9 @@ const BUNCH_K = 1.3;
 const BUNCH_SPUR_Y = -0.02;
 /** The close-up bunch mesh is ~0.24 m across at scale 1. */
 const BUNCH_MESH_SIZE = 0.24;
+/** The far layer packs the trees within this much (m) of the view's edge, and is refilled at most this often (s) while the view turns. */
+const FAR_VIEW_MARGIN = 28;
+const FAR_REFILL_S = 0.12;
 
 /** One tree as drawn: its clusters (sorted by seed: the far level's thinned set is a prefix) and its meshes. */
 interface TreeDraw {
@@ -412,6 +415,8 @@ interface TreeDraw {
   level: number;
   /** In view this frame (stats only). */
   seen: boolean;
+  /** Whether the far layer holds this tree's thinned clusters now: only the trees in (or just outside) the view are in it. */
+  farIn: boolean;
 }
 
 interface ClassDraw {
@@ -460,6 +465,8 @@ export interface BuildOptions {
   parkBushes?: readonly Bush[];
   /** 케이슨랜드: the share of each crown's clusters the far level keeps (the tier's `thin` scaled by it; the kept ones grow to cover), for a park of many trees. */
   farThin?: number;
+  /** 케이슨랜드 on a phone: the farthest distance (m) the tree and bush layers are drawn to (the tier's last band is cut to it): what is past it is a speck on a small screen, and from the wheel's top it is every far tree of the park. */
+  farRange?: { trees: number; bush: number };
   /** 케이슨랜드: the flower beds (village flowerPlacement `Bed`s, boxes) and a planting card in each (`parkCards`): planted with the village's flowers. */
   parkBeds?: readonly Bed[];
   parkCards?: readonly Card[];
@@ -686,6 +693,8 @@ export class VillageVegetation {
   }
   private readonly projView = new Matrix4();
   private readonly sphere = new Sphere();
+  private readonly farSphere = new Sphere();
+  private farRefillAt = -1;
   private readonly statsData: VegStats;
   private dirtyFlowers = true;
   /**
@@ -755,6 +764,12 @@ export class VillageVegetation {
       const k = options.farThin;
       const thin = <T extends { thin: number; thinScale: number }>(c: T): T => ({ ...c, thin: c.thin * k, thinScale: c.thinScale / Math.sqrt(k) });
       (v as unknown as { cfg: VegTierConfig }).cfg = { ...v.cfg, cherry: thin(v.cfg.cherry), green: thin(v.cfg.green) };
+    }
+    if (options.farRange) {
+      const r = options.farRange;
+      const cap = <T extends { far: readonly number[] }>(c: T, to: number): T => ({ ...c, far: c.far.map((f, i) => (i === c.far.length - 1 ? Math.min(f, to) : f)) });
+      const cur = (v as unknown as { cfg: VegTierConfig }).cfg;
+      (v as unknown as { cfg: VegTierConfig }).cfg = { ...cur, cherry: cap(cur.cherry, r.trees), green: cap(cur.green, r.trees), bush: cap(cur.bush, r.bush) };
     }
     // the crowns' workers start loading now, while the flowers are laid out (crownGrow.ts)
     const grower = createCrownGrower(options.makeWorker);
@@ -994,7 +1009,9 @@ export class VillageVegetation {
     const spriteFarGeo = bunchSprite(BUNCH_MESH_SIZE * SPRITE_K);
     // the PC's near leaves have a real leaf's outline (a young tree's are seen from half a metre); the phone's keep 8 triangles
     const sprayGeos = [leafSpray(0, 21, !low), leafSpray(1), leafSpray(2)] as const;
-    const willowGeos = [willowSpray(0), willowSpray(1), willowSpray(2)] as const;
+    // (the phone's willows: its near strands are the PC's mid ones (10 straps, not 14) and its mid ones the far ones (5 broader straps, not 10):
+    // the mid level is every strand of a willow out to 32 m, ~240k triangles a tree on the gate's avenue; a strap is 6-18 px there)
+    const willowGeos = (low ? [willowSpray(1), willowSpray(2), willowSpray(2)] : [willowSpray(0), willowSpray(1), willowSpray(2)]) as unknown as readonly [BufferGeometry, BufferGeometry, BufferGeometry];
     v.own.push(bunchGeo, spriteGeo, spriteFarGeo, ...sprayGeos, ...willowGeos);
     const ch = cfg.cherry;
     const gr = cfg.green;
@@ -1084,6 +1101,7 @@ export class VillageVegetation {
         twig: null,
         level: -1,
         seen: false,
+        farIn: true,
       };
       v.trees.push(draw);
       stats.trees[kind].trees++;
@@ -1781,8 +1799,29 @@ export class VillageVegetation {
         changed = true;
       }
       t.seen = ov !== null || this.frustum.intersectsSphere(s);
+      if (level === 2) {
+        // the far layer is one draw of every far tree's clusters (~330k triangles in all on the phone, behind the camera too): only
+        // the trees in the view, widened by a margin so a turning camera finds them there, are packed into it
+        this.farSphere.center.copy(s.center);
+        this.farSphere.radius = s.radius + FAR_VIEW_MARGIN;
+        const farIn = ov !== null || this.frustum.intersectsSphere(this.farSphere);
+        if (farIn !== t.farIn) {
+          t.farIn = farIn;
+          c.dirty = true;
+        }
+      }
     }
-    for (const c of this.classes.values()) if (c.dirty) this.refillFar(c);
+    // (a refill packs thousands of matrices: at most every FAR_REFILL_S while the view turns)
+    const refillFar = seconds - this.farRefillAt >= FAR_REFILL_S;
+    if (refillFar) {
+      let did = false;
+      for (const c of this.classes.values()) {
+        if (!c.dirty) continue;
+        this.refillFar(c);
+        did = true;
+      }
+      if (did) this.farRefillAt = seconds;
+    }
     const bandsBush = this.cfg.bush;
     for (const b of this.bushes) {
       const level = chooseLod(b.level, sphereDistance(cx, cy, cz, { x: b.sphere.center.x, y: b.sphere.center.y, z: b.sphere.center.z, r: b.sphere.radius }), bandsBush);
@@ -1819,7 +1858,7 @@ export class VillageVegetation {
   private refillFar(c: ClassDraw): void {
     c.dirty = false;
     let need = 0;
-    for (const t of this.trees) if (t.level === 2 && this.classes.get(t.cls) === c) need += t.far.n;
+    for (const t of this.trees) if (t.level === 2 && t.farIn && this.classes.get(t.cls) === c) need += t.far.n;
     if (need > c.far.capacity) {
       // more trees came in than the layer holds: a bigger one in its place
       const old = c.far;
@@ -1831,7 +1870,7 @@ export class VillageVegetation {
       this.own.push(c.far.mesh);
     }
     c.far.begin();
-    for (const t of this.trees) if (t.level === 2 && this.classes.get(t.cls) === c) c.far.push(t.far);
+    for (const t of this.trees) if (t.level === 2 && t.farIn && this.classes.get(t.cls) === c) c.far.push(t.far);
     c.far.end();
   }
 

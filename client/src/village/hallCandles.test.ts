@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { CANDLE_BURN_MS, VillageServerMsg } from "@caysonverse/shared/village/messages";
 import { setLocalArea } from "./villageArea";
-import { bindHallCandles, burningCandles, clearCandles, isCandleBurning, noteCandleLit, pruneCandles, subscribeCandles } from "./hallCandles";
+import { bindHallCandles, burningCandles, clearCandles, isCandleBurning, noteCandleLit, noteCandleOut, pruneCandles, subscribeCandles } from "./hallCandles";
 
 afterEach(() => clearCandles());
 
@@ -19,7 +19,7 @@ describe("hallCandles — a lit candle burns an hour on every client in the hall
 
   it("a candle lit 32 minutes ago (as the server says) has 28 minutes left", () => {
     noteCandleLit("c", "케이슨", 10_000_000, 32 * 60_000);
-    expect(burningCandles().get("c")).toEqual({ at: 10_000_000 - 32 * 60_000, by: "케이슨" });
+    expect(burningCandles().get("c")).toEqual({ at: 10_000_000 - 32 * 60_000, by: "케이슨", mine: false });
     expect(isCandleBurning("c", 10_000_000 + 28 * 60_000 - 1)).toBe(true);
     expect(isCandleBurning("c", 10_000_000 + 28 * 60_000)).toBe(false);
   });
@@ -30,7 +30,7 @@ describe("hallCandles — a lit candle burns an hour on every client in the hall
     noteCandleLit("e_0_5", "밥이", 0);
     noteCandleLit("e_0_5", "캐럴", 50_000);
     expect(isCandleBurning("e_0_5", 100_000)).toBe(true);
-    expect(burningCandles().get("e_0_5")).toEqual({ at: 50_000, by: "캐럴" });
+    expect(burningCandles().get("e_0_5")).toEqual({ at: 50_000, by: "캐럴", mine: false });
     clearCandles();
     expect(calls).toBe(3);
     off();
@@ -56,6 +56,40 @@ describe("hallCandles — a lit candle burns an hour on every client in the hall
     expect([...burningCandles().keys()]).toEqual(["M1-A-r3-c11"]); // the list replaces what was there
     st({ nope: 1 });
     expect(burningCandles().size).toBe(1);
+    off();
+    expect(handlers.size).toBe(0);
+  });
+});
+
+describe("put out (owner 2026-11-20): CandleOut, and which candles are this visitor's own", () => {
+  it("a CandleLit with our session id is ours, another's is not; CandleState's mine is kept; CandleOut forgets it", () => {
+    const handlers = new Map<string, (m: unknown) => void>();
+    const room = {
+      sessionId: "me",
+      onMessage<T>(type: string, cb: (m: T) => void) {
+        handlers.set(type, cb as (m: unknown) => void);
+        return () => handlers.delete(type);
+      },
+    };
+    const off = bindHallCandles(room);
+    handlers.get(VillageServerMsg.CandleLit)!({ cubby: "a", by: "나", agoMs: 0, sid: "me" });
+    handlers.get(VillageServerMsg.CandleLit)!({ cubby: "b", by: "너", agoMs: 0, sid: "you" });
+    handlers.get(VillageServerMsg.CandleLit)!({ cubby: "c", by: "옛", agoMs: 0 }); // an old server: no sid
+    expect(burningCandles().get("a")?.mine).toBe(true);
+    expect(burningCandles().get("b")?.mine).toBe(false);
+    expect(burningCandles().get("c")?.mine).toBe(false);
+    handlers.get(VillageServerMsg.CandleState)!({ candles: [{ cubby: "a", by: "나", agoMs: 5, mine: true }, { cubby: "b", by: "너", agoMs: 5 }] });
+    expect(burningCandles().get("a")?.mine).toBe(true);
+    expect(burningCandles().get("b")?.mine).toBe(false);
+    let calls = 0;
+    const offSub = subscribeCandles(() => (calls += 1));
+    handlers.get(VillageServerMsg.CandleOut)!({ cubby: "a", by: "나" });
+    handlers.get(VillageServerMsg.CandleOut)!({ cubby: 3 });
+    handlers.get(VillageServerMsg.CandleOut)!(null);
+    expect([...burningCandles().keys()]).toEqual(["b"]);
+    expect(noteCandleOut("zzz")).toBe(false); // nothing burned there: no notice
+    expect(calls).toBe(1);
+    offSub();
     off();
     expect(handlers.size).toBe(0);
   });

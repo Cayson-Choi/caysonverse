@@ -3,12 +3,13 @@ import { EMOJIS, EMOJI_RATE } from "@caysonverse/shared/constants";
 import { getActiveRoom, sendEmoji } from "../net/connection";
 import { startEmojiSync } from "../net/emojiSync";
 import { onHotkey } from "../game/hotkeys";
-import { isQuiet, useQuiet } from "../game/quiet";
+import { isEmojiQuiet, useEmojiQuiet } from "../game/quiet";
 import "./emoji.css";
 
 /**
- * Whether a reaction may be sent now: not in a quiet place (the memorial hall: the server drops it there, so it is
- * not played here either — quiet.ts) and not inside the client mirror of the server's rate cap.
+ * Whether a reaction may be sent now: not where the server drops it (a house floor, a lot room — quiet.ts `isEmojiQuiet`; the
+ * memorial hall takes reactions since 2026-11-20), so it is not played here either, and not inside the client mirror of the
+ * server's rate cap.
  */
 export function emojiMayFire(now: number, lastSentAt: number, quiet: boolean): boolean {
   return !quiet && now - lastSentAt >= EMOJI_RATE.windowMs;
@@ -42,7 +43,7 @@ export function useEmojiFire(): { fire: (index: number) => void; pulseIndex: num
 
   function fire(index: number) {
     const now = performance.now();
-    if (!emojiMayFire(now, lastSentAt.current, isQuiet())) return;
+    if (!emojiMayFire(now, lastSentAt.current, isEmojiQuiet())) return;
     lastSentAt.current = now;
     sendEmoji(index);
     setPulseIndex(index);
@@ -67,8 +68,8 @@ export function useEmojiFire(): { fire: (index: number) => void; pulseIndex: num
  */
 export function EmojiPalette() {
   const { fire, pulseIndex } = useEmojiFire();
-  const quiet = useQuiet();
-  if (quiet) return null; // no reactions in the quiet hall
+  const quiet = useEmojiQuiet();
+  if (quiet) return null; // no reactions where the server drops them (a house, a lot room; the memorial hall takes them)
   return (
     <div className="cv-emoji-palette" role="group" aria-label="이모지 리액션">
       {EMOJIS.map((emoji, index) => (

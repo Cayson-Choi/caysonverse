@@ -105,7 +105,12 @@ await p.page.evaluate(() => {
   window.__frRaf = requestAnimationFrame(tick);
 });
 if (PROFILE) await session.send("Profiler.start");
+// ThreadTime = the main thread's CPU seconds actually used (not wall time): robust to other processes taking the CPU away
+await session.send("Performance.enable");
+const metric = async () => Object.fromEntries((await session.send("Performance.getMetrics")).metrics.map((m) => [m.name, m.value]));
+const m0 = await metric();
 await sleep(MS);
+const m1 = await metric();
 // draw calls per rendered frame: three resets the counters per render() call, so sum them over a few frames by hand
 const draws = await p.page.evaluate(
   () =>
@@ -151,6 +156,7 @@ const res = await p.page.evaluate(() => {
   });
   return {
     frames: fr.length, meanMs: mean, fps: 1000 / mean, p50: q(0.5), p95: q(0.95), p99: q(0.99), max: fr[fr.length - 1],
+    trimmedMean: fr.slice(0, Math.max(1, fr.length - Math.ceil(fr.length * 0.005))).reduce((a, b) => a + b, 0) / Math.max(1, fr.length - Math.ceil(fr.length * 0.005)),
     over50: fr.filter((x) => x > 50).length, over100: fr.filter((x) => x > 100).length,
     skinned, skinnedVisible: visible, meshes, remotes: window.__crowdN,
   };
@@ -198,7 +204,13 @@ const frames = res.frames;
 const perFrame = (us) => Math.round((us / 1000 / frames) * 100) / 100;
 const top = [...byFn].sort((a, c) => c[1] - a[1]).slice(0, 70).map(([k, us]) => `${perFrame(us)} ms/f  ${k}`);
 const inclTop = [...incl].sort((a, c) => c[1] - a[1]).slice(0, 45).map(([k, us]) => `${perFrame(us)} ms/f  ${k}`);
+const srcIncl = [...incl].filter(([k]) => /\/src\/|\.tsx?:|villageVegetation|programGate|Sky|Water/i.test(k) && !/three\.module|react-dom|react_jsx|\(root\)/.test(k)).sort((a, c) => c[1] - a[1]).slice(0, 40).map(([k, us]) => `${perFrame(us)} ms/f  ${k}`);
+const nFrames = res.frames;
+const threadMsPerFrame = ((m1.ThreadTime - m0.ThreadTime) * 1000) / nFrames;
 const out = {
+  threadMsPerFrame: Math.round(threadMsPerFrame * 100) / 100,
+  perFrameMs: Object.fromEntries(['ScriptDuration','LayoutDuration','RecalcStyleDuration','TaskDuration','ThreadTime'].map((k) => [k, Math.round(((m1[k] - m0[k]) * 1000 / nFrames) * 100) / 100])),
+  taskMsPerFrame: Math.round(((m1.TaskDuration - m0.TaskDuration) * 1000 / nFrames) * 100) / 100,
   device: args.device, lod: args.lod, n: N, throttle: THROTTLE, label: args.label,
   draws,
   ...Object.fromEntries(Object.entries(res).map(([k, v]) => [k, typeof v === "number" ? Math.round(v * 100) / 100 : v])),
@@ -206,6 +218,7 @@ const out = {
   cpuTotalMsPerFrame: perFrame(total),
   top,
   inclTop,
+  srcIncl,
 };
 console.log(JSON.stringify(out, null, 1));
 writeFileSync(join(OUT, `crowd-${args.device}-${args.label}.json`), JSON.stringify(out, null, 2));

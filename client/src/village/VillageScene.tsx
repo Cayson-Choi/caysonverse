@@ -1,18 +1,23 @@
 import { MemorialOverlays } from "./memorial/MemorialOverlays";
 import { isTouchDevice } from "../device";
-import { Suspense, useEffect, useLayoutEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { PlayShell } from "../game/PlayShell";
 import { villageActiveMap } from "../game/activeMap";
-import { clearClickTarget } from "../game/clickMove";
+import { clearClickTarget, peekClickTarget } from "../game/clickMove";
 import { fireTarget, setTargetHandler, setTargetSource } from "../game/interactTargets";
-import { takeArmedHouseUse } from "./houseTap";
+import { armedHouseUse, disarmHouseUse, takeArmedHouseUse } from "./houseTap";
 import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor, sendUseStair } from "../net/connection";
 import { rideStatusText, sendBusRide, sendBusSit, sendBusStand, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState } from "../net/transitSync";
 import { BUS_VIEW_YAW, busCamGoal, busSeatPreferred, busWalk, selfBusRide } from "../game/busRide";
+import { requestViewToggle, viewState } from "../game/viewState";
+import { recenterYaw } from "../game/cameraControls";
+import { PARK_ARRIVAL } from "@caysonverse/shared/village/parkArea";
+import { PARK_ARRIVAL_PITCH, parkArrivalView } from "../land/parkArrival";
+import { useViewStore } from "../stores/viewStore";
 import { busRiderPoints, takenBusSpots } from "../game/remoteStore";
 import { TRANSIT, boardingOpensWords } from "@caysonverse/shared/village/transit";
 import type { Identity } from "../stores/appStore";
@@ -36,16 +41,21 @@ import { VillageModel } from "./VillageModel";
 import { VillageBus } from "./VillageBus";
 import { BUSSTOP_MODEL_URL, BusStopShelter } from "./BusStopShelter";
 import { VillageMusic } from "./VillageMusic";
+import { AreaSfx } from "./AreaSfx";
 import { LakeLampLights, LakeWorld } from "../lake/LakeScene";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
 import { clearBusCache, clearVillageCaches, holdVillageFiles, holdsVillageFiles } from "./villageRelease";
 import { LoadBoundary } from "./LoadBoundary";
+import { ParkSkyline } from "./skyline/ParkSkyline";
+import { VillageParkWall } from "./skyline/VillageParkWall";
+import { VillageParkPortal } from "./skyline/VillageParkPortal";
 import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, useLocalArea } from "./villageArea";
 import {
   BUS_RIDE_TARGET_BOARD,
   BUS_RIDE_TARGET_LEAVE,
   BUS_STAND_TARGET_ID,
   RIDE_BOARD_PREFIX,
+  PARK_DOOR_ID,
   CUBBY_TARGET_PREFIX,
   GUIDE_TARGET_PREFIX,
   KEYPAD_TARGET_PREFIX,
@@ -79,13 +89,15 @@ import { houseOpen } from "./keypadText";
 import { liveSunEnabled } from "./sunShadows";
 import { MapPlaces } from "./MapPlaces";
 import { ParkWorld } from "../land/ParkWorld";
-import { CoasterHud, ParkLoadingVeil } from "../land/CoasterHud";
+import { CoasterHud } from "../land/CoasterHud";
+import { AreaLoadingOverlay } from "../land/AreaLoadingOverlay";
+import { beginAreaLoading } from "../land/areaLoading";
 import { sendRideBoard } from "../net/connection";
 import { landPose } from "../land/coasterRide";
 import { startRideAudio } from "../land/coasterAudio";
 import { boardRide } from "../land/rideBoardWalk";
-import { takeArmedRide } from "../land/rideBoard";
-import { maybePreloadPark } from "../land/preloadPark";
+import { armRide, armedRide, takeArmedRide } from "../land/rideBoard";
+import { maybePreloadPark } from "../land/parkAssets";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -158,9 +170,19 @@ function LandPoseProbe({ pose }: { pose: Pose }) {
 }
 
 /** 케이슨랜드 (the park area): no village model to dress, so the loading cover lifts at once; the park loads in its own Suspense. */
-function ParkArea({ tier }: { tier: VillageTier }) {
+function ParkArea({ tier, pose }: { tier: VillageTier; pose: Pose }) {
   useEffect(() => {
     uncoverVillage();
+  }, []);
+  // Through the gate, the view turns with the visitor: the camera behind them, looking into the park (owner 2026-11-21: one arrived
+  // looking back at the arch). Only on an arrival - someone who reloads deep in the park keeps the view they had.
+  useEffect(() => {
+    if (!parkArrivalView(pose.x, pose.z)) return;
+    const yaw = recenterYaw(PARK_ARRIVAL.yaw);
+    viewState.fpYaw = yaw;
+    viewState.fpPitch = 0;
+    viewState.orbitGoal = { yaw, pitch: PARK_ARRIVAL_PITCH };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arriving
   }, []);
   return (
     <LoadBoundary fallback={null} onReset={() => undefined} onFail={uncoverVillage} notice="케이슨랜드를 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
@@ -173,7 +195,7 @@ function ParkArea({ tier }: { tier: VillageTier }) {
 
 /** What the local player's area draws: the village model and its signs (no floor mark at the memorial's door), or the hall's room. */
 function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; pose: Pose }) {
-  if (area === "park") return <ParkArea tier={tier} />;
+  if (area === "park") return <ParkArea tier={tier} pose={pose} />;
   if (area === "hall") return <HallArea pose={pose} />;
   if (isHouseArea(area)) return <HouseArea area={area} pose={pose} />;
   if (isLotArea(area)) return <LotRoomArea area={area} pose={pose} />;
@@ -207,6 +229,14 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
       <AfterDressed>
         <Suspense fallback={null}>
           <LakeWorld pose={pose} tier={tier} />
+        </Suspense>
+      </AfterDressed>
+      {/* 케이슨랜드's skyline behind the south gate (a light distant view of the park; skyline/): after the village is dressed, its own build. */}
+      <AfterDressed>
+        <ParkSkyline tier={tier} />
+        <VillageParkWall tier={tier} />
+        <Suspense fallback={null}>
+          <VillageParkPortal />
         </Suspense>
       </AfterDressed>
       <LoadBoundary fallback={null} onReset={() => useGLTF.clear(SIGNALS_MODEL_URL)} notice="횡단보도 신호등을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
@@ -279,7 +309,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
       if (target.id.startsWith(RIDE_BOARD_PREFIX)) {
         clearClickTarget();
         startRideAudio(); // inside the press: the browser lets the sound start
-        boardRide(target.id.slice(RIDE_BOARD_PREFIX.length) as "coaster" | "carousel" | "wheel", pose.x, pose.z);
+        boardRide(target.id.slice(RIDE_BOARD_PREFIX.length) as "coaster" | "carousel" | "wheel" | "moonboat" | "droptower", pose.x, pose.z);
         return;
       }
       if (target.id === BUS_RIDE_TARGET_LEAVE) {
@@ -327,6 +357,8 @@ function VillageDoors({ pose }: { pose: Pose }) {
         else sendUseDoor();
         return true;
       });
+      // the park's door: the loading screen stands from this press until the other side is drawn (areaLoading.ts)
+      if (target.id === PARK_DOOR_ID && doorFade.covered()) beginAreaLoading(localArea() === "park" ? "village" : "park");
     });
     return () => {
       setTargetSource(null);
@@ -334,16 +366,26 @@ function VillageDoors({ pose }: { pose: Pose }) {
     };
   }, [pose, boarded, keypadOpen]);
   // A tap on a house's stair or front door armed its use (houseTap.ts): once the walk has brought us into the pad's reach, it is used.
+  const lastArea = useRef<string | null>(null);
   useFrame(() => {
     const area = localArea();
-    // A tap on a ride, or a press of its 타기 from afar, walked to the pad: the board is sent on arrival (rideBoard.ts)
+    // Going in, out or up / down: a use armed by an earlier tap is stale (owner 2026-11-20: never climb without the player's own use)
+    if (lastArea.current !== area) {
+      lastArea.current = area;
+      disarmHouseUse();
+      armRide(null); // ... and so is a board armed in the park before leaving it
+    }
+    // A press of a ride's 타기 from afar walked to the pad: the board is sent on arrival (rideBoard.ts). The board lives only as long as
+    // that walk: once it has ended short of the pad (blocked, given up) nothing boards later by passing the pad (owner 2026-11-21).
     if (area === "park") {
       const key = takeArmedRide(pose.x, pose.z);
       if (key) sendRideBoard(key);
+      else if (armedRide() !== null && peekClickTarget() === null) armRide(null);
       return;
     }
     if (area === "village") maybePreloadPark(pose.x, pose.z); // the park's files start loading as the gate comes near
-    if (!isHouseArea(area)) return;
+    // a house floor, a lot building's room, or the village with a lot door's use armed by a tap on it (lotDoorTap.ts)
+    if (!isHouseArea(area) && !isLotArea(area) && armedHouseUse() === null) return;
     const offered = villageTargets(area, pose.x, pose.z);
     const id = takeArmedHouseUse(offered.map((t) => t.id));
     const target = id === null ? undefined : offered.find((t) => t.id === id);
@@ -385,10 +427,13 @@ const RIDE_VIEWS: ReadonlyArray<{ id: string; label: string; short: string; yaw:
 
 /**
  * The ride panel (owner 2026-11-15): where the bus is, the way to look around (drag the screen, or the quick views: left
- * windows, front, right windows, back), how to sit or stand, and the way off. The hint shows once per device.
+ * windows, front, right windows, back), how to sit or stand, and the way off. The hint shows once per device. Owner 2026-11-18
+ * (docs/designs/bus-controls.md): a plain first / third person button (the top bar's eye icon was not obvious), and the hint says
+ * the view tilts too and that a tap on the floor walks there.
  */
 function TransitRideHud() {
   const { boarded, snapshot, notice } = useTransitState();
+  const isFp = useViewStore((s) => s.isFp);
   const touch = isTouchDevice;
   const [hint, setHint] = useState(false);
   useEffect(() => {
@@ -446,18 +491,37 @@ function TransitRideHud() {
               </button>
             ))}
           </div>
+          {touch ? null : (
+            <button type="button" data-testid="bus-ride-view-toggle" onClick={requestViewToggle} style={{ ...btn, marginTop: 4, width: "100%" }}>
+              {isFp ? "👁 3인칭으로 보기" : "👁 1인칭으로 보기"}
+            </button>
+          )}
           {hint ? (
             <div style={{ marginTop: 6, background: "rgba(139,92,246,0.35)", borderRadius: 8, padding: "6px 8px" }} data-testid="bus-ride-hint">
-              {touch ? "화면을 끌어서 창밖을 둘러보세요 · 빈 의자를 톡 누르면 가서 앉아요" : "화면을 끌어서 창밖을 둘러보세요 · 빈 의자를 누르거나 가까이에서 E"}
+              {touch ? "화면을 끌어서 창밖을 둘러보세요(위·아래도) · 바닥을 톡 누르면 걸어가요 · 빈 의자를 톡 누르면 가서 앉아요" : "화면을 끌어서 창밖을 둘러보세요(위·아래도) · 바닥을 누르면 걸어가요 · 빈 의자를 누르거나 가까이에서 E"}
             </div>
           ) : touch ? null : (
-            <div style={{ marginTop: 5, opacity: 0.7 }}>화면을 끌면 둘러볼 수 있어요 · 의자를 누르거나 가까이에서 E</div>
+            <div style={{ marginTop: 5, opacity: 0.7 }}>화면을 끌면 둘러볼 수 있어요 · 바닥을 누르면 걸어가요 · 의자를 누르거나 가까이에서 E</div>
           )}
-          {snapshot?.status === "inTransit" ? (
+          {touch ? (
+            // a phone: the view toggle and the way off share one row (the panel already covers the left of a narrow screen)
+            <div style={{ marginTop: 4, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+              <button type="button" data-testid="bus-ride-view-toggle" onClick={requestViewToggle} style={{ ...btn, padding: "6px 6px", whiteSpace: "nowrap" }}>
+                {isFp ? "👁 3인칭" : "👁 1인칭"}
+              </button>
+              {snapshot?.status === "inTransit" ? (
+                <div style={{ alignSelf: "center", opacity: 0.75 }}>정류장에 돌아오면 내려요</div>
+              ) : (
+                <button type="button" onClick={() => sendBusRide("leave")} style={btn}>
+                  하차
+                </button>
+              )}
+            </div>
+          ) : snapshot?.status === "inTransit" ? (
             // the doors open only at the stop (the server refuses a leave on the lap): say when instead of a dead button
             <div style={{ marginTop: 4, opacity: 0.75 }}>정류장에 돌아오면 내려요</div>
           ) : (
-            <button type="button" onClick={() => sendBusRide("leave")} style={{ ...btn, marginTop: 6, width: touch ? "100%" : undefined }}>
+            <button type="button" onClick={() => sendBusRide("leave")} style={{ ...btn, marginTop: 6 }}>
               하차
             </button>
           )}
@@ -524,6 +588,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <GuideNpcs area={area} />
           <VillageDoors pose={pose} />
           <LandPoseProbe pose={pose} />
+          <AreaSfx area={area} />
           {(area === "village" || area === "park") && <StarSky tier={tier} />}
           <VeilFrameThrottle active={area === "village"} />
         </>
@@ -533,7 +598,6 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <VillageMusic />
           <TransitRideHud />
           <CoasterHud />
-          <ParkLoadingVeil />
           <StarFinderButton />
         </>
       }
@@ -542,9 +606,10 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <VegVeil active={area === "village"} />
           <DoorFade />
           <HouseEntryCover />
+          <AreaLoadingOverlay />
           <CubbyView />
           <MemorialOverlays />
-          <GuideDialog />
+          <GuideDialog pose={pose} seat={seat} />
           <StarFinder orbit={orbit} />
           {area === "village" && <LakeHud pose={pose} seat={seat} orbit={orbit} />}
           {area === "village" && <CrosswalkHintPill pose={pose} />}

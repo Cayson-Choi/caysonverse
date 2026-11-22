@@ -212,7 +212,7 @@ try {
     // the server keeps a candle lit for an hour: a rerun on the same server within it finds the sample's candle still lit
     // (round 8 review: the step failed on a rerun) — then the lit card is checked and the lighting step only watches it burn
     summary.candleAlreadyLit = card.button === "촛불이 켜져 있어요";
-    run.check("the button says 촛불 켜기 (or, lit by an earlier run within the hour, 촛불이 켜져 있어요)", card.button === "촛불 켜기" || summary.candleAlreadyLit, card.button);
+    run.check("the button says 촛불 밝히기 (or, lit by an earlier run within the hour, 촛불이 켜져 있어요)", card.button === "촛불 밝히기" || summary.candleAlreadyLit, card.button);
     run.check("no '!' on the card", !card.text.includes("!"), card.text);
     await run.shot(A, "hall-card.png");
   });
@@ -244,7 +244,7 @@ try {
       window.__candleHeard = [];
       window.__imp("/src/village/hallCandles.ts").then((m) => m.subscribeCandles(() => window.__candleHeard.push([...m.burningCandles().keys()])));
     });
-    if (!summary.candleAlreadyLit) await A.page.getByRole("button", { name: "촛불 켜기", exact: true }).click();
+    if (!summary.candleAlreadyLit) await A.page.getByRole("button", { name: "촛불 밝히기", exact: true }).click();
     const gotB = await B.page
       .waitForFunction((id) => (window.__cvHall?.().candles ?? []).includes(id), pick.id, { timeout: 5000 })
       .then(() => true, () => false);
@@ -255,7 +255,12 @@ try {
     run.check("A sees its own candle too", gotA);
     await sleep(500);
     const button = await A.page.evaluate(() => document.querySelector(".cv-cubby-light")?.textContent);
-    run.check("the button now says 촛불이 켜져 있어요", button === "촛불이 켜져 있어요", button);
+    // A lit it: its card offers to put it out (owner 2026-11-20); a candle an earlier run's visitor lit stays theirs
+    run.check(
+      summary.candleAlreadyLit ? "the button says 촛불이 켜져 있어요 (another visitor's candle)" : "the button now says 촛불 끄기 (A lit it)",
+      button === (summary.candleAlreadyLit ? "촛불이 켜져 있어요" : "촛불 끄기"),
+      button,
+    );
     await run.shot(A, "hall-card-lit.png");
     await A.page.keyboard.press("Escape");
     await A.page.waitForFunction(() => !document.querySelector(".cv-cubby"), null, { timeout: 3000 });
@@ -305,10 +310,13 @@ try {
       return { mode: viewState.mode, blend: viewState.blend, orbit: window.__cv.getOrbit(), y: camera.position.y, x: camera.position.x, z: camera.position.z, headNdcY: head.y, headNdcX: head.x, arm: Math.hypot(camera.position.x - p.x, camera.position.z - p.z) };
     });
     summary.corner = cam;
-    // round 7: the wall behind turns the camera into the over-the-shoulder view, well to the side (cameraShoulder.ts)
-    run.check("in the corner the camera stands off to the side, not squeezed over the head (1.5 m+ across the floor)", cam.arm > 1.5, cam);
-    run.check("the camera stays above the head and under the ceiling (2.3..3.0 m)", cam.y > 2.3 && cam.y <= 3.0001, cam);
-    run.check("the head sits low and to one side of the frame (NDC y < -0.3, |x| > 0.2), not in the middle of it", cam.headNdcY < -0.3 && Math.abs(cam.headNdcX) > 0.2, cam);
+    // owner 2026-11-19: the wall behind keeps the camera right behind the head on the view axis (cameraShoulder.ts CENTER), raised and looking level
+    const o = cam.orbit;
+    const p = await A.page.evaluate(() => window.__cv.getPos());
+    const lateral = (cam.x - p.x) * Math.cos(o.yaw) - (cam.z - p.z) * Math.sin(o.yaw);
+    run.check("in the corner the camera is on the view axis right behind the head (no side shift)", Math.abs(lateral) < 0.1, { lateral, cam });
+    run.check("the camera stays above the head and under the ceiling (2.3..3.4 m)", cam.y > 2.3 && cam.y <= 3.4, cam);
+    run.check("the head is no dome in the middle of the frame (below the middle or out of sight)", cam.headNdcY < -0.5, cam);
     await run.shot(A, "hall-corner.png");
   });
 

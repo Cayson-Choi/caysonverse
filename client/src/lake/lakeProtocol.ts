@@ -139,6 +139,10 @@ export interface PersonalFishingState {
   /** Hold progress 0..1 while fighting. */
   progress?: number;
   result?: string;
+  /** After a lost fight: "snap" (the line broke), "escape", "idle". */
+  lostWhy?: string;
+  /** In the fight: the line tension 0..1. */
+  tension?: number;
   catch?: { kind: number; cm: number; first?: boolean };
 }
 
@@ -158,6 +162,9 @@ export function parsePersonalState(raw: unknown): PersonalFishingState | null {
   const need = num(r.holdNeedMs);
   if (hold !== undefined && need !== undefined && need > 0) out.progress = Math.max(0, Math.min(1, hold / need));
   if (typeof r.lastResult === "string") out.result = r.lastResult;
+  if (typeof r.lostWhy === "string" && r.lostWhy !== "none") out.lostWhy = r.lostWhy;
+  const tension = num(r.fightTension);
+  if (tension !== undefined) out.tension = Math.max(0, Math.min(1, tension / 1000));
   const c = r.catch;
   if (c && typeof c === "object") {
     const cc = c as Record<string, unknown>;
@@ -211,7 +218,7 @@ export function parseBoard(raw: unknown): BoardLine[] | null {
 export function rejectText(reason: unknown): string {
   switch (reason) {
     case "not_near_rental":
-      return "관리소 앞 노란 원으로 가까이 와요.";
+      return "관리소 앞으로 가까이 와요.";
     case "not_near_return":
       return "낚싯대는 관리소 앞에서 돌려줘요.";
     case "already_has_rod":

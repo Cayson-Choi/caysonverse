@@ -2,14 +2,12 @@ import { Suspense, useEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF, useTexture } from "@react-three/drei";
 import {
-  DataTexture,
+  Color,
   Group,
   InstancedMesh,
   Matrix4,
   MeshBasicMaterial,
-  PlaneGeometry,
   Quaternion,
-  RGBAFormat,
   Shape,
   ShapeGeometry,
   Path,
@@ -24,6 +22,8 @@ import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { SceneWarmUp } from "../game/SceneWarmUp";
 import { buildCubbyPropMeshes, layoutCubbyProps, makePhotoMaterial, placementMatrix } from "./cubbyProps";
 import { burningCandles, candleClock, pruneCandles, showInstances } from "./hallCandles";
+import { FLAME_BASE_LIFT, FLAME_CARD, WICK, makeCandleLook, makeWicks } from "./hallCandleLook";
+import { dressHall, patchSignsAtlas } from "./hallDressing";
 import { MEMORIAL_LIGHTMAP_URLS, MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, disposeMemorial, prepareMemorial } from "./memorialModelPrep";
 import { clearMemorialCaches, holdMemorialFiles, noteMemorialRequested, setMemorialTier } from "./memorialRelease";
 import { disposeHallNight, hallNightReady, hallNightUniform, hallNightWeight, loadHallNight, skylightColour } from "./hallNight";
@@ -50,7 +50,17 @@ import type { Pose } from "../game/types";
 declare global {
   interface Window {
     /** Dev-only: the dressed memorial hall (draw calls, props, candles) for the e2e checks. */
-    __cvHall?: () => { meshes: number; instanced: number; props: Record<string, number>; candles: string[]; samples: number };
+    __cvHall?: () => {
+      meshes: number;
+      instanced: number;
+      props: Record<string, number>;
+      candles: string[];
+      samples: number;
+      /** The zone signs (구역 A–D): bank id, what it says, where. */
+      zones: Array<{ bank: string; label: string; x: number; y: number; z: number }>;
+      painting: { x: number; y: number; z: number; width: number; height: number; url: string; loaded: boolean } | null;
+      wicks: number;
+    };
   }
 }
 
@@ -61,17 +71,6 @@ export const MAX_CANDLES = 64;
 export const CANDLE_SPOT = CUBBY_SET.find((p) => p.kind === "candle")!;
 /** The wick's tip in the candle prop's own frame (build_props.py candle: x, up, z): where the flame stands. */
 export const CANDLE_WICK = { x: 0.0019, y: 0.0715, z: 0 } as const;
-
-/**
- * The candle's light, two camera-facing cards (normal alpha blending: an additive glow vanishes on the bright cream
- * cubbies): a warm halo this wide (m) round the flame, and the flame itself (a teardrop), both centred this far above the
- * cubby floor. The flame is drawn past white (no tone mapping) so it reads as a light.
- */
-const HALO_SIZE = 0.16;
-/** A real candle flame on a votive: about 1.4 cm wide and 3 cm tall (the card is a little larger: its edge is soft). */
-const FLAME_SIZE = { x: 0.02, y: 0.042 } as const;
-/** The flame card's centre above the wick tip (its base sits on the wick). */
-const GLOW_HEIGHT = 0.016;
 
 const ANCHOR_BY_ID: ReadonlyMap<string, CubbyAnchor> = new Map(HALL_CUBBY_ANCHORS.map((a) => [a.id, a]));
 
@@ -106,47 +105,10 @@ function makeSelectMark(): Mesh {
   return mesh;
 }
 
-/** A texture from a per-texel function (u, v in 0..1, v up) returning [r, g, b, a] in 0..1. */
-function paintTexture(size: number, texel: (u: number, v: number) => [number, number, number, number]): DataTexture {
-  const data = new Uint8Array(size * size * 4);
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const [r, g, b, a] = texel((x + 0.5) / size, (y + 0.5) / size);
-      const i = (y * size + x) * 4;
-      data[i] = Math.round(r * 255);
-      data[i + 1] = Math.round(g * 255);
-      data[i + 2] = Math.round(b * 255);
-      data[i + 3] = Math.round(Math.max(0, Math.min(1, a)) * 255);
-    }
-  }
-  const t = new DataTexture(data, size, size, RGBAFormat);
-  t.colorSpace = SRGBColorSpace;
-  t.needsUpdate = true;
-  return t;
-}
-
-/** The halo: a warm, soft round falloff. */
-function haloTexture(): DataTexture {
-  return paintTexture(64, (u, v) => {
-    const r = Math.min(1, Math.hypot(u - 0.5, v - 0.5) * 2);
-    return [1, 0.7, 0.36, 0.8 * Math.pow(1 - r, 1.8)];
-  });
-}
-
-/** The flame: a teardrop, white-yellow at its heart, orange at its rim, soft at the edge. */
-function flameTexture(): DataTexture {
-  return paintTexture(64, (u, v) => {
-    // a drop: round at the bottom (v about 0.3), drawn to a point at the top
-    const y = v - 0.32;
-    const halfWidth = y < 0 ? Math.sqrt(Math.max(0, 0.09 - y * y)) : 0.3 * Math.pow(Math.max(0, 1 - y / 0.62), 1.3);
-    const d = halfWidth > 0 ? Math.abs(u - 0.5) / halfWidth : 2;
-    const edge = Math.max(0, Math.min(1, (1 - d) * 3));
-    const core = Math.max(0, 1 - Math.hypot((u - 0.5) * 3, (v - 0.33) * 2.2));
-    return [1, 0.62 + 0.38 * core, 0.25 + 0.7 * core, edge];
-  });
-}
-
-/** The candles: the props file's tealight (its wax and its flame) and a glow disc, as instances (count = what burns). */
+/**
+ * The candles: what a lit candle adds (hallCandleLook.ts: flame, halo, the light on its cubby, the wax lit through), and for a props
+ * file without the always-there candle the old tealight, as instances (count = what burns).
+ */
 function makeCandles(propsScene: Object3D) {
   const group = new Group();
   group.name = "hall_candles";
@@ -172,23 +134,10 @@ function makeCandles(propsScene: Object3D) {
       group.add(mesh);
     });
   }
-  const card = (name: string, map: DataTexture, w: number, h: number, colour: string, order: number) => {
-    const material = new MeshBasicMaterial({ map, color: colour, transparent: true, depthWrite: false, toneMapped: false, fog: false });
-    material.name = name;
-    const geometry = new PlaneGeometry(w, h);
-    const mesh = new InstancedMesh(geometry, material, MAX_CANDLES);
-    mesh.name = `inst__${name}`;
-    mesh.count = 0;
-    mesh.visible = false;
-    mesh.frustumCulled = false;
-    mesh.renderOrder = order;
-    group.add(mesh);
-    own.push(mesh, material, geometry, map);
-    return mesh;
-  };
-  const halo = card("candle_halo", haloTexture(), HALO_SIZE, HALO_SIZE, "#FFFFFF", 3);
-  const flame = card("candle_flame", flameTexture(), FLAME_SIZE.x, FLAME_SIZE.y, "#FFF2D6", 4);
-  return { group, parts, glows: [halo, flame], own };
+  const look = makeCandleLook(MAX_CANDLES);
+  group.add(look.wash, look.wax, look.halo, look.flame);
+  own.push(...look.own);
+  return { group, parts, look, own };
 }
 
 const tmpPlace = new Matrix4();
@@ -198,6 +147,9 @@ const glowPos = new Vector3();
 const glowScale = new Vector3();
 const glowQuat = new Quaternion();
 const placePos = new Vector3();
+const UP = new Vector3(0, 1, 0);
+const ONE = new Vector3(1, 1, 1);
+const tint = new Color();
 
 /** The dressed hall: the model with its light map, the sample props as instances, and the candles. Suspends while loading. */
 function MemorialHall() {
@@ -216,7 +168,15 @@ function MemorialHall() {
   // Night (hallNight.ts): the night light map and park are fetched only when night is near.
   const nightWanted = useNightMapWanted();
 
-  const nodes = useMemo(() => prepareMemorial(hall.scene, lightmap), [hall, lightmap]);
+  const nodes = useMemo(() => {
+    const n = prepareMemorial(hall.scene, lightmap);
+    // the kiosk's floor plan and the baked plaques name the zones A–D like the new signs (once per loaded material)
+    n.root.traverse((o) => {
+      const mats = (o as Mesh).isMesh ? (Array.isArray((o as Mesh).material) ? ((o as Mesh).material as Material[]) : [(o as Mesh).material as Material]) : [];
+      for (const m of mats) if (m.name === "LM_signs") patchSignsAtlas(m as MeshBasicMaterial);
+    });
+    return n;
+  }, [hall, lightmap]);
   const photoMaterial = useMemo(() => {
     atlas.flipY = false;
     atlas.colorSpace = SRGBColorSpace;
@@ -233,6 +193,27 @@ function MemorialHall() {
     return buildCubbyPropMeshes(props.scene, layoutCubbyProps(HALL_CUBBY_ANCHORS, [...SAMPLE_CUBBIES, ...claimed]), photoMaterial);
   }, [props, photoMaterial, claimedKey]);
   const candles = useMemo(() => makeCandles(props.scene), [props]);
+  // Every filled cubby's candle has a wick (lit or not: an unlit candle shows just its dark wick); rebuilt with the claimed set.
+  const wicks = useMemo(() => {
+    const ids = [...SAMPLE_CUBBIES.map((c) => c.id), ...(claimedKey ? claimedKey.split(",") : [])];
+    const w = makeWicks(ids.length);
+    const m = new Matrix4();
+    let n = 0;
+    for (const id of ids) {
+      const a = ANCHOR_BY_ID.get(id);
+      if (!a) continue;
+      placementMatrix(a, CANDLE_SPOT, m);
+      m.multiply(new Matrix4().makeTranslation(CANDLE_WICK.x, CANDLE_WICK.y - 0.0005, CANDLE_WICK.z));
+      w.mesh.setMatrixAt(n++, m);
+    }
+    w.mesh.count = n;
+    w.mesh.instanceMatrix.needsUpdate = true;
+    return w;
+  }, [claimedKey]);
+  useEffect(() => () => wicks.own.forEach((r) => r.dispose()), [wicks]);
+  // The zone signs (구역 A–D in walking order) and the lounge's painting (hallDressing.ts, owner 2026-11-20).
+  const dressing = useMemo(() => dressHall(nodes.root, tier), [nodes, tier]);
+  useEffect(() => () => dressing.dispose(), [dressing]);
   // The props' glass (2026-11-17): the candle's votive holder and the frame's glass are clear — a faint white film, so the ivory wax
   // and the photo read true through them (the file's tinted glass made the wax grey-blue).
   useMemo(() => {
@@ -338,14 +319,26 @@ function MemorialHall() {
       count(nodes.root);
       count(cubbyProps.group);
       count(candles.group);
+      count(dressing.group);
+      count(wicks.mesh);
       const propCounts: Record<string, number> = {};
       for (const m of cubbyProps.meshes) propCounts[m.name] = m.count;
-      return { meshes, instanced, props: propCounts, candles: [...burningCandles().keys()], samples: SAMPLE_CUBBIES.length };
+      const canvas = dressing.group.getObjectByName("lounge_painting_canvas") as Mesh | undefined;
+      return {
+        meshes,
+        instanced,
+        props: propCounts,
+        candles: [...burningCandles().keys()],
+        samples: SAMPLE_CUBBIES.length,
+        zones: dressing.zones.map((z) => ({ bank: z.bank, label: z.label, x: z.x, y: z.y, z: z.z })),
+        painting: dressing.painting ? { ...dressing.painting, loaded: Boolean((canvas?.material as MeshBasicMaterial | undefined)?.map) } : null,
+        wicks: wicks.mesh.count,
+      };
     };
     return () => {
       delete window.__cvHall;
     };
-  }, [nodes, cubbyProps, candles]);
+  }, [nodes, cubbyProps, candles, dressing, wicks]);
 
   // The candles: what burns now, each at its cubby; the glow faces the camera and breathes a little.
   useFrame(({ camera, clock }) => {
@@ -371,25 +364,49 @@ function MemorialHall() {
         nodes.skylight.color.setRGB(c[0], c[1], c[2]);
       }
     }
+    dressing.update(night);
     pruneCandles(candleClock());
     let i = 0;
     const t = clock.elapsedTime;
-    glowQuat.copy(camera.quaternion);
+    candles.look.setTime(t);
+    const look = candles.look;
+    // a lit candle's light shows more against the darker hall at night
+    const nightBoost = 1 + 0.25 * night;
     for (const id of burningCandles().keys()) {
       if (i >= MAX_CANDLES) break;
       const anchor = ANCHOR_BY_ID.get(id);
       if (!anchor) continue;
       placementMatrix(anchor, CANDLE_SPOT, tmpPlace);
       for (const p of candles.parts) p.mesh.setMatrixAt(i, tmpPart.multiplyMatrices(tmpPlace, p.local));
-      placePos.set(CANDLE_WICK.x, CANDLE_WICK.y, CANDLE_WICK.z).applyMatrix4(tmpPlace);
-      glowPos.set(placePos.x, placePos.y + GLOW_HEIGHT, placePos.z);
-      const s = 1 + 0.08 * Math.sin(t * 9.1 + i * 1.7) + 0.05 * Math.sin(t * 23.3 + i);
-      glowScale.set(s, s * 1.12, s);
-      for (const g of candles.glows) g.setMatrixAt(i, tmpGlow.compose(glowPos, glowQuat, glowScale));
+      placePos.set(CANDLE_WICK.x, CANDLE_WICK.y, CANDLE_WICK.z).applyMatrix4(tmpPlace); // the wax top at the wick
+      // upright cards turned to the camera (a flame does not lean back when looked at from below)
+      glowQuat.setFromAxisAngle(UP, Math.atan2(camera.position.x - placePos.x, camera.position.z - placePos.z));
+      // this candle's flicker: the same sines as its flame's shader would be too costly to mirror, so a cheaper pair
+      const f = 0.86 + 0.09 * Math.sin(t * 9.1 + i * 1.7) + 0.05 * Math.sin(t * 23.3 + i);
+      glowPos.set(placePos.x, placePos.y + FLAME_BASE_LIFT + FLAME_CARD.h / 2, placePos.z);
+      look.flame.setMatrixAt(i, tmpGlow.compose(glowPos, glowQuat, ONE));
+      glowPos.set(placePos.x, placePos.y + WICK.h + 0.008, placePos.z);
+      glowScale.setScalar(0.92 + 0.12 * f);
+      look.halo.setMatrixAt(i, tmpGlow.compose(glowPos, glowQuat, glowScale));
+      look.halo.setColorAt(i, tint.setScalar(Math.min(1, 0.75 + 0.25 * f)));
+      glowPos.set(placePos.x, placePos.y + 0.001, placePos.z);
+      look.wax.setMatrixAt(i, tmpGlow.compose(glowPos, glowQuat, ONE));
+      // the light on the cubby: a card on its opening (facing the room), warm, flickering with the flame
+      const fx = Math.sin(anchor.yaw);
+      const fz = Math.cos(anchor.yaw);
+      glowPos.set(anchor.x + fx * 0.006, anchor.y, anchor.z + fz * 0.006);
+      glowQuat.setFromAxisAngle(UP, anchor.yaw);
+      look.wash.setMatrixAt(i, tmpGlow.compose(glowPos, glowQuat, ONE));
+      const w = Math.min(1, 0.78 * f * nightBoost);
+      look.wash.setColorAt(i, tint.setRGB(w, w, w));
       i += 1;
     }
     for (const p of candles.parts) showInstances(p.mesh, i);
-    for (const g of candles.glows) showInstances(g, i);
+    for (const g of [look.flame, look.halo, look.wax, look.wash]) showInstances(g, i);
+    if (i > 0) {
+      look.halo.instanceColor!.needsUpdate = true;
+      look.wash.instanceColor!.needsUpdate = true;
+    }
   });
 
   return (
@@ -399,6 +416,8 @@ function MemorialHall() {
       <primitive object={cubbyProps.group} dispose={null} />
       <ClaimFrames anchors={HALL_CUBBY_ANCHORS} />
       <primitive object={candles.group} dispose={null} />
+      <primitive object={wicks.mesh} dispose={null} />
+      <primitive object={dressing.group} dispose={null} />
       <primitive object={selectMark} dispose={null} />
     </>
   );

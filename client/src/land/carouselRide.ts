@@ -5,7 +5,7 @@
  */
 import { PerspectiveCamera } from "three";
 import { carouselAt, carouselSeatPose, CAROUSEL_OMEGA_MAX, type CarouselSeatPose, type CarouselState } from "@caysonverse/shared/land/carousel";
-import { villageClock } from "../village/villageClock";
+import { rideMs } from "./rideClock";
 import { rideComfort, selfRide } from "./coasterRide";
 
 const P: CarouselSeatPose = { x: 0, y: 0, z: 0, fx: 0, fz: 1, pitch: 0, theta: 0, ring: 0 };
@@ -22,7 +22,7 @@ export function resetCarouselCamera(): void {
 }
 
 export function stepCarouselCamera(camera: PerspectiveCamera, dt: number, lookYaw: number, lookPitch: number, baseFov: number): void {
-  const wall = villageClock.liveMs();
+  const wall = rideMs();
   const st = carouselAt(wall, ST);
   carouselSeatPose(Math.max(0, selfRide.slot), wall, P);
   const k = rideComfort() === 0 ? 0 : rideComfort() === 1 ? 0.5 : 1;

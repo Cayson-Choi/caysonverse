@@ -319,6 +319,16 @@ export function pickLotLevels(
   return out;
 }
 
+/**
+ * How far (m, from the lot's box) a lot's landmark dressing (`nodes.far`) stays drawn: the village's front door is seen from the whole
+ * square, and its lamps' glow sprites never hide — the posts, the fountain and the topiary used to pop in only within 25 / 35 m (owner
+ * 2026-11-20). Past it the fog has swallowed them. A hysteresis keeps the edge from flickering.
+ */
+export const FAR_DRESS_REACH = Object.freeze({ pc: 220, phone: 180, hysteresis: 8 });
+export function farDressShown(gap: number, was: boolean, device: LotDevice): boolean {
+  return gap <= (device === "pc" ? FAR_DRESS_REACH.pc : FAR_DRESS_REACH.phone) + (was ? FAR_DRESS_REACH.hysteresis : 0);
+}
+
 // ───────────────────────────────────────── the model ─────────────────────────────────────────
 
 export interface LotDoorLeaf {
@@ -343,6 +353,8 @@ export interface LotNodes {
   /** Per lot: the structure group (level >= 1) and the goods group (level 2). */
   detail: Map<LotId, Object3D>;
   goods: Map<LotId, Object3D>;
+  /** Per lot: the landmark dressing drawn far beyond the detail's reach (the gate: fountain, lamps, topiary, pennants, urns). */
+  far: Map<LotId, Object3D>;
   night: Object3D[];
   doors: LotDoorRig[];
   boxes: Array<{ id: LotId; box: AABB; detailTris: number; goodsTris: number }>;
@@ -540,17 +552,23 @@ export function vestibuleFloor(root: Object3D, l: (typeof VILLAGE_LOTS)[number],
   const isLawn = (o: Object3D) => [(o as Mesh).material].flat().some((m) => /_green$/.test((m as Material | undefined)?.name ?? ""));
   let top = -Infinity;
   let own: Material | null = null;
+  // a probe with no kit floor under it (nothing of the lot there, or only its lawn): the village's own grass shows through the doorway
+  let bare = false;
   for (const k of [0.6, 1.2]) {
     const x = p.centre.x + ix * k;
     const z = p.centre.z + iz * k;
     ray.set(new Vector3(x, 1.2, z), new Vector3(0, -1, 0));
     ray.far = 1.3;
     const hit = ray.intersectObject(root, true).find((h) => Math.abs(h.face?.normal.y ?? 0) > 0.5 && !inDoor(h.object) && (h.object as Mesh).renderOrder !== 3);
+    if (!hit || isLawn(hit.object)) bare = true;
     if (!hit) continue;
     top = Math.max(top, hit.point.y);
     if (!isLawn(hit.object)) own = [(hit.object as Mesh).material].flat()[hit.face?.materialIndex ?? 0] ?? own;
   }
-  if (top > 0.06) return null;
+  // A raised kit floor all the way in (the 대웅전's 마루, 0.9 m) needs nothing. A step at the door line with the village lawn beyond it
+  // (the chapel's 12 cm granite threshold; owner 2026-11-19: "성당에 문이 열렸는데 왜 건물안에 잔디처럼 녹색이 깔려있는거냐") is no floor:
+  // the vestibule is laid at the ground behind it and the step stays a step.
+  if (top > 0.06 && !bare) return null;
   if (own && own.name.startsWith("LM_")) surface = own as MeshStandardMaterial;
   const depth = Math.min(4, hitDist(p.centre.x + ix * 0.05, 1.4, p.centre.z + iz * 0.05, ix, 0, iz, 4));
   if (!Number.isFinite(depth) || depth < 0.3) return null;
@@ -562,7 +580,7 @@ export function vestibuleFloor(root: Object3D, l: (typeof VILLAGE_LOTS)[number],
   const half = d.width / 2 + 1.2;
   const right = Math.min(half, hitDist(mx, 1.4, mz, ax, 0, az, half));
   const left = Math.min(half, hitDist(mx, 1.4, mz, -ax, 0, -az, half));
-  const y = Math.max(VESTIBULE_FLOOR_MIN_Y, top + 0.012);
+  const y = top > 0.06 ? VESTIBULE_FLOOR_MIN_Y : Math.max(VESTIBULE_FLOOR_MIN_Y, top + 0.012);
   const pos: number[] = [];
   const uv: number[] = [];
   const corner = (along: number, across: number) => {
@@ -893,8 +911,41 @@ export function prepareLots(
   lampCount = lampUniform.value.length;
   stats.lamps = points.length;
 
-  return { root, shells, detail, goods, night, doors, boxes, glow, surfaces, lotSets, own, stats };
+  return { root, shells, detail, goods, far: new Map(), night, doors, boxes, glow, surfaces, lotSets, own, stats };
 }
+/**
+ * Put out the lots' lamp points within `r` m of (x, z) and under `belowY` (moved far below the ground: the count, and so the
+ * compiled programs, stay as they are). The gate lot's old fountain glow (a light in its water) lit the new fountain's stone
+ * like a floodlight (fix/gate-fountain-park).
+ */
+export function muteLotLampsNear(x: number, z: number, r: number, belowY: number): number {
+  let n = 0;
+  for (const p of lampUniform.value)
+    if (Math.hypot(p.x - x, p.z - z) < r && p.y < belowY) {
+      p.set(0, -100, 0);
+      n++;
+    }
+  return n;
+}
+
+/**
+ * Move the lots' lamp points by (dx, dz) - the gate standing in the park (land/ParkGateLot.tsx) takes its lamps' light with it.
+ * Returns the way back.
+ */
+export function shiftLotLamps(dx: number, dz: number): () => void {
+  const moved = lampUniform.value;
+  for (const p of moved) {
+    p.x += dx;
+    p.z += dz;
+  }
+  return () => {
+    for (const p of moved) {
+      p.x -= dx;
+      p.z -= dz;
+    }
+  };
+}
+
 /** Per frame (number writes only): the night's glow, lamps, signs and glass. */
 export function applyLotsDayNight(nodes: LotNodes, s: Pick<DayNightState, "lights" | "night" | "hemiIntensity" | "hemiSky">): void {
   nightUniform.value = s.night * LOT_LOOK.nightDesaturate;

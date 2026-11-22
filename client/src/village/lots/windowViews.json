@@ -1,0 +1,196 @@
+{
+ "rooms": {
+  "lot_school_class": {
+   "m": [
+    0,
+    1,
+    -1,
+    0
+   ],
+   "t": [
+    60.5,
+    22.7
+   ],
+   "eyeRoom": [
+    7.7,
+    1.6,
+    3.7
+   ],
+   "eyeVillage": [
+    64.2,
+    1.6,
+    15
+   ],
+   "keys": [
+    {
+     "id": "day",
+     "file": "lots/windowview/lot_school_class_day.ktx2",
+     "time": "12:30",
+     "night": 0,
+     "golden": 0,
+     "k": 0.59777
+    },
+    {
+     "id": "dusk",
+     "file": "lots/windowview/lot_school_class_dusk.ktx2",
+     "time": "17:00",
+     "night": 0.2299,
+     "golden": 1,
+     "k": 1.26773
+    },
+    {
+     "id": "night",
+     "file": "lots/windowview/lot_school_class_night.ktx2",
+     "time": "22:30",
+     "night": 1,
+     "golden": 0,
+     "k": 1.95
+    }
+   ]
+  },
+  "lot_library_reading": {
+   "m": [
+    0,
+    -1,
+    1,
+    0
+   ],
+   "t": [
+    -53,
+    8.3
+   ],
+   "eyeRoom": [
+    6.7,
+    1.6,
+    5.2
+   ],
+   "eyeVillage": [
+    -58.2,
+    1.6,
+    15
+   ],
+   "keys": [
+    {
+     "id": "day",
+     "file": "lots/windowview/lot_library_reading_day.ktx2",
+     "time": "12:30",
+     "night": 0,
+     "golden": 0,
+     "k": 0.59777
+    },
+    {
+     "id": "dusk",
+     "file": "lots/windowview/lot_library_reading_dusk.ktx2",
+     "time": "17:00",
+     "night": 0.2299,
+     "golden": 1,
+     "k": 1.26773
+    },
+    {
+     "id": "night",
+     "file": "lots/windowview/lot_library_reading_night.ktx2",
+     "time": "22:30",
+     "night": 1,
+     "golden": 0,
+     "k": 1.95
+    }
+   ]
+  },
+  "lot_cafe_room": {
+   "m": [
+    0,
+    1,
+    -1,
+    0
+   ],
+   "t": [
+    46.6,
+    -8.3
+   ],
+   "eyeRoom": [
+    6.8,
+    1.6,
+    3.9
+   ],
+   "eyeVillage": [
+    50.5,
+    1.6,
+    -15.1
+   ],
+   "keys": [
+    {
+     "id": "day",
+     "file": "lots/windowview/lot_cafe_room_day.ktx2",
+     "time": "12:30",
+     "night": 0,
+     "golden": 0,
+     "k": 0.59777
+    },
+    {
+     "id": "dusk",
+     "file": "lots/windowview/lot_cafe_room_dusk.ktx2",
+     "time": "17:00",
+     "night": 0.2299,
+     "golden": 1,
+     "k": 1.26773
+    },
+    {
+     "id": "night",
+     "file": "lots/windowview/lot_cafe_room_night.ktx2",
+     "time": "22:30",
+     "night": 1,
+     "golden": 0,
+     "k": 1.95
+    }
+   ]
+  },
+  "lot_cafe_upstairs": {
+   "m": [
+    0,
+    1,
+    -1,
+    0
+   ],
+   "t": [
+    46.6,
+    -8.3
+   ],
+   "eyeRoom": [
+    6.8,
+    1.6,
+    3.9
+   ],
+   "eyeVillage": [
+    50.5,
+    1.6,
+    -15.1
+   ],
+   "keys": [
+    {
+     "id": "day",
+     "file": "lots/windowview/lot_cafe_room_day.ktx2",
+     "time": "12:30",
+     "night": 0,
+     "golden": 0,
+     "k": 0.59777
+    },
+    {
+     "id": "dusk",
+     "file": "lots/windowview/lot_cafe_room_dusk.ktx2",
+     "time": "17:00",
+     "night": 0.2299,
+     "golden": 1,
+     "k": 1.26773
+    },
+    {
+     "id": "night",
+     "file": "lots/windowview/lot_cafe_room_night.ktx2",
+     "time": "22:30",
+     "night": 1,
+     "golden": 0,
+     "k": 1.95
+    }
+   ]
+  }
+ }
+}

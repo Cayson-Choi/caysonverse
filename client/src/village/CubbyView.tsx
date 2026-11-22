@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CANDLE_RATE } from "@caysonverse/shared/village/messages";
-import { sendLightCandle } from "../net/connection";
+import { zoneLetter } from "@caysonverse/shared/village/villageLayout";
+import { sendLightCandle, sendPutOutCandle } from "../net/connection";
+import { setCubbyCardFolded, useCubbyCardFolded } from "./cubbyFold";
 import { popOverlay, pushOverlay } from "../ui/overlayStack";
 import { HALL_CUBBY_ANCHORS, SAMPLE_BY_ID, SAMPLE_PHOTO_URL } from "./sampleCubbies";
 import { claimYears } from "@caysonverse/shared/memorial/validate";
@@ -52,6 +54,9 @@ export function CubbyView() {
   const area = useLocalArea();
   useCandles(); // re-render when a candle is lit or goes out
   const [pendingFor, setPendingFor] = useState<string | null>(null);
+  /** A "촛불 끄기" sent and not yet answered (the cubby id). */
+  const [outPendingFor, setOutPendingFor] = useState<string | null>(null);
+  const folded = useCubbyCardFolded();
   const lastSent = useRef(-Infinity);
   const [, setTick] = useState(0);
 
@@ -101,7 +106,7 @@ export function CubbyView() {
       ro?.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [open]);
+  }, [open, folded]);
   useEffect(() => {
     if (!open) return;
     pushOverlay(CUBBY_OVERLAY_ID, closeCubbyCard);
@@ -133,6 +138,11 @@ export function CubbyView() {
     const t = setTimeout(() => setPendingFor(null), LIGHT_WAIT_MS);
     return () => clearTimeout(t);
   }, [pendingFor]);
+  useEffect(() => {
+    if (outPendingFor === null) return;
+    const t = setTimeout(() => setOutPendingFor(null), LIGHT_WAIT_MS);
+    return () => clearTimeout(t);
+  }, [outPendingFor]);
 
   if (!open || card === null) return null;
   const id = cubbyIdAt(card.column, card.row);
@@ -141,6 +151,14 @@ export function CubbyView() {
   const burning = id !== null && isCandleBurning(id, now);
   const coolingDown = now - lastSent.current < CANDLE_RATE.windowMs;
   const pending = id !== null && pendingFor === id && !burning;
+  const outPending = id !== null && outPendingFor === id && burning;
+
+  const lit = id !== null && burning ? burningCandles().get(id) : undefined;
+  const bank = id ? id.split("-")[1] ?? "" : "";
+  const claim = sample ? undefined : claimFor(id, claims);
+  const mine = isMine(claim) ? claim : undefined;
+  // Who may put a candle out (owner 2026-11-20; the server checks the same): whoever lit it, and the cubby's family.
+  const mayPutOut = burning && (lit?.mine === true || mine !== undefined);
 
   const light = () => {
     if (!id || burning || pending || coolingDown) return;
@@ -148,11 +166,11 @@ export function CubbyView() {
     setPendingFor(id);
     sendLightCandle(id);
   };
-
-  const lit = id !== null && burning ? burningCandles().get(id) : undefined;
-  const bank = id ? id.split("-")[1] ?? "" : "";
-  const claim = sample ? undefined : claimFor(id, claims);
-  const mine = isMine(claim) ? claim : undefined;
+  const putOut = () => {
+    if (!id || !burning || !mayPutOut || outPending) return;
+    setOutPendingFor(id);
+    sendPutOutCandle(id);
+  };
   const filled = Boolean(sample || claim);
   const myFirst = [...claims.mine.keys()][0];
   const shownPhoto = mine ? (mine.familyCover?.urls ?? null) : (claim?.photo ?? null);
@@ -176,13 +194,55 @@ export function CubbyView() {
     const a = HALL_CUBBY_ANCHORS.find((x) => x.id === myFirst);
     if (a) openCubbyAt(a);
   };
+  const where = `${bank ? `${zoneLetter(bank)}구역 · ` : ""}${rowLabel(card.row)}`;
+  const title = sample ? sample.name : claim ? claim.petName : CUBBY_COPY.emptyTitle;
+
+  // Folded (owner 2026-11-20): a slim bar with the name, the way to unfold, and the way out; the cubby shows behind it.
+  if (folded)
+    return (
+      <div className="cv-cubby is-folded" role="dialog" aria-modal="false" aria-label={CUBBY_COPY.dialog} data-cubby={id ?? ""} data-folded="1">
+        <div className="cv-cubby-panel is-folded" ref={panelRef}>
+          <div className="cv-cubby-bar">
+            <div className="cv-cubby-bar-text">
+              <span className="cv-cubby-bar-name">
+                {burning ? <span className="cv-cubby-bar-flame" aria-hidden="true" /> : null}
+                {title}
+              </span>
+              <span className="cv-cubby-bar-where">{where}</span>
+            </div>
+            <button
+              type="button"
+              className="cv-cubby-fold"
+              aria-expanded="false"
+              aria-label={CUBBY_COPY.unfoldLabel}
+              onClick={() => setCubbyCardFolded(false)}
+            >
+              <span className="cv-cubby-chevron is-up" aria-hidden="true" />
+              {CUBBY_COPY.unfold}
+            </button>
+            <button type="button" className="cv-cubby-bar-close" aria-label={CUBBY_COPY.exit} title={CUBBY_COPY.exit} onClick={closeCubbyCard}>
+              <span aria-hidden="true">✕</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
 
   return (
-    <div className="cv-cubby" role="dialog" aria-modal="false" aria-label={CUBBY_COPY.dialog} data-cubby={id ?? ""}>
+    <div className="cv-cubby" role="dialog" aria-modal="false" aria-label={CUBBY_COPY.dialog} data-cubby={id ?? ""} data-folded="0">
       <div className="cv-cubby-panel" ref={panelRef}>
-        <div className="cv-cubby-where">
-          {bank ? `${bank} 구역 · ` : ""}
-          {rowLabel(card.row)}
+        <div className="cv-cubby-head">
+          <div className="cv-cubby-where">{where}</div>
+          <button
+            type="button"
+            className="cv-cubby-fold"
+            aria-expanded="true"
+            aria-label={CUBBY_COPY.foldLabel}
+            onClick={() => setCubbyCardFolded(true)}
+          >
+            <span className="cv-cubby-chevron is-down" aria-hidden="true" />
+            {CUBBY_COPY.fold}
+          </button>
         </div>
         {sample ? (
           <div className="cv-cubby-body">
@@ -244,15 +304,23 @@ export function CubbyView() {
         ) : null}
         {filled ? (
           <>
-            <button
-              type="button"
-              className="cv-cubby-light"
-              disabled={burning || pending || coolingDown}
-              onClick={light}
-            >
-              {burning ? CUBBY_COPY.burning : pending ? CUBBY_COPY.lighting : coolingDown ? CUBBY_COPY.wait : CUBBY_COPY.light}
-            </button>
-            {lit ? <div className="cv-cubby-by">{litByLabel(lit.by, now - lit.at)}</div> : null}
+            {burning && mayPutOut ? (
+              <button type="button" className="cv-cubby-light is-out" data-candle="lit" disabled={outPending} onClick={putOut}>
+                {outPending ? CUBBY_COPY.puttingOut : CUBBY_COPY.putOut}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="cv-cubby-light"
+                data-candle={burning ? "lit" : "out"}
+                disabled={burning || pending || coolingDown}
+                onClick={light}
+              >
+                {burning ? CUBBY_COPY.burning : pending ? CUBBY_COPY.lighting : coolingDown ? CUBBY_COPY.wait : CUBBY_COPY.light}
+              </button>
+            )}
+            {lit ? <div className="cv-cubby-by">{litByLabel(lit.by, now - lit.at, lit.mine)}</div> : null}
+            {burning && !mayPutOut ? <div className="cv-cubby-hint">{CUBBY_COPY.onlyLighter}</div> : null}
           </>
         ) : (
           <>

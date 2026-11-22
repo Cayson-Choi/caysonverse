@@ -2,7 +2,7 @@
 
   python -I docs/designs/village-lots-v2/tools/patch_room_art.py <room.glb> <spec.json>
 
-spec.json: {"items": [{"node": "...", "file": "lots/sacred/x.glb", "phoneFile": "lots/sacred/x_phone.glb", "phone": true,
+spec.json: {"remove": [node-name prefixes whose sacred entries are dropped, e.g. the individual props now merged], "items": [{"node": "...", "file": "lots/sacred/x.glb", "phoneFile": "lots/sacred/x_phone.glb", "phone": true,
             "at": [x, y, z] (room frame; the room origin is added), "yaw": radians, "what": "..."}]}
 Running it twice replaces the entries of the same node name (idempotent). The room GLB's JSON chunk is rewritten (4-byte
 aligned) and the binary chunk is copied as is.
@@ -17,7 +17,8 @@ j = json.loads(b[20:20 + jl].decode("utf-8"))
 rest = b[20 + jl:]
 ox, oz = j["asset"]["extras"]["origin"]["x"], j["asset"]["extras"]["origin"]["z"]
 names = {n["name"] for n in j["nodes"]}
-sacred = [e for e in j["asset"]["extras"]["sacred"] if e["node"] not in {i["node"] for i in spec["items"]}]
+drop = tuple(spec.get("remove", []))
+sacred = [e for e in j["asset"]["extras"]["sacred"] if e["node"] not in {i["node"] for i in spec["items"]} and not (drop and e["node"].startswith(drop))]
 scene = j["scenes"][0]["nodes"]
 for it in spec["items"]:
     x, y, z = it["at"]

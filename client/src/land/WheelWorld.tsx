@@ -3,9 +3,9 @@ import { BulbHalos } from "./nightGlow";
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
-import { CanvasTexture, Color, Euler, Group, InstancedMesh, Matrix4, MeshStandardMaterial, Quaternion, SphereGeometry, SRGBColorSpace, Texture, Vector3 } from "three";
-import { WHEEL_HUB_Y, WHEEL_N, WHEEL_R, WHEEL_SITE, WHEEL_STEP, wheelAt, wheelPivot, wheelSway, type WheelState } from "@caysonverse/shared/land/wheel";
-import { villageClock } from "../village/villageClock";
+import { CanvasTexture, Color, FrontSide, Group, InstancedMesh, Matrix4, MeshStandardMaterial, Quaternion, SphereGeometry, SRGBColorSpace, Texture, Vector3 } from "three";
+import { WHEEL_HUB_Y, WHEEL_N, WHEEL_R, WHEEL_SITE, WHEEL_STEP, wheelAt, wheelPivot, type WheelState } from "@caysonverse/shared/land/wheel";
+import { rideMs } from "./rideClock";
 import { partsOf } from "./CarouselWorld";
 import { parkMaterial, pickSet } from "./pbr";
 import { projectMetreUV } from "./parkShapes";
@@ -44,7 +44,6 @@ function signTexture(): CanvasTexture {
 
 const mat4 = new Matrix4();
 const quat = new Quaternion();
-const eul = new Euler(0, 0, 0, "XYZ");
 const pos = new Vector3();
 const one = new Vector3(1, 1, 1);
 const piv = { x: 0, y: 0, z: 0 };
@@ -90,7 +89,28 @@ export function WheelWorld({ env, all }: { env: Texture; all: Texture[] }) {
       return p;
     });
   }, [frame, env, all]);
-  const gondolaParts = useMemo(() => partsOf(gondola.scene, env), [gondola, env]);
+  const gondolaParts = useMemo(() => {
+    // the cabin glass: CLEAR (owner 2026-11-19: it looked milky). One pane per side (no double layers), a faint blue-green tint, almost no opacity, no
+    // roughness blur and only a trace of sky in it (a weak environment reflection), so the park shows crisp and undimmed through it and the riders show from outside
+    return partsOf(gondola.scene, env).map((p) => {
+      if (!p.material.name.includes("glass")) return p;
+      const m = p.material;
+      m.color = new Color("#cdeee6");
+      m.opacity = 0.1;
+      m.transparent = true;
+      m.depthWrite = false;
+      m.roughness = 0.02;
+      m.metalness = 0;
+      m.envMapIntensity = 0.28;
+      m.emissive = new Color("#000000");
+      m.emissiveIntensity = 0;
+      m.map = null;
+      m.alphaMap = null;
+      m.side = FrontSide;
+      m.needsUpdate = true;
+      return p;
+    });
+  }, [gondola, env]);
   const rotorRef = useRef<Group>(null);
   const root = useRef<Group>(null);
   const gl = useThree((s) => s.gl);
@@ -126,7 +146,7 @@ export function WheelWorld({ env, all }: { env: Texture; all: Texture[] }) {
   }, [gl, cam, gondolaParts]);
 
   useFrame(() => {
-    const now = villageClock.liveMs();
+    const now = rideMs();
     wheelAt(now, st);
     // the rotor turns clockwise seen from the south: a negative turn about +z
     if (rotorRef.current) rotorRef.current.rotation.z = -st.angle;
@@ -134,8 +154,8 @@ export function WheelWorld({ env, all }: { env: Texture; all: Texture[] }) {
     for (let g = 0; g < WHEEL_N; g++) {
       wheelPivot(g, st.angle, piv);
       pos.set(piv.x, piv.y, piv.z);
-      eul.set(0, 0, wheelSway(g, st));
-      quat.setFromEuler(eul);
+      // the gondolas hang level, always: no swing, no tilt
+      quat.identity();
       mat4.compose(pos, quat, one);
       for (const mesh of gondolaRefs.current) mesh?.setMatrixAt(g, mat4);
     }
@@ -157,13 +177,13 @@ export function WheelWorld({ env, all }: { env: Texture; all: Texture[] }) {
         <BulbHalos places={bulbs} size={1.0} strength={0.8} />
       </group>
       {gondolaParts.map((p, i) => (
-        <instancedMesh key={`g${i}`} ref={(r) => { gondolaRefs.current[i] = r; }} args={[p.geometry, p.material, WHEEL_N]} frustumCulled={false} dispose={null} castShadow={!p.material.transparent} renderOrder={p.material.transparent ? 2 : 0} />
+        <instancedMesh key={`g${i}`} name={i === 0 ? "ride-wheel-gondola" : undefined} ref={(r) => { gondolaRefs.current[i] = r; }} args={[p.geometry, p.material, WHEEL_N]} frustumCulled={false} dispose={null} castShadow={!p.material.transparent} renderOrder={p.material.transparent ? 2 : 0} />
       ))}
-      <mesh position={[WHEEL_SITE.x + 1.0, 2.1, WHEEL_SITE.z + 10.4]} material={signMat}>
+      <mesh position={[WHEEL_SITE.x + 7.5, 2.1, WHEEL_SITE.z + 9.6]} material={signMat}>
         <planeGeometry args={[4.2, 1.05]} />
       </mesh>
       {[-1, 1].map((s) => (
-        <mesh key={s} position={[WHEEL_SITE.x + 1.0 + s * 2.0, 0.95, WHEEL_SITE.z + 10.35]} material={postMat}>
+        <mesh key={s} position={[WHEEL_SITE.x + 7.5 + s * 2.0, 0.95, WHEEL_SITE.z + 9.55]} material={postMat}>
           <cylinderGeometry args={[0.07, 0.07, 1.9, 8]} />
         </mesh>
       ))}

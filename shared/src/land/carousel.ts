@@ -34,7 +34,9 @@ const RAMP_DOWN_S = 15;
 const RIDE_S = CAROUSEL_RIDE_MS / 1000;
 
 /** The bobbing: amplitude (m) and period (s). */
-export const HORSE_BOB = Object.freeze({ amp: 0.34, period: 4.2 });
+export const HORSE_BOB = Object.freeze({ amp: 0.28, period: 4.2 });
+/** How far the lowest point of a horse's hoof hangs below its saddle (m): the horse model's HOOF_BOTTOM in tools/land/make_carousel.py (a unit test reads the GLB to keep them equal). */
+export const HORSE_HOOF_DROP = 0.92;
 
 const smooth = (x: number): number => {
   const t = Math.max(0, Math.min(1, x));
@@ -135,7 +137,9 @@ export function carouselBob(seat: number, tSec: number, omega: number): number {
   return HORSE_BOB.amp * (omega / CAROUSEL_OMEGA_MAX) * Math.sin((2 * Math.PI * tSec) / HORSE_BOB.period + phase);
 }
 
-const SADDLE_Y = 1.05; // a horse's saddle over the deck (m)
+/** A horse's saddle over the deck (m). With the bob's amplitude and the hoof drop the hooves clear the deck by 0.08 m at the lowest point of the bob. */
+export const CAROUSEL_SADDLE_Y = 1.28;
+const SADDLE_Y = CAROUSEL_SADDLE_Y;
 const CARRIAGE_SEAT_Y = 0.62;
 
 /** The seat's pose at wall-clock `nowMs`. */

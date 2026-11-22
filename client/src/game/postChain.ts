@@ -284,6 +284,68 @@ void main() {
   gl_FragColor = mix(outputColor, texel, alpha);
 }`;
 
+/**
+ * The bloom's blur, replacing three-stdlib's UnrealBloomPass separable blur (2026-11-20: owner "별 테두리가 네모나게 빛나냐고").
+ * That one is a Gaussian whose sigma EQUALS its kernel radius and which stops one tap short of it, so every mip's blur was cut
+ * off at under one sigma: a flat-topped, box-edged kernel, and the sum of five such mips round a small bright point (a star
+ * at gain 2.5, the moon) came out as a SQUARE glow with straight sides. This one is a true Gaussian carried out to
+ * `GAUSS_SPREAD` sigma (the tail ends at 1 % of the peak, a few percent of it after the renormalisation), sampled with the
+ * hardware's bilinear filter at a stride that grows with sigma: the same 13 taps for every mip, none of them near a
+ * kernel edge. Its sigma is a fraction of the old kernel radius (the old cut-off kernel's effective width was about 0.6 of it, and a Gaussian's soft tail reads fainter, so 0.85),
+ * so the glow keeps about the size it had.
+ */
+export const GAUSS_SPREAD = 2.6;
+export const GAUSS_TAPS = 6;
+const BLOOM_KERNEL_RADII = [3, 5, 7, 9, 11] as const;
+/** Sigma (in the mip's own texels) of the mip `i`'s blur. */
+export function bloomSigma(i: number): number {
+  return 0.85 * BLOOM_KERNEL_RADII[i]!;
+}
+/** The normalised one-sided weights of the blur: index k is the tap at k * stride texels (k = 0..GAUSS_TAPS; k = 0 counts once). */
+export function gaussianTapWeights(sigma: number): { stride: number; weights: number[] } {
+  const stride = (GAUSS_SPREAD * sigma) / GAUSS_TAPS;
+  const raw: number[] = [];
+  for (let k = 0; k <= GAUSS_TAPS; k++) raw.push(Math.exp(-0.5 * ((k * stride) / sigma) ** 2));
+  const total = raw[0]! + 2 * raw.slice(1).reduce((a, b) => a + b, 0);
+  return { stride, weights: raw.map((w) => w / total) };
+}
+function gaussianBlurMaterial(sigma: number): ShaderMaterial {
+  const { stride, weights } = gaussianTapWeights(sigma);
+  return new ShaderMaterial({
+    name: "PostChain.bloomBlur",
+    defines: { TAPS: GAUSS_TAPS },
+    uniforms: {
+      colorTexture: { value: null },
+      texSize: { value: new Vector2(0.5, 0.5) },
+      direction: { value: new Vector2(0.5, 0.5) },
+      stride: { value: stride },
+      weights: { value: weights },
+    },
+    vertexShader: /* glsl */ `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`,
+    fragmentShader: /* glsl */ `
+varying vec2 vUv;
+uniform sampler2D colorTexture;
+uniform vec2 texSize;
+uniform vec2 direction;
+uniform float stride;
+uniform float weights[TAPS + 1];
+void main() {
+  vec2 step = direction * stride / texSize;
+  vec3 sum = texture2D(colorTexture, vUv).rgb * weights[0];
+  for (int k = 1; k <= TAPS; k++) {
+    vec2 o = step * float(k);
+    sum += (texture2D(colorTexture, vUv + o).rgb + texture2D(colorTexture, vUv - o).rgb) * weights[k];
+  }
+  gl_FragColor = vec4(sum, 1.0);
+}`,
+  });
+}
+
 export interface BloomSettings {
   strength: number;
   radius: number;
@@ -328,6 +390,10 @@ export class PostChain {
     this.target.texture.name = "PostChain.scene";
     this.target.samples = 0;
     this.bloomPass = new UnrealBloomPass(new Vector2(256, 256), settings.strength, settings.radius, settings.threshold);
+    for (let i = 0; i < this.bloomPass.nMips; i++) {
+      this.bloomPass.separableBlurMaterials[i]!.dispose();
+      this.bloomPass.separableBlurMaterials[i] = gaussianBlurMaterial(bloomSigma(i));
+    }
     // One pair of vectors shared by both passes (set together in applyRegion).
     const uvScale = new Vector2(1, 1);
     const uvMax = new Vector2(1, 1);

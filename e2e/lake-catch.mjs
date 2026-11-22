@@ -21,6 +21,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { DESKTOP, PHONE, REPO, createRun, launchBrowser, openPlayer, pos, press, sleep, touchDown, touchUp, visibleButtons, walkAndWait, layoutReport } from "./lib/common.mjs";
 import { joinVillage } from "./lib/village.mjs";
 import { bigButton, waitButton } from "./lib/lakeMock.mjs";
+import { installPhaseLog, phaseMark, startFightAnglerInPage, waitSeen } from "./lib/lakeFight.mjs";
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => (args.find((a) => a.startsWith(`--${name}=`)) ?? `--${name}=${fallback}`).slice(name.length + 3);
@@ -87,6 +88,7 @@ const waitPhase = async (names, ms) => {
 
 await run.step("join and walk to the pad", async () => {
   await joinVillage(p, "낚", time);
+  await installPhaseLog(p);
   for (const [x, z] of [[40, 0], [80, -9], [100, -12]]) await walkAndWait(p, x, z, 40000, 2);
   await walkAndWait(p, 102, -14.6, 20000, 1);
   await sleep(800);
@@ -159,6 +161,8 @@ const probe = () =>
           y: +w.y.toFixed(2),
           z: +w.z.toFixed(2),
           s: +o.parent.scale.x.toFixed(3),
+          // which way its back points (owner 2026-11-18: held up belly-up): the fish's +Y (back) and +Z (nose) in the world
+          up: +new o.position.constructor(0, 1, 0).applyQuaternion(o.getWorldQuaternion(new o.quaternion.constructor())).y.toFixed(2),
           onScreen: Math.abs(n.x) < 0.95 && Math.abs(n.y) < 0.95 && n.z < 1,
         });
       }
@@ -182,7 +186,9 @@ async function frames(dir, n, gap, untilShown = false) {
   for (let k = 0; k < (untilShown ? 160 : n); k++) {
     const v = await view();
     probes.push({ k, phase: v.name, probe: await probe() });
-    await p.page.screenshot({ path: join(dir, `f${String(k).padStart(3, "0")}.jpg`), type: "jpeg", quality: 70 });
+    // a screenshot is the slow part (a loaded machine took seconds: the short landed phase slipped between two frames and the
+    // show was never sampled): shoot every third frame, and the landed ones; the probes (cheap) are taken every time
+    if (v.name === "landed" || k % 3 === 0 || !untilShown) await p.page.screenshot({ path: join(dir, `f${String(k).padStart(3, "0")}.jpg`), type: "jpeg", quality: 70 });
     if (untilShown) {
       if (v.name === "landed") shownFrames++;
       if (shownFrames >= 6 || ["releasing", "ready", "missed"].includes(v.name)) break;
@@ -210,19 +216,14 @@ await run.step("casts: the catch from the strike to the release", async () => {
     const big = (await waitPhase(["lifting", "fighting"], 2000))?.name === "fighting";
     let probes = [];
     if (big) {
-      const hb = await waitButton(p, "꾹 누르고 있어요", 3000);
+      const hb = await waitButton(p, "당기세요", 3000);
       if (hb) {
-        const cx = hb.x + hb.w / 2;
-        const cy = hb.y + hb.h / 2;
-        if (touch) await touchDown(p, cx, cy);
-        else {
-          await p.page.mouse.move(cx, cy);
-          await p.page.mouse.down();
-        }
+        // the fight is a pull / release rhythm: the scripted angler does what the prompt says (lib/lakeFight.mjs) while the frames are taken
+        const mk = await phaseMark(p);
+        const angler = await startFightAnglerInPage(p);
         probes = await frames(join(OUT, `${tag}-c${n}-fight`), 10, 250);
-        await waitPhase(["lifting", "landed"], 9000);
-        if (touch) await touchUp(p);
-        else await p.page.mouse.up();
+        await waitSeen(p, ["lifting", "landed", "missed"], 60000, mk);
+        await angler.stop();
       }
     }
     probes = probes.concat(await frames(join(OUT, `${tag}-c${n}`), 0, 0, true));
@@ -233,10 +234,14 @@ await run.step("casts: the catch from the strike to the release", async () => {
     const shownFish = shown.map((x) => ({ k: x.k, f: x.probe?.fish.find((f) => f.vis), hands: x.probe?.hands ?? [] }));
     run.check(`cast ${n}: the fish shown is on the screen`, shownFish.length > 0 && shownFish.every((x) => x.f?.onScreen), shownFish.slice(0, 2));
     run.check(`cast ${n}: the fish shown is drawn at least 0.5 m long (readable beside the chibi)`, shownFish.length > 0 && shownFish.every((x) => (x.f?.s ?? 0) >= 0.5), shownFish.map((x) => x.f?.s));
+    // owner 2026-11-18: "뒤집힌 게 아니고 안 뒤집힌 상태로": while shown the fish's back is up (settled frames; the flapping rolls it a little)
+    // (the first shown frames are the ease from the hanging hold into the show: judged on the last ones)
+    const upShown = shown.slice(-3).map((x) => x.probe?.fish.find((f) => f.vis)?.up);
+    run.check(`cast ${n}: the fish shown has its back up (not belly-up)`, upShown.length > 0 && upShown.every((u) => u !== undefined && u > -0.2) && Math.max(...upShown) > 0.75, upShown); // (belly-up would be < 0; the first frames are the ease from the hanging hold)
     if (!FIRST_PERSON) {
       const gap = (x) => Math.min(...x.hands.map((h) => Math.hypot(h.x - x.f.x, h.y - x.f.y, h.z - x.f.z)));
       // from the third shown frame (the first ones are the 0.35 s ease from the one-hand hold into the arms)
-      const settled = shownFish.slice(2);
+      const settled = shownFish.slice(-3); // (the ease from the hanging hold takes ~0.45 s: judged on the last frames)
       run.check(`cast ${n}: the fish shown is held in the hands (a hand within 0.4 m of it, once settled)`, settled.length > 0 && settled.every((x) => x.f && x.hands.length > 0 && gap(x) < 0.4), shownFish.map((x) => x.f && x.hands.length ? +gap(x).toFixed(2) : null));
       const lifted = probes.filter((x) => x.phase === "lifting" && x.probe?.fish.some((f) => f.vis && f.onScreen && f.y > 0.2));
       run.check(`cast ${n}: the fish is seen coming up out of the water on the line (on screen, above the water)`, lifted.length > 0, lifted.length);

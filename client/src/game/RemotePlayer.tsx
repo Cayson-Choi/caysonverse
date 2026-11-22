@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
-import { AnimationMixer, Group, LoopOnce, Quaternion, Vector3, type AnimationAction, type Camera, type Object3D, type Plane } from "three";
-import { busCamState } from "./busRide";
+import { extend, useFrame } from "@react-three/fiber";
+import { AnimationMixer, LoopOnce, Quaternion, Vector3, type AnimationAction, type Group, type Object3D, type Plane } from "three";
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
-import { setAvatarOpacity } from "./characterAvatar";
+import { reuseRestingBoneTexture, setAvatarOpacity } from "./characterAvatar";
 import { clipFor, lookFromAppearance } from "./characterLook";
 import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
@@ -33,10 +32,16 @@ import {
   stepLoop,
 } from "./stride";
 import { decideMixerTick } from "./mixerThrottle";
-import { AVATAR_LOD, avatarTreeCadence, behindCamera, crowdForce, crowdLodOff } from "./avatarLod";
+import { AVATAR_LOD, RemoteAvatarGroup, avatarTreeCadence, behindCamera, crowdForce, crowdLodOff } from "./avatarLod";
 import { useCrowd } from "./crowdLayer";
-import { setFadeCut } from "./avatarFade";
+import { setFadeCut, setNearFade } from "./avatarFade";
 import { IMPOSTOR_FADE_PER_S, impostorColors, wantsImpostor } from "./crowdImpostor";
+
+/**
+ * The far stand-ins (crowdImpostor.ts) are OFF (owner 2026-11-19: "여려명 들어온다고 캐릭터 모양을 이상한걸로 바꾸지마 이상해").
+ * Every avatar is always drawn as itself; the crowd budget is kept by the slower refresh of far / still avatars instead.
+ */
+const CROWD_STAND_INS = false;
 import { typingRegistry } from "./typing";
 import {
   JUMP_FADE_IN_S,
@@ -67,6 +72,7 @@ import {
   busLocalToWorld,
   seatBodyPoint,
   busPlaceOf,
+  busSeatBackFace,
   busRiderWorldPose,
   normalizeYaw,
   type BusPlaceKind,
@@ -75,6 +81,8 @@ import {
 import { getTransitRenderPose } from "../net/transitSync";
 import { rideSeatPose } from "../land/rideSeats";
 import { stepLean } from "./leanBack";
+import { stepBackSquash } from "./backSquash";
+import { CHAIR_BACK_BAND, backBandOf, seatBackFace } from "@caysonverse/shared/village/seatBack";
 import { CARRY_STRIPPED_CLIPS, stripArm } from "../lake/fishingRig";
 import { useFishingRig, useHasRod } from "../lake/useFishingRig";
 import { easeLift, stepLiftAt, withSeatLift } from "../village/houses/houseLift";
@@ -100,34 +108,16 @@ function playOnce(action: AnimationAction | null): number {
  * and unmounted by the roster in RemotePlayers.
  */
 /**
- * Another rider drawn in the way of MY view of the bus (review r1: a rider a step in front filled the whole first-person screen
- * with a head; so did a neighbour on the next seat): while my own bus camera is active, a rider whose head is within 1.5 m of the
- * lens (first person) or 0.9 m (the third-person arm) and in front of it is not drawn. A little hysteresis, no flicker.
+ * Another player's body right at MY lens (a rider a step behind me on the bus, where the third-person arm passes their head; a
+ * neighbour's hair against a first-person eye): only the part within these distances (m) of the lens thins out (dithered, avatarFade.ts
+ * setNearFade), never the whole body. Until 2026-11-20 a bus rider whose head point was within 1.5 m (first person; later 0.55 m) or
+ * 0.9 m (third person) of the lens AND in front of it was hidden whole — so with the view tilted down (the head off the view axis) the
+ * rider's lower body showed, and tilting the view up onto the head made the whole rider vanish (owner 2026-11-19: "버스에서 상대편이
+ * 하체만 보이는 카메라 뷰에서는 하체가 보이는데 카메라뷰를 위로 올리면 상대가 아예 안보여").
  */
-const wayV = new Vector3();
-const wayD = new Vector3();
-function riderInTheWay(camera: Camera, x: number, y: number, z: number, wasHidden: boolean): boolean {
-  if (!busCamState.active) return false;
-  const reach = busCamState.firstPerson ? 1.5 : 0.9;
-  const hidden = !wasHidden;
-  wayV.set(x - camera.position.x, y + 1.6 - camera.position.y, z - camera.position.z);
-  const dist = wayV.length();
-  if (dist > reach + (hidden ? 0.2 : 0)) return false;
-  camera.getWorldDirection(wayD);
-  return dist < 0.05 || wayV.dot(wayD) / dist > (hidden ? 0.35 : 0.5);
-}
+export const REMOTE_NEAR_FADE = { from: 0.3, to: 0.7 } as const;
 
-/**
- * Refresh an avatar group's matrices by hand. Step 8 switches the group's automatic update off (far avatars refresh a few frames
- * apart), and three 0.185 then leaves the group's OWN matrixWorld alone in `updateMatrixWorld` (the flag is checked inside it), so a
- * standing remote was drawn at the world origin. The world matrix is composed here (parent x local); three does the node tree below.
- */
-function refreshAvatarMatrices(group: Group): void {
-  group.updateMatrix();
-  if (group.parent) group.matrixWorld.multiplyMatrices(group.parent.matrixWorld, group.matrix);
-  else group.matrixWorld.copy(group.matrix);
-  group.updateMatrixWorld(true);
-}
+const AvatarGroup = extend(RemoteAvatarGroup);
 
 export function RemotePlayer({
   sessionId,
@@ -143,7 +133,7 @@ export function RemotePlayer({
   const appearance = record?.appearance ?? DEFAULT_APPEARANCE;
   const nickname = record?.nickname ?? "";
 
-  const groupRef = useRef<Group>(null);
+  const groupRef = useRef<RemoteAvatarGroup>(null);
   const lodFramesRef = useRef(0); // frames since the node tree was last refreshed (step 8)
   // Far stand-in (crowdImpostor.ts): the slot this avatar holds in the scene's crowd (-1: it is drawn as the full avatar), the
   // stride phase of its walk, and whether a pose was applied (mixer tick) since the last tree refresh, and where the group was then.
@@ -164,6 +154,9 @@ export function RemotePlayer({
   const stride = useMemo(() => lookStride(look), [look]);
   const crowdColors = useMemo(() => impostorColors(look), [look]);
   const { avatar, animations } = useAvatar(look, { probeId: sessionId });
+  useEffect(() => reuseRestingBoneTexture(avatar, () => groupRef.current?.restingBody === avatar.root), [avatar]);
+  // what touches my lens thins out instead of the whole body being hidden (REMOTE_NEAR_FADE)
+  useEffect(() => setNearFade(avatar.materials, REMOTE_NEAR_FADE.from, REMOTE_NEAR_FADE.to), [avatar]);
   const mixer = useMemo(() => new AnimationMixer(avatar.root), [avatar]);
   // Fishing lake (A10): the rod in this avatar's hand, the fishing clips and the landed fish (lake/fishingRig.ts). A carrier's
   // walk / run / idle have no right arm (Carry_Rod owns it): the base clips are bound again when the rod comes or goes.
@@ -534,7 +527,7 @@ export function RemotePlayer({
    * The viewer came close (or the avatar sat down, boarded, was disconnected...): the full avatar is back in the scene, posed
    * as the mixer last left it, and the stand-in's slot is free.
    */
-  const leaveImpostor = (group: Group | null): void => {
+  const leaveImpostor = (group: RemoteAvatarGroup | null): void => {
     if (slotRef.current < 0) return;
     crowd?.release(slotRef.current);
     slotRef.current = -1;
@@ -545,7 +538,7 @@ export function RemotePlayer({
       if (avatar.root.parent !== group) group.add(avatar.root);
       if (shadowRef.current) shadowRef.current.visible = true;
       mixer.update(0);
-      refreshAvatarMatrices(group);
+      group.refreshTransform();
       treeDirtyRef.current = false;
     }
     lodFramesRef.current = 0;
@@ -571,6 +564,7 @@ export function RemotePlayer({
 
   useFrame((state, delta) => {
     const group = groupRef.current;
+    if (group) group.restingBody = null;
     const rec = getRemoteRecord(sessionId);
     if (!group || !rec || !seatRef.current) return;
 
@@ -604,7 +598,7 @@ export function RemotePlayer({
         }
         // the avatar's node tree is refreshed by hand: the walking path switches the automatic update off (step 8 below), and a group
         // with matrixWorldAutoUpdate off keeps the matrixWorld it is given
-        refreshAvatarMatrices(group);
+        group.refreshTransform();
         return;
       }
       // got off: upright again, on the ground where the server has them
@@ -639,6 +633,7 @@ export function RemotePlayer({
       const bus = getTransitRenderPose();
       const spot = placeNow.kind === "seat" ? BUS_SEATS[placeNow.index]! : null;
       const body = spot ? seatBodyPoint(spot) : null;
+      stepBackSquash(avatar.root, avatar.materials, spot ? busSeatBackFace(spot) : 0, CHAIR_BACK_BAND, delta);
       const tA = body ? body.ahead : rec.busAhead ?? 0;
       const tR = body ? body.right : rec.busRight ?? 0;
       const tYaw = spot ? spot.yaw : rec.busYaw ?? 0;
@@ -663,7 +658,7 @@ export function RemotePlayer({
       bd.y = bd.init && bd.y > 0 ? bd.y + (targetY - bd.y) * Math.min(1, delta * 12) : targetY;
       group.position.set(p.x, bd.y, p.z);
       group.rotation.y = p.yaw + MODEL_FACING_OFFSET;
-      group.visible = !riderInTheWay(state.camera, p.x, bd.y, p.z, group.visible);
+      group.visible = true; // never hidden whole: only what touches my lens thins out (REMOTE_NEAR_FADE)
       const drawn = drawnRef.current;
       drawn.x = p.x;
       drawn.z = p.z;
@@ -713,7 +708,7 @@ export function RemotePlayer({
         fadeRef.current = Math.max(0, fadeRef.current - delta);
       }
       // a rider moves with the bus: its node tree every frame (step 8's LOD is for walkers)
-      if (!group.matrixWorldAutoUpdate) refreshAvatarMatrices(group);
+      if (!group.matrixWorldAutoUpdate) group.refreshTransform();
       return;
     }
     const seat = seatRef.current;
@@ -770,7 +765,11 @@ export function RemotePlayer({
       benchClip.clipped = onBench;
     }
     // A backed seat: lean back while seated (leanBack.ts). `seat.seat` is the seat index on the one global list.
-    stepLean(avatar.root, seat.mode === "seated" ? (activeSeats()[seat.seat]?.lean ?? 0) : 0, delta);
+    const lean = stepLean(avatar.root, seat.mode === "seated" ? (activeSeats()[seat.seat]?.lean ?? 0) : 0, delta);
+    {
+      const seatNow = seat.mode === "seated" ? activeSeats()[seat.seat] : undefined;
+      stepBackSquash(avatar.root, avatar.materials, seatBackFace(seatNow), backBandOf(seatNow), delta);
+    }
 
     // Fishing lake: the rod, the fishing clips, the landed fish; a no-op without a rod.
     fishRig.update(delta, { seatMode: seat.mode, baseSit: sitIdleAction.current });
@@ -891,7 +890,7 @@ export function RemotePlayer({
     // 6b) Far stand-in (crowdImpostor.ts): a standing or walking avatar well away from the camera is one instance of the crowd
     //     mesh — no mixer, no node tree, no draws of its own. Hysteresis between ENTER and EXIT; anything but a plain ground
     //     avatar (seated, getting up, hopping, fishing, ghosted) stays a full avatar.
-    if (crowd && !crowdLodOff()) {
+    if (crowd && CROWD_STAND_INS && !crowdLodOff()) {
       const eligible =
         !!target && seat.mode === "up" && jumpSeqRef.current === -1 && rec.connected && !hasRod && !fishRig.needsTick();
       if (!eligible) {
@@ -922,7 +921,7 @@ export function RemotePlayer({
             if (avatar.root.parent !== group) {
               group.add(avatar.root);
               mixer.update(0);
-              refreshAvatarMatrices(group);
+              group.refreshTransform();
               treeDirtyRef.current = false;
               lodFramesRef.current = 0;
             }
@@ -945,7 +944,7 @@ export function RemotePlayer({
         lodFramesRef.current += 1;
         if (lodFramesRef.current >= 2) {
           lodFramesRef.current = 0;
-          refreshAvatarMatrices(group); // the tag and the blob under it (the avatar's tree is out of the scene)
+          group.refreshTransform(); // the tag and the blob under it (the avatar's tree is out of the scene)
         }
         return;
       }
@@ -976,6 +975,10 @@ export function RemotePlayer({
       }
     }
 
+    // 7b) The fishing wrist (fishingRig.ts): after the frame's last mixer update, or the mixer rewrites the relaxed bones and the
+    //    rod, turned back to keep its direction, points sideways.
+    fishRig.afterMixer(delta);
+
     // 8) Far LOD (avatarLod.ts): the avatar's node tree (bones, meshes, tag) is refreshed here, every frame near, every few
     //    frames far or behind the camera (three's own pass skips it); only near avatars cast a shadow. A standing avatar that
     //    has not moved and whose pose has not been touched since the last refresh (idle: the mixer is paused) is refreshed
@@ -999,13 +1002,14 @@ export function RemotePlayer({
     if (still && camDist >= AVATAR_LOD.nearM && !crowdLodOff()) cadence = Math.max(cadence, AVATAR_LOD.stillCadence);
     if (lodFramesRef.current >= cadence || transient || fadeRef.current > 0) {
       lodFramesRef.current = 0;
-      refreshAvatarMatrices(group);
+      group.refreshTransform();
       treeDirtyRef.current = false;
       at.x = group.position.x;
       at.y = group.position.y;
       at.z = group.position.z;
       at.yaw = group.rotation.y;
     }
+    if (!active && seat.mode === "up" && !hasRod && lean === 0 && !crowdLodOff()) group.restingBody = avatar.root;
     const casts = camDist < AVATAR_LOD.shadowM;
     if (casts !== castsRef.current) {
       castsRef.current = casts;
@@ -1022,13 +1026,13 @@ export function RemotePlayer({
   });
 
   return (
-    <group ref={groupRef} userData={PICK_AS_BODY}>
+    <AvatarGroup ref={groupRef} userData={PICK_AS_BODY}>
       <primitive object={avatar.root} />
       {blobShadow && (
         <group ref={shadowRef}>
           <BlobShadow />
         </group>
       )}
-    </group>
+    </AvatarGroup>
   );
 }
