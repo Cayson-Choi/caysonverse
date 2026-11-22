@@ -11,7 +11,7 @@ import { viewState } from "../game/viewState";
 import { LAKE_WATER_Y } from "@caysonverse/shared/village/lakeLayout";
 import { FISH_PHASE, species, type FishView } from "./lakeProtocol";
 import { createFishModel, fishDrawnLen, type FishModel } from "./lakeProps";
-import { REEL_S, HANG_END_S, catchState, reelProgress, releasePoint, skimming, underPos, type CatchState, type Pt3 } from "./fishCatch";
+import { REEL_S, HANG_END_S, catchState, flapPulse, reelProgress, releasePoint, skimming, underPos, type CatchState, type Pt3 } from "./fishCatch";
 import { setHookPoint } from "./fishHooks";
 import { lakeRipple, lakeSplash } from "./lakeFx";
 import { cameraProbe } from "../game/cameraProbe";
@@ -150,7 +150,6 @@ export function createCatchRig(sid: string): CatchRig {
   const rel: Pt3 = { x: 0, y: 0, z: 0 };
   // the pendulum (the mouth on the line) and the last poses the blends start from
   const hook = new Vector3();
-  const hookV = new Vector3();
   let hookLive = false;
   const lastPos = new Vector3();
   const lastQ = new Quaternion();
@@ -158,8 +157,15 @@ export function createCatchRig(sid: string): CatchRig {
   const fromQ = new Quaternion();
   let fromStage = "none";
   let flexPhase = 0;
-  /** Seconds in the current stage: a stage that does not blend by itself eases in from the last pose (nothing snaps). */
+  /** Seconds since the drawn stage or the phase last changed: everything but the self-blending stages eases in from the last pose. */
   let stageT = 0;
+  // the lift out of the water (lifting, from REEL_S): a damped pendulum under the eased rod tip, the line drawn in steadily
+  const pivot = new Vector3();
+  const swingH = new Vector3();
+  const swingS = new Vector3();
+  let liftL0 = 1;
+  let swingA0 = 0;
+  let swingPh = 0;
   let lastStage = "none";
   let lastPhase = -1;
   let lastSeq = -1;
@@ -289,17 +295,20 @@ export function createCatchRig(sid: string): CatchRig {
       f.setCm(view.cm);
       f.setKind(view.kind, sp.color);
       const len = fishDrawnLen(view.cm); // the drawn length
-      const newCatch = view.seq !== lastSeq || view.phase !== lastPhase;
+      // the surface break and the hanging of the lift are one continuous motion ("lifted"): no blend between the two
+      const lifted = view.phase === FISH_PHASE.lifting && (cs.stage === "surface" || cs.stage === "line");
+      const drawStage = lifted ? "lifted" : cs.stage;
+      const phaseSwitched = view.seq === lastSeq && view.phase !== lastPhase;
       if (view.seq !== lastSeq) dropSplashed = false;
       lastSeq = view.seq;
       lastPhase = view.phase;
-      if (cs.stage !== lastStage) {
+      const stageChanged = drawStage !== lastStage;
+      if (stageChanged || phaseSwitched) {
         fromPos.copy(lastPos);
         fromQ.copy(lastQ);
         fromStage = lastStage;
-      }
-      const stageChanged = cs.stage !== lastStage;
-      stageT = stageChanged ? 0 : stageT + delta;
+        stageT = 0;
+      } else stageT += delta;
       // the tail beat
       flexPhase += delta * cs.beat * Math.PI * 2;
       const bend = cs.stage === "show" ? 0.06 * Math.sin(t * 1.7) : cs.stage === "line" || cs.stage === "toHand" ? Math.sin(t * 2.3) * 0.08 : 0;
@@ -313,7 +322,7 @@ export function createCatchRig(sid: string): CatchRig {
       const rodTip = i.rodTip;
       if (rodTip) rodTip.getWorldPosition(tip);
 
-      switch (cs.stage) {
+      switch (drawStage) {
         case "under":
         case "surface": {
           // the fight's progress eases toward the wire's (a run out when the angler lets go, pulled in while held)
@@ -328,24 +337,24 @@ export function createCatchRig(sid: string): CatchRig {
           const surf = cs.stage === "surface";
           const skim = !surf && skimming(view, t);
           // dragged in: the body just under the surface, its back and dorsal fin out of the water
-          pos.set(under.x, surf ? LAKE_WATER_Y - 0.03 * len + Math.max(0, Math.sin(t * 9)) * 0.06 : skim ? LAKE_WATER_Y - 0.035 * len : under.y, under.z);
-          // a breach out of the water (lifting): it leaps up toward the rod
-          if (view.phase === FISH_PHASE.lifting && surf) pos.y = LAKE_WATER_Y + ((t - REEL_S) / 0.16) * 0.25;
-          const dir = a.set(Math.sin(under.yaw), surf ? 0.25 : 0, Math.cos(under.yaw));
-          lookAlong(dir, surf ? Math.sin(t * 11) * 0.9 : Math.sin(t * 3) * 0.15, rot);
+          pos.set(under.x, surf ? LAKE_WATER_Y - 0.03 * len + Math.max(0, Math.sin(t * 6)) * 0.05 : skim ? LAKE_WATER_Y - 0.035 * len : under.y, under.z);
+          const dir = a.set(Math.sin(under.yaw), surf ? 0.2 : 0, Math.cos(under.yaw));
+          lookAlong(dir, surf ? Math.sin(t * 7) * 0.55 : Math.sin(t * 3) * 0.15, rot);
           showShadow = !surf && !skim;
           // swirls on the surface over it; splashes when it thrashes, and now and then as it is dragged (a bigger fish, more)
           swirl -= delta;
           if (swirl <= 0) {
-            swirl = surf ? 0.22 : skim ? 0.3 : 0.5;
+            swirl = surf ? 0.3 : skim ? 0.4 : 0.5;
             lakeRipple(pos.x, pos.z, surf ? 0.9 : skim ? 0.6 : 0.45);
             if (surf) lakeSplash(pos.x, LAKE_WATER_Y, pos.z, 6, 0.8 + len);
           }
           splashT -= delta;
           if (skim && splashT <= 0) {
-            splashT = 0.35 + Math.random() * (0.9 - Math.min(0.5, len * 0.6));
+            // led in on the lift: now and then a tail slap; fought at the surface: more often
+            const reeling = view.phase === FISH_PHASE.lifting;
+            splashT = reeling ? 0.6 + Math.random() * 0.6 : 0.35 + Math.random() * (0.9 - Math.min(0.5, len * 0.6));
             const tail = new Vector3(0, 0, -0.45 * len).applyQuaternion(rot).add(pos);
-            lakeSplash(tail.x, LAKE_WATER_Y, tail.z, 4 + Math.round(len * 8), 0.45 + len * 0.7);
+            lakeSplash(tail.x, LAKE_WATER_Y, tail.z, (reeling ? 2 : 4) + Math.round(len * (reeling ? 5 : 8)), (reeling ? 0.35 : 0.45) + len * 0.6);
           }
           // the V of the wake behind it
           if (wake && (skim || surf)) {
@@ -360,52 +369,64 @@ export function createCatchRig(sid: string): CatchRig {
           } else if (wake) wake.visible = false;
           if (stageChanged && surf) {
             lakeRipple(pos.x, pos.z, 1.3);
-            lakeSplash(pos.x, LAKE_WATER_Y, pos.z, 26, 1.2 + len);
+            lakeSplash(pos.x, LAKE_WATER_Y, pos.z, 8 + Math.round(18 * len), 0.6 + len);
           }
           // the line's end: the mouth
           mouth.set(0, 0, 0.5 * len).applyQuaternion(rot).add(pos);
           hook.copy(mouth);
-          hookV.set(0, view.phase === FISH_PHASE.lifting ? 2.4 : 0, 0);
           break;
         }
-        case "line": {
-          // first person: the eye follows the fish up toward the rod tip (the tip at the top of the view), as anyone would
+        case "lifted": {
           // first person: the rod is held in the view (fishingRig), its tip at the upper right: the eye levels out to see the fish
           if (i.fpCamera) viewState.fpPitch += (0.02 - viewState.fpPitch) * Math.min(1, delta * 2);
-          // a pendulum: the mouth on a line from the rod tip that is reeled in to 0.75 m
-          const k = Math.min(1, (t - REEL_S - 0.16) / (HANG_END_S - REEL_S - 0.16));
-          const L0 = Math.max(0.8, tip.y - LAKE_WATER_Y);
-          const L = L0 + (0.75 - L0) * (k * k * (3 - 2 * k));
           if (!rodTip) break;
-          if (stageChanged && fromStage !== "surface") {
-            hook.set(tip.x, tip.y - L, tip.z);
-            hookV.set(0, 0, 0);
+          // out of the water (owner 2026-11-22 "너무 정신없이" / 11-16 "리얼하게"): the rod comes up steadily and draws the fish out by
+          // the mouth; it hangs under the tip on a line drawn in to ~0.85 m and swings like a pendulum of that length (period
+          // 2*pi*sqrt(L/g), ~1.8 s), damped, flapping in bursts. Nothing is integrated from velocities: no whip, no yo-yo.
+          const tau = Math.max(0, t - REEL_S);
+          if (stageChanged) {
+            // from where the reel-in left the mouth (a screen that comes in late: a short line just under the tip)
+            pivot.copy(tip);
+            if (fromStage !== "under") hook.set(tip.x, tip.y - 1.2, tip.z);
+            a.copy(hook).sub(tip);
+            liftL0 = Math.min(4, Math.max(0.9, a.length()));
+            swingH.set(a.x, 0, a.z);
+            const hd = swingH.length();
+            if (hd > 1e-4) swingH.multiplyScalar(1 / hd);
+            else swingH.set(1, 0, 0);
+            swingS.set(-swingH.z, 0, swingH.x);
+            // the starting angle off the vertical (a fish out to the side swings in under the tip), never a wild one
+            swingA0 = Math.min(0.55, Math.atan2(hd, Math.max(0.05, -a.y)));
+            swingPh = 0;
+            // the break: a splash the size of the fish
+            if (fromStage === "under") {
+              lakeRipple(hook.x, hook.z, 0.6 + 0.8 * len);
+              lakeSplash(hook.x, LAKE_WATER_Y, hook.z, 6 + Math.round(14 * len), 0.5 + 0.9 * len);
+            }
           }
-          const dt = Math.min(delta, 1 / 30);
-          hookV.y -= 9.8 * dt;
-          hookV.multiplyScalar(1 - 0.9 * dt);
-          hook.addScaledVector(hookV, dt);
-          // the line: never longer than L (a rope: it pulls, never pushes)
-          a.copy(hook).sub(tip);
-          const d = a.length();
-          if (d > L && d > 1e-6) {
-            a.multiplyScalar(L / d);
-            corr.copy(tip).add(a).sub(hook);
-            hook.add(corr);
-            hookV.addScaledVector(corr, 1 / Math.max(dt, 1e-3));
-            // remove the outward speed along the line
-            const n = a.normalize();
-            const out = hookV.dot(n);
-            if (out > 0) hookV.addScaledVector(n, -out);
-          }
-          // hanging by the mouth: nose up toward the tip, the body below, flapping (roll about the line)
-          const up = a.copy(tip).sub(hook).normalize();
-          lookAlong(up, Math.sin(t * 7.5) * 0.35, rot);
+          // the rod tip, eased (the lift clip raises it: the fish follows a beat behind, as a weight on a line does)
+          pivot.lerp(tip, Math.min(1, delta * 6));
+          const Lh = 0.85;
+          const drawIn = Math.min(1, tau / Math.max(0.3, HANG_END_S - REEL_S - 0.25));
+          const L = Lh + (liftL0 - Lh) * (1 - drawIn * drawIn * (3 - 2 * drawIn));
+          swingPh += Math.sqrt(9.8 / L) * Math.min(delta, 0.1);
+          const ang = swingA0 * Math.exp(-tau / 1.4) * Math.cos(swingPh);
+          // a slight sideways sway, livelier while it flaps
+          const side = (0.04 + 0.06 * flapPulse(t, view.seq)) * Math.sin(swingPh * 0.7 + 1.1);
+          a.copy(swingH).multiplyScalar(Math.sin(ang)).addScaledVector(swingS, Math.sin(side));
+          a.y = -Math.cos(ang) * Math.cos(side);
+          a.normalize();
+          hook.copy(pivot).addScaledVector(a, L);
+          // (never under the water once the lift began)
+          hook.y = Math.max(hook.y, LAKE_WATER_Y + 0.02);
+          // hanging by the mouth: nose up toward the tip, the body below; a little roll with its flapping
+          const up = a.copy(pivot).sub(hook).normalize();
+          lookAlong(up, Math.sin(t * 1.9) * 0.06 + Math.sin(flexPhase * 0.5) * 0.14 * Math.max(0, cs.wriggle - 0.25), rot);
           pos.copy(hook).addScaledVector(up, -0.5 * len);
           drip -= delta;
           if (drip <= 0) {
-            drip = 0.05;
-            const tailEnd = a.copy(hook).addScaledVector(up, -len);
+            drip = 0.08;
+            const tailEnd = corr.copy(hook).addScaledVector(up, -len);
             lakeSplash(tailEnd.x, tailEnd.y, tailEnd.z, 1, 0, true);
           }
           break;
@@ -430,11 +451,11 @@ export function createCatchRig(sid: string): CatchRig {
             viewState.fpPitch += (0.16 - viewState.fpPitch) * Math.min(1, delta * 2.5);
             if (cs.stage === "toHand" || cs.stage === "hand") {
               const grip = at(0.17, -0.07 + len * 0.12, 0.55 + len * 0.45);
-              const hang = camUp.clone().addScaledVector(right, Math.sin(t * 3.1) * 0.22).addScaledVector(fwd, -0.18 + Math.cos(t * 2.4) * 0.12).normalize();
+              const hang = camUp.clone().addScaledVector(right, Math.sin(t * 1.7) * 0.1).addScaledVector(fwd, -0.18 + Math.cos(t * 1.3) * 0.06).normalize();
               // held by the head, hanging: the flank toward the camera (the back toward the viewer's right), a little swing
               lookAlong(hang, 0, tq);
               rollFlankToward(tq, hang, fwd.clone().negate(), 1);
-              tq.premultiply(new Quaternion().setFromAxisAngle(hang, Math.sin(t * 6) * 0.12));
+              tq.premultiply(new Quaternion().setFromAxisAngle(hang, Math.sin(flexPhase * 0.5) * 0.1 * cs.wriggle));
               target = grip.clone().addScaledVector(hang, -0.45 * len);
               fpHands(i, grip, null, cs.stage === "toHand" ? cs.k : 1, camUp, fwd, at);
             } else {
@@ -445,7 +466,7 @@ export function createCatchRig(sid: string): CatchRig {
               // the flank toward the camera, BACK UP (owner 2026-11-18: shown belly-up before): with the nose to the viewer's right the
               // viewer sees the fish's -X flank when the back is up
               rollFlankToward(tq, nose, fwd.clone().negate(), -1);
-              tq.premultiply(new Quaternion().setFromAxisAngle(nose, Math.sin(t * 6) * 0.08));
+              tq.premultiply(new Quaternion().setFromAxisAngle(nose, Math.sin(t * 3) * 0.05));
               // the hands: one under the head end, one under the tail end
               const axis = new Vector3(0, 0, 1).applyQuaternion(tq);
               // under the belly, never over the fish (a small fish between two fists was hidden)
@@ -456,14 +477,14 @@ export function createCatchRig(sid: string): CatchRig {
           } else if ((cs.stage === "toHand" || cs.stage === "hand") && i.handL) {
             target = i.handL.getWorldPosition(new Vector3()).add(new Vector3(0, -0.04, 0));
             // held by the head, hanging, swinging a little
-            const hang = new Vector3(Math.sin(t * 3.1) * 0.25, 1, Math.cos(t * 2.4) * 0.2).normalize();
+            const hang = new Vector3(Math.sin(t * 1.7) * 0.12, 1, Math.cos(t * 1.3) * 0.08).normalize();
             lookAlong(hang, 0, tq);
             // the flank toward the front of the avatar (side on to whoever looks at it), a little swing
             const bodyFwd = i.body ? i.body.getWorldDirection(new Vector3()) : new Vector3(0, 0, 1);
             bodyFwd.y = 0;
             if (bodyFwd.lengthSq() < 1e-4) bodyFwd.set(0, 0, 1);
             rollFlankToward(tq, hang, bodyFwd.normalize(), 1);
-            tq.premultiply(new Quaternion().setFromAxisAngle(hang, Math.sin(t * 6) * 0.12));
+            tq.premultiply(new Quaternion().setFromAxisAngle(hang, Math.sin(flexPhase * 0.5) * 0.1 * cs.wriggle));
             target.addScaledVector(hang, -0.42 * len);
           } else if (i.handL && i.handR) {
             // 품에 안기 (owner 2026-11-17): the fish taken in the arms, held against the chest — head up toward the right shoulder,
@@ -491,12 +512,12 @@ export function createCatchRig(sid: string): CatchRig {
             lookAlong(nose, 0, tq);
             // the flank toward the front (the fish shown off), a little roll with its flapping
             rollFlankToward(tq, nose, fwd, 1);
-            tq.premultiply(new Quaternion().setFromAxisAngle(nose, Math.sin(t * 5) * 0.12));
+            tq.premultiply(new Quaternion().setFromAxisAngle(nose, Math.sin(t * 3) * 0.06));
           }
           if (!target) break;
           // the blend from the line into the hand
           const k = cs.stage === "toHand" ? cs.k : 1;
-          if (k < 1 && (fromStage === "line" || fromStage === "surface" || fromStage === "toHand")) {
+          if (k < 1 && (fromStage === "lifted" || fromStage === "toHand")) {
             pos.copy(fromPos).lerp(target, k);
             pos.y += Math.sin(k * Math.PI) * 0.15;
             rot.copy(fromQ).slerp(tq, k);
@@ -535,9 +556,10 @@ export function createCatchRig(sid: string): CatchRig {
           break;
       }
       // ease in from the last pose over 0.35 s (hand -> held up, the show -> the release ...), unless the stage blends itself
-      const selfBlending = cs.stage === "toHand" || cs.stage === "drop" || cs.stage === "line" || cs.stage === "under";
-      if (!selfBlending && fromStage !== "none" && stageT < 0.35 && !newCatchStart(view.phase)) {
-        const k = stageT / 0.35;
+      // (the reel-in and the lift too, owner 2026-11-22: the fight's end, the hook set and a thrash no longer snap the fish)
+      const selfBlending = drawStage === "toHand" || drawStage === "drop";
+      if (!selfBlending && fromStage !== "none" && stageT < 0.4 && !newCatchStart(view.phase)) {
+        const k = stageT / 0.4;
         const e = k * k * (3 - 2 * k);
         pos.lerpVectors(fromPos, pos, e);
         rot.slerpQuaternions(fromQ, rot.clone(), e);
@@ -558,12 +580,11 @@ export function createCatchRig(sid: string): CatchRig {
       if (wake && cs.stage !== "under" && cs.stage !== "surface") wake.visible = false;
       lastPos.copy(pos);
       lastQ.copy(rot);
-      lastStage = cs.stage;
+      lastStage = drawStage;
       // the line's end: the mouth while the fish is on it
-      const onLine = cs.stage === "under" || cs.stage === "surface" || cs.stage === "line";
+      const onLine = drawStage === "under" || drawStage === "surface" || drawStage === "lifted";
       setHookPoint(sid, onLine ? hook : null);
       hookLive = onLine;
-      void newCatch;
     },
     dispose() {
       hide();

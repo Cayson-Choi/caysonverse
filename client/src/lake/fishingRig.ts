@@ -20,7 +20,7 @@ import { reelTension } from "./fishFightView";
 import { FISH_PHASE, emptyFishView, type FishView } from "./lakeProtocol";
 import { createRod, lakeGearReady, loadLakeGear, type Rod } from "./lakeProps";
 import { createCatchRig, fpNarrow } from "./catchRig";
-import { HANG_END_S, REEL_S } from "./fishCatch";
+import { BREAK_S, HANG_END_S, REEL_S } from "./fishCatch";
 import { registerRodTip } from "./rodTips";
 import { tugDip } from "./lakeFloat";
 
@@ -165,13 +165,18 @@ export function rodBend(view: FishView, t: number): number {
       {
         // the rod bends with the line's tension (Player.fishReel), a little more while the angler pulls; it trembles faster when it is tight
         const tn = reelTension(view.reel);
-        return Math.min(1, 0.28 + 0.62 * tn + ((view.reel & 128) !== 0 ? 0.1 : 0) + 0.05 * Math.sin(t * (5 + 14 * tn)));
+        // (a fixed tremble rate: a rate that followed the tension jumped the sine's phase every time the tension changed: a jittery rod)
+        return Math.min(1, 0.28 + 0.62 * tn + ((view.reel & 128) !== 0 ? 0.1 : 0) + (0.02 + 0.03 * tn) * Math.sin(t * 8));
       }
     case FISH_PHASE.lifting:
       // reeled in hard, then the fish's weight on the line as it swings, then the hand takes it
-      if (t < REEL_S) return 0.72 + 0.14 * Math.sin(t * 9.5) + 0.06 * Math.sin(t * 23);
-      if (t < HANG_END_S) return 0.45 + 0.12 * Math.sin(t * 7.5);
-      return Math.max(0, 0.45 - (t - HANG_END_S) * 0.9);
+      // (calm, owner 2026-11-22: a steady load with a slow give, no quick shaking)
+      if (t < REEL_S) return 0.7 + 0.05 * Math.sin(t * 4.2);
+      if (t < HANG_END_S) {
+        const k = Math.min(1, (t - REEL_S) / BREAK_S);
+        return 0.42 + (0.7 + 0.05 * Math.sin(REEL_S * 4.2) - 0.42) * (1 - k * k * (3 - 2 * k)) + 0.03 * Math.sin(t * 3.2) * k;
+      }
+      return Math.max(0, 0.42 + 0.03 * Math.sin(HANG_END_S * 3.2) - (t - HANG_END_S) * 0.9);
 
     default:
       return 0;
@@ -196,6 +201,8 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
   let current: FishingClip | null = null;
   let loading = false;
   let unfold = 0;
+  /** The rod's bend, eased (a phase change never snaps the rod). */
+  let bendS = 0;
   let lift = 1;
   let baseBlend = 1;
   let baseTouched = false;
@@ -342,7 +349,9 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
         if (atSpot && seated) want = clipForPhase(view.phase, t);
         else if (!atSpot && ctx.seatMode === "up") want = "Carry_Rod";
       }
-      if (want !== current || (want && !actions.get(want)?.isRunning())) {
+      // (a one-shot that has played out holds its last pose: replaying it made the lift clip snap the rod back up every second,
+      // owner 2026-11-22 "너무 정신없이"; a phase change replays it below)
+      if (want !== current || (want && FISHING_CLIPS[want].loop && !actions.get(want)?.isRunning())) {
         // a one-shot (the cast, the strike) is sped to the phase it plays in
         const clip = want ? FISHING_CLIPS[want] : null;
         const phaseLen = view.phase === FISH_PHASE.casting ? 0.8 : view.phase === FISH_PHASE.hooked ? 0.4 : 0;
@@ -370,7 +379,10 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
         const openTarget = atSpot && !standing ? 1 : atSpot ? 0.25 : 0;
         unfold += Math.max(-delta / UNFOLD_S, Math.min(delta / UNFOLD_S, openTarget - unfold));
         rod.setUnfold(unfold);
-        rod.setBend(atSpot ? rodBend(view, t) : 0);
+        // eased while a fish is on (hooked .. releasing); the nibble's quick tugs stay crisp
+        const bendTo = atSpot ? rodBend(view, t) : 0;
+        bendS = view.phase >= FISH_PHASE.hooked && view.phase <= FISH_PHASE.releasing ? bendS + (bendTo - bendS) * Math.min(1, delta * 8) : bendTo;
+        rod.setBend(bendS);
       }
       wristWant = atSpot && seated; // applied by afterMixer(), once the mixer has posed the bones this frame
       // the fish (lake v2, catchRig.ts): under the water, out on the line, into the hand, taken in the arms, let go
@@ -414,7 +426,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
           fpRod.root.matrix.compose(grip, fpV.q, fpV.one);
           fpRod.root.matrixWorldNeedsUpdate = true;
           fpRod.setUnfold(unfold);
-          fpRod.setBend(rodBend(view, t));
+          fpRod.setBend(bendS);
         }
       } else if (fpRod) dropFpRod();
     },

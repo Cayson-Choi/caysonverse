@@ -18,11 +18,13 @@ import { FISH_PHASE, needsNet, type FishView } from "./lakeProtocol";
 import { hash01 } from "./lakeFloat";
 
 /** Lifting: reeled in under the surface this long, then out of the water. */
-export const REEL_S = 1.3;
+export const REEL_S = 1.2;
+/** Lifting: the rod comes up and draws the fish out of the water this long (a steady lift, not a leap: owner 2026-11-22). */
+export const BREAK_S = 0.35;
 /** Lifting: hanging from the line until the hand reaches for it. */
-export const HANG_END_S = 2.25;
+export const HANG_END_S = 2.4;
 /** Lifting: the hand has it after this blend. */
-export const TO_HAND_S = 0.45;
+export const TO_HAND_S = 0.5;
 /** Netting: at the surface thrashing, then the net. */
 /** Releasing: the hands let go here (Fish_Release is 19/24 s), the fish falls into the water. */
 export const LET_GO_S = 0.78;
@@ -74,34 +76,30 @@ export function catchState(view: FishView, t: number, out: CatchState = { stage:
       out.beat = reelHeld(view) ? 6 : 4;
       break;
     case FISH_PHASE.lifting:
+      // calm (owner 2026-11-22: "너무 정신없이"): a steady swim under the line, then out of the water hanging still with a burst of
+      // flapping now and then (a real hooked fish flaps in short bursts with pauses, not without a break)
       if (t < REEL_S) {
         out.stage = "under";
-        out.wriggle = 0.9;
-        out.beat = 4;
-      } else if (t < REEL_S + 0.16) {
+        out.wriggle = 0.7;
+        out.beat = 3;
+      } else if (t < REEL_S + BREAK_S) {
         out.stage = "surface";
-        out.wriggle = 1.2;
-        out.beat = 6;
-      } else if (t < HANG_END_S) {
-        out.stage = "line";
-        out.wriggle = 1.1;
-        out.beat = 5.5;
-      } else if (t < HANG_END_S + TO_HAND_S) {
-        out.stage = "toHand";
-        out.k = smooth((t - HANG_END_S) / TO_HAND_S);
         out.wriggle = 0.9;
-        out.beat = 5;
-      } else {
-        out.stage = "hand";
-        out.wriggle = 0.6;
         out.beat = 4;
+      } else {
+        const p = flapPulse(t, view.seq);
+        out.stage = t < HANG_END_S ? "line" : t < HANG_END_S + TO_HAND_S ? "toHand" : "hand";
+        if (out.stage === "toHand") out.k = smooth((t - HANG_END_S) / TO_HAND_S);
+        // (real footage: bursts of ~2-4 flicks a second, then a pause of a second or more)
+        out.wriggle = 0.25 + 0.75 * p;
+        out.beat = 2.2 + 1.6 * p;
       }
       break;
     case FISH_PHASE.landed:
       out.stage = "show";
       // still alive: calm flexing with a hard flap now and then
       out.wriggle = 0.35 + 0.65 * flapPulse(t, view.seq);
-      out.beat = 3 + 3 * flapPulse(t, view.seq);
+      out.beat = 2.5 + 2 * flapPulse(t, view.seq);
       break;
     case FISH_PHASE.releasing:
       if (t < LET_GO_S) {
@@ -121,9 +119,9 @@ export function catchState(view: FishView, t: number, out: CatchState = { stage:
   return out;
 }
 
-/** A hard flap in the show pose: 0 most of the time, a 0.5 s pulse every ~1.1 s (seeded per catch). */
+/** A burst of flapping (out of the water): 0 most of the time, a 0.45 s pulse every ~1.6-2.4 s (seeded per catch). */
 export function flapPulse(t: number, seq: number): number {
-  const period = 1.0 + 0.4 * hash01(seq, 3, 9);
+  const period = 1.6 + 0.8 * hash01(seq, 3, 9);
   const ph = (t + hash01(seq, 4, 2) * period) % period;
   return ph < 0.45 ? Math.sin((ph / 0.45) * Math.PI) : 0;
 }
@@ -196,7 +194,8 @@ export function underPos(view: FishView, t: number, out: Pt3 & { yaw: number }, 
       // a big fish was already brought in by the fight (to 80 % of the way): the reel-in goes on from there
       const k0 = needsNet(view.kind, view.cm) ? 0.8 : 0;
       k = k0 + (1 - k0) * smooth(Math.min(1, t / REEL_S));
-      swing = (0.55 * (1 - k) + 0.1) * Math.min(1.4, 0.7 + view.cm / 60);
+      // led in on a short line: a gentle sway, narrowing as it comes in
+      swing = (0.3 * (1 - k) + 0.05) * Math.min(1.4, 0.7 + view.cm / 60);
       depth = 0.05;
       break;
     }
@@ -208,7 +207,9 @@ export function underPos(view: FishView, t: number, out: Pt3 & { yaw: number }, 
   // across the line: the run left and right
   const ax = -f.z;
   const az = f.x;
-  const run = Math.sin(t * 1.35 + view.seq) * swing + Math.sin(t * 3.1 + view.seq * 0.7) * swing * 0.25;
+  // (lifting: the slow sway alone, no quick zig-zag)
+  const quick = view.phase === FISH_PHASE.lifting ? 0 : 0.25;
+  const run = Math.sin(t * 1.35 + view.seq) * swing + Math.sin(t * 3.1 + view.seq * 0.7) * swing * quick;
   out.x = bx + ax * run;
   out.z = bz + az * run;
   out.y = LAKE_WATER_Y - depth - Math.sin(t * 2.2) * 0.05;
