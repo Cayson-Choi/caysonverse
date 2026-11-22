@@ -63,6 +63,7 @@ async function walkWay(placeId, x, z) {
   return planned(x, z, 0.8);
 }
 const HITCH = process.argv.includes("--hitch");
+const CLOSE = process.argv.includes("--close");
 const startFrames = () => page.evaluate(() => { window.__fr = []; let last = performance.now(); const tick = (t) => { window.__fr.push(t - last); last = t; if (window.__fr) window.__frId = requestAnimationFrame(tick); }; window.__frId = requestAnimationFrame(tick); });
 const stopFrames = async (label) => { const f = await page.evaluate(() => { cancelAnimationFrame(window.__frId); const a = window.__fr ?? []; window.__fr = null; return a; }); const s2 = [...f].sort((x, y) => x - y); console.log("HITCH", label, JSON.stringify({ frames: f.length, p50: +s2[Math.floor(s2.length / 2)]?.toFixed(1), max: +Math.max(...f).toFixed(1), over50: f.filter((x) => x > 50).length, over100: f.filter((x) => x > 100).length })); };
 async function waitArea(a, ms = 20000) {
@@ -96,6 +97,16 @@ function roomViews(frame, w, d, h, fov) {
   V.dn = view([w / 2, 2.2, d * 0.2], [w / 2, 0, d * 0.65]);
   V.fw = view([w / 2, 1.55, 0.6], [w / 2, 1.3, d]);
   V.bw = view([w / 2, 1.55, d - 0.6], [w / 2, 1.3, 0]);
+  if (CLOSE) {
+    // close-ups: from the room's middle band, 1.6 m off each wall, at three spots along it (left, middle, right), eye 1.3 m
+    const k = [0.2, 0.5, 0.8];
+    k.forEach((f, i) => {
+      V[`s${i}`] = view([w * f, 1.3, 1.7], [w * f, 1.0, 0]);
+      V[`n${i}`] = view([w * f, 1.3, d - 1.7], [w * f, 1.0, d]);
+      V[`w${i}`] = view([1.7, 1.3, d * f], [0, 1.0, d * f]);
+      V[`e${i}`] = view([w - 1.7, 1.3, d * f], [w, 1.0, d * f]);
+    });
+  }
   return V;
 }
 
@@ -162,6 +173,46 @@ if (what === "lots") {
     await planned(info.inside.exitPad.x, info.inside.exitPad.z, 0.7);
     await act(p);
     await waitArea("village", 25000);
+  }
+}
+
+if (what === "hall") {
+  const { enterHall } = await import("./lib/village.mjs");
+  await enterHall(p);
+  const fr = (lx, lz) => ({ x: 292.5 + lx, z: -6 + lz });
+  await shoot("hall", roomViews(fr, 15, 12, 3.4, phone ? 80 : 70));
+}
+
+if (what === "bus") {
+  // the bus where it stands: a camera set in its own frame (x across, z along: measured from its mesh bounds in the root frame)
+  await walkWay("busstop", 38.6, -3.6).catch(() => {});
+  await sleep(3000);
+  const box = await page.evaluate(() => {
+    const n = window.__cvBus?.();
+    if (!n) return null;
+    const r = n.root;
+    r.updateMatrixWorld(true);
+    const inv = r.matrixWorld.clone().invert();
+    const V = r.position.constructor;
+    let mn = new V(1e9, 1e9, 1e9), mx = new V(-1e9, -1e9, -1e9);
+    r.traverse((o) => { if (!o.isMesh) return; o.geometry.computeBoundingBox(); const b = o.geometry.boundingBox; for (const cx of [b.min.x, b.max.x]) for (const cy of [b.min.y, b.max.y]) for (const cz of [b.min.z, b.max.z]) { const q = new V(cx, cy, cz).applyMatrix4(o.matrixWorld).applyMatrix4(inv); mn.min(q); mx.max(q); } });
+    return { mn: mn.toArray(), mx: mx.toArray() };
+  });
+  console.log("bus box", JSON.stringify(box));
+  const L = (pts) => page.evaluate((pts) => { const r = window.__cvBus().root; const V = r.position.constructor; return pts.map((q) => new V(...q).applyMatrix4(r.matrixWorld).toArray()); }, pts);
+  if (box) {
+    const [x0, y0, z0] = box.mn, [x1, y1, z1] = box.mx;
+    const long = x1 - x0 > z1 - z0 ? "x" : "z";
+    const P = (a, h, b) => (long === "x" ? [x0 + (x1 - x0) * a, y0 + h, z0 + (z1 - z0) * b] : [x0 + (x1 - x0) * b, y0 + h, z0 + (z1 - z0) * a]);
+    const defs = {
+      fwd: [P(0.85, 1.75, 0.5), P(0.05, 1.2, 0.5)], back: [P(0.15, 1.75, 0.5), P(0.95, 1.2, 0.5)],
+      seatsL: [P(0.5, 1.7, 0.7), P(0.5, 0.6, 0.1)], seatsR: [P(0.5, 1.7, 0.3), P(0.5, 0.6, 0.9)],
+      dash: [P(0.75, 1.6, 0.5), P(0.97, 1.0, 0.3)], floor: [P(0.5, 2.0, 0.5), P(0.6, 0.0, 0.5)],
+      roof: [P(0.5, 1.2, 0.5), P(0.7, 3.0, 0.5)], seatClose: [P(0.45, 1.3, 0.55), P(0.4, 0.5, 0.15)],
+    };
+    const V = {};
+    for (const [k, [a, b]] of Object.entries(defs)) { const [ea, eb] = await L([a, b]); V[k] = [...ea, ...eb, phone ? 80 : 70]; }
+    await shoot("bus", V);
   }
 }
 
