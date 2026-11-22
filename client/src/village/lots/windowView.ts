@@ -75,5 +75,5 @@ export function windowViewFrame(room: LotRoom): WindowViewFrame {
 }
 
 /** The rooms whose windows show the village (their glass is `M_garden`), with the lot each stands in. */
-export const WINDOW_VIEW_UNITS = ["lot_school_class", "lot_library_reading", "lot_cafe_room"] as const;
+export const WINDOW_VIEW_UNITS = ["lot_school_class", "lot_library_reading", "lot_cafe_room", "lot_cafe_upstairs"] as const;
 

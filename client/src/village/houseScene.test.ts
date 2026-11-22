@@ -122,6 +122,10 @@ describe("house entry (the cover while the model loads)", () => {
     beginHouseEntry();
     houseEntryFailed();
     expect(houseEntryState().phase).toBe("failed");
+    // the wait ran out but the floor came after all: the cover opens (nobody was sent out meanwhile, owner 2026-11-21)
+    houseEntryReady();
+    expect(houseEntryState().phase).toBe("ready");
+    houseEntryFailed();
     resetHouseEntry();
     expect(houseEntryState().phase).toBe("idle");
     expect(HOUSE_ENTRY_TIMEOUT_MS).toBe(8000);
