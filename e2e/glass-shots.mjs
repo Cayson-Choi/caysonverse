@@ -94,6 +94,7 @@ for (const key of KEYS) {
     if (wantRooms && s.room) await page.waitForFunction((r) => window.__cvRoomShowcase?.()?.shown.includes(r), s.room, { timeout: 150000 }).catch(() => console.log("room not drawn", s.room));
     if (wantRooms && s.house) await page.waitForFunction((n) => window.__cvHouseShowcase?.()?.shown === n, s.house, { timeout: 150000 }).catch(() => console.log("house not drawn", s.house));
     if (wantRooms && s.hall) await page.waitForFunction(() => window.__cvMemorialShown === true, null, { timeout: 150000 }).catch(() => console.log("hall not drawn"));
+    if (wantRooms && s.hall) console.log("hall drawn after (ms from wanted)", await page.evaluate(() => window.__cvMemorialShowMs ?? null));
     await sleep(2500);
     const file = join(OUT, `${tag}_${phone ? "phone" : "pc"}_${s.id}_${key}.png`);
     await page.screenshot({ path: file });

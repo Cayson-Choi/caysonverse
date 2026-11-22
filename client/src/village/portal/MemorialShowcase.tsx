@@ -27,8 +27,8 @@ import { frameToVillage, insideRect } from "./RoomShowcase";
  * light and furniture read through the glass.
  */
 
-/** The hall is drawn within this distance (m) of the porch. */
-export const MEMORIAL_SHOW_M = { pc: 40, phone: 28 } as const;
+/** The hall is read and drawn within this distance (m) of the porch: far enough that it is in before anyone walks up to the glass. */
+export const MEMORIAL_SHOW_M = { pc: 70, phone: 45 } as const;
 const HYST = 5;
 /** The memorial building's box (village x0, z0, x1, z1): its panes clear and its cards hidden while the hall is drawn. */
 const BUILDING = [-10.4, -68.4, 10.4, -51.6] as const;
@@ -142,6 +142,7 @@ export function MemorialShowcase({ root, glass }: { root: Object3D; glass: Clear
   const phone = tier !== "high";
   const [near, setNear] = useState(false);
   const nearRef = useRef(false);
+  const nearSince = useRef(0);
   const untrim = useRef<(() => void) | null>(null);
   const onShown = useMemo(
     () => (on: boolean) => {
@@ -150,7 +151,12 @@ export function MemorialShowcase({ root, glass }: { root: Object3D; glass: Clear
       glass?.setShown(on ? [BUILDING] : []);
       if (on) memorialCardHide.uCardHide.value.set(...BUILDING);
       else memorialCardHide.uCardHide.value.set(0, 0, -1, -1);
-      if (import.meta.env.DEV) (window as unknown as { __cvMemorialShown?: boolean }).__cvMemorialShown = on;
+      if (import.meta.env.DEV) {
+        const w = window as unknown as { __cvMemorialShown?: boolean; __cvMemorialShowMs?: number };
+        w.__cvMemorialShown = on;
+        // how long the hall took from the moment it was wanted to drawn (the e2e reports it)
+        if (on) w.__cvMemorialShowMs = Math.round(performance.now() - nearSince.current);
+      }
     },
     [glass, root],
   );
@@ -161,6 +167,7 @@ export function MemorialShowcase({ root, glass }: { root: Object3D; glass: Clear
     const want = ROOMS_ON && (nearRef.current ? d < lim + HYST : d < lim);
     if (want !== nearRef.current) {
       nearRef.current = want;
+      if (want) nearSince.current = performance.now();
       setNear(want);
     }
     applyClearGlassDayNight(dayNight.outdoor);
