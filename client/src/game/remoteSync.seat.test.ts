@@ -84,7 +84,7 @@ const h = vi.hoisted(() => {
 vi.mock("@colyseus/sdk", () => ({ getStateCallbacks: h.getStateCallbacks }));
 
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
-import { startRemoteSync, type PlayersRoom } from "./remoteSync";
+import { IDLE_RESYNC_MS, startRemoteSync, type PlayersRoom } from "./remoteSync";
 import { clearRemotes, getRemoteRecord } from "./remoteStore";
 import { clearSentMoves, createEchoWatch, healDeadline, noteEcho, recordSentMove, serverRefused, takePoseResend } from "./sentMoves";
 import { REFUSAL_HEAL_MS } from "./constants";
@@ -215,6 +215,36 @@ describe("the self-correction waits out a refused Move the server may still heal
     vi.advanceTimersByTime(REFUSAL_HEAL_MS);
     expect(self.x).toBeCloseTo(-0.58, 9); // put back where the server has me
     expect(self.z).toBeCloseTo(11.9, 9);
+  });
+
+  it("standing still with the server elsewhere and nothing refused (the last Moves lost on the way): resend once, then put back (fix/net-sync)", () => {
+    vi.useFakeTimers();
+    const me = player({ x: 0.9, z: 13.3, moveT: 0 });
+    room.players.set("me", me);
+    start();
+    Object.assign(self, { x: -10.8, z: 14.3 }); // walked 12 m; the Moves never arrived, so the server neither took nor refused them
+    takePoseResend();
+    now += IDLE_RESYNC_MS * 3;
+    vi.advanceTimersByTime(IDLE_RESYNC_MS * 3); // (the first look only notes where I stand)
+    expect(takePoseResend()).toBe(true); // my pose once more
+    expect(self.x).toBe(-10.8);
+    now += IDLE_RESYNC_MS * 2;
+    vi.advanceTimersByTime(IDLE_RESYNC_MS * 2);
+    expect(self.x).toBeCloseTo(0.9, 9); // still elsewhere (nothing taken): put where the server has me
+    expect(self.z).toBeCloseTo(13.3, 9);
+  });
+
+  it("standing still in step with the server, or on a bench: nothing is sent", () => {
+    vi.useFakeTimers();
+    const me = player({ x: 2, z: 2, moveT: 0 });
+    room.players.set("me", me);
+    start();
+    Object.assign(self, { x: 2.1, z: 2 });
+    takePoseResend();
+    now += IDLE_RESYNC_MS * 4;
+    vi.advanceTimersByTime(IDLE_RESYNC_MS * 4);
+    expect(takePoseResend()).toBe(false);
+    expect(self.x).toBe(2.1);
   });
 
   it("the teardown cancels a pending look", () => {

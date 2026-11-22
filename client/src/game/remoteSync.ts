@@ -23,6 +23,7 @@ import {
   noteEcho,
   noteRefusal,
   onServerRefusal,
+  RESYNC_EPS,
   requestPoseResend,
   resolveRefusal,
   selfDiverged,
@@ -31,6 +32,8 @@ import { useClickHint } from "../stores/clickHintStore";
 
 /** The line shown when the self-correction puts me back where the server has me (fix/net-sync: never a silent jump). */
 export const RESYNC_HINT = "연결이 잠시 느려서 서버가 아는 자리로 돌아왔어요.";
+/** How often (ms) a player standing still is compared with where the server has them (two still looks before acting). */
+export const IDLE_RESYNC_MS = 1000;
 /** A snap shorter than this (m) is not worth a line (it is barely seen). */
 const RESYNC_HINT_MIN_M = 1;
 import {
@@ -152,9 +155,39 @@ export function startRemoteSync(
         noteRefusal(watch, moverClock(player), nowMs());
         correct();
       });
+      // Standing still with the server somewhere else (fix/net-sync, the phone e2e: the last Moves of a walk were lost on the way, so
+      // the server neither took nor refused them, and nothing ever came to correct): still for 2-3 looks of IDLE_RESYNC_MS, my pose is sent
+      // once more — the server takes it (the gap closes) or refuses it (its notice, then the usual heal window) — and if a gap is still
+      // there at the next look, I am put where the server has me. Held places (a bench, the bus, a ride) are the server's: left alone.
+      let stillX = Number.NaN;
+      let stillZ = Number.NaN;
+      let stillLooks = 0;
+      let idleResent = false;
+      const idleTimer = setInterval(() => {
+        const still = Math.hypot(selfPose.x - stillX, selfPose.z - stillZ) < 0.01;
+        stillX = selfPose.x;
+        stillZ = selfPose.z;
+        const held = selfSeat.index >= 0 || selfBusRide.slot >= 0 || selfRide.slot >= 0;
+        const gap = Math.hypot(selfPose.x - player.x, selfPose.z - player.z);
+        if (!still || held || !Number.isNaN(watch.refusedAt) || gap <= RESYNC_EPS) {
+          stillLooks = 0;
+          if (gap <= RESYNC_EPS || !still) idleResent = false;
+          return;
+        }
+        if (++stillLooks < 2) return;
+        stillLooks = 0;
+        if (!idleResent) {
+          idleResent = true;
+          requestPoseResend();
+        } else {
+          idleResent = false;
+          snapToServer();
+        }
+      }, IDLE_RESYNC_MS);
       const off = (): void => {
         offCorrect();
         offRefused();
+        clearInterval(idleTimer);
         if (recheck !== undefined) clearTimeout(recheck);
         recheck = undefined;
       };
