@@ -194,7 +194,8 @@ describe("seats: outside 12, inside 81, after every seat main has", () => {
     const by = (u: string) => inside.filter((s) => s.area === `lot:${u}`).length;
     // the café's salon upstairs (2026-11-21): 12 chairs, the sofa's 3 places, 2 wing chairs
     expect([by("lot_school_class"), by("lot_library_reading"), by("lot_chapel_nave"), by("lot_church_nave"), by("lot_temple_hall"), by("lot_cafe_room"), by("lot_cafe_upstairs")]).toEqual([12, 12, 30, 24, 12, 16, 17]);
-    expect(VILLAGE_SEATS.length).toBe(first + 32 + 90 + 16 + 17);
+    // (케이슨랜드 benches come after every lot seat: 17 benches, two places each)
+    expect(VILLAGE_SEATS.length).toBe(first + 32 + 90 + 16 + 17 + 34);
   });
 
   it("every room seat: in its room, stood up from a free spot in it, a backed one in FRONT of the seat (never behind its back)", () => {

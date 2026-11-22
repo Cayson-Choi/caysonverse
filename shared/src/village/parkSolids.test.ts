@@ -6,7 +6,11 @@ import {
   CAROUSEL_PAD, COASTER_PAD, DROP_PAD, MOON_BOAT_PAD, PARK_ARRIVAL, PARK_BINS, PARK_BOUNDS, PARK_EXIT_PAD, PARK_FOUNTAIN_RADIUS, PARK_KIOSK, PARK_LAMPS, PARK_PLANTERS,
   PARK_PLAZA, PARK_SHOPS, PARK_SOLIDS, PARK_SOUTH_HEDGE, PARK_TICKET_BOOTH, PARK_TREES, PARK_TROUGHS, WHEEL_PAD, parkFountainSolids, parkGeometry, parkSouthHedgeSolids, parkStreetSolids,
 } from "./parkArea";
-import { PARK_BENCHES, parkBenchSolids } from "./parkBenches";
+import { PARK_BENCHES, PARK_BENCH_MODEL, parkBenchFacing, parkBenchSolids } from "./parkBenches";
+import { VILLAGE_SEATS, standsClear } from "./benchSeats";
+import { standCandidates, standSide } from "./standSpot";
+import { SIT_ROOT_AHEAD } from "../sitPose";
+import { approachesSeat } from "../worldMap";
 import { PARK_ISLANDS, islandPoint, islandSolids, onIsland } from "./parkIslands";
 
 // owner 2026-11-21: the avatar walked through Caysonland's lamp posts ("조명이랑 그냥 통과해버리네"), its benches ("의자도 통과해버리네") and
@@ -199,5 +203,55 @@ describe("Caysonland: no collider blocks a walk, a pad, a shop front or a seat's
   it("the collision list stays small (it is scanned once a frame by the walker's own client, once a move by the server)", () => {
     expect(parkBenchSolids()).toHaveLength(17);
     expect(PARK_SOLIDS.length).toBeLessThan(900);
+  });
+});
+
+describe("Caysonland: every bench is a seat (owner: every seat can be sat on; a backed one from its front only)", () => {
+  const seats = VILLAGE_SEATS.map((s, i) => ({ s, i })).filter(({ s }) => s.area === "park");
+
+  it("two places on each of the 17 benches, appended after every other seat (no index moved)", () => {
+    expect(seats).toHaveLength(PARK_BENCHES.length * 2);
+    expect(seats[0]!.i).toBe(VILLAGE_SEATS.length - seats.length);
+    expect(new Set(seats.map(({ s }) => s.bench)).size).toBe(PARK_BENCHES.length);
+    for (const { s } of seats) expect(s.kind, s.id).toBe("backed");
+  });
+
+  it("the sitter is on the bench, facing away from its backrest, between the arm frames; the two keep their hands apart", () => {
+    PARK_BENCHES.forEach(([x, z, yaw], k) => {
+      const pair = seats.filter(({ s }) => s.bench === `park_bench_${k + 1}`).map(({ s }) => s);
+      expect(pair).toHaveLength(2);
+      for (const s of pair) {
+        expect(s.yaw, s.id).toBeCloseTo(parkBenchFacing(yaw), 5);
+        // the hips (0.147 m behind the front edge) are over the slats: ahead of the centre by less than the front edge
+        const ahead = (s.x - x) * Math.sin(s.yaw) + (s.z - z) * Math.cos(s.yaw);
+        expect(ahead - SIT_ROOT_AHEAD, s.id).toBeCloseTo(PARK_BENCH_MODEL.frontEdge, 2);
+        const along = Math.abs((s.x - x) * Math.cos(s.yaw) - (s.z - z) * Math.sin(s.yaw));
+        expect(along, s.id).toBeLessThan(0.76 - 0.15);
+        expect(s.seatY, s.id).toBe(PARK_BENCH_MODEL.seatTop);
+      }
+      expect(Math.hypot(pair[0]!.x - pair[1]!.x, pair[0]!.z - pair[1]!.z)).toBeGreaterThan(1.107);
+    });
+  });
+
+  it("every stand spot: in front of the seat, clear of every park collider with the dismount clearance, reached on foot from the arrival", () => {
+    const seen = reached();
+    for (const { s } of seats) {
+      expect(standSide(s, s.standX, s.standZ), s.id).toBe("front");
+      expect(standsClear(s.standX, s.standZ, PARK_BOUNDS, parkGeometry), s.id).toBe(true);
+      expect(Math.hypot(s.standX - s.x, s.standZ - s.z), s.id).toBeLessThan(0.6);
+      const near = [...FOUR, [0, 0] as const].some(([dx, dz]) => seen.has(key(s.standX + dx * 0.25, s.standZ + dz * 0.25)));
+      expect(near, s.id).toBe(true);
+      // the server picks it (or a spot beside it when someone stands there) and never one behind the backrest
+      for (const c of standCandidates(s)) expect(standSide(s, c.x, c.z), s.id).not.toBe("behind");
+    }
+  });
+
+  it("offered from in front of the bench and from its ends, never from behind its backrest", () => {
+    for (const { s } of seats) {
+      expect(approachesSeat(s, s.standX, s.standZ), s.id).toBe(true);
+      const bx = s.x - Math.sin(s.yaw) * 1.5;
+      const bz = s.z - Math.cos(s.yaw) * 1.5;
+      expect(approachesSeat(s, bx, bz), s.id).toBe(false);
+    }
   });
 });

@@ -1,4 +1,5 @@
 import { lotRoomOf } from "./villageLots";
+import { PARK_BOUNDS, parkGeometry } from "./parkArea";
 import { standSide } from "./standSpot";
 import { describe, expect, it } from "vitest";
 import { isBlocked, type AABB } from "../collision";
@@ -173,7 +174,7 @@ describe("village seats (where a sitter goes)", () => {
       if (a.retired) continue; // (a retired seat lies far outside every map on purpose)
       const house = parseHouseFloorArea(a.area);
       const room = lotRoomOf(a.area);
-      const bounds = a.area === "village" ? villageWalkArea(L) : house ? houseFloorBounds(house.n, house.floor) : room ? room.bounds : L.areas.hall;
+      const bounds = a.area === "park" ? PARK_BOUNDS : a.area === "village" ? villageWalkArea(L) : house ? houseFloorBounds(house.n, house.floor) : room ? room.bounds : L.areas.hall;
       expect(a.x, a.id).toBeGreaterThan(bounds.minX);
       expect(a.x, a.id).toBeLessThan(bounds.maxX);
       expect(a.z, a.id).toBeGreaterThan(bounds.minZ);
@@ -331,8 +332,8 @@ describe("village seats (where a sitter gets up to)", () => {
     for (const s of VILLAGE_SEATS.filter((v) => !v.retired)) {
       const house = parseHouseFloorArea(s.area);
       const room = lotRoomOf(s.area);
-      const bounds = s.area === "village" ? villageWalkArea(L) : house ? houseFloorBounds(house.n, house.floor) : room ? room.bounds : L.areas.hall;
-      const obstacles = villageGeometry.obstacles;
+      const bounds = s.area === "park" ? PARK_BOUNDS : s.area === "village" ? villageWalkArea(L) : house ? houseFloorBounds(house.n, house.floor) : room ? room.bounds : L.areas.hall;
+      const obstacles = s.area === "park" ? parkGeometry.obstacles : villageGeometry.obstacles;
       expect(isBlocked(s.standX, s.standZ, PLAYER_RADIUS + STAND_CLEARANCE, obstacles, 0), s.id).toBe(false);
       expect(s.standX - PLAYER_RADIUS, s.id).toBeGreaterThan(bounds.minX);
       expect(s.standX + PLAYER_RADIUS, s.id).toBeLessThan(bounds.maxX);
@@ -529,7 +530,7 @@ describe("the fishing lake's seats in the global index (A10, design 5.4 and 12.2
     // (release 4 then the house seats the realism pass added: TAIL_HOUSE_SEATS; lots v2 after those, L5v2)
     const lotFirst = VILLAGE_SEATS.findIndex((s) => isLotSeat(s));
     const end = lotFirst >= 0 ? lotFirst : VILLAGE_SEATS.length;
-    expect(VILLAGE_SEATS.slice(end).every((s) => isLotSeat(s))).toBe(true);
+    expect(VILLAGE_SEATS.slice(end).every((s) => isLotSeat(s) || s.area === "park")).toBe(true);
     const late = VILLAGE_SEATS.slice(end - TAIL_HOUSE_SEATS.length, end);
     expect(late.map((s) => (LATE_HOUSE_SEATS.includes(s.bench) ? s.bench : s.id))).toEqual([...TAIL_HOUSE_SEATS]);
     const tail = end - late.length;

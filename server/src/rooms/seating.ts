@@ -4,6 +4,7 @@ import { BODY_APART, pickStandSpot } from "@caysonverse/shared/village/standSpot
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { villageWalkArea } from "@caysonverse/shared/village/fallsWalk";
 import { houseFloorBounds, parseHouseFloorArea } from "@caysonverse/shared/village/houseAreas";
+import { PARK_BOUNDS, parkGeometry } from "@caysonverse/shared/village/parkArea";
 
 /**
  * Pure, clock-free sit validation (mirrors movement.ts / emoji.ts discipline).
@@ -79,6 +80,8 @@ export function chooseStandSpot(
   area: string,
   others: ReadonlyArray<{ x: number; z: number }>,
 ): { x: number; z: number } | null {
+  // 케이슨랜드 benches: the park rectangle and the park colliders
+  if (area === "park") return pickStandSpot(seat, (x, z) => standsClear(x, z, PARK_BOUNDS, parkGeometry) && others.every((o) => Math.hypot(o.x - x, o.z - z) >= BODY_APART));
   const house = parseHouseFloorArea(area);
   // the open village's walkable rectangle reaches past areas.village to the waterfall's rest area (fallsWalk.ts: its stone seats)
   const bounds = house ? houseFloorBounds(house.n, house.floor) : area === "village" ? villageWalkArea(VILLAGE_LAYOUT) : (VILLAGE_LAYOUT.areas as Record<string, (typeof VILLAGE_LAYOUT.areas)["village"]>)[area];

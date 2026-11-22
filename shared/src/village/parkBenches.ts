@@ -15,3 +15,15 @@ export const PARK_BENCHES: ReadonlyArray<readonly [number, number, number]> = ((
 export function parkBenchSolids(): AABB[] {
   return PARK_BENCHES.map(([x, z]) => ({ minX: x - 0.36, maxX: x + 0.36, minZ: z - 1, maxZ: z + 1 }));
 }
+
+/**
+ * What sitting on one needs of its model (client land/ParkBenches.tsx buildBench): four seat slats whose top is 0.496 m up, their front
+ * edge 0.2985 m from the centre on the bench local -x (the side a sitter faces), the lowest slat of the backrest 0.19 m behind the
+ * centre. The cast-iron arm frames stand 0.76 m either side of the middle.
+ */
+export const PARK_BENCH_MODEL = { seatTop: 0.496, frontEdge: 0.2985, backFace: 0.19, length: 2 } as const;
+
+/** The way a sitter on a bench drawn with `yaw` faces (game yaw, atan2(x, z)): the bench local -x. */
+export function parkBenchFacing(yaw: number): number {
+  return Math.atan2(-Math.cos(yaw), Math.sin(yaw));
+}
