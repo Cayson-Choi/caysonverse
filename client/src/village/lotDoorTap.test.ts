@@ -124,6 +124,11 @@ describe("a tap on the café's stair (2026-11-22: a tap on the wall behind it we
   const room = lotRoomOf(CAFE_ROOM_AREA)!;
   const at = (rx: number, y: number, rz: number) => lotDoorTapTarget(room.area, room.origin.x + rx, y, room.origin.z + rz)?.id;
 
+  it("the panelled side under flight B and the landing's underside are the stair too (the stair's own body)", () => {
+    expect(at(1.3, 1.3, 5.0)).toBe(HOUSE_STAIR_UP_TARGET_ID);
+    expect(at(1.0, 1.5, 7.0)).toBe(HOUSE_STAIR_UP_TARGET_ID);
+  });
+
   it("the steps, the stringer and the rail of both flights and the landing are the stair", () => {
     for (const [rx, rz] of [[0.6, 4.4], [0.6, 6.0], [1.2, 7.2], [1.8, 6.0], [1.8, 4.2]] as const) {
       const s = cafeStairSurfaceY(rx, rz);
@@ -137,7 +142,7 @@ describe("a tap on the café's stair (2026-11-22: a tap on the wall behind it we
     expect(at(0.0, 2.2, 4.2)).toBeUndefined();
     expect(at(1.0, 4.0, 7.8)).toBeUndefined(); // the kitchen wall over the landing
     expect(at(0.6, room.ceiling - 0.05, 4.4)).toBeUndefined(); // the ceiling over flight A (over flight B is the stairwell opening)
-    expect(at(0.6, 1.0, 7.0)).toBeUndefined(); // under the landing: below its stringer band (2.3 - 0.5 m)
+    expect(at(0.6, 3.7, 7.0)).toBeUndefined(); // the side wall over the landing
   });
 
   it("the surface rises 0 → half the storey on flight A, stays on the landing, and on to the storey on flight B", () => {

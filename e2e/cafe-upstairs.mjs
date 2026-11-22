@@ -86,7 +86,13 @@ async function tapWorld(p, x, y, z) {
   if (s.z > 1 || s.px < 0 || s.px > s.w || s.py < 0 || s.py > s.h) return { ok: false, s };
   if (p.touch) await p.page.touchscreen.tap(s.px, s.py);
   else await p.page.mouse.click(s.px, s.py);
-  return { ok: true, s };
+  await sleep(300);
+  // what the press landed on (the dev hook), for the record
+  const pick = await p.page.evaluate(() => {
+    const k = window.__cvClickPick?.()?.pick;
+    return k ? { x: +k.x.toFixed(2), y: +k.y.toFixed(2), z: +k.z.toFixed(2), ny: +k.ny.toFixed(2), name: k.name } : null;
+  });
+  return { ok: true, s: { ...s, pick } };
 }
 const orbit = (p, yaw, pitch) => p.page.evaluate(async ([yaw, pitch]) => ((await window.__imp("/src/game/viewState.ts")).viewState.orbitGoal = { yaw, pitch }), [yaw, pitch]);
 const setTime = (p, t) =>

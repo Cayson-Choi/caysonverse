@@ -36,9 +36,8 @@ const FLAT_MIN_NY = 0.8;
  */
 export const DOOR_TAP_USE_RANGE_M = 12;
 
-/** The house stairs' tap bands (houseTap.ts HOUSE_TAP_STAIR_*; not imported: houseTap imports this file): margin past the footprint, below and above the walking surface. */
+/** The house stairs' tap bands (houseTap.ts HOUSE_TAP_STAIR_*; not imported: houseTap imports this file): margin past the footprint, and how high over the walking surface (the rail and a little more). */
 const STAIR_TAP_MARGIN = 0.2;
-const STAIR_TAP_BELOW = 0.5;
 const STAIR_TAP_ABOVE = 1.1;
 
 /**
@@ -55,10 +54,14 @@ export function cafeStairSurfaceY(rx: number, rz: number): number {
   return inA ? along * half : half + (1 - along) * half;
 }
 
-/** Whether a pick at ROOM-frame (rx, rz) and height y is on the café stair's steps, stringer or rail (the house stairs' bands). */
+/**
+ * Whether a pick at ROOM-frame (rx, rz) and height y is on the café stair: up to its rail over the walking surface there. Anything lower
+ * within the footprint is the stair's own body — a step's riser, a stringer, the panelled side under flight B, the landing's underside —
+ * so, unlike a house's single flight (houseTap.ts), there is no lower band: the walls behind the flights only stand ABOVE the rail
+ * (the steps hide them below it), and that is what a tap must not take for the stair.
+ */
 export function onCafeStairSurface(rx: number, y: number, rz: number): boolean {
-  const surface = cafeStairSurfaceY(rx, rz);
-  return y >= surface - STAIR_TAP_BELOW && y <= surface + STAIR_TAP_ABOVE;
+  return y <= cafeStairSurfaceY(rx, rz) + STAIR_TAP_ABOVE;
 }
 
 /** Whether a picked point at height `y` whose face's normal has the y component `ny` is a flat thing by the door, not its leaf. */
