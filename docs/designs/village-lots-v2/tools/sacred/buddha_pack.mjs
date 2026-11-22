@@ -10,6 +10,10 @@
  * For pass 18 use --nose-front-from with the two d310359b GLBs.
  * For pass 19 use --lower-nose-from with the two 9aafa326 GLBs.
  * For pass 20 use --alae-from with the two 7e08b6df GLBs.
+ * For pass 21 use --alar-balls-from with the two 0ef78a87 GLBs.
+ * This remeshes only the lower nose and adjoining cheek; Blender is not needed.
+ * For pass 22 use --eye-lids-from with the completed pass-21 pair.
+ * For pass 23 use --ear-shells-from with the completed pass-22 pair.
  * For a hairline revision, --face-and-scalp-from also replaces the cast curls over the facial oval.
  * For a portrait revision, --portrait-from replaces the facial oval, urna, ears and curls together.
  * For a curl-only revision, --scalp-only-from retains the shipped facial oval and all KTX2 atlases.
@@ -31,6 +35,9 @@ import { sculptNasalLobule } from "./node/buddha_nose17.mjs";
 import { refineNasalFront } from "./node/buddha_nose18.mjs";
 import { sculptLowerNose } from "./node/buddha_nose19.mjs";
 import { sculptAlae } from "./node/buddha_nose20.mjs";
+import { sculptAlarBalls } from "./node/buddha_nose21.mjs";
+import { refineEyeLids } from "./node/buddha_eyes22.mjs";
+import { refineEars } from "./node/buddha_ears23.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const [work, destination, flag, seedDirectory, ...extra] = process.argv.slice(2);
@@ -42,7 +49,10 @@ const noseOnly = flag === "--nose-only-from";
 const noseFront = flag === "--nose-front-from";
 const lowerNose = flag === "--lower-nose-from";
 const alae = flag === "--alae-from";
-if (!work || !destination || (flag && ((!texturesOnly && !noseOnly && !noseFront && !lowerNose && !alae && !regions.has(flag)) || !seedDirectory)) || extra.length) {
+const alarBalls = flag === "--alar-balls-from";
+const eyeLids = flag === "--eye-lids-from";
+const earShells = flag === "--ear-shells-from";
+if (!work || !destination || (flag && ((!texturesOnly && !noseOnly && !noseFront && !lowerNose && !alae && !alarBalls && !eyeLids && !earShells && !regions.has(flag)) || !seedDirectory)) || extra.length) {
   throw new Error("Expected build directory, sacred GLB directory and an optional preservation flag and source directory");
 }
 const align = (n) => Math.ceil(n / 4) * 4;
@@ -147,9 +157,9 @@ function writeSpans({doc, binary}, replacements) {
 const packed = new Map();
 for (const lod of ["pc", "phone"]) {
   const name = "lotstatue__lot_temple_hall_buddha" + (lod === "phone" ? "_phone" : "");
-  if (noseOnly || noseFront || lowerNose || alae) {
+  if (noseOnly || noseFront || lowerNose || alae || alarBalls || eyeLids || earShells) {
     const statue = readGlb(path.join(seedDirectory, name + ".glb"));
-    const spans = alae ? sculptAlae(statue, lod) : lowerNose ? sculptLowerNose(statue, lod)
+    const spans = earShells ? await refineEars(statue, lod) : eyeLids ? await refineEyeLids(statue, lod) : alarBalls ? await sculptAlarBalls(statue, lod) : alae ? sculptAlae(statue, lod) : lowerNose ? sculptLowerNose(statue, lod)
       : noseFront ? refineNasalFront(statue, lod) : await sculptNasalLobule(statue, lod);
     packed.set(path.join(destination, name + ".glb"), writeSpans(statue, spans));
     continue;
