@@ -1,4 +1,5 @@
 import { versionedUrl } from "./modelUrl";
+import { SETTS_MATERIALS, SETTS_RELIEF, fixSettsUv } from "./settsRelief";
 import { GRASS_MATERIALS, GROUND_SMOOTH_MATERIAL, GROUND_GRAIN_MATERIALS, GROUND_PARS, groundGrainTexture, groundMapFragment } from "./groundDetail";
 import {
   Box3,
@@ -456,6 +457,8 @@ export function liftMaterial(
   // the lawns also get the anti-tiling and macro tint of grassVariation.ts (the village and the lake share one grass)
   const vary = ground && GRASS_MATERIALS.includes(material.name);
   const catmull = material.name === GROUND_SMOOTH_MATERIAL;
+  // the plaza's setts and the pavements: relief out of the stones' own picture, lit by the live sun (settsRelief.ts)
+  const setts = !own && SETTS_MATERIALS.includes(material.name);
   material.onBeforeCompile = (shader) => {
     if (ground) {
       shader.uniforms.uVillageGrain = { value: groundGrainTexture() };
@@ -476,13 +479,13 @@ export function liftMaterial(
       .replace("void main() {", foliage ? LIFT_PARS.replace("void main() {", NEAR_FADE_PARS) : LIFT_PARS)
       .replace(LIGHTMAP_TEXEL_FROM, lightmapTexelTo(vary, vary && !!own))
       .replace("void main() {", ground ? GROUND_PARS : "void main() {")
-      .replace("#include <map_fragment>", ground ? groundMapFragment(catmull, vary, vary && !own, vary && !!own) : "#include <map_fragment>")
+      .replace("#include <map_fragment>", ground ? groundMapFragment(catmull, vary, vary && !own, vary && !!own) : setts ? SETTS_RELIEF : "#include <map_fragment>")
       .replace("#include <color_fragment>", LIFT_ALBEDO)
       .replace("#include <aomap_fragment>", LIFT_LIGHT)
       .replace("void main() {", `${SS_FRAGMENT_PARS}${SS_DAY_FUNCTION}void main() {\n${SS_MAIN_TOP}`);
   };
   material.customProgramCacheKey = () =>
-    (foliage ? "village-light-foliage" : ground ? (catmull ? "village-light-ground-smooth" : vary ? "village-light-ground-grass" : "village-light-ground") : "village-light") + (own ? `-${own.key}` : "");
+    (foliage ? "village-light-foliage" : setts ? "village-light-setts" : ground ? (catmull ? "village-light-ground-smooth" : vary ? "village-light-ground-grass" : "village-light-ground") : "village-light") + (own ? `-${own.key}` : "");
   material.needsUpdate = true;
 }
 
@@ -926,6 +929,15 @@ export function prepareVillage(
       return;
     }
     if (!isMesh(o)) return;
+    // the plaza's inner court of setts, relaid straight (the build's rings smear there: settsRelief.ts)
+    if (materialsOf(o).some((m) => m.name === "LM_setts")) {
+      o.updateWorldMatrix(true, false);
+      const fixed = fixSettsUv(o.geometry, o.matrixWorld);
+      if (fixed.relaid > 0) {
+        o.geometry = fixed.geometry;
+        own.push(fixed.geometry);
+      } else fixed.geometry.dispose();
+    }
     for (const m of materialsOf(o)) {
       if (!found.has(m.name)) found.set(m.name, m);
       if (m.name.startsWith(LIGHTMAP_MATERIAL_PREFIX) || (FOLIAGE_MATERIALS.includes(m.name) && !o.name.startsWith(BACKDROP_FOREST_PREFIX))) {

@@ -3,7 +3,7 @@ from bisect import bisect_right
 from math import atan2, cos, exp, pi, sin, sqrt, tanh
 import bpy
 from mathutils import Vector
-from buddha_ears import make_ears
+from buddha_ears import make_ears, make_ear_curls
 from buddha_mesh import mat
 from buddha_pigment import (BROW_INNER, BROW_SPAN, EYE_INNER, EYE_SPAN, FACE_AXIS,
                             LIP_RADIUS, brow_height, eyelid_height, lip_height)
@@ -580,5 +580,6 @@ def build_head(phone=False):
     make_ears(phone)
     make_urna(phone)
     make_hair(phone)
+    make_ear_curls(phone)
     for obj in set(bpy.context.scene.objects)-existing:
         obj.location.x += HEAD_X

@@ -253,7 +253,7 @@ def build(output, lod):
     figures = [o for o in bpy.context.scene.objects if o.type == "MESH"]
     build_lotus(phone)
     seat = next(o for o in bpy.context.scene.objects if o.type == "MESH" and o not in figures)
-    limit = 9950 if phone else 39900
+    limit = 10000 if phone else 40000
     figure_count = sum(triangles(o.data) for o in figures)
     # Keep each lotus carving at its established resolution. Reallocating its
     # triangles when the figure changes would also move the outer petal tips.
@@ -268,7 +268,7 @@ def build(output, lod):
     obj.data.update()
     count = triangles(obj.data)
     print(f"{lod}: {figure_count} figure triangles, {count} total", flush=True)
-    if count > limit + 50:
+    if count > limit:
         raise ValueError(f"{lod} triangle budget exceeded: {count}")
     dress(obj.data, output, lod)
     bpy.ops.export_scene.gltf(filepath=str(output / (lod + ".glb")), export_format="GLB",

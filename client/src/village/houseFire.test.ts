@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Box3, Vector3 } from "three";
-import { HOUSE_HEARTHS, hearthFlames, houseEmberY, houseHearthMax, houseHearthMin, setHouseHearth } from "./houseFire";
+import { HOUSE_HEARTHS, fireFlicker, hearthFlames, houseEmberY, houseFireLight, houseHearthMax, houseHearthMin, setHouseHearth, updateHouseFire } from "./houseFire";
 import { HOUSE_1_COLLIDERS } from "@caysonverse/shared/village/generated/houses/house_1_colliders";
 import { HOUSE_7_COLLIDERS } from "@caysonverse/shared/village/generated/houses/house_7_colliders";
 
@@ -35,5 +35,26 @@ describe("house fireplaces", () => {
       fire.material.dispose();
     }
     expect(hearthFlames(3)).toBeNull();
+  });
+  it("flickers the fire light within a calm range, only in a house with a fire and on its fire floor", () => {
+    for (let t = 0; t < 30; t += 0.037) {
+      const f = fireFlicker(t);
+      expect(f).toBeGreaterThan(0.7);
+      expect(f).toBeLessThan(1.25);
+    }
+    setHouseHearth(2);
+    const ws: number[] = [];
+    for (let t = 0; t < 10; t += 0.05) {
+      updateHouseFire(t, 1, true);
+      ws.push(houseFireLight.value.w);
+    }
+    expect(Math.max(...ws) - Math.min(...ws)).toBeGreaterThan(0.2); // it flickers
+    expect(Math.max(...ws)).toBeLessThan(0.5); // round the baked light, never a wash
+    expect(houseFireLight.value.z).toBeGreaterThan(houseHearthMin.value.z);
+    updateHouseFire(1.3, 1, false);
+    expect(houseFireLight.value.w).toBe(0);
+    setHouseHearth(3);
+    updateHouseFire(1.3, 1, true);
+    expect(houseFireLight.value.w).toBe(0);
   });
 });

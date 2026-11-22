@@ -86,7 +86,7 @@ describe("moon boat timeline", () => {
     expect(r.boardingSeats!(0, "x")).toBe(MOON_END_FIRST);
     // the first rider of the default order sits at the bow end (the farthest forward), the second at the stern end
     expect(moonSeatLocal(order[0]!)[2]).toBeCloseTo(MOON_SEAT.z0, 6);
-    expect(moonSeatLocal(order[1]!)[2]).toBeCloseTo(MOON_SEAT.z0 - 7 * MOON_SEAT.dz, 6);
+    expect(moonSeatLocal(order[1]!)[2]).toBeCloseTo(MOON_SEAT.z0 - 7 * MOON_SEAT.dz - MOON_SEAT.mid, 6);
     for (let row = 0; row < 8; row++) for (let col = 0; col < 4; col++) expect(moonSeatCell(moonSeatOf(row, col))).toEqual({ row, col });
     const a = moonSeatLocal(0);
     expect(moonSeatLocal(31)[2]).not.toBeCloseTo(a[2], 1);
@@ -95,12 +95,22 @@ describe("moon boat timeline", () => {
     expect(new Set(Array.from({ length: 32 }, (_, i) => moonSeatLocal(i).join())).size).toBe(32);
     expect(MOON_BOAT_SEATS).toBe(32);
   });
+  it("like a real Viking the two halves face each other: the bow half the stern, the stern half the bow", () => {
+    for (let seat = 0; seat < MOON_BOAT_SEATS; seat++) {
+      const { row } = moonSeatCell(seat);
+      const pose = moonSeatPose(seat, 0);
+      expect(pose.face).toBe(row < 4 ? -1 : 1);
+      expect(pose.fz).toBeCloseTo(row < 4 ? -1 : 1, 6);
+      // it faces toward the boat's middle (z = 0) from the seat's side
+      expect(Math.sign(pose.fz)).toBe(-Math.sign(moonSeatLocal(seat)[2]) || 1);
+    }
+  });
   it("the seat pose follows the swing", () => {
     const rest = moonSeatPose(0, 0);
     let tTop = 72;
     for (let t = 72; t < 80; t += 0.01) if (Math.abs(moonBoatAt(MOON_DWELL_MS + t * 1000).angle) > Math.abs(moonBoatAt(MOON_DWELL_MS + tTop * 1000).angle)) tTop = t;
     const swung = moonSeatPose(0, MOON_DWELL_MS + tTop * 1000);
-    expect(rest.fz).toBeCloseTo(1, 6);
+    expect(rest.fz).toBeCloseTo(-1, 6); // seat 0 is row 3, the bow half's last row: it faces the stern (the middle)
     expect(Math.hypot(swung.fy, swung.fz)).toBeCloseTo(1, 6);
     expect(swung.y).not.toBeCloseTo(rest.y, 1);
   });
