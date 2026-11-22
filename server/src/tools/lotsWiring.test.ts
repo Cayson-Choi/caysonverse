@@ -182,7 +182,9 @@ describe("seats: outside 12, inside 81, after every seat main has", () => {
     // main's last seat: release 4's added house seats (houses-real, ADDED_HOUSE_SEATS) end at index 269 — the lots' start at 270
     expect(first).toBe(270);
     expect(VILLAGE_SEATS.findIndex((s) => s.id.startsWith("lotin:"))).toBe(302);
-    const lot = VILLAGE_SEATS.slice(first);
+    // (케이슨랜드 benches follow the lot seats, 2026-11-22)
+    const lot = VILLAGE_SEATS.slice(first).filter((s) => s.area !== "park");
+    expect(VILLAGE_SEATS.slice(first + lot.length).every((s) => s.area === "park")).toBe(true);
     expect(lot.every((s) => isLotSeat(s))).toBe(true);
     const outside = lot.filter((s) => s.area === "village");
     const inside = lot.filter((s) => s.area !== "village");
