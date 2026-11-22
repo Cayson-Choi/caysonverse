@@ -200,7 +200,7 @@ export const GUIDE_TOPICS: readonly GuideTopic[] = Object.freeze([
     steps: [
       { icon: "gate", text: "정문 앞에서 '케이슨랜드 들어가기'를 눌러요." },
       { icon: "wheel", text: "별똥별 급행, 하늘 등불 바퀴, 달빛 회전목마, 구름 낙하탑, 달배가 있어요." },
-      { icon: "ride", text: "놀이기구를 누르거나 안내판의 '타기'(PC는 E 키)를 누르면 탑승 위치로 걸어가서 타요." },
+      { icon: "ride", text: "안내판의 '타기'(PC는 E 키)를 눌러야 타요. 멀리서 누르면 탑승 위치로 걸어가서 타고, 놀이기구를 누르면 탑승 위치까지만 걸어가요." },
       { icon: "clock", text: "출발을 기다리는 중이면 '자리 맡기'를 눌러요. 탈 수 있게 되면 자동으로 타요." },
       { icon: "look", text: "타는 동안 화면을 끌면 둘러볼 수 있어요." },
       { icon: "exit", text: "'내리기'로 내려요. 나갈 때는 정문 아치 아래에서 '케이슨랜드 나가기'를 눌러요." },

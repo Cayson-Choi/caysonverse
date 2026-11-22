@@ -14,7 +14,7 @@ import {
   cafeTableChairs,
   cafeToRoom,
 } from "./cafeRoom";
-import { CAFE_LOT, LOT_ROOMS, lotDoorPoint, lotInteriorDoor, lotInteriorSeatBoxes, lotRoomDoor, lotRoomOf, useLotDoor, villageLot } from "./villageLots";
+import { CAFE_LOT, LOT_ROOMS, lotDoorPoint, lotInteriorDoor, lotInteriorSeatBoxes, lotRoomDoor, lotRoomOf, lotRoomOfDoor, lotRoomStair, useLotDoor, useLotStair, villageLot } from "./villageLots";
 import { VILLAGE_LAYOUT, villageGeometry } from "./villageLayout";
 import { VILLAGE_SEATS } from "./benchSeats";
 import { PLAYER_RADIUS } from "../worldMap";
@@ -32,8 +32,9 @@ describe("the café's walk-in room (owner 2026-11-20: 들어갈 수 있게 해)"
     expect(villageLot("lot_cafe")).toBe(CAFE_LOT);
     const r = lotRoomOf("lot:lot_cafe_room")!;
     expect(r).toBeTruthy();
-    // the café's room is the last: its seats come last, so no earlier seat index moves
-    expect(LOT_ROOMS[LOT_ROOMS.length - 1]).toBe(r);
+    // the café's rooms are the last two (the hall, then its salon upstairs, 2026-11-21): their seats come last, so no earlier seat index moves
+    expect(LOT_ROOMS[LOT_ROOMS.length - 2]).toBe(r);
+    expect(LOT_ROOMS[LOT_ROOMS.length - 1]).toBe(lotRoomOf("lot:lot_cafe_upstairs"));
     expect(r.unit.interior.size).toEqual({ x: CAFE_ROOM_SIZE.x, z: CAFE_ROOM_SIZE.z });
     expect(r.ceiling).toBe(CAFE_ROOM_LOCAL.ceil);
   });
@@ -128,5 +129,32 @@ describe("the café's walk-in room (owner 2026-11-20: 들어갈 수 있게 해)"
     const g = cafeRectToRoom({ x0: CAFE_COUNTER.x0, x1: CAFE_COUNTER.x1, z0: CAFE_COUNTER.z1, z1: CAFE_COUNTER.z1 + 0.5 });
     for (const s of CAFE_IN.solids) expect(ov(g, s.rect), `counter front / ${s.name}`).toBe(false);
     expect(CAFE_BACK_BAR.z0).toBe(CAFE_ROOM_LOCAL.zBack);
+  });
+
+  it("the stair (owner 2026-11-21: 2층까지 만들어서 계단도): the café's pad takes one up, the salon's down; the salon has no way out of its own", () => {
+    const g = lotRoomOf("lot:lot_cafe_room")!;
+    const u = lotRoomOf("lot:lot_cafe_upstairs")!;
+    const sg = lotRoomStair(g)!;
+    const su = lotRoomStair(u)!;
+    expect(sg.dir).toBe("up");
+    expect(su.dir).toBe("down");
+    const up = useLotStair(g.area, sg.pad.x, sg.pad.z - 0.6)!;
+    expect(up.area).toBe(u.area);
+    // it lands at the top of the stair, outside the stairwell, clear of every solid
+    expect(up.z - u.origin.z).toBeLessThan(3.85);
+    for (const s of u.spec.solids) expect(up.x > u.origin.x + s.rect.x0 && up.x < u.origin.x + s.rect.x1 && up.z > u.origin.z + s.rect.z0 && up.z < u.origin.z + s.rect.z1, s.name).toBe(false);
+    const down = useLotStair(u.area, su.pad.x, su.pad.z - 0.6)!;
+    expect(down.area).toBe(g.area);
+    expect(isBlocked(down.x, down.z, PLAYER_RADIUS, villageGeometry.obstacles, 0)).toBe(false);
+    expect(isBlocked(up.x, up.z, PLAYER_RADIUS, villageGeometry.obstacles, 0)).toBe(false);
+    // the arrival is within the other pad's reach (the button is there) but a use needs a press: the server's rule alone never moves anyone
+    expect(useLotStair(g.area, g.origin.x + 6.8, g.origin.z + 1.6)).toBeNull(); // the door's arrival: far from the stair
+    expect(useLotStair(g.area, sg.pad.x, sg.pad.z + 1.0)).toBeNull(); // past the pad, on the stair: no
+    expect(useLotStair("village", sg.pad.x, sg.pad.z)).toBeNull();
+    // the salon: no exit pad, the café's door is the hall's
+    expect(useLotDoor(u.area, u.origin.x + u.spec.doorX, u.origin.z + 0.8)).toBeNull();
+    expect(lotRoomOfDoor("lot_cafe_main")).toBe(g);
+    const d = lotDoorPoint(CAFE_LOT, CAFE_LOT.doors[0]!);
+    expect(useLotDoor("village", d.pad.x, d.pad.z)?.area).toBe(g.area);
   });
 });
