@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CAFE_LOT, LOT_ROOMS, lotDoorPoint, lotRoomDoor, lotRoomOf } from "@caysonverse/shared/village/villageLots";
-import { CAFE_ROOM_AREA, CAFE_STAIR } from "@caysonverse/shared/village/cafeRoom";
-import { HOUSE_STAIR_UP_TARGET_ID } from "@caysonverse/shared/village/houseTargets";
+import { CAFE_ROOM_AREA, CAFE_STAIR, CAFE_UP_AREA } from "@caysonverse/shared/village/cafeRoom";
+import { HOUSE_STAIR_DOWN_TARGET_ID, HOUSE_STAIR_UP_TARGET_ID } from "@caysonverse/shared/village/houseTargets";
 import { cafeStairSurfaceY, lotDoorTapTarget } from "./lotDoorTap";
 import { LOT_ENTER_TARGET_PREFIX, LOT_EXIT_TARGET_PREFIX, lotDoorTarget, lotExitTarget } from "./lots/lotTargets";
 
@@ -123,6 +123,17 @@ describe("a tap on a lot building's door (the café's, owner 2026-11-20)", () =>
 describe("a tap on the café's stair (2026-11-22: a tap on the wall behind it went upstairs)", () => {
   const room = lotRoomOf(CAFE_ROOM_AREA)!;
   const at = (rx: number, y: number, rz: number) => lotDoorTapTarget(room.area, room.origin.x + rx, y, room.origin.z + rz)?.id;
+
+  it("a step's flat tread low down is the stair (not a door's 'flat thing'); the floor round the foot is not", () => {
+    expect(lotDoorTapTarget(room.area, room.origin.x + 0.6, 0.23, room.origin.z + 4.0, null, 3, 1)?.id).toBe(HOUSE_STAIR_UP_TARGET_ID);
+    expect(lotDoorTapTarget(room.area, room.origin.x + 0.6, 0, room.origin.z + 3.7, null, 3, 1)).toBeNull();
+  });
+
+  it("upstairs: the stairwell balustrade's top rail (flat, 0.98 m) goes down; the salon's floor beside it does not", () => {
+    const up = lotRoomOf(CAFE_UP_AREA)!;
+    expect(lotDoorTapTarget(up.area, up.origin.x + 2.49, 0.98, up.origin.z + 5.57, null, 6, 1)?.id).toBe(HOUSE_STAIR_DOWN_TARGET_ID);
+    expect(lotDoorTapTarget(up.area, up.origin.x + 2.5, 0, up.origin.z + 5.5, null, 6, 1)).toBeNull();
+  });
 
   it("the panelled side under flight B and the landing's underside are the stair too (the stair's own body)", () => {
     expect(at(1.3, 1.3, 5.0)).toBe(HOUSE_STAIR_UP_TARGET_ID);
