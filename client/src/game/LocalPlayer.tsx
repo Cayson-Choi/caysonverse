@@ -1257,8 +1257,9 @@ export function LocalPlayer({
     fishRig.update(delta, {
       seatMode: animStateRef.current === "sitDown" ? "sitting" : animStateRef.current === "sitIdle" ? "seated" : animStateRef.current === "standUp" ? "standing" : "up",
       baseSit: action(CLIP.sitIdle) ?? null,
-      // first person keeps the own body (fpBody.ts): the rod and the catch are in its own hands, as everyone else sees them
-      fpCamera: null,
+      // first person keeps the own body (fpBody.ts) and its real rod; the catch is brought into the view (owner 2026-11-23): the rod
+      // raised in front of the eye while it comes up, then held up in the hands in front of the camera (lake/catchRig.ts)
+      fpCamera: viewState.mode === "fp" ? state.camera : null,
       fpLook: { skin: look.colors.skin, top: look.colors.top },
     });
     fishRig.afterMixer(delta); // the wrist, after the mixer (the animations are ticked before this frame hook)

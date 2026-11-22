@@ -269,6 +269,14 @@ export function createCatchRig(sid: string): CatchRig {
     place(1, gripL, at(-0.42, -0.44, 0.3));
   };
 
+  /** First person, the catch coming up: the eye follows the fish up and down (pitch only; the body turns with the view's yaw). */
+  const gaze = (cam: Camera, at: Vector3, delta: number) => {
+    cam.updateMatrixWorld();
+    const c = lw.setFromMatrixPosition(cam.matrixWorld);
+    const want = Math.atan2(c.y - at.y, Math.hypot(at.x - c.x, at.z - c.z));
+    viewState.fpPitch += (Math.max(-0.6, Math.min(0.6, want)) - viewState.fpPitch) * Math.min(1, delta * 2.5);
+  };
+
   const hide = () => {
     if (hands) hands.visible = false;
     if (fish) fish.root.visible = false;
@@ -371,14 +379,14 @@ export function createCatchRig(sid: string): CatchRig {
             lakeRipple(pos.x, pos.z, 1.3);
             lakeSplash(pos.x, LAKE_WATER_Y, pos.z, 8 + Math.round(18 * len), 0.6 + len);
           }
+          // first person: the eye goes down to the fish being led in (only for the lift: in the fight the player looks where they like)
+          if (i.fpCamera && view.phase === FISH_PHASE.lifting) gaze(i.fpCamera, pos, delta);
           // the line's end: the mouth
           mouth.set(0, 0, 0.5 * len).applyQuaternion(rot).add(pos);
           hook.copy(mouth);
           break;
         }
         case "lifted": {
-          // first person: the rod is held in the view (fishingRig), its tip at the upper right: the eye levels out to see the fish
-          if (i.fpCamera) viewState.fpPitch += (0.02 - viewState.fpPitch) * Math.min(1, delta * 2);
           if (!rodTip) break;
           // out of the water (owner 2026-11-22 "너무 정신없이" / 11-16 "리얼하게"): the rod comes up steadily and draws the fish out by
           // the mouth; it hangs under the tip on a line drawn in to ~0.85 m and swings like a pendulum of that length (period
@@ -423,6 +431,8 @@ export function createCatchRig(sid: string): CatchRig {
           const up = a.copy(pivot).sub(hook).normalize();
           lookAlong(up, Math.sin(t * 1.9) * 0.06 + Math.sin(flexPhase * 0.5) * 0.14 * Math.max(0, cs.wriggle - 0.25), rot);
           pos.copy(hook).addScaledVector(up, -0.5 * len);
+          // first person: the rod is raised in front of the eye (fishingRig): the eye follows the fish up out of the water
+          if (i.fpCamera) gaze(i.fpCamera, pos, delta);
           drip -= delta;
           if (drip <= 0) {
             drip = 0.08;
@@ -558,8 +568,10 @@ export function createCatchRig(sid: string): CatchRig {
       // ease in from the last pose over 0.35 s (hand -> held up, the show -> the release ...), unless the stage blends itself
       // (the reel-in and the lift too, owner 2026-11-22: the fight's end, the hook set and a thrash no longer snap the fish)
       const selfBlending = drawStage === "toHand" || drawStage === "drop";
-      if (!selfBlending && fromStage !== "none" && stageT < 0.4 && !newCatchStart(view.phase)) {
-        const k = stageT / 0.4;
+      // (taken from the one-hand hold into the show: a little quicker, the fish turned side on to be seen)
+      const blendS = drawStage === "show" ? 0.3 : 0.4;
+      if (!selfBlending && fromStage !== "none" && stageT < blendS && !newCatchStart(view.phase)) {
+        const k = stageT / blendS;
         const e = k * k * (3 - 2 * k);
         pos.lerpVectors(fromPos, pos, e);
         rot.slerpQuaternions(fromQ, rot.clone(), e);

@@ -189,9 +189,12 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
   const root = avatar.root;
   let rod: Rod | null = null;
   const catchRig = createCatchRig(sid);
-  const fpV = { cp: new Vector3(), fw: new Vector3(), rt: new Vector3(), up: new Vector3(), grip: new Vector3(), aim: new Vector3(), axis: new Vector3(), q: new Quaternion(), one: new Vector3(1, 1, 1) };
+  const aimV = { fw: new Vector3(), rt: new Vector3(), d: new Vector3(), cur: new Vector3(), axis: new Vector3(), pq: new Quaternion(), dq: new Quaternion() };
+  /** First person (own avatar): the camera the rod is raised in front of, and how far (eased 0..1). */
+  let aimCam: Camera | null = null;
+  let aimWant = 0;
+  let aimAmt = 0;
   let catchShown = false;
-  let fpRod: Rod | null = null;
   let rodHost: Object3D | null = null;
   let unregisterTip: (() => void) | null = null;
   let stow: ReturnType<typeof stowHandItem> | null = null;
@@ -271,13 +274,34 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     stowed.delete(sid);
   };
   const hideFish = (): void => catchRig.hide();
-  const dropFpRod = (): void => {
-    if (!fpRod) return;
-    fpRod.root.removeFromParent();
-    fpRod.dispose();
-    fpRod = null;
-    unregisterTip?.();
-    unregisterTip = rod ? registerRodTip(sid, rod.tip) : null;
+
+  /** First person: the rod turned (grip -> its real tip) onto the aim in front of the eye, `aimAmt` of the way. */
+  const applyAim = (): void => {
+    if (!rod) return;
+    const parent = rod.root.parent;
+    if (aimAmt > 1e-3 && aimCam && parent) {
+      // aimed by where the tip really is (the bent rod's tip is off its straight axis): grip -> tip turned onto the aim
+      rod.root.updateWorldMatrix(true, true);
+      const pq = parent.getWorldQuaternion(aimV.pq);
+      const grip = aimV.axis.setFromMatrixPosition(rod.root.matrixWorld);
+      const cur = rod.tip.getWorldPosition(aimV.cur).sub(grip);
+      if (cur.lengthSq() < 1e-6) return;
+      cur.normalize();
+      const fw = aimV.fw.set(0, 0, -1).applyQuaternion(aimCam.quaternion);
+      fw.y = 0;
+      if (fw.lengthSq() < 1e-6) fw.set(0, 0, -1);
+      fw.normalize();
+      const rt = aimV.rt.set(-fw.z, 0, fw.x);
+      const el = 0.62;
+      // (a narrow phone view: a little left of the middle, so the fish coming in from the right stays on the screen)
+      const az = 0.05 - 0.25 * (1 - fpNarrow(aimCam));
+      const d = aimV.d.copy(fw).multiplyScalar(Math.cos(el) * Math.cos(az)).addScaledVector(rt, Math.cos(el) * Math.sin(az));
+      d.y = Math.sin(el);
+      d.lerp(cur, 1 - aimAmt).normalize();
+      // world = pq * local: turned by D in the world, the local is pq^-1 * D * pq * local
+      const D = aimV.dq.setFromUnitVectors(cur, d);
+      rod.root.quaternion.premultiply(D.premultiply(pq.clone().invert()).multiply(pq));
+    }
   };
 
   const play = (name: FishingClip | null, speed = 1): void => {
@@ -311,13 +335,17 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
         const fix = relaxWrist(root, wristAmt, handR);
         if (fix) rod.root.quaternion.copy(rodQ0).premultiply(fix);
       }
+      // first person: up in front of the eye (owner 2026-11-23: in 1st person the fish must come up out of
+      // the water and hang in front of the angler; the lift clip swings the tip up over the right shoulder, out of the view). Only
+      // this screen's own view: everyone else sees the clip.
+      aimAmt += (aimWant - aimAmt) * Math.min(1, delta * 2.5);
+      applyAim();
     },
     update(delta, ctx) {
       if (!readFishView(sid, view) || view.rod === 0) {
         wristWant = false;
         if (rod || current) {
           play(null);
-          dropFpRod();
           detachRod();
           hideFish();
         }
@@ -331,7 +359,6 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
       }
       if (!lakeGearReady()) void loadLakeGear();
       else if (rod && !rod.real) {
-        dropFpRod();
         detachRod(); // the stand-in made before lake_gear.glb came in: the real rod replaces it
       }
       attachRod();
@@ -392,47 +419,21 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
       const fpCam = ctx.fpCamera ?? null;
       const catching = atSpot && view.phase >= FISH_PHASE.hooked && view.phase <= FISH_PHASE.releasing;
       if (catching || catchShown) {
+        // (first person: the rod raised again on the bones the mixer has just posed, so the fish hangs from where the tip is drawn)
+        if (aimCam && rod) applyAim();
         let world: Object3D | null = root;
         while (world.parent) world = world.parent;
-        catchRig.update({ view, t, delta, atSpot, handL, handR, rodTip: fpRod?.tip ?? rod?.tip ?? null, body: root, world: world === root ? null : world, fpCamera: fpCam, fpLook: ctx.fpLook ?? null });
+        catchRig.update({ view, t, delta, atSpot, handL, handR, rodTip: rod?.tip ?? null, body: root, world: world === root ? null : world, fpCamera: fpCam, fpLook: ctx.fpLook ?? null });
         catchShown = catching;
       }
-      // first person: the own body is hidden, so the rod is drawn by a copy that follows the hidden one (the line starts at its tip)
-      if (fpCam && rod && atSpot) {
-        let world: Object3D = root;
-        while (world.parent) world = world.parent;
-        if (!fpRod && world !== root) {
-          fpRod = createRod();
-          fpRod.root.matrixAutoUpdate = false;
-          fpRod.root.traverse((o) => (o.frustumCulled = false));
-          world.add(fpRod.root);
-          unregisterTip?.();
-          unregisterTip = registerRodTip(sid, fpRod.tip);
-        }
-        if (fpRod) {
-          // held in the view (lake v2, 1st person): the grip at the lower right, the rod reaching up and out so its tip, the line
-          // and a fish hanging from it stay in the upper right of the view whatever the eye does
-          fpCam.updateMatrixWorld();
-          const cp = fpV.cp.setFromMatrixPosition(fpCam.matrixWorld);
-          const fw = fpV.fw.set(0, 0, -1).applyQuaternion(fpCam.quaternion);
-          const rt = fpV.rt.set(1, 0, 0).applyQuaternion(fpCam.quaternion);
-          const up = fpV.up.set(0, 1, 0).applyQuaternion(fpCam.quaternion);
-          // a narrow (portrait) view: everything closer to the middle so the rod and its tip stay on screen
-          const nk = fpNarrow(fpCam);
-          const grip = fpV.grip.copy(cp).addScaledVector(rt, 0.24 * nk).addScaledVector(up, -0.32).addScaledVector(fw, 0.3);
-          const aim = fpV.aim.copy(cp).addScaledVector(rt, 0.62 * nk).addScaledVector(up, 1.0).addScaledVector(fw, 3.0).sub(grip).normalize();
-          const axis = fpRod.real ? fpV.axis.set(ROD_AXIS_R[0], ROD_AXIS_R[1], ROD_AXIS_R[2]).normalize() : fpV.axis.set(0, 1, 0);
-          fpV.q.setFromUnitVectors(axis, aim);
-          fpRod.root.matrix.compose(grip, fpV.q, fpV.one);
-          fpRod.root.matrixWorldNeedsUpdate = true;
-          fpRod.setUnfold(unfold);
-          fpRod.setBend(bendS);
-        }
-      } else if (fpRod) dropFpRod();
+      // first person (my own avatar, its real body and rod drawn, fpBody.ts): the rod is raised in front of the eye while the fish is
+      // brought up (afterMixer), so the fish hangs in sight under its tip
+      aimCam = fpCam && rod && atSpot && seated ? fpCam : null;
+      aimWant = aimCam !== null && view.phase === FISH_PHASE.lifting ? 1 : 0;
+      if (!aimCam) aimAmt = 0;
     },
     dispose() {
       play(null);
-      dropFpRod();
       detachRod();
       catchRig.dispose();
       carries.delete(sid);
