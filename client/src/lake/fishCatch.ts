@@ -18,13 +18,13 @@ import { FISH_PHASE, needsNet, type FishView } from "./lakeProtocol";
 import { hash01 } from "./lakeFloat";
 
 /** Lifting: reeled in under the surface this long, then out of the water. */
-export const REEL_S = 1.2;
+export const REEL_S = 0.9;
 /** Lifting: the rod comes up and draws the fish out of the water this long (a steady lift, not a leap: owner 2026-11-22). */
 export const BREAK_S = 0.35;
 /** Lifting: hanging from the line until the hand reaches for it. */
-export const HANG_END_S = 2.4;
+export const HANG_END_S = 2.6;
 /** Lifting: the hand has it after this blend. */
-export const TO_HAND_S = 0.5;
+export const TO_HAND_S = 0.35;
 /** Netting: at the surface thrashing, then the net. */
 /** Releasing: the hands let go here (Fish_Release is 19/24 s), the fish falls into the water. */
 export const LET_GO_S = 0.78;

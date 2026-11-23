@@ -189,11 +189,17 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
   const root = avatar.root;
   let rod: Rod | null = null;
   const catchRig = createCatchRig(sid);
-  const aimV = { fw: new Vector3(), rt: new Vector3(), d: new Vector3(), cur: new Vector3(), axis: new Vector3(), pq: new Quaternion(), dq: new Quaternion() };
+  const aimV = { fw: new Vector3(), rt: new Vector3(), d: new Vector3(), cur: new Vector3(), axis: new Vector3(), hand: new Vector3(), late: new Vector3(), pq: new Quaternion(), dq: new Quaternion() };
+  /** The lift: how far the rod is turned from the reel-in's 35 degrees toward over the hand (0..1), and my own first-person view. */
+  let aimLate = 0;
+  let aimFp = false;
+  let aimCamera: Camera | null = null;
   /** The lift (every screen, owner 2026-11-23): the rod raised in front of the angler over the facing line, how far (eased 0..1). */
   let aimOn = false;
   let aimSpot = -1;
   let aimWant = 0;
+  /** The rod's elevation (rad) during the lift: 35 degrees for the reel-in, raised high, a little past upright (~100), once the fish is out. */
+  let aimEl = 0.62;
   let aimAmt = 0;
   let catchShown = false;
   let rodHost: Object3D | null = null;
@@ -286,7 +292,11 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
   const applyAim = (): void => {
     if (!rod || aimAmt <= 1e-3 || !aimOn) return;
     const parent = rod.root.parent;
-    const f = faceOf(aimSpot);
+    // the chair's facing; in my own first person where the eye looks (the view can be turned off the chair's facing while seated)
+    const fw0 = aimV.rt.set(0, 0, -1);
+    if (aimCamera) fw0.applyQuaternion(aimCamera.quaternion);
+    fw0.y = 0;
+    const f = aimFp && aimCamera && fw0.lengthSq() > 1e-6 ? fw0.normalize() : faceOf(aimSpot);
     if (!parent || !f) return;
     rod.root.updateWorldMatrix(true, true);
     const pq = parent.getWorldQuaternion(aimV.pq);
@@ -297,11 +307,19 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     const cur = tipNow.sub(grip).normalize();
     // the aim point: over the facing line through the body (not the right hand), up at 35 degrees from the grip
     const body = root.getWorldPosition(aimV.fw);
-    const el = 0.62;
+    const el = aimEl;
     const ahead = reach * Math.cos(el);
     // where along the line, measured from the body, the grip already is
     const gripAhead = (grip.x - body.x) * f.x + (grip.z - body.z) * f.z;
     const d = aimV.d.set(body.x + f.x * (gripAhead + ahead) - grip.x, reach * Math.sin(el), body.z + f.z * (gripAhead + ahead) - grip.z).normalize();
+    // (third person, everyone's screen) the rod comes up until the tip is over the free (left) hand by the line's length: the fish on
+    // the full line swings in and comes to rest right at the hand, which closes on it
+    const line = catchRig.lineLength();
+    if (!aimFp && aimLate > 0 && line > 0.5 && handL) {
+      const hand = handL.getWorldPosition(aimV.hand);
+      const late = aimV.late.set(hand.x - grip.x, hand.y + line - grip.y, hand.z - grip.z).normalize();
+      d.lerp(late, aimLate).normalize();
+    }
     d.lerp(cur, 1 - aimAmt).normalize();
     // world = pq * local: turned by D in the world, the local is pq^-1 * D * pq * local
     const D = aimV.dq.setFromUnitVectors(cur, d);
@@ -435,6 +453,18 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
       aimOn = !!rod && atSpot && seated;
       aimSpot = view.spot;
       aimWant = aimOn && view.phase === FISH_PHASE.lifting ? 1 : 0;
+      // the lift: the rod comes up high, just past upright, so the fish swings in on the full line to the angler's hand
+      {
+        const k = view.phase === FISH_PHASE.lifting ? Math.max(0, Math.min(1, (t - REEL_S) / 1.0)) : 0;
+        // (my own first-person view: raised less, ~60 degrees, so the fish swinging in stays out in front of the eye, in sight, until the
+        // hand reaches for it; the swing in under an upright rod comes in under the chin, out of the view)
+        const kk = k * k * (3 - 2 * k);
+        aimFp = !!fpCam;
+        aimCamera = fpCam;
+        // third person: from 35 degrees toward over the hand (applyAim); first person: up to 60 degrees in front of the eye
+        aimEl = aimFp ? 0.62 + (1.05 - 0.62) * kk : 0.62;
+        aimLate = aimFp ? 0 : kk;
+      }
       if (!aimOn) aimAmt = 0;
     },
     dispose() {
