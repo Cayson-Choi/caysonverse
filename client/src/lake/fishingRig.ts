@@ -25,6 +25,10 @@ import { registerRodTip } from "./rodTips";
 import { tugDip } from "./lakeFloat";
 
 const FADE = 0.22;
+/** The lift: the rod raised to upright over this long (from just before the fish breaks the surface), then lowered from LOWER_AT_S. */
+const LIFT_UP_S = 1.3;
+const LOWER_AT_S = 2.2;
+const LOWER_S = 0.4;
 /** The rod opens in this long (design 6.1). */
 const UNFOLD_S = 0.6;
 const Y = new Vector3(0, 1, 0);
@@ -453,17 +457,24 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
       aimOn = !!rod && atSpot && seated;
       aimSpot = view.spot;
       aimWant = aimOn && view.phase === FISH_PHASE.lifting ? 1 : 0;
-      // the lift: the rod comes up high, just past upright, so the fish swings in on the full line to the angler's hand
+      // the lift (owner 2026-11-23: "마지막에 낚시대를 좀 더 높이 들어서 물고기가 물밖에서 좀 위로 올라갔다가 다시 낚시대를 내리면서
+      // 캐릭터 손에 오도록"): the rod low (20 degrees) while the fish is led in, so the line is short enough; then raised steadily
+      // to upright over the facing line (the fish lifted clearly up out of the water, hanging in front), held a beat, then lowered
+      // in a controlled arc until the tip is over the free hand by the line's length: the fish comes down and in, into the hand
       {
-        const k = view.phase === FISH_PHASE.lifting ? Math.max(0, Math.min(1, (t - (REEL_S - 0.3)) / 1.5)) : 0;
-        // (my own first-person view: raised less, ~60 degrees, so the fish swinging in stays out in front of the eye, in sight, until the
-        // hand reaches for it; the swing in under an upright rod comes in under the chin, out of the view)
-        const kk = k * k * (3 - 2 * k);
+        const sm = (x: number) => {
+          const c = Math.max(0, Math.min(1, x));
+          return c * c * (3 - 2 * c);
+        };
+        const lifting = view.phase === FISH_PHASE.lifting;
+        const up = lifting ? sm((t - (REEL_S - 0.1)) / LIFT_UP_S) : 0;
+        const down = lifting ? sm((t - LOWER_AT_S) / LOWER_S) : 0;
         aimFp = !!fpCam;
         aimCamera = fpCam;
-        // third person: from 35 degrees toward over the hand (applyAim); first person: up to 60 degrees in front of the eye
-        aimEl = aimFp ? 0.62 + (1.05 - 0.62) * kk : 0.62;
-        aimLate = aimFp ? 0 : kk;
+        // third person: up to upright, then toward over the hand (applyAim); first person (my own view): up to 75 degrees in front of
+        // the eye, then down to 55, the fish coming down in front of the view where the hand reaches for it
+        aimEl = aimFp ? 0.35 + (1.3 - 0.35) * up - (1.3 - 0.95) * down : 0.35 + (Math.PI / 2 - 0.35) * up;
+        aimLate = aimFp ? 0 : down;
       }
       if (!aimOn) aimAmt = 0;
     },

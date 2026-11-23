@@ -304,12 +304,12 @@ export function createCatchRig(sid: string): CatchRig {
       hookV.copy(swing).sub(hookPrev).multiplyScalar(1 / h);
       if (swing.y <= LAKE_WATER_Y + 1e-4) hookV.multiplyScalar(Math.max(0, 1 - 8 * h));
       // no fling (owner 2026-11-23 "정신없이"): a line snapping taut as it drags the fish off the surface must not throw it up; the
-      // fish rises no faster than a steady lift (1.5 m/s) and swings in at most 3 m/s
-      if (hookV.y > 1.5) hookV.y = 1.5;
+      // fish rises and swings in no faster than 2.2 m/s
+      if (hookV.y > 2.2) hookV.y = 2.2;
       const hs = Math.hypot(hookV.x, hookV.z);
-      if (hs > 3) {
-        hookV.x *= 3 / hs;
-        hookV.z *= 3 / hs;
+      if (hs > 2.2) {
+        hookV.x *= 2.2 / hs;
+        hookV.z *= 2.2 / hs;
       }
     }
   };
@@ -613,7 +613,8 @@ export function createCatchRig(sid: string): CatchRig {
       // (the reel-in and the lift too, owner 2026-11-22: the fight's end, the hook set and a thrash no longer snap the fish)
       const selfBlending = drawStage === "toHand" || drawStage === "drop";
       // (taken from the one-hand hold into the show: a little quicker, the fish turned side on to be seen)
-      const blendS = drawStage === "show" ? 0.3 : 0.4;
+      // (and out of the water onto the line a little slower: the fish turns from lying in the water to hanging by its mouth)
+      const blendS = drawStage === "show" ? 0.3 : drawStage === "lifted" ? 0.6 : 0.4;
       if (!selfBlending && fromStage !== "none" && stageT < blendS && !newCatchStart(view.phase)) {
         const k = stageT / blendS;
         const e = k * k * (3 - 2 * k);
