@@ -455,7 +455,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
       aimWant = aimOn && view.phase === FISH_PHASE.lifting ? 1 : 0;
       // the lift: the rod comes up high, just past upright, so the fish swings in on the full line to the angler's hand
       {
-        const k = view.phase === FISH_PHASE.lifting ? Math.max(0, Math.min(1, (t - REEL_S) / 1.0)) : 0;
+        const k = view.phase === FISH_PHASE.lifting ? Math.max(0, Math.min(1, (t - (REEL_S - 0.3)) / 1.5)) : 0;
         // (my own first-person view: raised less, ~60 degrees, so the fish swinging in stays out in front of the eye, in sight, until the
         // hand reaches for it; the swing in under an upright rod comes in under the chin, out of the view)
         const kk = k * k * (3 - 2 * k);

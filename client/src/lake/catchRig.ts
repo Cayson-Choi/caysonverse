@@ -165,6 +165,8 @@ export function createCatchRig(sid: string): CatchRig {
   // pendulum (owner 2026-11-23: "당겼을 때 낚시대의 줄이 여전히 길어야" — a pole rig has no reel: the line never shortens)
   const hookV = new Vector3();
   const hookPrev = new Vector3();
+  /** The fish's mouth on the swinging line (the simulation), kept apart from the line's drawn end while the hand takes it. */
+  const swing = new Vector3();
   const hangUp = new Vector3();
   const liveQ = new Quaternion();
   const livePos = new Vector3();
@@ -287,24 +289,35 @@ export function createCatchRig(sid: string): CatchRig {
     const steps = Math.max(1, Math.ceil(span / (1 / 120)));
     const h = span / steps;
     for (let n = 0; n < steps && h > 0; n++) {
-      hookPrev.copy(hook);
+      hookPrev.copy(swing);
       hookV.y -= 9.8 * h;
-      hookV.multiplyScalar(1 - 1.6 * h);
-      hook.addScaledVector(hookV, h);
+      // (the air and the fish's own weight: a bob up and down dies out quickly, the swing in toward the angler less so)
+      hookV.x *= 1 - 1.2 * h;
+      hookV.z *= 1 - 1.2 * h;
+      hookV.y *= 1 - 4 * h;
+      swing.addScaledVector(hookV, h);
       // still in the water: the water holds it up and drags on it until the line lifts it out
-      if (hook.y < LAKE_WATER_Y) hook.y = LAKE_WATER_Y;
-      la.copy(hook).sub(tip);
+      if (swing.y < LAKE_WATER_Y) swing.y = LAKE_WATER_Y;
+      la.copy(swing).sub(tip);
       const d = la.length();
-      if (d > liftL0) hook.copy(tip).addScaledVector(la, liftL0 / d);
-      hookV.copy(hook).sub(hookPrev).multiplyScalar(1 / h);
-      if (hook.y <= LAKE_WATER_Y + 1e-4) hookV.multiplyScalar(Math.max(0, 1 - 8 * h));
+      if (d > liftL0) swing.copy(tip).addScaledVector(la, liftL0 / d);
+      hookV.copy(swing).sub(hookPrev).multiplyScalar(1 / h);
+      if (swing.y <= LAKE_WATER_Y + 1e-4) hookV.multiplyScalar(Math.max(0, 1 - 8 * h));
+      // no fling (owner 2026-11-23 "정신없이"): a line snapping taut as it drags the fish off the surface must not throw it up; the
+      // fish rises no faster than a steady lift (1.5 m/s) and swings in at most 3 m/s
+      if (hookV.y > 1.5) hookV.y = 1.5;
+      const hs = Math.hypot(hookV.x, hookV.z);
+      if (hs > 3) {
+        hookV.x *= 3 / hs;
+        hookV.z *= 3 / hs;
+      }
     }
   };
   /** Hanging by the mouth from the line: nose up toward the tip, the body below; a little roll with its flapping. */
   const hangPose = (t: number, len: number, outPos: Vector3, outQ: Quaternion) => {
-    const up = hangUp.copy(tip).sub(hook).normalize();
+    const up = hangUp.copy(tip).sub(swing).normalize();
     lookAlong(up, Math.sin(t * 1.9) * 0.06 + Math.sin(flexPhase * 0.5) * 0.14 * Math.max(0, cs.wriggle - 0.25), outQ);
-    outPos.copy(hook).addScaledVector(up, -0.5 * len);
+    outPos.copy(swing).addScaledVector(up, -0.5 * len);
   };
 
   const hide = () => {
@@ -319,7 +332,8 @@ export function createCatchRig(sid: string): CatchRig {
   return {
     hide,
     lineLength() {
-      return hookLive && lastStage === "lifted" ? liftL0 : 0;
+      // (through the hand taking it too: the rod stays where it brought the fish, it does not drop back)
+      return hookLive && (lastStage === "lifted" || lastStage === "toHand" || lastStage === "hand") ? liftL0 : 0;
     },
     update(i) {
       const { view, t, delta } = i;
@@ -429,6 +443,7 @@ export function createCatchRig(sid: string): CatchRig {
             // from where the reel-in left the mouth (a screen that comes in late: hanging under the tip)
             if (fromStage !== "under") hook.set(tip.x, tip.y - 2.5, tip.z);
             liftL0 = Math.min(6, Math.max(1, hook.distanceTo(tip)));
+            swing.copy(hook);
             hookV.set(0, 0, 0);
             // the break: a splash the size of the fish
             if (fromStage === "under") {
@@ -437,6 +452,7 @@ export function createCatchRig(sid: string): CatchRig {
             }
           }
           stepLine(delta);
+          hook.copy(swing);
           hangPose(t, len, pos, rot);
           // first person: the eye follows the fish up out of the water and in
           if (i.fpCamera) gaze(i.fpCamera, pos, delta);
@@ -483,7 +499,7 @@ export function createCatchRig(sid: string): CatchRig {
                 const reach = Math.min(1, cs.k / 0.45);
                 const back = Math.max(0, (cs.k - 0.45) / 0.55);
                 const bk = back * back * (3 - 2 * back);
-                const gripNow = hook.clone().lerp(grip, bk);
+                const gripNow = swing.clone().lerp(grip, bk);
                 fpHands(i, gripNow, null, reach * reach * (3 - 2 * reach), camUp, fwd, at);
                 pos.copy(livePos).lerp(target, bk);
                 rot.copy(liveQ).slerp(tq, bk);
