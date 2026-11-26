@@ -78,6 +78,16 @@ Sketchfab에 **CC0로 표시된 박물관 실사 채색 스캔**이 있지만 �
 
 `buddha_build.py`는 같은 폴더의 `buddha_head.py`, `buddha_body.py`, `buddha_lap.py`, `buddha_mesh.py`로 두 LOD를 조립한다. Blender 5.3에서 `blender -b -P buddha_build.py -- <build-dir>`로 중간 GLB를 만든 뒤, `node buddha_pack.mjs <build-dir> <sacred-GLB-dir>`로 게임 파일을 만든다. 루트와 이 폴더의 `node/`에서 각각 `npm ci --allow-git=all`로 의존성을 설치한다.
 
+## 협시보살 두 갈래 합침 (2026-11-26, 소유자 "둘 합쳐서")
+
+0818c63b 합치기 때 협시보살 GLB가 불상 브랜치 것(11-20 코덱스 얼굴, `bodhi_face.py` + `node/bodhi_pack.mjs`)으로 바뀌면서, 그 파일이 만들어진 예전 바탕(2e31a933)에 없던 11-19 고침
+(1e9d9abc 발 밑 3D프린팅 촉 없애기, 9462bdd6 본존불과 같은 금박, 8cc728df 로브 색 맞춤)이 빠졌어요. 그래서 발이 둥근 막대 위에 떠 있고 몸이 진한 주황 금색이었어요.
+`node/bodhi_combine.mjs <코덱스 GLB> <out> pc|phone`이 코덱스 얼굴 파일(d9d0acc2 / 폰 c28e73ac) 위에 세 고침을 다시 얹어요.
+- 발: 원점에서 0.16 m(촉 꼭대기, 발바닥 면) 밑의 점을 그 면으로 접어 납작하게 하고, 몸 전체를 0.07 m 내려 발바닥이 연화대 방석 윗면(파일 y 0.09)에 닿아요(1e9d9abc의 floor_cut .16 / floor_lift .09와 같은 높이).
+- 몸: `bodhi_gild.mjs`와 같은 금박 — 반사 방향으로 읽는 등불 반사 차트(TEXCOORD_1, 방출 세기 2), 바탕색 계수(PC .77,.532,.116 / 폰 .92,.539,.116), ORM 거칠기 .16·금속 .98, 노멀 .7, 색조 1,.87,.55 × 1.3.
+- 얼굴: 코덱스가 칠한 눈썹·입술·눈·백호는 그대로 두고, 금색 화소(색상 14~64°, 채도 .3 이상)만 선형 채널 이득 1, 1.24, 2.3으로 로브의 금박 쪽으로 옮겼어요(바탕색과 구운 빛 둘 다).
+- 1e9d9abc의 손가락 다시 줄이기(원본 STL에서 가중 감쇄)는 코덱스 얼굴이 원래 캐스트의 삼각형 번호에 묶여 있어 옮기지 않았어요.
+
 ## 이전 제작 이력 · 2026-11-18 본존불 v2 — 직접 만든 원작 (소유자 "그냥 블렌더로 니가 입체적인 불상을 니가 만들어. 여러 부처님 불상을 찾아보고 비슷하게 만들면 되잖아")
 - **본존불(연화대 포함) = 이 프로젝트의 원작**이에요. dluo 스캔(CC BY 4.0)은 더 이상 쓰지 않아요(파일 이름·자리 `lotstatue__lot_temple_hall_buddha*.glb`는 그대로).
 - **바탕 메시 (CC0 1.0)**: Blender Studio **Human Base Meshes** 번들 v1.2 — `GEO-body_male_realistic`(멀티레스 3)과 `Foot - Realistic`.
