@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PLAYER_RADIUS } from "../constants";
 import { isBlocked, resolveCollision, type AABB } from "../collision";
-import { CAROUSEL_PAD, COASTER_PAD, DROP_PAD, DROP_SITE_AT, MOON_BOAT_PAD, MOON_BOAT_SITE_AT, PARK_PLATFORM, PARK_SOLIDS, WHEEL_PAD } from "./parkArea";
+import { CAROUSEL_PAD, COASTER_PAD, DROP_PAD, DROP_SITE_AT, MOON_BOAT_PAD, MOON_BOAT_SITE_AT, PARK_PLATFORM, PARK_SOLIDS, WHEEL_PAD, parkStreetSolids } from "./parkArea";
 import { CAROUSEL_CENTER } from "../land/carousel";
 import { WHEEL_SITE } from "../land/wheel";
 import { MOON_BOAT_SITE } from "../land/moonBoat";
@@ -77,6 +77,8 @@ const blocks: Barrier[] = [
   { name: "coaster steps from the pad", from: [COASTER_PAD.x, COASTER_PAD.z], to: [COASTER_PAD.x, PARK_PLATFORM.minZ + 1], side: (_x, z) => PARK_PLATFORM.minZ - 4.3 - z },
 ];
 
+const STREET = parkStreetSolids();
+
 describe("the rides' railings, fences, steps and signs are solid (owner 2026-11-21)", () => {
   for (const b of [...barriers, ...blocks]) {
     it(b.name, () => {
@@ -99,6 +101,10 @@ describe("the rides' railings, fences, steps and signs are solid (owner 2026-11-
       const a = (k * Math.PI) / 180;
       const from: [number, number] = [C.x + Math.sin(a) * 26, C.z - Math.cos(a) * 26];
       if (isBlocked(from[0], from[1], R, PARK_SOLIDS)) continue; // a tree or a lamp stands there
+      // (the ticket booth or a lamp post on the straight line stops the walker first: a prop that is drawn, not an invisible wall — fix/veg-off-paths)
+      let prop = false;
+      for (let d = 26; d > CAROUSEL_FENCE_R + R && !prop; d -= 0.1) prop = isBlocked(C.x + Math.sin(a) * d, C.z - Math.cos(a) * d, R, STREET);
+      if (prop) continue;
       const path = walk(from[0], from[1], C.x, C.z);
       let nearest = Infinity;
       for (const p of path) nearest = Math.min(nearest, Math.hypot(p.x - C.x, p.z - C.z));
