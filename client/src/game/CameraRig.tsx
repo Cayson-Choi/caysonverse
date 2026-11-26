@@ -460,7 +460,7 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
       pick: ScenePick | null,
       done: (plan: ClickPlan, provisional: Readonly<ClickTarget> | null) => void,
       work: HeldWork,
-      opts: { t0?: number; snap?: PerspectiveCamera | null; provisional?: boolean; onDefer?: () => void; seatsOnly?: boolean } = {},
+      opts: { t0?: number; snap?: PerspectiveCamera | null; provisional?: boolean; onDefer?: () => void } = {},
     ): void => {
       const t0 = opts.t0 ?? performance.now();
       const snap = opts.snap ?? null;
@@ -530,13 +530,6 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
           // the floor under a click on furniture lies inside its box: moved out as far as for a bench's
           furniture = map.geometry.obstacles;
         }
-      }
-      // A finger on the phone moves the avatar only with the stick (owner 2026-11-27: "이동은 조이스틱있는데서만 가능하도록"):
-      // a touch tap on the ground, a door or a ride walks nowhere and shows no ring; only a tap on a seat still walks there to sit.
-      if (opts.seatsOnly && sitOn === null) {
-        armHouseUse(null);
-        done({ ok: false, reason: "not-ground" }, null);
-        return;
       }
       // the walk that ends beside the clicked seat offers THAT one, though another may be a hair nearer (seatPreference.ts)
       setPreferredSeat(sitOn ?? -1);
@@ -726,7 +719,6 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
                   {
                     snap: tap.snap,
                     provisional: true,
-                    seatsOnly: true,
                     onDefer: () => {
                       stopWalk();
                       replanned = clickGeneration();
@@ -739,7 +731,7 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
             );
           },
           taps.work,
-          { t0, snap: tap.snap, provisional: !isUiCaptured(), seatsOnly: true },
+          { t0, snap: tap.snap, provisional: !isUiCaptured() },
         );
       }, 0);
     };
@@ -958,7 +950,6 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
             const snap = new PerspectiveCamera().copy(cam, false);
             const cx = e.clientX;
             const cy = e.clientY;
-            const touchTap = e.pointerType === "touch";
             clickWork.hold(() => {
             planClick(
               pickAt(cx, cy, snap),
@@ -980,7 +971,6 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
               {
                 t0,
                 provisional: true,
-                seatsOnly: touchTap,
                 onDefer: () => {
                   stopWalk();
                   generation = clickGeneration();

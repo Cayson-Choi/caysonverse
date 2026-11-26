@@ -1,6 +1,6 @@
 /**
- * e2e/stick-only.mjs — 폰에서 이동은 조이스틱으로만 (주인님 11-27). 바닥 탭(오른쪽 반, 왼쪽 아래 조이스틱 밖)은 걷지 않고 링도 없음,
- * 조이스틱을 밀면 걸음, 조이스틱 탭은 걷지 않음.
+ * e2e/stick-only.mjs — 폰 조이스틱은 왼쪽 아래 제자리에서만 (주인님 11-27): 조이스틱 밖에서 끌어도 조이스틱이 생기지 않고 걷지 않음,
+ * 조이스틱을 밀면 걸음, 조이스틱 탭은 걷지 않음. 바닥의 한 곳을 톡 누르면 그곳으로 걸어감.
  *   node e2e/stick-only.mjs [--out=<폴더>]
  */
 import { joinVillage } from "./lib/village.mjs";
@@ -26,17 +26,19 @@ try {
     await sleep(60);
     await touchUp(p);
   };
+  // the session's first CDP tap gets no click from Chrome (village.mjs): one warm-up tap on the stick (which walks nowhere)
+  await tapAt(96, vp.height - 100);
+  await sleep(800);
   for (const [name, x, y] of [
-    ["오른쪽 바닥 탭", vp.width * 0.7, vp.height * 0.62],
     ["왼쪽 아래 조이스틱 밖 탭", vp.width * 0.42, vp.height * 0.6],
-    ["화면 가운데 탭", vp.width * 0.5, vp.height * 0.45],
+    ["오른쪽 바닥 탭", vp.width * 0.62, vp.height * 0.72],
+    ["오른쪽 바닥 탭 2", vp.width * 0.7, vp.height * 0.62],
   ]) {
     const a = await pos(p);
     await tapAt(x, y);
-    await sleep(1600);
+    await sleep(2600);
     const b = await pos(p);
-    const r = await ring();
-    check(name + ": 안 걸음", dist(a, b) < 0.05, `moved=${dist(a, b).toFixed(2)} ring=${JSON.stringify(r)}`);
+    check(name + ": 그곳으로 걸어감", dist(a, b) > 0.5, `moved=${dist(a, b).toFixed(2)}`);
   }
   const stick = await p.page.evaluate(() => {
     const r = document.querySelector(".cv-stick-zone").getBoundingClientRect();

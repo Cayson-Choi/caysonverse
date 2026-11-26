@@ -455,8 +455,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
    * Emoji reactions work in the village AND the memorial hall (owner 2026-11-20: "추모관안에서도 이모티콘을 보낼 수 있게"); a house
    * floor, the other lot rooms and the park stay as before; the café's room (owner 2026-11-20: 카페 안에서도 이모티콘) and its salon upstairs (2026-11-21) join them. Jumping stays off in the hall (`isQuiet`).
    */
-  protected override isEmojiQuiet(player: Player): boolean {
-    return player.area !== "village" && player.area !== "hall" && player.area !== CAFE_ROOM_AREA && player.area !== CAFE_UP_AREA;
+  protected override isEmojiQuiet(_player: Player): boolean {
+    return false; // owner 2026-11-27: "이모지는 어디에서든 할 수 있게" — every house floor, lot room and the park too
   }
 
   /** Seated on a bench → Move and Jump are dropped silently: getting up is an explicit Stand. */

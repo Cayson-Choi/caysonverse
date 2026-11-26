@@ -57,7 +57,8 @@ function place(el: HTMLElement, cx: number, cy: number, halfPx: number): void {
  * (stickRestPoint). Only a thumb put ON it moves the avatar (owner 2026-11-27: "이동은 조이스틱있는데서만
  * 가능하도록"): push lightly to walk, to the rim to run; lift and the knob goes back to the centre. The zone is a
  * circle just around the stick and swallows its own pointers, so a stick drag never rotates the camera; a touch
- * anywhere else on the screen is the camera's (turn, pinch) and never walks (CameraRig: touch taps move only to seats).
+ * anywhere else on the screen is the camera's (drag to turn, pinch) — and a tap there still walks to that spot (owner 11-27:
+ * "특정 지점을 찍으면 이동하는건 동작해야해"; CameraRig).
  *
  * In the overview map the stick is off: the zone turns click-through (`is-ov`) so a
  * one-finger drag pans the map as before. Turning the map on mid-drag re-runs the

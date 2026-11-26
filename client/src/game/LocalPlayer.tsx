@@ -5,7 +5,7 @@ import { MessageType, type StandRejectedPayload } from "@caysonverse/shared/mess
 import { useClickHint } from "../stores/clickHintStore";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useAnimations, useKeyboardControls } from "@react-three/drei";
-import { Group, LoopOnce, Quaternion, Vector3, type AnimationAction, type AnimationClip, type Bone, type Plane } from "three";
+import { Group, LoopOnce, Quaternion, Raycaster, Vector3, type AnimationAction, type AnimationClip, type Bone, type Plane } from "three";
 import { setPreferredSeat } from "./seatPreference";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
@@ -63,6 +63,7 @@ import {
   jumpTimeScale,
   pressJump,
   publishLocalJump,
+  setJumpRoofCheck,
   resetLocalJump,
 } from "./jump";
 import { jumpHeadroom } from "@caysonverse/shared/village/overhead";
@@ -73,7 +74,7 @@ import { cameraProbe } from "./cameraProbe";
 import { clipFor, lookFromAppearance } from "./characterLook";
 import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
-import { PICK_AS_SELF } from "./clickPick";
+import { PICK_AS_SELF, pickSurface } from "./clickPick";
 import { SELF_FADE_OPACITY } from "./clickRing";
 import { createSelfFade, endSelfFade, indoorCloseHidden, registerSelfBody, selfBody, stepSelfFade } from "./selfBody";
 import { createNametag } from "./nametag";
@@ -690,6 +691,34 @@ export function LocalPlayer({
   // True first person (fpBody.ts): the own body stays drawn from the neck down, its head shrunk for the drawing and the eye at
   // the head's eyes. The scene's render hook does both after every frame callback; the head bone and what to keep are set here.
   const scene = useThree((s) => s.scene);
+  /** A roof this close over the head (m) is a low one: no jump under it (the bus shelter's is 1.1 m over a bare head). */
+  const ROOF_REACH_M = 1.6;
+  /** Meshes that are a tree's or a plant's, not a roof (looked past by the roof check). */
+  const FOLIAGE = /tree|leaf|leaves|foliage|blossom|canopy_tree|crown|branch|pine|cherry|veg|plant|flower|bush|hedge|shrub|ivy|vine/i;
+  // A low roof over the head: no jump (jump.ts pressJump). The known ceilings (overhead.ts: rooms, the hall, the bus shelter) and
+  // whatever is drawn just above the head (a porch roof, an awning, a gazebo): one upward ray from the top of the head.
+  useEffect(() => {
+    const ray = new Raycaster();
+    const up = new Vector3(0, 1, 0);
+    const from = new Vector3();
+    setJumpRoofCheck(() => {
+      if (jumpHeadroom(pose.x, pose.z, localArea(), avatar.topY) < ROOF_REACH_M) return true;
+      // a roof drawn over the head (a porch, an awning, a pavilion); a tree's leaves and branches are no roof: looked past
+      let y = stepLiftRef.current.v + avatar.topY + 0.02;
+      const top = y + ROOF_REACH_M;
+      for (let k = 0; k < 6 && y < top; k++) {
+        ray.set(from.set(pose.x, y, pose.z), up);
+        ray.near = 0;
+        ray.far = top - y;
+        const hit = pickSurface(ray, scene, { skipBlockers: true });
+        if (!hit) return false;
+        if (!FOLIAGE.test(hit.name)) return true;
+        y = hit.y + 0.05;
+      }
+      return false;
+    });
+    return () => setJumpRoofCheck(null);
+  }, [scene, pose, avatar]);
   useEffect(() => {
     const group = groupRef.current;
     if (!group) return;

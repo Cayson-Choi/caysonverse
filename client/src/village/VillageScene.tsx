@@ -498,7 +498,7 @@ function TransitRideHud() {
           )}
           {hint ? (
             <div style={{ marginTop: 6, background: "rgba(139,92,246,0.35)", borderRadius: 8, padding: "6px 8px" }} data-testid="bus-ride-hint">
-              {touch ? "화면을 끌어서 창밖을 둘러보세요(위·아래도) · 왼쪽 아래 조이스틱으로 걸어요 · 빈 의자를 톡 누르면 가서 앉아요" : "화면을 끌어서 창밖을 둘러보세요(위·아래도) · 바닥을 누르면 걸어가요 · 빈 의자를 누르거나 가까이에서 E"}
+              {touch ? "화면을 끌어서 창밖을 둘러보세요(위·아래도) · 바닥을 톡 누르면 걸어가요 · 빈 의자를 톡 누르면 가서 앉아요" : "화면을 끌어서 창밖을 둘러보세요(위·아래도) · 바닥을 누르면 걸어가요 · 빈 의자를 누르거나 가까이에서 E"}
             </div>
           ) : touch ? null : (
             <div style={{ marginTop: 5, opacity: 0.7 }}>화면을 끌면 둘러볼 수 있어요 · 바닥을 누르면 걸어가요 · 의자를 누르거나 가까이에서 E</div>
