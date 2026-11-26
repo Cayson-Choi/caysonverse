@@ -4,6 +4,7 @@ import { useAppStore } from "../stores/appStore";
 import { isTouchDevice } from "../device";
 import { ENTRY_ART, entryArtFor } from "./stageLayout";
 import { currentStep, loadActivity, loadPercent, loadSteps, villageLoad } from "./villageLoad";
+import { entryFigureImage } from "./entryFigure";
 import "./loader.css";
 
 /** 기다리는 동안 돌아가며 보이는 한 줄 도움말(PC / 폰). */
@@ -63,6 +64,7 @@ export function VillageLoader() {
   const pct = loadPercent(s);
   const step = currentStep(s);
   const t = LOADER_TIPS[tip % LOADER_TIPS.length]!;
+  const figure = entryFigureImage();
   return (
     <div
       className={"cv-loader" + (s.closing ? " is-closing" : "")}
@@ -81,6 +83,8 @@ export function VillageLoader() {
         <img src={art.webp} alt="" draggable={false} />
       </picture>
       <div className="cv-loader-shade" aria-hidden="true" />
+      <div className="cv-loader-col">
+      {figure && <img className="cv-loader-figure" src={figure} alt="" aria-hidden="true" draggable={false} data-testid="loader-figure" />}
       <div className="cv-loader-card">
         <img className="cv-loader-logo" src="/brand/cayson-logo-white.png" alt="Cayson" height={26} />
         <p className="cv-loader-title">케이슨 마을로 가는 중</p>
@@ -104,6 +108,7 @@ export function VillageLoader() {
         <p className="cv-loader-tip" key={tip}>
           💡 {isTouchDevice ? t.touch : t.pc}
         </p>
+      </div>
       </div>
     </div>
   );

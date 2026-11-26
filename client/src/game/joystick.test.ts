@@ -323,3 +323,18 @@ describe("isStickTap (a quick tap passes through to click-move)", () => {
     expect(isStickTap(0, 0, 900)).toBe(false);
   });
 });
+
+describe("stickDownAt (fixed stick, owner 2026-11-27)", () => {
+  it("takes a press only on the stick, and reads from the stick's centre", async () => {
+    const { createStickState, stickDownAt, stickMove } = await import("./joystick");
+    const s = createStickState();
+    expect(stickDownAt(s, 1, 300, 300, 96, 712, 84)).toBe(false);
+    expect(s.pointerId).toBe(null);
+    expect(stickDownAt(s, 2, 96 + 40, 712, 96, 712, 84)).toBe(true);
+    expect(s.ox).toBe(96);
+    expect(s.oy).toBe(712);
+    const m = stickMove(s, 2, 96 + 40, 712)!;
+    expect(m.right).toBeGreaterThan(0);
+    expect(stickDownAt(s, 3, 96, 712, 96, 712, 84)).toBe(false); // a second finger
+  });
+});

@@ -32,6 +32,31 @@
 .cv-loader-shade {
   background: linear-gradient(to bottom, rgba(11, 11, 20, 0) 35%, rgba(11, 11, 20, 0.55) 70%, rgba(11, 11, 20, 0.85));
 }
+.cv-loader-col {
+  position: relative;
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+/* The player's figure (entryFigure.ts), standing above the card: a transparent picture of the builder's preview. */
+.cv-loader-figure {
+  display: block;
+  width: 100%;
+  height: min(38vh, 340px);
+  object-fit: contain;
+  margin-bottom: -8px;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.45));
+  animation: cv-loader-figure-in 400ms ease-out;
+  pointer-events: none;
+}
+@keyframes cv-loader-figure-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cv-loader-figure { animation: none; }
+}
 .cv-loader-card {
   position: relative;
   width: min(420px, 100%);

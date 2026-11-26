@@ -1,4 +1,5 @@
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
+import { villageLoad } from "../ui/villageLoad";
 import { PARK_PLAZA } from "@caysonverse/shared/village/parkArea";
 import { useSoundStore } from "../stores/soundStore";
 import { resumeVillageAudio, villageAudioContext } from "./villageAudio";
@@ -37,7 +38,7 @@ import {
 /** The audible range (m) from the basin's centre. */
 export const FOUNTAIN_RANGE_M = 25;
 /** The level at the rim (0..1 of the context's output; the BGM plays around 0.35, the falls at 0.2). */
-export const FOUNTAIN_PEAK = 0.52;
+export const FOUNTAIN_PEAK = 0.3; // owner 11-27 "분수 물소리가 너무 크게": 0.52 → 0.3
 /** Seconds a silent state lasts before the nodes are stopped. */
 export const FOUNTAIN_IDLE_STOP_S = 3;
 const GLIDE_S = 0.3;
@@ -241,7 +242,8 @@ export function createFountainAudio(site: FountainSite): FountainAudio {
       const dt = Math.min(1, Math.max(0, (now - last) / 1000));
       last = now;
       const hidden = typeof document !== "undefined" && document.visibilityState === "hidden";
-      const allowed = soundAllowed(useSoundStore.getState().muted, false, hidden);
+      // silent under the "케이슨 마을로 가는 중" screen (owner 11-27: the water was heard for a moment while entering)
+      const allowed = soundAllowed(useSoundStore.getState().muted, false, hidden) && !villageLoad.get().open;
       const level = allowed ? fountainLevel(distanceM, site.rim) : 0;
       target = FOUNTAIN_PEAK * level;
       const ctx = villageAudioContext();

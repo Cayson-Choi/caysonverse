@@ -18,6 +18,7 @@ import { saveIdentity, loadIdentity } from "../net/identityCache";
 import { useAppStore } from "../stores/appStore";
 import { beginVillageEntry, preloadVillageAfterCharacter } from "../village/villagePreload";
 import { villageLoad } from "./villageLoad";
+import { captureEntryFigure } from "./entryFigure";
 import "./entry.css";
 import "./builder.css";
 
@@ -231,6 +232,7 @@ export function EntryScreen() {
     clearNotice();
 
     setSubmitting(true);
+    captureEntryFigure(); // the figure as it stands, for the loading screen
     beginVillageEntry(); // the loading screen (마을 → 캐릭터 → 접속) from this press until the village is seen
     const failed = await joinTheVillage(result.value);
     if (failed !== null) {

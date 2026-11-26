@@ -6,7 +6,8 @@
  * "앉기" button offered (48 px or more); pressing that button sits on that very seat; the button again stands up.
  *   - the plaza (a backed bench), the café terrace (a marked chair), a house's porch bench, the lake (a fishing chair, a shore
  *     bench, a picnic board), the memorial hall (an armchair, a sofa, a letter chair, a backless bench);
- *   - a click on the open ground still just walks there.
+ *   - a click on the open ground still just walks there on a PC; on a phone a tap on the ground walks nowhere (owner 2026-11-27:
+ *     "이동은 조이스틱있는데서만") — only a seat tap walks.
  * (The houses' interiors are closed on release: VillageKeypad HOUSE_INTERIORS_OPEN false. The bus's seats are sat on with the
  * button only — no tap on a seat sits there: e2e/village-bus-cabin.mjs.)
  *
@@ -174,7 +175,7 @@ await run.step("join", async () => {
 const seats = await p.page.evaluate(async () => (await window.__imp("/village/benchSeats.ts")).VILLAGE_SEATS.map((s, i) => ({ ...s, i })));
 const byId = (id) => seats.find((s) => s.id === id);
 
-await run.step("the open ground still walks", async () => {
+await run.step(phone ? "a ground tap walks nowhere (phone)" : "the open ground still walks", async () => {
   const at = await pos(p);
   const goal = { x: at.x - 2, z: at.z + 2 };
   await turnCameraTo(p, goal.x, goal.z);
@@ -183,7 +184,9 @@ await run.step("the open ground still walks", async () => {
   await sleep(400);
   await waitIdle(p, 15000);
   const after = await pos(p);
-  run.check("a click on the ground walks there (no seat)", Math.hypot(after.x - at.x, after.z - at.z) > 1 && after.seatIndex === -1, { from: at, to: after });
+  const moved = Math.hypot(after.x - at.x, after.z - at.z);
+  if (phone) run.check("a tap on the ground does not walk (stick only)", moved < 0.05 && after.seatIndex === -1, { from: at, to: after });
+  else run.check("a click on the ground walks there (no seat)", moved > 1 && after.seatIndex === -1, { from: at, to: after });
 });
 
 for (const id of VILLAGE_IDS) {
