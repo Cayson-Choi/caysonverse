@@ -4,7 +4,9 @@ import { useAppStore } from "../stores/appStore";
 import { isTouchDevice } from "../device";
 import { ENTRY_ART, entryArtFor } from "./stageLayout";
 import { currentStep, loadActivity, loadPercent, loadSteps, villageLoad } from "./villageLoad";
-import { entryFigureImage } from "./entryFigure";
+import { entrySnapshot } from "./entryFigure";
+import { MOTES } from "./EntryScreen";
+import type { CSSProperties } from "react";
 import "./loader.css";
 
 /** 기다리는 동안 돌아가며 보이는 한 줄 도움말(PC / 폰). */
@@ -64,10 +66,11 @@ export function VillageLoader() {
   const pct = loadPercent(s);
   const step = currentStep(s);
   const t = LOADER_TIPS[tip % LOADER_TIPS.length]!;
-  const figure = entryFigureImage();
+  const snap = entrySnapshot();
+  const snapArt = snap ? (ENTRY_ART[snap.art as keyof typeof ENTRY_ART] ?? art) : art;
   return (
     <div
-      className={"cv-loader" + (s.closing ? " is-closing" : "")}
+      className={"cv-loader" + (s.closing ? " is-closing" : "") + (snap && snap.className.split(" ").includes("is-wide") ? " is-wide-stage" : "")}
       data-testid="village-loader"
       data-open="1"
       data-step={step}
@@ -78,13 +81,48 @@ export function VillageLoader() {
       aria-valuenow={pct}
       aria-label="케이슨 마을로 가는 중"
     >
-      <picture className="cv-loader-art" aria-hidden="true">
-        <source type="image/avif" srcSet={art.avif} />
-        <img src={art.webp} alt="" draggable={false} />
-      </picture>
-      <div className="cv-loader-shade" aria-hidden="true" />
-      <div className="cv-loader-col">
-      {figure && <img className="cv-loader-figure" src={figure} alt="" aria-hidden="true" draggable={false} data-testid="loader-figure" />}
+      {snap ? (
+        // the entry screen's own stage, as it stood at the press: the same art at the same box, the podium's light, the motes,
+        // and the figure where it stood (owner 2026-11-27: "캐릭터 고르기 화면과 동일해야")
+        <>
+          <div className={snap.className + " cv-loader-entry"} style={snap.vars as CSSProperties} aria-hidden="true">
+            <div className="cv-entry-bg">
+              <div className="cv-entry-lqip" style={{ backgroundImage: `url(${snapArt.lqip})` }} />
+              <picture>
+                <source type="image/avif" srcSet={snapArt.avif} />
+                <img className="cv-entry-art" src={snapArt.webp} alt="" draggable={false} />
+              </picture>
+              <div className="cv-stage-spot" />
+              <div className="cv-stage-glow" />
+              <div className="cv-motes">
+                {MOTES.map(([x, y, size, loop, ahead], i) => (
+                  <span
+                    key={i}
+                    style={{ left: `${x}%`, top: `${y}%`, width: size, height: size, animationDuration: `${loop}s`, animationDelay: `-${ahead}s` }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <img
+            className="cv-loader-figure"
+            src={snap.image}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+            data-testid="loader-figure"
+            style={{ left: snap.rect.x, top: snap.rect.y, width: snap.rect.w, height: snap.rect.h }}
+          />
+        </>
+      ) : (
+        <>
+          <picture className="cv-loader-art" aria-hidden="true">
+            <source type="image/avif" srcSet={art.avif} />
+            <img src={art.webp} alt="" draggable={false} />
+          </picture>
+          <div className="cv-loader-shade" aria-hidden="true" />
+        </>
+      )}
       <div className="cv-loader-card">
         <img className="cv-loader-logo" src="/brand/cayson-logo-white.png" alt="Cayson" height={26} />
         <p className="cv-loader-title">케이슨 마을로 가는 중</p>
@@ -108,7 +146,6 @@ export function VillageLoader() {
         <p className="cv-loader-tip" key={tip}>
           💡 {isTouchDevice ? t.touch : t.pc}
         </p>
-      </div>
       </div>
     </div>
   );

@@ -20,11 +20,19 @@ try {
   await p.page.waitForFunction(() => !document.querySelector(".cv-builder-hint.is-loading"), null, { timeout: 60000 });
   await sleep(800);
   await p.page.locator("input.cv-input").first().fill(`그림${Math.floor(Math.random() * 900 + 100)}`);
+  await sleep(600);
+  if (out) await p.page.screenshot({ path: `${out}/entry-${phone ? "phone" : "pc"}.png` });
+  const before = await p.page.evaluate(() => {
+    const r = document.querySelector(".cv-builder-stage canvas").getBoundingClientRect();
+    const a = document.querySelector(".cv-entry-art").getBoundingClientRect();
+    return { fig: [r.left, r.top, r.width, r.height].map(Math.round), art: [a.left, a.top, a.width, a.height].map(Math.round) };
+  });
   await press(p, p.page.locator(".cv-submit"));
   // sample the loader while it is up: figure present + fountain target 0
   let sawFigure = null;
   let maxFountain = 0;
   let shot = false;
+  let place = null;
   for (let i = 0; i < 400; i++) {
     const s = await p.page.evaluate(() => {
       const img = document.querySelector('[data-testid="loader-figure"]');
@@ -32,13 +40,14 @@ try {
       return {
         open,
         fig: img ? { w: img.naturalWidth, h: img.naturalHeight, len: img.src.length } : null,
+        place: img ? (() => { const r = img.getBoundingClientRect(); const a = document.querySelector(".cv-loader-entry .cv-entry-art")?.getBoundingClientRect(); return { fig: [r.left, r.top, r.width, r.height].map(Math.round), art: a ? [a.left, a.top, a.width, a.height].map(Math.round) : null }; })() : null,
         f: window.__cvSfx?.fountainTarget?.() ?? 0,
       };
     });
     if (!s.open && i > 3) break;
     if (s.open) {
       maxFountain = Math.max(maxFountain, s.f);
-      if (s.fig) sawFigure = s.fig;
+      if (s.fig) { sawFigure = s.fig; place = s.place; }
       if (!shot && s.fig && out) {
         await sleep(400);
         await p.page.screenshot({ path: `${out}/loader-${phone ? "phone" : "pc"}.png` });
@@ -48,6 +57,7 @@ try {
     await sleep(100);
   }
   check("가는 중 화면에 캐릭터", !!sawFigure && sawFigure.len > 5000, JSON.stringify(sawFigure));
+  check("캐릭터·그림이 고르기 화면과 같은 자리", !!place && JSON.stringify(place.fig) === JSON.stringify(before.fig) && JSON.stringify(place.art) === JSON.stringify(before.art), JSON.stringify({ before, place }));
   check("가는 중 화면에 분수 소리 없음", maxFountain === 0, `max=${maxFountain}`);
 } catch (e) {
   console.log("ERROR", e);

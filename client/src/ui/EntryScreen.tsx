@@ -90,7 +90,7 @@ function layoutStyle(L: StageLayout, height: number): CSSProperties {
 const PARALLAX_STEPS = 40;
 const PARALLAX_VALUES = Array.from({ length: PARALLAX_STEPS + 1 }, (_, i) => String(i / PARALLAX_STEPS - 0.5));
 /** 빛 알갱이 8개: 왼쪽·위(%), 크기(px), 한 번 오르는 시간(s), 미리 지난 시간(s — 처음부터 흩어져 보이게). */
-const MOTES = [
+export const MOTES = [
   [37, 30, 9, 9, 0],
   [61, 22, 7, 12, 4],
   [43, 55, 6, 10, 7],
