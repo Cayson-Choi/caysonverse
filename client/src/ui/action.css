@@ -25,7 +25,7 @@
 .cv-action-btn {
   position: fixed;
   right: 16px;
-  bottom: calc(24px + var(--cv-pc-emoji-h, 40px) + 8px);
+  bottom: calc(var(--cv-pc-bottom, 16px) + var(--cv-pc-emoji-h, 48px) + 8px);
   z-index: 25;
   display: flex;
   align-items: center;
@@ -117,8 +117,9 @@
   letter-spacing: -0.02em;
 }
 
-/* Jump button (touch only — JumpButton.tsx). A 72 px round thumb target at the
-   bottom-right edge, the biggest button on screen. Never takes focus. z-index 25 like the
+/* Jump button (touch only — JumpButton.tsx). A 56 px round button at the bottom-right
+   edge, icon only, the same size and dark glass as the emoji and 💬 buttons beside it:
+   jumping is rarely needed, so it must not be the loudest thing on screen (owner 11-26). Never takes focus. z-index 25 like the
    action button: it beats the stick zone (10) and the HUD (20+), so a press is its own and
    nothing leaks through to the canvas as a camera drag. Size and place: inline style. */
 .cv-jump-btn {
@@ -131,9 +132,9 @@
   gap: 0;
   padding: 0;
   font: inherit;
-  color: #f2eeff;
-  background: rgba(86, 64, 160, 0.82);
-  border: 2px solid rgba(190, 172, 255, 0.7);
+  color: rgba(242, 238, 255, 0.9);
+  background: rgba(18, 14, 36, 0.72);
+  border: 1px solid rgba(150, 130, 220, 0.35);
   border-radius: 50%;
   backdrop-filter: blur(6px);
   cursor: pointer;
@@ -151,8 +152,8 @@
 }
 
 .cv-jump-icon {
-  width: 30px;
-  height: 30px;
+  width: 22px;
+  height: 22px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2.4;

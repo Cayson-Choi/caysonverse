@@ -6,26 +6,29 @@
 /* Height of the PC row, so the action pill (action.css) and the 조교 panel (npc.css) stack
    above it whatever it is. A narrow window folds the row into 3 × 2. */
 :root {
-  --cv-pc-emoji-h: 40px;
+  --cv-pc-emoji-h: 48px;
+  /* The PC bottom row (chat log toggle, chat bar, emoji row) sits this far from the bottom edge —
+     16 px, the same as the top row from the top (owner 11-26: one line, one size). */
+  --cv-pc-bottom: 16px;
 }
 
 .cv-emoji-palette {
   position: fixed;
   right: 16px;
-  bottom: 24px;
+  bottom: var(--cv-pc-bottom);
   z-index: 20;
   display: flex;
   gap: 8px;
 }
 
 .cv-emoji-btn {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  font-size: 20px;
+  font-size: 22px;
   line-height: 1;
   color: #f2eeff;
   background: rgba(18, 14, 36, 0.72);
@@ -48,14 +51,14 @@
 }
 
 /* A window under ~900 px would run the row under the centred chat bar: fold it into 3 × 2
-   (3 × 40 + 2 × 8 = 136 px wide). */
+   (3 × 48 + 2 × 8 = 160 px wide). */
 @media (max-width: 900px) {
   :root {
-    --cv-pc-emoji-h: 88px;
+    --cv-pc-emoji-h: 104px;
   }
   .cv-emoji-palette {
     flex-wrap: wrap;
-    width: 136px;
+    width: 160px;
   }
 }
 

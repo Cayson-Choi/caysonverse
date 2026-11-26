@@ -34,8 +34,8 @@
 }
 
 /* The stick art: a zero-size fixed anchor at the viewport origin; base and knob
-   are placed in viewport pixels by translate(). Shown only while a thumb is down
-   (classList, not React state). */
+   are placed in viewport pixels by translate(). Bright while a thumb is down
+   (is-active), faint at its rest point otherwise (is-rest) — classList, not React state. */
 .cv-stick {
   position: fixed;
   left: 0;
@@ -49,6 +49,21 @@
 
 .cv-stick.is-active {
   visibility: visible;
+}
+
+/* No thumb down: the stick rests in the lower-left corner, faint, so it is always there
+   to find (owner 11-26). Hidden while the chat keyboard, chat log or emoji fan covers the
+   bottom of the screen. */
+.cv-stick.is-rest {
+  visibility: visible;
+}
+.cv-stick.is-rest:not(.is-active) {
+  opacity: 0.75;
+}
+.cv-touch.cv-chat-focus .cv-stick:not(.is-active),
+.cv-touch.cv-log-open .cv-stick:not(.is-active),
+.cv-fan-open .cv-stick:not(.is-active) {
+  visibility: hidden;
 }
 
 .cv-stick-base,

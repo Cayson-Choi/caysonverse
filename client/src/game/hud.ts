@@ -116,7 +116,11 @@ export interface SafeInsets {
 }
 
 /** Base sizes (px at 보통). Each goes through buttonPx: x scale, never under 48. */
-export const HUD_BASE = { top: 48, jump: 72, action: 60, emoji: 56, chat: 56 } as const;
+/**
+ * Jump, action, emoji and 💬 are one size (owner 11-26 "사이즈도 맞춰서"): the bottom-right cluster is a tidy
+ * grid of equal circles instead of a big jump with smaller buttons round it.
+ */
+export const HUD_BASE = { top: 48, jump: 56, action: 56, emoji: 56, chat: 56 } as const;
 /** Jump button's distance from the bottom and side edges. */
 export const HUD_EDGE_PX = 16;
 /** Top row's distance from the top and side edges. */
@@ -144,6 +148,8 @@ export interface TouchHudLayout {
   /** Size (px) of the top-right buttons: the chosen button size, or less on a very narrow screen. */
   topPx: number;
   jump: Rect;
+  /** Same as `jump` (kept so callers that place things round the jump's cell read one name). */
+  jumpSlot: Rect;
   action: Rect;
   /** The emoji button that opens the fan. */
   emoji: Rect;
@@ -258,12 +264,17 @@ export function touchHudLayout({ vw, vh, safe, size, leftHanded }: TouchHudInput
     h: A,
     round: true,
   };
+  // Lined up on centres (owner 11-26 "버튼 줄을 맞춰"): every button on the jump's row shares the
+  // jump's centre line; on a narrow phone the cluster is a 2×2 grid — 💬 under the emoji button in
+  // the left column, the jump under the action circle in the right one.
+  const jumpCy = jump.y + J / 2;
+  const leftColCx = jump.x - HUD_ACTION_GAP_PX - Math.max(E, C) / 2;
   const emoji: Rect = narrow
-    ? { x: action.x - MIN_GAP_PX - E, y: action.y + A - E, w: E, h: E, round: true }
-    : { x: jump.x - MIN_GAP_PX - E, y: jump.y + J - E, w: E, h: E, round: true };
+    ? { x: leftColCx - E / 2, y: action.y + A / 2 - E / 2, w: E, h: E, round: true }
+    : { x: jump.x - HUD_ACTION_GAP_PX - E, y: jumpCy - E / 2, w: E, h: E, round: true };
   const chat: Rect = narrow
-    ? { x: jump.x - MIN_GAP_PX - C, y: jump.y + J - C, w: C, h: C, round: true }
-    : { x: (L + R) / 2 - C / 2, y: jump.y + J - C, w: C, h: C, round: true };
+    ? { x: leftColCx - C / 2, y: jumpCy - C / 2, w: C, h: C, round: true }
+    : { x: (L + R) / 2 - C / 2, y: jumpCy - C / 2, w: C, h: C, round: true };
 
   const topButtons: Rect[] = [];
   for (let i = 0; i < HUD_TOP_BUTTON_COUNT; i++) {
@@ -314,6 +325,7 @@ export function touchHudLayout({ vw, vh, safe, size, leftHanded }: TouchHudInput
     narrow,
     topPx: top,
     jump: jumpF,
+    jumpSlot: m(jump),
     action: actionF,
     emoji: emojiF,
     chat: chatF,

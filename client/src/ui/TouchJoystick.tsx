@@ -31,6 +31,21 @@ interface TouchJoystickProps {
 /** Half of the knob's CSS size (48px) — centres it on the thumb. */
 const KNOB_HALF_PX = 24;
 
+/**
+ * Where the stick rests while no thumb is on it: always drawn there, faint, so a first-time
+ * player sees at once that the lower-left corner moves the avatar (owner 11-26: "조이스틱이
+ * 왼쪽 하단에 항상 표시"). Mirrored for left-handers. Inside the stick zone on any screen.
+ */
+export function stickRestPoint(vw: number, vh: number, leftHanded: boolean): { x: number; y: number } {
+  const x = STICK_REST_SIDE_PX + STICK_RADIUS_PX;
+  const y = vh - STICK_REST_BOTTOM_PX - STICK_RADIUS_PX;
+  return { x: leftHanded ? vw - x : x, y: Math.max(y, vh / 2 + STICK_RADIUS_PX) };
+}
+/** Rest stick: base's distance from the side edge (clear of the OS back-gesture strip). */
+const STICK_REST_SIDE_PX = 40;
+/** Rest stick: base's distance from the bottom edge (clear of a phone's home bar). */
+const STICK_REST_BOTTOM_PX = 44;
+
 /** Centre `el` (a fixed div at the viewport origin) on viewport point (cx, cy). */
 function place(el: HTMLElement, cx: number, cy: number, halfPx: number): void {
   el.style.transform = `translate(${cx - halfPx}px, ${cy - halfPx}px)`;
@@ -60,9 +75,9 @@ function passTapToGround(e: PointerEvent): void {
 }
 
 /**
- * Dynamic joystick (touch devices only): put a thumb anywhere in the lower-left
- * quarter of the screen and a stick appears right there; push lightly to walk, to
- * the rim to run; lift to hide it. The zone element swallows its own pointers, so
+ * Dynamic joystick (touch devices only): a faint stick always rests in the lower-left
+ * corner (stickRestPoint); put a thumb anywhere in the lower-left quarter and the stick
+ * jumps right there; push lightly to walk, to the rim to run; lift and it goes back to rest. The zone element swallows its own pointers, so
  * a stick drag never reaches the canvas and never rotates the camera — except a
  * quick tap, which is passed on as a click-move tap (see passTapToGround).
  *
@@ -106,14 +121,29 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
       moveInput.right = 0;
       moveInput.run = false;
     };
+    // No thumb down: the stick sits at its rest point, faint (is-rest).
+    const rest = () => {
+      const p = stickRestPoint(window.innerWidth, window.innerHeight, leftHanded);
+      place(base, p.x, p.y, STICK_RADIUS_PX);
+      place(knob, p.x, p.y, KNOB_HALF_PX);
+    };
     const hide = () => {
       stick.classList.remove("is-active");
       knob.classList.remove("is-run");
+      rest();
     };
     // Overview: the zone is click-through, so there is nothing to listen for. The menu
     // covers the zone while it is open, so no new stick can start; this also lets go
-    // of one that was already down.
-    if (isOv || menuOpen) return;
+    // of one that was already down. No rest stick either (nothing to move).
+    if (isOv || menuOpen) {
+      stick.classList.remove("is-rest");
+      return;
+    }
+    rest();
+    stick.classList.add("is-rest");
+    const onResize = () => {
+      if (state.pointerId === null) rest();
+    };
 
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
@@ -174,7 +204,9 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
     window.addEventListener("pointerup", onEnd);
     window.addEventListener("pointercancel", onEnd);
     window.addEventListener("blur", onBlur);
+    window.addEventListener("resize", onResize);
     return () => {
+      window.removeEventListener("resize", onResize);
       zone.removeEventListener("pointerdown", onDown);
       zone.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("pointermove", onMove);
@@ -185,6 +217,7 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
       // flip or the map turning on mid-drag — the avatar would keep walking.
       hide();
       clearInput();
+      stick.classList.remove("is-rest");
     };
   }, [moveInput, leftHanded, isOv, menuOpen]);
 
