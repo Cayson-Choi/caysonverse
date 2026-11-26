@@ -115,6 +115,8 @@ const B = await openPlayer(b2, run, { tag: "watcher", device: DESKTOP, settings:
 await run.step("join, into the park", async () => {
   run.check("A in the park", await enter(A, "Pb"));
   run.check("B in the park", await enter(B, "Pw"));
+  // (a body is solid to other visitors: the watcher steps off the arrival spot, mid-promenade between two rows of benches)
+  await goTo(B, 40, -165);
 });
 
 const seats = await A.page.evaluate(async () =>
