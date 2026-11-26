@@ -83,6 +83,7 @@ import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
 import { stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
+import { takePoseResend } from "./sentMoves";
 import { installDebugHook } from "./debug";
 import {
   ANIM_FADE,
@@ -194,6 +195,11 @@ function clamp(value: number, min: number, max: number): number {
 
 /** A Stand the server has not answered within this long (ms) is asked again while a move key is held; also how long a held key waits after a refused Stand (StandRejected). */
 const STAND_RETRY_MS = 1200;
+/**
+ * The longest frame (s) the body is moved for (fix/net-sync). Walking 2 m/s that is 0.5 m, running 6.4 m/s 1.6 m — well inside the
+ * server's 4.8 m budget for one Move — so a hitch of any length is never one long leap the server refuses.
+ */
+const MAX_FRAME_DT = 0.25;
 
 export function LocalPlayer({
   sessionId,
@@ -707,7 +713,11 @@ export function LocalPlayer({
   /** Seated in a 케이슨랜드 ride's seat (selfRide): the body is drawn there, in the held seated pose. */
   const onRideRef = useRef(false);
 
-  useFrame((state, delta) => {
+  useFrame((state, frameDelta) => {
+    // One frame moves the body at most MAX_FRAME_DT worth (fix/net-sync): after a long hitch (a phone compiling shaders, a tab
+    // brought back) the avatar does not leap metres in one frame — a leap the server's speed budget refuses, and one that could
+    // carry the body past a thin collider between two frames.
+    const delta = Math.min(frameDelta, MAX_FRAME_DT);
     const group = groupRef.current;
     if (!group) return;
     // the head the render hook shrank for the last frame's drawing: back as the mixer posed it, before anything reads the body
@@ -1247,8 +1257,9 @@ export function LocalPlayer({
     fishRig.update(delta, {
       seatMode: animStateRef.current === "sitDown" ? "sitting" : animStateRef.current === "sitIdle" ? "seated" : animStateRef.current === "standUp" ? "standing" : "up",
       baseSit: action(CLIP.sitIdle) ?? null,
-      // first person keeps the own body (fpBody.ts): the rod and the catch are in its own hands, as everyone else sees them
-      fpCamera: null,
+      // first person keeps the own body (fpBody.ts) and its real rod; the catch is brought into the view (owner 2026-11-23): the rod
+      // raised in front of the eye while it comes up, then held up in the hands in front of the camera (lake/catchRig.ts)
+      fpCamera: viewState.mode === "fp" ? state.camera : null,
       fpLook: { skin: look.colors.skin, top: look.colors.top },
     });
     fishRig.afterMixer(delta); // the wrist, after the mixer (the animations are ticked before this frame hook)
@@ -1388,7 +1399,11 @@ export function LocalPlayer({
 
     // Throttled network send (idle: nothing; moving: <=1 per PATCH_RATE_MS;
     // exactly one final message on stop).
-    sender.update(performance.now(), moving || shoved !== null, { x: pose.x, z: pose.z, yaw: pose.yaw });
+    const sendNow = performance.now();
+    sender.update(sendNow, moving || shoved !== null, { x: pose.x, z: pose.z, yaw: pose.yaw });
+    // The self-correction asked for my pose once more (a small gap left by a refused Move: sentMoves.ts resolveRefusal): stamped
+    // like any Move, so the echo tells it the server took it.
+    if (takePoseResend()) sendMove({ x: pose.x, z: pose.z, yaw: pose.yaw, t: Math.max(1, Math.round(sendNow)) });
   });
 
   return (

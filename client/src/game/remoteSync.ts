@@ -17,7 +17,25 @@ import { selfBusRide } from "./busRide";
 import { selfRide } from "../land/coasterRide";
 import { noteSelfBusSeat } from "../net/transitSync";
 import { createPlayout } from "./playout";
-import { createEchoWatch, healDeadline, noteEcho, selfDiverged } from "./sentMoves";
+import {
+  createEchoWatch,
+  healDeadline,
+  noteEcho,
+  noteRefusal,
+  onServerRefusal,
+  RESYNC_EPS,
+  requestPoseResend,
+  resolveRefusal,
+  selfDiverged,
+} from "./sentMoves";
+import { useClickHint } from "../stores/clickHintStore";
+
+/** The line shown when the self-correction puts me back where the server has me (fix/net-sync: never a silent jump). */
+export const RESYNC_HINT = "연결이 잠시 느려서 서버가 아는 자리로 돌아왔어요.";
+/** How often (ms) a player standing still is compared with where the server has them (two still looks before acting). */
+export const IDLE_RESYNC_MS = 1000;
+/** A snap shorter than this (m) is not worth a line (it is barely seen). */
+const RESYNC_HINT_MIN_M = 1;
 import {
   addRemote,
   clearRemotes,
@@ -88,33 +106,88 @@ export function startRemoteSync(
       // timer looks again at the deadline.
       const watch = createEchoWatch();
       let recheck: ReturnType<typeof setTimeout> | undefined;
+      const lookAgainAt = (deadline: number): void => {
+        if (recheck !== undefined) return;
+        recheck = setTimeout(
+          () => {
+            recheck = undefined;
+            correct();
+          },
+          Math.max(0, deadline - nowMs()),
+        );
+      };
+      const snapToServer = (): void => {
+        const gap = Math.hypot(selfPose.x - player.x, selfPose.z - player.z);
+        selfPose.x = player.x;
+        selfPose.z = player.z;
+        if (gap >= RESYNC_HINT_MIN_M) useClickHint.getState().show(RESYNC_HINT);
+      };
       const correct = (): void => {
         const echoed = moverClock(player);
         const verdict = noteEcho(watch, echoed, nowMs());
         if (verdict === "healing") {
-          if (recheck === undefined) {
-            recheck = setTimeout(
-              () => {
-                recheck = undefined;
-                correct();
-              },
-              Math.max(0, healDeadline(watch) - nowMs()),
-            );
-          }
+          lookAgainAt(healDeadline(watch));
           return;
         }
         if (recheck !== undefined) {
           clearTimeout(recheck);
           recheck = undefined;
         }
-        if (selfDiverged(selfPose, player, echoed, verdict === "refused")) {
+        if (verdict === "refused") {
+          // It has not taken a Move for a heal window: a small gap gets my pose sent once more (taken unseen), a large one — or a
+          // resent pose refused too — puts me where the server has me, with a short line (fix/net-sync).
+          const action = resolveRefusal(watch, selfPose, player, nowMs());
+          if (action === "resend") {
+            requestPoseResend();
+            lookAgainAt(healDeadline(watch));
+          } else if (action === "snap") snapToServer();
+          return;
+        }
+        if (selfDiverged(selfPose, player, echoed)) {
           selfPose.x = player.x;
           selfPose.z = player.z;
         }
       };
       const offCorrect = $(player).onChange(correct);
+      // The server's own word that it refused a Move or a press (net/serverRefusals.ts): a refusal that changes no synced field
+      // (the echo was 0 already) is seen too, and judged like any other at the end of its heal window.
+      const offRefused = onServerRefusal(() => {
+        noteRefusal(watch, moverClock(player), nowMs());
+        correct();
+      });
+      // Standing still with the server somewhere else (fix/net-sync, the phone e2e: the last Moves of a walk were lost on the way, so
+      // the server neither took nor refused them, and nothing ever came to correct): still for 2-3 looks of IDLE_RESYNC_MS, my pose is sent
+      // once more — the server takes it (the gap closes) or refuses it (its notice, then the usual heal window) — and if a gap is still
+      // there at the next look, I am put where the server has me. Held places (a bench, the bus, a ride) are the server's: left alone.
+      let stillX = Number.NaN;
+      let stillZ = Number.NaN;
+      let stillLooks = 0;
+      let idleResent = false;
+      const idleTimer = setInterval(() => {
+        const still = Math.hypot(selfPose.x - stillX, selfPose.z - stillZ) < 0.01;
+        stillX = selfPose.x;
+        stillZ = selfPose.z;
+        const held = selfSeat.index >= 0 || selfBusRide.slot >= 0 || selfRide.slot >= 0;
+        const gap = Math.hypot(selfPose.x - player.x, selfPose.z - player.z);
+        if (!still || held || !Number.isNaN(watch.refusedAt) || gap <= RESYNC_EPS) {
+          stillLooks = 0;
+          if (gap <= RESYNC_EPS || !still) idleResent = false;
+          return;
+        }
+        if (++stillLooks < 2) return;
+        stillLooks = 0;
+        if (!idleResent) {
+          idleResent = true;
+          requestPoseResend();
+        } else {
+          idleResent = false;
+          snapToServer();
+        }
+      }, IDLE_RESYNC_MS);
       const off = (): void => {
         offCorrect();
+        offRefused();
+        clearInterval(idleTimer);
         if (recheck !== undefined) clearTimeout(recheck);
         recheck = undefined;
       };

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { serverRefused } from "../game/sentMoves";
 import { VillageServerMsg, type KeypadResultPayload } from "@caysonverse/shared/village/messages";
 import { houseNumberOf } from "@caysonverse/shared/village/houseAreas";
 import { getRoom, sendKeypad } from "../net/connection";
@@ -57,6 +58,8 @@ export function VillageKeypad() {
         return;
       }
       setCode("");
+      // the server has me away from the door (fix/net-sync): the self-correction brings my position back in step
+      if (result.reason === "too_far") serverRefused();
       if (result.reason === "wrong_code" || result.reason === "rate_limited") setShake((s) => s + 1);
       if (result.reason === "locked_out") {
         setNow(Date.now());

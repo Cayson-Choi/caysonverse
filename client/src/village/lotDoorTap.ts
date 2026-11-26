@@ -1,5 +1,6 @@
 import { LOT_ROOMS, lotDoorPoint, lotRoomDoor, lotRoomOf, lotRoomStair } from "@caysonverse/shared/village/villageLots";
 import { HOUSE_STAIR_DOWN_TARGET_ID, HOUSE_STAIR_UP_TARGET_ID } from "@caysonverse/shared/village/houseTargets";
+import { CAFE_STAIR } from "@caysonverse/shared/village/cafeRoom";
 import { LOT_ENTER_TARGET_PREFIX, LOT_EXIT_TARGET_PREFIX } from "./lots/lotTargets";
 
 /**
@@ -34,6 +35,36 @@ const FLAT_MIN_NY = 0.8;
  * where its button is offered (owner 2026-11-21: nobody is taken inside by a tap made from across the square).
  */
 export const DOOR_TAP_USE_RANGE_M = 12;
+
+/** The house stairs' tap bands (houseTap.ts HOUSE_TAP_STAIR_*; not imported: houseTap imports this file): margin past the footprint, and how high over the walking surface (the rail and a little more). */
+const STAIR_TAP_MARGIN = 0.2;
+const STAIR_TAP_ABOVE = 1.1;
+/** A pick lower than this (m) is the floor round the stair, never the stair (its first tread stands 0.23 m). */
+const STAIR_TAP_MIN_Y = 0.1;
+
+/**
+ * The height (m above the café's floor) of the café stair's walking surface at ROOM-frame (rx, rz) (cafeRoom.ts CAFE_STAIR): flight A
+ * rises along the side wall from the foot to the landing (half the storey), the landing across the back, flight B rises back toward the
+ * front to the salon's floor. Between the flights' x ranges the higher flight is taken.
+ */
+export function cafeStairSurfaceY(rx: number, rz: number): number {
+  const S = CAFE_STAIR;
+  const half = S.storey / 2;
+  if (rz >= S.landing) return half;
+  const along = Math.min(1, Math.max(0, (rz - S.foot) / (S.landing - S.foot)));
+  const inA = rx <= (S.flightA.x1 + S.flightB.x0) / 2;
+  return inA ? along * half : half + (1 - along) * half;
+}
+
+/**
+ * Whether a pick at ROOM-frame (rx, rz) and height y is on the café stair: up to its rail over the walking surface there. Anything lower
+ * within the footprint is the stair's own body — a step's riser, a stringer, the panelled side under flight B, the landing's underside —
+ * so, unlike a house's single flight (houseTap.ts), there is no lower band: the walls behind the flights only stand ABOVE the rail
+ * (the steps hide them below it), and that is what a tap must not take for the stair.
+ */
+export function onCafeStairSurface(rx: number, y: number, rz: number): boolean {
+  return y <= cafeStairSurfaceY(rx, rz) + STAIR_TAP_ABOVE;
+}
 
 /** Whether a picked point at height `y` whose face's normal has the y component `ny` is a flat thing by the door, not its leaf. */
 export function doorTapOnFlat(y: number, ny: number | undefined): boolean {
@@ -87,6 +118,22 @@ function rayThroughOpening(ray: TapRayLike | null | undefined, distance: number,
 export function lotDoorTapTarget(area: string, x: number, y: number, z: number, ray?: TapRayLike | null, distance = 0, ny?: number): LotDoorTap | null {
   // nothing picked (the click went through a glass leaf and out of the area: a NaN point): the ray alone decides (rayThroughOpening)
   const picked = Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z);
+  const stairRoom = area === "village" ? null : lotRoomOf(area);
+  // a building's own stair (the café's): a tap on its steps, rail or the stairwell's balustrade walks to its pad (the houses' stair tap)
+  // (before the doors' rules below: a step's tread and the balustrade's top rail are flat faces under a metre, which a door tap must not
+  // take for its leaf, but they are the stair; only the floor itself is not — 2026-11-22, the salon's rail tap did nothing)
+  const st = stairRoom ? lotRoomStair(stairRoom) : null;
+  if (st && picked && y >= STAIR_TAP_MIN_Y) {
+    const f = st.footprint;
+    const m = STAIR_TAP_MARGIN;
+    // up (the café's own floor): the stair's body up to its rail where the tap lands (onCafeStairSurface) — not the side / kitchen wall
+    // behind the flights nor the ceiling over them, which stand over the same footprint (2026-11-22: a tap on the wall behind the stair
+    // went upstairs). Down (the salon's stairwell): its balustrade, up to 1.3 m.
+    const onStair = st.dir === "up" ? onCafeStairSurface(x - stairRoom!.origin.x, y, z - stairRoom!.origin.z) : y <= 1.3;
+    if (x >= f.minX - m && x <= f.maxX + m && z >= f.minZ - m && z <= f.maxZ + m && onStair) {
+      return { id: st.dir === "up" ? HOUSE_STAIR_UP_TARGET_ID : HOUSE_STAIR_DOWN_TARGET_ID, x: st.pad.x, z: st.pad.z };
+    }
+  }
   if (picked ? y < TAP_MIN_Y_M || doorTapOnFlat(y, ny) : !ray) return null;
   if (!picked) distance = RAY_ONLY_MAX_M;
   if (area === "village") {
@@ -109,16 +156,6 @@ export function lotDoorTapTarget(area: string, x: number, y: number, z: number, 
   }
   const room = lotRoomOf(area);
   if (!room) return null;
-  // a building's own stair (the café's): a tap on its steps, rail or the stairwell's balustrade walks to its pad (the houses' stair tap)
-  const st = lotRoomStair(room);
-  if (st) {
-    const f = st.footprint;
-    const m = 0.2;
-    const top = st.dir === "up" ? room.ceiling + 0.2 : 1.3;
-    if (x >= f.minX - m && x <= f.maxX + m && z >= f.minZ - m && z <= f.maxZ + m && y <= top) {
-      return { id: st.dir === "up" ? HOUSE_STAIR_UP_TARGET_ID : HOUSE_STAIR_DOWN_TARGET_ID, x: st.pad.x, z: st.pad.z };
-    }
-  }
   if (room.spec.noExit) return null;
   const d = lotRoomDoor(room);
   // the room's frame: the door on the z = origin wall, +z into the room

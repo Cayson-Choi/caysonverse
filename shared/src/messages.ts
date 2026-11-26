@@ -4,6 +4,13 @@
 /** Identifiers for client <-> server room messages. */
 export const MessageType = {
   Move: "move",
+  /**
+   * Server -> the mover only: its Move was refused (too far for its speed budget, or into a collider), with where the server
+   * has it (`MoveRefusedPayload`). At most one per `MOVE_REFUSED_NOTICE_MS`. A refusal changes no synced field when the
+   * echoed clock was already 0 (the very first Move after a join or a door), so without this notice the client could not
+   * tell that the server had stopped following it (fix/net-sync).
+   */
+  MoveRefused: "move_refused",
   /** Client -> server: submit a chat line. Server -> all: relay a chat line. */
   Chat: "chat",
   /** Server -> one client: a personal notice that their chat line was rejected. */
@@ -97,6 +104,12 @@ export interface EmojiBroadcast {
 /** Client -> server: request to sit on seat `seatIndex` (0..SEATS.length-1). */
 export interface SitPayload {
   seatIndex: number;
+}
+
+/** Server -> the mover only: its Move was refused; where the server has the player now. */
+export interface MoveRefusedPayload {
+  x: number;
+  z: number;
 }
 
 /** Client -> server: request to stand up. Carries no data. */
@@ -198,6 +211,7 @@ export interface BusSitPayload {
 /** Payload type for each message id, keyed by MessageType. */
 export interface MessagePayloads {
   [MessageType.Move]: MovePayload;
+  [MessageType.MoveRefused]: MoveRefusedPayload;
   [MessageType.Chat]: ChatPayload;
   [MessageType.ChatRejected]: ChatRejectedPayload;
   [MessageType.Emoji]: EmojiPayload;

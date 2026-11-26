@@ -66,7 +66,13 @@ async function oneHouse(p, n, tag, data) {
           await sleep(250);
         }
       }
-      await press(p, p.page.locator(`.cv-keypad button[data-key="ok"]`));
+      const okBtn = p.page.locator(`.cv-keypad button[data-key="ok"]`);
+      if (!(await okBtn.isEnabled().catch(() => false))) {
+        // (what the pad shows when 확인 is not offered: the digits typed, a lock-out or a request still out)
+        const st = await p.page.evaluate(() => ({ dots: document.querySelector(".cv-keypad-dots")?.getAttribute("data-length"), msg: document.querySelector(".cv-keypad-result")?.textContent ?? null, digitsEnabled: !document.querySelector('.cv-keypad button[data-key="1"]')?.disabled }));
+        console.log(`      (확인 is not offered: ${JSON.stringify(st)})`);
+      }
+      await press(p, okBtn).catch(() => {});
       ok = await waitArea(p, F1, 40000);
       if (!ok) {
         const why = await p.page.evaluate(() => { const r = document.querySelector(".cv-keypad-result"); return r ? `${r.getAttribute("data-reason")} | ${r.textContent}` : "(the keypad is gone)"; });

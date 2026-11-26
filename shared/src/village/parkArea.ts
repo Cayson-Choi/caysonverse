@@ -13,6 +13,7 @@
  *
  * Seat ids: this file adds NONE to the village's seat table (docs/designs/caysonland/DESIGN.md section 2: 400+ is reserved, rides use rideSeat).
  */
+import { parkRideSolids } from "./parkRideSolids";
 import { LOT_DOOR_REACH_M, lotDoorPoint, villageLot } from "./villageLots";
 import type { AABB, CameraBox } from "../collision";
 import { shopWindows, WINDOW_BOX } from "./parkShopWindowLayout";
@@ -34,7 +35,16 @@ export const PARK_BOUNDS: Bounds = Object.freeze({ minX: -170, maxX: 380, minZ: 
 
 /** The gate arch's way-out pad and the arrival spot inside (park-local). */
 export const PARK_EXIT_PAD = Object.freeze({ x: 40, z: -181, radius: 1.8 });
-export const PARK_ARRIVAL = Object.freeze({ x: 40, z: -171, yaw: Math.PI }); // facing north is yaw PI (villageLayout FACING_NORTH)
+// Arriving, one looks INTO the park: south (+z, yaw 0), the promenade and the star plaza ahead. (It was yaw PI, north: every visitor
+// arrived staring back at the arch they had just come through - owner 2026-11-21 "반대방향을 보도록".)
+export const PARK_ARRIVAL = Object.freeze({ x: 40, z: -171, yaw: 0 });
+
+/**
+ * The gate is ONE gate with two sides: the village's gatehouse (lot_gate, world metres, its line z 94 on the avenue x -24) stands in the
+ * park's north wall at x 40, z -186.5. A village point + this offset is the same point of the gate in the park's frame (the client draws
+ * the village's gatehouse there, and the village's picture beyond the arch by the same mapping).
+ */
+export const PARK_GATE_FROM_VILLAGE = Object.freeze({ dx: 64, dz: -280.5 });
 
 /** The star plaza and its fountain. */
 export const PARK_PLAZA = Object.freeze({ x: 40, z: -112, radius: 26, fountainHalf: 4 });
@@ -190,8 +200,7 @@ export const PARK_KIOSK = Object.freeze({ x: 55, z: -177, w: 4.2, d: 3.4 });
 export const PARK_PLANTERS: readonly { x: number; z: number; w: number; d: number }[] = Object.freeze([
   { x: 33.5, z: -137, w: 3, d: 1.6 },
   { x: 46.5, z: -137, w: 3, d: 1.6 },
-  { x: 33.5, z: -182, w: 3, d: 1.6 },
-  { x: 46.5, z: -182, w: 3, d: 1.6 },
+  // (the two that flanked the old arch at z -182 went: the gatehouse's own turnstile canopy and planters stand there now)
   // flower beds flanking the station apron (where the queue hall stood)
   { x: -8.5, z: -20, w: 3, d: 1.6 },
   { x: 12.5, z: -20, w: 3, d: 1.6 },
@@ -323,20 +332,14 @@ function buildSolids(): AABB[] {
   out.push(box(p.minX, p.maxX, p.minZ, p.maxZ));
   out.push(box(2 - 3.6, 2 + 3.6, p.minZ - 4.3, p.minZ)); // the station's north steps (the boarding pad is just beyond them)
   // (the fountain's round basin: parkStreetSolids below)
-  // the gate arch's two towers
-  out.push(box(29.5, 33, -190, -183), box(47, 50.5, -190, -183));
+  // the gatehouse (the village's, seen from behind: PARK_GATE_FROM_VILLAGE): its wings and piers either side of the 6 m passage (x 37 .. 43),
+  // and the back planters under its flags
+  out.push(box(29.5, 37, -190, -185.3), box(43, 50.5, -190, -185.3));
+  out.push(box(31.9, 33.7, -184, -182.2), box(46.3, 48.1, -184, -182.2));
   out.push(box(PARK_KIOSK.x - PARK_KIOSK.w / 2, PARK_KIOSK.x + PARK_KIOSK.w / 2, PARK_KIOSK.z - PARK_KIOSK.d / 2, PARK_KIOSK.z + PARK_KIOSK.d / 2));
-  out.push(box(110 - 12.8, 110 + 12.8, -135 - 12.8, -135 + 12.8)); // the carousel's platform and its fence (the ride's own pad is outside it)
-  // the wheel: the four feet of its A-frames and the boarding platform's deck
-  for (const sx of [-1, 1]) for (const dz of [-2.75, 5.7]) out.push(box(205 + sx * 11 - 1, 205 + sx * 11 + 1, -140 + dz - 1, -140 + dz + 1));
-  out.push(box(205 - 3.5, 205 + 3.5, -140 + 4.45, -140 + 8.8)); // the platform's deck (the steps south of it are walked on)
-  // the moon boat: the swing's lane under the hull, the four feet of its A-frames and the boarding deck (the steps east of it are walked on up to the pad)
-  const M = MOON_BOAT_SITE_AT;
-  out.push(box(M.x - 2.9, M.x + 2.9, M.z - 20, M.z + 20)); // the lane under the swinging hull (it is below 4.6 m only within 26 degrees of the bottom: z within 20 m)
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) out.push(box(M.x + sx * 4.7 - 1.8, M.x + sx * 4.7 + 1.8, M.z + sz * 15 - 1.8, M.z + sz * 15 + 1.8));
-  out.push(box(M.x + 3.0, M.x + 7.9, M.z - 4.3, M.z + 4.3));
-  // the drop tower: its platform (the car's station, a 14.8 m square) is a solid; the boarding pad lies east of it
-  out.push(box(DROP_SITE_AT.x - 7.4, DROP_SITE_AT.x + 7.4, DROP_SITE_AT.z - 7.4, DROP_SITE_AT.z + 7.4));
+  // ── the rides (parkRideSolids.ts): every platform, flight of steps, railing, queue fence, post and name board of the carousel, the wheel, the 달배 and
+  // the 구름 낙하탑 (owner 2026-11-21: the fences and steps were walked through). One block of its own: a ride's barrier is added THERE, not here ──
+  out.push(...parkRideSolids());
   for (const t of PARK_TROUGHS) out.push(box(t.x0, t.x1, t.z0, t.z1));
   for (const p of PARK_PLANTERS) out.push(box(p.x - p.w / 2, p.x + p.w / 2, p.z - p.d / 2, p.z + p.d / 2));
   for (const b of PARK_BINS) out.push(box(b.x - 0.3, b.x + 0.3, b.z - 0.3, b.z + 0.3));

@@ -166,8 +166,12 @@ def face_patch(kind, x, z, phone=False, half_width=None):
     # beneath it. Leave the strip of gold across the columella unbroken.
     bridge_side = spot(.024,1.675,.014,.052)
     lay(.34*bridge_side, (.66,.310,.028), (1.,.62,.78))
-    lay(.71*spot(.0,1.666,.018,.049), (1.,.702,.296), (1.,.70,.81))
-    lay(.68*spot(.0,1.631,.018,.021), (1.,.740,.320), (1.,.71,.80))
+    # The central leaf follows the narrow dorsum from below the brow to the
+    # ball. Keep its width constant until the oblique plane over the tip.
+    crest = np.exp(-(x/.0153)**2-((z-1.657)/.043)**4)
+    crest *= smooth(1.610,1.621,z)*(1.-smooth(1.692,1.710,z))
+    lay(.74*crest, (1.,.710,.296), (1.,.70,.81))
+    lay(.49*spot(.0,1.627,.016,.016), (1.,.724,.286), (1.,.71,.80))
     # The source has a warm shadow on the left of the bridge through the
     # inner orbit. Keep the soft, pale reflection to the right of its edge.
     bridge_return = np.exp(-((x+.015)/.0095)**2-((z-1.672)/.030)**2)
@@ -197,8 +201,14 @@ def face_patch(kind, x, z, phone=False, half_width=None):
     base=np.exp(-((z-base_z)/.007)**2)*(1.-smooth(.029,.040,a))
     lay(.64*base, (.564,.239,.017), (1.,.66,.79))
     nostril_z = 1.5878 + .0044*smooth(.014,.035,a)
-    aperture = np.exp(-((a-.0198)/.0105)**2-((z-nostril_z)/.0050)**2)
-    lay((.92-.06*smooth(-.010,.010,x))*aperture, (.220,.076,.005), (1.,.64,.56))
+    aperture = np.exp(-((a-.0198)/.0095)**2-((z-nostril_z)/.0042)**2)
+    lay((.76-.06*smooth(-.010,.010,x))*aperture, (.233,.085,.007), (1.,.64,.56))
+    # Reflected in profile, the narrow aperture continues around the lower
+    # edge of the wing as a short, up-curving shadow.
+    side_t = (a-.0347)/.0056
+    sill_z = 1.5938+.0020*np.minimum(2.,side_t**2)+.0008*np.clip(side_t,-1.,1.)
+    sill = np.exp(-side_t**4-((z-sill_z)/.0032)**2)
+    lay(.60*sill, (.325,.115,.011), (1.,.66,.61))
     foot=band(1.573,underside-.0022,.0028)*smooth(.009,.023,a)*(1.-smooth(.032,.049,a))
     lay(.60*foot, (.942,.522,.071), (1.,.68,.83))
 

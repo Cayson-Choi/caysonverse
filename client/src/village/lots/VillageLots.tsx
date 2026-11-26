@@ -153,6 +153,12 @@ function lotsFor(tier: VillageTier, gl: WebGLRenderer): LotsCache {
   return c;
 }
 
+/** The lots' nodes once loaded and dressed (loading them if nobody has yet): the park borrows the gatehouse from them (land/ParkGateLot.tsx). */
+export function lotsNodesFor(tier: VillageTier, gl: WebGLRenderer): Promise<LotNodes | null> {
+  if (lotsMode() === "off") return Promise.resolve(null);
+  return lotsFor(tier, gl).ready.then((v) => v?.nodes ?? null);
+}
+
 /** The loaded lots, if any (the vegetation reads their trees, the e2e their stats). */
 export function loadedLotsNow(): LotNodes | null {
   return cache?.value?.nodes ?? null;

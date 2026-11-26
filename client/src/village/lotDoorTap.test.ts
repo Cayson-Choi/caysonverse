@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { CAFE_LOT, LOT_ROOMS, lotDoorPoint, lotRoomDoor, lotRoomOf } from "@caysonverse/shared/village/villageLots";
-import { lotDoorTapTarget } from "./lotDoorTap";
+import { CAFE_ROOM_AREA, CAFE_STAIR, CAFE_UP_AREA } from "@caysonverse/shared/village/cafeRoom";
+import { HOUSE_STAIR_DOWN_TARGET_ID, HOUSE_STAIR_UP_TARGET_ID } from "@caysonverse/shared/village/houseTargets";
+import { cafeStairSurfaceY, lotDoorTapTarget } from "./lotDoorTap";
 import { LOT_ENTER_TARGET_PREFIX, LOT_EXIT_TARGET_PREFIX, lotDoorTarget, lotExitTarget } from "./lots/lotTargets";
 
 describe("a tap on a lot building's door (the café's, owner 2026-11-20)", () => {
@@ -115,5 +117,49 @@ describe("a tap on a lot building's door (the café's, owner 2026-11-20)", () =>
       expect(lotDoorTapTarget(room.area, NaN, NaN, NaN, ray({ x: exit.x, y: 3, z: room.origin.z + 5 }, { x: exit.x, y: 0.05, z: room.origin.z }), 0), `${room.area} foot`).toBeNull();
       expect(lotDoorTapTarget(room.area, NaN, NaN, NaN, ray({ x: exit.x, y: 3, z: room.origin.z + 5 }, { x: exit.x + room.spec.doorWidth / 2 + 1.2, y: 1.2, z: room.origin.z }), 0), `${room.area} beside`).toBeNull();
     }
+  });
+});
+
+describe("a tap on the café's stair (2026-11-22: a tap on the wall behind it went upstairs)", () => {
+  const room = lotRoomOf(CAFE_ROOM_AREA)!;
+  const at = (rx: number, y: number, rz: number) => lotDoorTapTarget(room.area, room.origin.x + rx, y, room.origin.z + rz)?.id;
+
+  it("a step's flat tread low down is the stair (not a door's 'flat thing'); the floor round the foot is not", () => {
+    expect(lotDoorTapTarget(room.area, room.origin.x + 0.6, 0.23, room.origin.z + 4.0, null, 3, 1)?.id).toBe(HOUSE_STAIR_UP_TARGET_ID);
+    expect(lotDoorTapTarget(room.area, room.origin.x + 0.6, 0, room.origin.z + 3.7, null, 3, 1)).toBeNull();
+  });
+
+  it("upstairs: the stairwell balustrade's top rail (flat, 0.98 m) goes down; the salon's floor beside it does not", () => {
+    const up = lotRoomOf(CAFE_UP_AREA)!;
+    expect(lotDoorTapTarget(up.area, up.origin.x + 2.49, 0.98, up.origin.z + 5.57, null, 6, 1)?.id).toBe(HOUSE_STAIR_DOWN_TARGET_ID);
+    expect(lotDoorTapTarget(up.area, up.origin.x + 2.5, 0, up.origin.z + 5.5, null, 6, 1)).toBeNull();
+  });
+
+  it("the panelled side under flight B and the landing's underside are the stair too (the stair's own body)", () => {
+    expect(at(1.3, 1.3, 5.0)).toBe(HOUSE_STAIR_UP_TARGET_ID);
+    expect(at(1.0, 1.5, 7.0)).toBe(HOUSE_STAIR_UP_TARGET_ID);
+  });
+
+  it("the steps, the stringer and the rail of both flights and the landing are the stair", () => {
+    for (const [rx, rz] of [[0.6, 4.4], [0.6, 6.0], [1.2, 7.2], [1.8, 6.0], [1.8, 4.2]] as const) {
+      const s = cafeStairSurfaceY(rx, rz);
+      expect(at(rx, Math.max(0.4, s + 0.05), rz), `tread ${rx},${rz}`).toBe(HOUSE_STAIR_UP_TARGET_ID);
+      expect(at(rx, s + 0.95, rz), `rail ${rx},${rz}`).toBe(HOUSE_STAIR_UP_TARGET_ID);
+    }
+  });
+
+  it("the wall behind the flights, the kitchen wall over the landing and the ceiling over it all are not", () => {
+    expect(at(0.0, 3.6, 4.4)).toBeUndefined(); // the side wall over flight A's foot
+    expect(at(0.0, 2.2, 4.2)).toBeUndefined();
+    expect(at(1.0, 4.0, 7.8)).toBeUndefined(); // the kitchen wall over the landing
+    expect(at(0.6, room.ceiling - 0.05, 4.4)).toBeUndefined(); // the ceiling over flight A (over flight B is the stairwell opening)
+    expect(at(0.6, 3.7, 7.0)).toBeUndefined(); // the side wall over the landing
+  });
+
+  it("the surface rises 0 → half the storey on flight A, stays on the landing, and on to the storey on flight B", () => {
+    expect(cafeStairSurfaceY(0.6, CAFE_STAIR.foot)).toBeCloseTo(0);
+    expect(cafeStairSurfaceY(0.6, CAFE_STAIR.landing)).toBeCloseTo(CAFE_STAIR.storey / 2);
+    expect(cafeStairSurfaceY(1.8, CAFE_STAIR.landing - 0.01)).toBeCloseTo(CAFE_STAIR.storey / 2, 1);
+    expect(cafeStairSurfaceY(1.8, CAFE_STAIR.foot)).toBeCloseTo(CAFE_STAIR.storey);
   });
 });

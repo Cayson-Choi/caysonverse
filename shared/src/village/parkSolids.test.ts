@@ -54,7 +54,7 @@ describe("Caysonland: every prop type has a collider", () => {
 
   it("every litter bin, stone planter, plaza trough, the kiosk and every shop is solid", () => {
     expect(PARK_BINS.length).toBe(7);
-    expect(PARK_PLANTERS.length).toBe(8);
+    expect(PARK_PLANTERS.length).toBe(6); // (the two by the old arch went with the gatehouse, main 2026-11-22)
     expect(PARK_TROUGHS.length).toBe(12);
     for (const b of PARK_BINS) for (const [dx, dz] of [[0, 0], ...FOUR]) expect(blocked(b.x + dx * 0.6, b.z + dz * 0.6), `bin ${b.x},${b.z}`).toBe(true);
     for (const p of PARK_PLANTERS) {

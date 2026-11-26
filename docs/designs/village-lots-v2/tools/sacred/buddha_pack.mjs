@@ -3,6 +3,17 @@
  * For a face revision, pass the shipped pair's directory to --preserve-from.
  * For a registered face with an approved urna, --face-oval-only-from keeps the original jewel and its baked shading.
  * --face-and-ears-from replaces the facial oval and both ears on the existing statue.
+ * --nose-and-ears-from reshapes the seed's nose and grafts both ears and the curls at their roots.
+ * To reproduce pass 16, build with buddha_build.py, then use this flag with the Buddha pair from 123f5db5.
+ * For pass 17 use: node buddha_pack.mjs <work> <output> --nose-only-from <2d9bb4ef GLB directory>.
+ * This operation sculpts the two shipped LODs directly and needs no Blender rebuild.
+ * For pass 18 use --nose-front-from with the two d310359b GLBs.
+ * For pass 19 use --lower-nose-from with the two 9aafa326 GLBs.
+ * For pass 20 use --alae-from with the two 7e08b6df GLBs.
+ * For pass 21 use --alar-balls-from with the two 0ef78a87 GLBs.
+ * This remeshes only the lower nose and adjoining cheek; Blender is not needed.
+ * For pass 22 use --eye-lids-from with the completed pass-21 pair.
+ * For pass 23 use --ear-shells-from with the completed pass-22 pair.
  * For a hairline revision, --face-and-scalp-from also replaces the cast curls over the facial oval.
  * For a portrait revision, --portrait-from replaces the facial oval, urna, ears and curls together.
  * For a curl-only revision, --scalp-only-from retains the shipped facial oval and all KTX2 atlases.
@@ -20,14 +31,28 @@ import { fileURLToPath } from "node:url";
 import { MeshoptEncoder, MeshoptDecoder } from "meshoptimizer";
 import { dressBuddhaLeaf } from "./node/buddha_leaf.mjs";
 import { preserveSurroundingStatue } from "./buddha_preserve.mjs";
+import { sculptNasalLobule } from "./node/buddha_nose17.mjs";
+import { refineNasalFront } from "./node/buddha_nose18.mjs";
+import { sculptLowerNose } from "./node/buddha_nose19.mjs";
+import { sculptAlae } from "./node/buddha_nose20.mjs";
+import { sculptAlarBalls } from "./node/buddha_nose21.mjs";
+import { refineEyeLids } from "./node/buddha_eyes22.mjs";
+import { refineEars } from "./node/buddha_ears23.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const [work, destination, flag, seedDirectory, ...extra] = process.argv.slice(2);
 const regions = new Map([["--preserve-from", "face"], ["--face-oval-only-from", "oval"], ["--face-and-scalp-from", "oval-and-scalp"],
   ["--scalp-only-from", "scalp"], ["--preserve-ears-from", "ears"], ["--preserve-head-from", "head"],
-  ["--portrait-from", "portrait"], ["--face-and-ears-from", "oval-and-ears"]]);
+  ["--portrait-from", "portrait"], ["--face-and-ears-from", "oval-and-ears"], ["--nose-and-ears-from", "nose-and-ears"]]);
 const texturesOnly = flag === "--textures-only-from";
-if (!work || !destination || (flag && ((!texturesOnly && !regions.has(flag)) || !seedDirectory)) || extra.length) {
+const noseOnly = flag === "--nose-only-from";
+const noseFront = flag === "--nose-front-from";
+const lowerNose = flag === "--lower-nose-from";
+const alae = flag === "--alae-from";
+const alarBalls = flag === "--alar-balls-from";
+const eyeLids = flag === "--eye-lids-from";
+const earShells = flag === "--ear-shells-from";
+if (!work || !destination || (flag && ((!texturesOnly && !noseOnly && !noseFront && !lowerNose && !alae && !alarBalls && !eyeLids && !earShells && !regions.has(flag)) || !seedDirectory)) || extra.length) {
   throw new Error("Expected build directory, sacred GLB directory and an optional preservation flag and source directory");
 }
 const align = (n) => Math.ceil(n / 4) * 4;
@@ -132,6 +157,13 @@ function writeSpans({doc, binary}, replacements) {
 const packed = new Map();
 for (const lod of ["pc", "phone"]) {
   const name = "lotstatue__lot_temple_hall_buddha" + (lod === "phone" ? "_phone" : "");
+  if (noseOnly || noseFront || lowerNose || alae || alarBalls || eyeLids || earShells) {
+    const statue = readGlb(path.join(seedDirectory, name + ".glb"));
+    const spans = earShells ? await refineEars(statue, lod) : eyeLids ? await refineEyeLids(statue, lod) : alarBalls ? await sculptAlarBalls(statue, lod) : alae ? sculptAlae(statue, lod) : lowerNose ? sculptLowerNose(statue, lod)
+      : noseFront ? refineNasalFront(statue, lod) : await sculptNasalLobule(statue, lod);
+    packed.set(path.join(destination, name + ".glb"), writeSpans(statue, spans));
+    continue;
+  }
   let model = path.resolve(work, lod + ".glb");
   if (regions.has(flag)) {
     const region = regions.get(flag);
@@ -148,10 +180,15 @@ for (const lod of ["pc", "phone"]) {
   }
   const source = texturesOnly ? path.join(seedDirectory, name + ".glb") : compressGeometry(model);
   const statue = readGlb(source);
+  if (flag === "--nose-and-ears-from") {
+    const primitive = statue.doc.meshes[0].primitives[0];
+    const triangles = statue.doc.accessors[primitive.indices].count / 3;
+    if (triangles > (lod === "phone" ? 10000 : 40000)) throw new Error(`${lod}: ${triangles} triangles after ear graft`);
+  }
   const replacements = texturesOnly ? coreAtlases(statue, readGlb(model)) : new Map();
   // Geometry-only grafts can also use casts that predate the photographic finish.
   if (!keepPaint || statue.doc.images.some(image => image.name === lod+"-photographic-fill")) {
-    const reuseLightingCharts = flag === "--portrait-from" || flag === "--face-and-ears-from";
+    const reuseLightingCharts = flag === "--portrait-from" || flag === "--face-and-ears-from" || flag === "--nose-and-ears-from";
     const prior = keepPaint || reuseLightingCharts ? readGlb(path.join(seedDirectory, name + ".glb")) : null;
     await dressBuddhaLeaf(statue, lod, path.join(work,lod+"-color.png"), replacements,
       keepPaint ? prior : null, reuseLightingCharts ? prior : null);

@@ -44,6 +44,90 @@ function radiance(y, z, finish, phone, faceX) {
   return [1.11*base+.72*panel+.85*core+warm, .77*base+.59*panel+.89*core+.55*warm, .25*base+.27*panel+core+.12*warm];
 }
 
+export function portraitLeaf(n, faceX, height, rgb, phone, seated = false, wingPoint = null) {
+  const gold = [.94,.529,.074];
+  const length = Math.hypot(...n);
+  const [rx,ry,rz] = reflectedDirection(n.map(k => k/length));
+  const gilded = clip((rgb[0]-.12)/.78)*(.70+.30*clip(rgb[1]/gold[1]));
+  // Bare satin leaf has a broad return from the gilded altar below the
+  // eyes. The reflected panels on the robes use their original chart.
+  const cheek = Math.exp(-(((Math.abs(faceX)-.083)/.081)**2+((height-1.610)/.076)**2));
+  const muzzle = Math.exp(-(((Math.abs(faceX)-.061)/.036)**2+((height-1.586)/.043)**2));
+  const temple = Math.exp(-(((Math.abs(faceX)-.102)/.053)**2+((height-1.754)/.037)**2));
+  const lowerFace = Math.exp(-((faceX/.113)**4+((height-1.510)/.057)**2));
+  const septum = Math.exp(-((faceX/.009)**2+((height-1.584)/.008)**2));
+  const response = radiance(ry,rz,0,phone,rx);
+  // The silk catches the upper lid while the lower, left-facing planes
+  // turn away from it. Keep the gold under the mouth softer than the lid.
+  const upperLid = Math.exp(-(((Math.abs(faceX)-.081)/.042)**2+((height-1.705)/.014)**2));
+  const cheekTurn = cheek*(.75-.25*Math.tanh(faceX/.040));
+  const chin = Math.exp(-((faceX/.061)**2+((height-1.505)/.029)**2));
+  const brighterLid = .5+.5*Math.tanh(faceX/.034);
+  response[0] = response[0]*(1-.33*cheekTurn-.57*chin)+(.10+.04*brighterLid)*upperLid;
+  response[1] = response[1]*(1-.28*cheekTurn-.40*chin)+(.12+.03*brighterLid)*upperLid;
+  response[2] += (.10-.035*brighterLid)*upperLid;
+  if (seated) {
+    // The thin reflection follows the brow-nose line down to the tip.
+    // Its coordinates follow the registered pigment island on the cast.
+    const noseLight = Math.exp(-(((faceX-.0010)/.0128)**2+((height-1.656)/.042)**4));
+    response[1] += .128*noseLight;
+    response[2] += .180*noseLight;
+    // The round outer wing sits behind the frontal bulb and picks up a
+    // broader side light above the short aperture.
+    const ala = Math.exp(-(((Math.abs(faceX)-.030)/.012)**2+((height-1.607)/.013)**2));
+    response[0] += .075*ala;
+    response[1] += .061*ala;
+    response[2] += .030*ala;
+    if (wingPoint) {
+      // The small alar dome is a lateral feature. Project the lighting
+      // through its actual sagittal section rather than across the front UV.
+      const s = (wingPoint[1]-.0715)/.0155, t = (wingPoint[0]-1.6020)/.0155;
+      const angle = clip((Math.abs(faceX)-.020)/.012);
+      const side = angle*angle*(3-2*angle);
+      const pad = Math.exp(-((s/.82)**2+((t-.21)/.56)**2))*side;
+      const arc = Math.exp(-(((Math.hypot(s,t)-1.05)/.21)**2))*clip(.55+.62*t-.20*s)*side;
+      const naris = Math.exp(-(((s-.14)/.68)**4+((t+.67-.12*s*s)/.24)**2))*side;
+      const shade = Math.max(.08,1-.55*arc-.93*naris);
+      response[0] = response[0]*shade+.42*pad;
+      response[1] = response[1]*shade+.36*pad;
+      response[2] = response[2]*shade+.16*pad;
+    }
+  } else {
+    // The rounded bridge catches the same warm silk as the forehead.
+    const noseLight = Math.exp(-((faceX/.034)**2+((height-1.655)/.041)**4));
+    response[0] += .027*noseLight;
+    response[1] += .024*noseLight;
+    response[2] += .006*noseLight;
+    // The round outer wing sits behind the frontal bulb and picks up a
+    // broader side light above the short aperture.
+    const ala = Math.exp(-(((Math.abs(faceX)-.035)/.0135)**2+((height-1.609)/.014)**2));
+    response[0] += .078*ala;
+    response[1] += .067*ala;
+    response[2] += .029*ala;
+  }
+  // Vermilion takes a broad diffuse return from the doorway. Its moving
+  // specular comes from the two modelled lip rolls in the PBR pass.
+  const vermilion = clip((rgb[0]-3*rgb[1])/.35)
+    * Math.exp(-((faceX/.047)**8+((height-1.552)/.021)**8));
+  const lipLight = [.41,.20,.045];
+  for (let j=0; j<3; j++) response[j] += .88*vermilion*(lipLight[j]-response[j]);
+  // The photographic left cheek is in softer light. Ease the reflected
+  // return across the face, keeping the nose and opposite cheek modelled.
+  const cheekFill = cheek*(.50+.28*Math.tanh(faceX/.043));
+  const reflected = [response[0]+.212*cheekFill+.085*muzzle+.185*temple+.105*lowerFace+.12*septum,
+    response[1]+.104*cheekFill+.066*muzzle+.085*temple+.027*lowerFace+.062*septum,
+    response[2]*(1.-.26*cheek-.49*lowerFace)];
+  // Where the lower cheek turns into the side of the head, transition to
+  // the adjacent bare-leaf chart using the horizontal turn of the normal.
+  const belowOrbit = seated ? 0 : clip((1.667-height)/.036);
+  const lower = belowOrbit*belowOrbit*(3-2*belowOrbit);
+  const toSide = clip((.60+.25*lower-n[2]/Math.max(.001,Math.hypot(n[0],n[2])))/(.52+.27*lower));
+  const jawRim = toSide*toSide*(3-2*toSide)*clip((1.71-height)/.05)
+    * clip((Math.abs(faceX)-.030)/.025);
+  const bareLeaf = radiance(ry,rz,0,phone);
+  return reflected.map((k,j) => (1-jawRim)*k*gilded*clip(rgb[j]/gold[j])+jawRim*bareLeaf[j]);
+}
+
 function elements({doc, binary}, id) {
   const a = doc.accessors[id], view = doc.bufferViews[a.bufferView];
   const width = {SCALAR:1, VEC2:2, VEC3:3}[a.type];
@@ -174,8 +258,6 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, positions, indices,
       const fx=x-a[0], fy=y-a[1], u=(fx*ey-fy*ex)/det, v=(dx*fy-dy*fx)/det;
       if (u<0 || v<0 || u+v>1) continue;
       const n = [0,1,2].map(j => (1-u-v)*normals[ids[0]][j]+u*normals[ids[1]][j]+v*normals[ids[2]][j]);
-      const length = Math.hypot(...n);
-      const [rx,ry,rz] = reflectedDirection(n.map(k => k/length));
       const p = y*w+x;
       const gold = [.94,.529,.074];
       if (ear) {
@@ -184,6 +266,7 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, positions, indices,
         const pixel = Math.floor(t*h)*w+Math.floor(s*w);
         // Under ambient light, keep the recessed bowl in shadow while the
         // crest and pendant catch the same reflected gold as the adjacent skin.
+        const [,ry,rz] = reflectedDirection(n.map(k => k/Math.hypot(...n)));
         const response = radiance(ry,rz,0,phone);
         write(x,y,response.map((value,j) => {
           const shade = clip(linear(pigment[3*pixel+j]/255)/(.975*gold[j]));
@@ -194,56 +277,12 @@ async function emissiveAtlas(lod, pigmentFile, normals, uvs, positions, indices,
       }
       if (covered[p] === 2) throw new Error("Face lighting island overlaps the ear");
       const rgb = [0,1,2].map(j => linear(pigment[3*p+j]/255));
-      const gilded = clip((rgb[0]-.12)/.78)*(.70+.30*clip(rgb[1]/gold[1]));
-      // Bare satin leaf has a broad return from the gilded altar below the
-      // eyes. The reflected panels on the robes use their original chart.
       const faceX = ((x+.5)/w-.75)*.72-.004;
       const height = 1.820-.400*(y+.5)/h;
-      const cheek = Math.exp(-(((Math.abs(faceX)-.083)/.081)**2+((height-1.610)/.076)**2));
-      const muzzle = Math.exp(-(((Math.abs(faceX)-.061)/.036)**2+((height-1.586)/.043)**2));
-      const temple = Math.exp(-(((Math.abs(faceX)-.102)/.053)**2+((height-1.754)/.037)**2));
-      const lowerFace = Math.exp(-((faceX/.113)**4+((height-1.510)/.057)**2));
-      const septum = Math.exp(-((faceX/.009)**2+((height-1.584)/.008)**2));
-      const response = radiance(ry,rz,0,phone,rx);
-      // The silk catches the upper lid while the lower, left-facing planes
-      // turn away from it. Keep the gold under the mouth softer than the lid.
-      const upperLid = Math.exp(-(((Math.abs(faceX)-.081)/.042)**2+((height-1.705)/.014)**2));
-      const cheekTurn = cheek*(.75-.25*Math.tanh(faceX/.040));
-      const chin = Math.exp(-((faceX/.061)**2+((height-1.505)/.029)**2));
-      const brighterLid = .5+.5*Math.tanh(faceX/.034);
-      response[0] = response[0]*(1-.33*cheekTurn-.57*chin)+(.10+.04*brighterLid)*upperLid;
-      response[1] = response[1]*(1-.28*cheekTurn-.40*chin)+(.12+.03*brighterLid)*upperLid;
-      response[2] += (.10-.035*brighterLid)*upperLid;
-      // A broad, pale tent reflection crosses the nasal bridge and the
-      // upper face of its bulb. It falls off before the two gilded wings.
-      const noseLight = Math.exp(-(((faceX-.0017)/.0148)**2+((height-1.650)/.033)**4));
-      response[1] += .112*noseLight;
-      response[2] += .181*noseLight;
-      // The round outer wing sits behind the frontal bulb and picks up a
-      // broader side light above the short aperture.
-      const ala = Math.exp(-(((Math.abs(faceX)-.030)/.012)**2+((height-1.607)/.013)**2));
-      response[0] += .075*ala;
-      response[1] += .061*ala;
-      response[2] += .030*ala;
-      // Vermilion takes a broad diffuse return from the doorway. Its moving
-      // specular comes from the two modelled lip rolls in the PBR pass.
-      const vermilion = clip((rgb[0]-3*rgb[1])/.35)
-        * Math.exp(-((faceX/.047)**8+((height-1.552)/.021)**8));
-      const lipLight = [.41,.20,.045];
-      for (let j=0; j<3; j++) response[j] += .88*vermilion*(lipLight[j]-response[j]);
-      // The photographic left cheek is in softer light. Ease the reflected
-      // return across the face, keeping the nose and opposite cheek modelled.
-      const cheekFill = cheek*(.50+.28*Math.tanh(faceX/.043));
-      const reflected = [response[0]+.212*cheekFill+.085*muzzle+.185*temple+.105*lowerFace+.12*septum,
-        response[1]+.104*cheekFill+.066*muzzle+.085*temple+.027*lowerFace+.062*septum,
-        response[2]*(1.-.26*cheek-.49*lowerFace)];
-      // Where the lower cheek turns into the side of the head, transition to
-      // the adjacent bare-leaf chart using the horizontal turn of the normal.
-      const toSide = clip((.60 - n[2]/Math.max(.001,Math.hypot(n[0],n[2])))/.52);
-      const jawRim = toSide*toSide*(3-2*toSide)*clip((1.71-height)/.05)
-        * clip((Math.abs(faceX)-.030)/.025);
-      const bareLeaf = radiance(ry,rz,0,phone);
-      write(x,y,reflected.map((k,j) => (1-jawRim)*k*gilded*clip(rgb[j]/gold[j])+jawRim*bareLeaf[j]));
+      const onWing = Math.abs(faceX) > .017 && Math.abs(faceX) < .054 && height > 1.572 && height < 1.636;
+      const wingPoint = onWing ? [1,2].map(j =>
+        (1-u-v)*positions[ids[0]][j]+u*positions[ids[1]][j]+v*positions[ids[2]][j]) : null;
+      write(x,y,portraitLeaf(n,faceX,height,rgb,phone,true,wingPoint));
       covered[p] = 1;
     }
   }

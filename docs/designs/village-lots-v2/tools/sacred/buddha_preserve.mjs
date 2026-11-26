@@ -1,6 +1,7 @@
 /** Keep original positions, shading normals and atlas UVs outside the revised sculpture. */
 import { createRequire } from "node:module";
 import { MeshoptDecoder } from "meshoptimizer";
+import { sculptNose } from "./node/buddha_nose16.mjs";
 
 const require = createRequire(new URL("./node/package.json", import.meta.url));
 const { NodeIO } = require("@gltf-transform/core");
@@ -76,6 +77,7 @@ function partition(document, region) {
   // The newer oval wraps onto the dedicated right-hand pigment island.
   const hasIsland = oval.maxU > .5;
   const selected = new Set();
+  const earCurlSides = new Set();
   if (["portrait", "oval", "oval-and-ears", "oval-and-scalp", "scalp"].includes(region)) {
     if (!hasIsland) throw new Error("Expected a registered face with a dedicated pigment island");
     if (["portrait", "oval-and-scalp", "scalp"].includes(region)) {
@@ -88,11 +90,19 @@ function partition(document, region) {
     }
     if (region !== "scalp") selected.add(oval.id);
   }
-  if (["portrait", "oval-and-ears", "ears"].includes(region)) {
+  if (["portrait", "oval-and-ears", "ears", "nose-and-ears"].includes(region)) {
     if (!hasIsland) throw new Error("Ear replacement requires the Buddha's current face atlas");
     const sides = new Set();
     for (const component of components.values()) {
       const { id, min, max, minU, maxU, minV } = component;
+      // The new curls at each ear root occupy separate parts of the hair swatch.
+      // The continuous scalp spans the centre line and always stays on the seed.
+      if (region === "nose-and-ears" && minU > .25 && maxU < .375 && minV > .5 &&
+          (min[0] > .10 || max[0] < -.10) && min[1] > 1.63 && max[1] < 1.80 &&
+          min[2] > -.25 && max[2] < .03) {
+        selected.add(id);
+        earCurlSides.add(Math.sign(min[0]));
+      }
       // The only gilt skin components entirely beside the face are the two
       // pinnae and their folds. Bounds are glTF coordinates (+Y up, +Z front).
       const skinOnly = minU > .125 && maxU < .25 && minV > .5;
@@ -138,7 +148,7 @@ function partition(document, region) {
   const replace = Uint8Array.from(parent, (_, i) => Number(selected.has(root(i))));
   return { primitive, position, normal, uv, indices, replace, hasIsland, name: meshes[0].getName(),
     hasEarIsland: [...selected].some(id => hasEarIsland(components.get(id))),
-    preservedCount: components.size-selected.size };
+    earCurlSides, preservedCount: components.size-selected.size };
 }
 
 export async function preserveSurroundingStatue(previous, replacement, output, region = "face") {
@@ -149,6 +159,12 @@ export async function preserveSurroundingStatue(previous, replacement, output, r
   const sculpt = await io.read(replacement);
   const before = partition(shipped, region);
   const after = partition(sculpt, region);
+  if (region === "nose-and-ears") {
+    if (before.earCurlSides.size || after.earCurlSides.size !== 2) {
+      throw new Error("Expected the original scalp and a donor with local curls at both ears");
+    }
+    console.log(`Reshaped ${sculptNose(before.primitive)} vertices on the shipped nasal surface`);
+  }
   if (before.name !== after.name || !after.hasIsland || before.preservedCount !== after.preservedCount) {
     throw new Error(`Incompatible Buddha models supplied for ${region} replacement`);
   }
@@ -200,7 +216,7 @@ export async function preserveSurroundingStatue(previous, replacement, output, r
   const kept = indices.length;
   // The shipped triangles are copied above. These grafts can have a different
   // donor count outside the selection due to hairline culling or body decimation.
-  if (!["scalp", "portrait", "oval-and-ears", "ears"].includes(region)) {
+  if (!["scalp", "portrait", "oval-and-ears", "ears", "nose-and-ears"].includes(region)) {
     const candidateBodyIndices = after.indices.reduce((n,i) => n + Number(!after.replace[i]), 0);
     if (kept !== candidateBodyIndices) throw new Error(`Triangle count outside the ${region} changed across Buddha builds`);
   }

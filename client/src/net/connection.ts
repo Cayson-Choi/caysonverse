@@ -7,6 +7,7 @@ import { VILLAGE_ROOM, CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { MovePayload } from "@caysonverse/shared/messages";
 import { recordSentMove } from "../game/sentMoves";
+import { wireServerRefusals } from "./serverRefusals";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import { VillageMsg } from "@caysonverse/shared/village/messages";
 import { SERVER_URL } from "./endpoint";
@@ -36,6 +37,8 @@ export function getRoom(): Room<WorldState> | null {
 /** Swap the room handle (used by the resilience driver on reconnect). */
 export function setRoom(next: Room<WorldState> | null): void {
   room = next;
+  // the server's refusal notices (a Move, a door / stair / bench press out of reach), on every room this tab adopts
+  if (next) wireServerRefusals(next);
 }
 
 /** The room the player is in — the village room; chat / emoji / typing sync bind to this name. */

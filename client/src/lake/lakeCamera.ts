@@ -31,16 +31,19 @@ export function restoreCamera(): void {
 
 /** Showing the catch (landed): the camera swings round to the angler's front, a little to the side, so the fish held up is seen. */
 export const CATCH_VIEW = { side: 0.55, pitch: 0.22, distance: 3.4 } as const;
+/** The swings round the angler (to the side for the lift, to the front for the catch, back over the shoulder) glide at this yaw
+ *  rate, not the default 10/s that whipped half a turn round in a third of a second (owner 2026-11-23). */
+export const FISH_SWING_RATE = 1.4;
 
 export function catchCamera(bodyYaw: number): void {
   if (viewState.mode !== "tp" || !saved) return;
-  viewState.orbitGoal = { yaw: normalizeAngle(bodyYaw + CATCH_VIEW.side), pitch: CATCH_VIEW.pitch, distance: CATCH_VIEW.distance };
+  viewState.orbitGoal = { yaw: normalizeAngle(bodyYaw + CATCH_VIEW.side), pitch: CATCH_VIEW.pitch, distance: CATCH_VIEW.distance, yawRate: FISH_SWING_RATE };
 }
 
 /** Back over the shoulder after the catch (the view the player had before sitting stays saved). */
 export function backToFishing(bodyYaw: number): void {
   if (viewState.mode !== "tp" || !saved) return;
-  viewState.orbitGoal = { yaw: fishingYaw(bodyYaw), pitch: FISHING_VIEW.pitch, distance: FISHING_VIEW.distance };
+  viewState.orbitGoal = { yaw: fishingYaw(bodyYaw), pitch: FISHING_VIEW.pitch, distance: FISHING_VIEW.distance, yawRate: FISH_SWING_RATE };
 }
 
 /**
@@ -54,5 +57,5 @@ export const LIFT_VIEW = { side: -0.95, pitch: 0.06, distance: 7 } as const;
 
 export function liftCamera(bodyYaw: number): void {
   if (viewState.mode !== "tp" || !saved) return;
-  viewState.orbitGoal = { yaw: normalizeAngle(bodyYaw + LIFT_VIEW.side), pitch: LIFT_VIEW.pitch, distance: LIFT_VIEW.distance };
+  viewState.orbitGoal = { yaw: normalizeAngle(bodyYaw + LIFT_VIEW.side), pitch: LIFT_VIEW.pitch, distance: LIFT_VIEW.distance, yawRate: FISH_SWING_RATE };
 }
