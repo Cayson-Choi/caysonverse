@@ -530,12 +530,19 @@ for (const n of houses) {
         const ht = await window.__imp("/src/village/houseTap.ts");
         return { pick: { name: pk.name, x: +pk.x.toFixed(2), y: +pk.y.toFixed(2), z: +pk.z.toFixed(2), ny: pk.ny }, plan: k.plan, stair: ht.houseTapTarget(`house:house_${nn}:1`, pk.x, pk.y, pk.z, pk.ny, pk.ray, pk.distance) };
       }, n);
-      run.check(`h${n}: the tap walked to the stair's pad: the up button is offered`, tt.some((x) => x.id === "house_stair:up"), { at: await pos(p), t: tt.slice(0, 3), tapInfo });
+      const srv = await page.evaluate(async () => {
+        const r = (await window.__imp("/src/net/connection.ts")).getRoom();
+        const me = r?.state?.players?.get(r.sessionId);
+        return me ? { x: me.x, z: me.z } : null;
+      });
+      run.check(`h${n}: the tap walked to the stair's pad: the up button is offered`, tt.some((x) => x.id === "house_stair:up"), { at: await pos(p), server: srv, t: tt.slice(0, 3), tapInfo });
     } else run.check(`h${n}: the stair is on screen to tap`, false, { at });
     if ((await areaOf()) !== `house:house_${n}:1`) return;
     let upstairs = false;
     {
-      if (!(await targets(p)).some((x) => x.id === "house_stair:up")) at = await goto(up.x, up.z, 0.3);
+      // onto the pad itself unless the tap's walk already stands on it (the button may show from up to 1.75 m in front of it)
+      const here = await pos(p);
+      if (Math.hypot(here.x - up.x, here.z - up.z) > 0.5 || !(await targets(p)).some((x) => x.id === "house_stair:up")) at = await goto(up.x, up.z, 0.3);
       const t = await targets(p);
       run.check(`h${n}: at the stair pad the up button is offered`, t.some((x) => x.id === "house_stair:up"), { at, t: t.slice(0, 3) });
       if (phone) {
