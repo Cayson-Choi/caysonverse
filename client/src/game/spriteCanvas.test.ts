@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { CanvasTexture, LinearFilter, SRGBColorSpace, Vector2, Vector4, type SpriteMaterial, type WebGLRenderer } from "three";
+import { CanvasTexture, LinearFilter, SRGBColorSpace, type SpriteMaterial } from "three";
 import {
   LABEL_LAYER,
-  LABEL_VERTEX,
+  LABEL_SNAP,
+  labelInfo,
+  labelSprites,
   RASTERS_PER_FRAME,
   billboardSprite,
   canvasTexture,
@@ -69,52 +71,17 @@ describe("label sprites", () => {
     expect(m.fog).toBe(false);
   });
 
-  it("its shader: the pixel-snapping vertex stage and the LOD-biased map sample, one program for every label", () => {
-    const a = billboardSprite(texture(), 3, 0.3, 999, { snap: 0.2 });
-    const b = billboardSprite(texture(), 1, 0.5, 1001, { lodBias: -0.5 });
-    const ma = a.material as SpriteMaterial;
-    const mb = b.material as SpriteMaterial;
-    expect(ma.customProgramCacheKey()).toBe(mb.customProgramCacheKey());
-    const shader = (m: SpriteMaterial) => {
-      const s = {
-        uniforms: {} as Record<string, { value: unknown }>,
-        vertexShader: "",
-        fragmentShader: "uniform float opacity;\nvoid main() {\n#include <map_fragment>\n}",
-      };
-      m.onBeforeCompile(s as never, null as never);
-      return s;
-    };
-    const sa = shader(ma);
-    const sb = shader(mb);
-    expect(sa.vertexShader).toBe(LABEL_VERTEX);
-    expect(sa.uniforms.uSnap!.value).toBe(0.2);
-    expect(sb.uniforms.uSnap!.value).toBe(0); // the emoji: never snapped
-    expect(sb.uniforms.uLodBias!.value).toBe(-0.5);
-    expect(sa.uniforms.uLodBias!.value).toBe(0);
-    expect(sa.uniforms.uRes).toBe(sb.uniforms.uRes); // one viewport for every label
-    expect(sa.uniforms.uTexPx).not.toBe(sb.uniforms.uTexPx); // each its own map size
-    expect(sa.fragmentShader).toContain("uniform float uLodBias;");
-    expect(sa.fragmentShader).toContain("texture2D( map, vMapUv, uLodBias )");
-    expect(sa.fragmentShader).not.toContain("#include <map_fragment>");
-  });
-
-  it("before each draw it reads the viewport it is drawn into and its map's size", () => {
-    const sprite = billboardSprite(texture(), 3, 0.3, 999, { snap: 0.2 });
-    const m = sprite.material as SpriteMaterial;
-    const s = { uniforms: {} as Record<string, { value: Vector2 }>, vertexShader: "", fragmentShader: "void main() {}" };
-    m.onBeforeCompile(s as never, null as never);
-    const renderer = { getCurrentViewport: (v: Vector4) => v.set(0, 0, 1920, 1080) } as unknown as WebGLRenderer;
-    sprite.onBeforeRender(renderer, null as never, null as never, null as never, m, null as never);
-    expect(s.uniforms.uRes!.value.toArray()).toEqual([1920, 1080]);
-    expect(s.uniforms.uTexPx!.value.toArray()).toEqual([120, 31]);
-    // a new look (another canvas) is picked up on the next draw
-    m.map = new CanvasTexture({ width: 64, height: 20 } as never);
-    sprite.onBeforeRender(renderer, null as never, null as never, null as never, m, null as never);
-    expect(s.uniforms.uTexPx!.value.toArray()).toEqual([64, 20]);
-  });
-
-  it("the vertex stage snaps only within uSnap, to whole pixels, at the texture's own size", () => {
-    expect(LABEL_VERTEX).toMatch(/uSnap > 0\.0 && off\.x <= uSnap && off\.y <= uSnap/);
-    expect(LABEL_VERTEX).toMatch(/drawPx = texPx;\s*originPx = floor\( anchorPx - center \* drawPx \+ 0\.5 \);/);
+  it("is on the overlay's list while its material lives, with its snap; disposing the material takes it off", () => {
+    const a = billboardSprite(texture(), 3, 0.3, 999, { snap: LABEL_SNAP });
+    const b = billboardSprite(texture(), 1, 0.5, 1001);
+    expect(labelSprites().has(a)).toBe(true);
+    expect(labelSprites().has(b)).toBe(true);
+    expect(labelInfo(a).snap).toBe(LABEL_SNAP);
+    expect(labelInfo(b).snap).toBe(0); // the emoji: never snapped
+    (a.material as SpriteMaterial).dispose();
+    expect(labelSprites().has(a)).toBe(false);
+    expect(labelSprites().has(b)).toBe(true);
+    (b.material as SpriteMaterial).dispose();
+    expect(labelSprites().has(b)).toBe(false);
   });
 });

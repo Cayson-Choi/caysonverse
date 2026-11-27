@@ -24,7 +24,7 @@
  *
  * Crisp text (fix/crisp-labels, spriteCanvas.ts): a look is rasterized at the size it is SHOWN at — its font in whole
  * device pixels (the tag's projected text height x dpr, `setTextDevicePx`), every other metric scaled from the 48 px design
- * and rounded to whole pixels — and drawn one texel per screen pixel by the label shader. The font size is part of the
+ * and rounded to whole pixels — and drawn one texel per screen pixel by the label overlay (labelOverlay.ts, at the device dpr). The font size is part of the
  * look's key, so a tag that walks nearer moves through a few sizes (12-16 CSS px: 7 sizes at dpr 1.5), each rasterized
  * once and kept like any other look; a frame rasterizes at most RASTERS_PER_FRAME new ones (the rest wait a frame).
  */
@@ -251,7 +251,7 @@ function acquire(text: string, badge: NametagBadge, highlight: boolean, typing: 
   let entry = cache.get(key);
   if (!entry) {
     const { canvas, aspect } = renderCanvas(text, badge, highlight, typing, fontPx);
-    // Shown at one texel per pixel (the label shader): no mipmaps, a plain linear filter.
+    // Shown at one texel per pixel (the label overlay): no mipmaps, a plain linear filter.
     const texture = canvasTexture(canvas);
     entry = { key, texture, aspect, refs: 0 };
     cache.set(key, entry);

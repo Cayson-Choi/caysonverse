@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   ACESFilmicToneMapping,
   CanvasTexture,
@@ -83,16 +83,14 @@ describe("PostChain: the rich tier's frame in three full-screen passes fewer", (
     // nothing but the scene ever lands in the scene's target: no additive blend-back, no second resolve
     expect(r.draws.filter((d) => d.target === chain.target)).toHaveLength(1);
     // high pass + 5 mips x 2 blurs + composite
-    const bloom = r.draws.slice(1, -2);
+    const bloom = r.draws.slice(1, -1);
     expect(bloom).toHaveLength(1 + 10 + 1);
     expect(bloom.every((d) => d.target !== null)).toBe(true);
     expect(bloom[0]).toEqual({ target: chain.bloomPass.renderTargetBright, what: "PostChain.bright", scale: 1 });
     expect(chain.highPass.uniforms.tDiffuse!.value).toBe(chain.target.texture);
-    // then the final pass, to the screen, reading the scene and the bloom's composite...
-    const last = r.draws[r.draws.length - 2]!;
+    // then the final pass, to the screen, reading the scene and the bloom's composite (the labels are the overlay's)
+    const last = r.draws[r.draws.length - 1]!;
     expect(last).toEqual({ target: null, what: "PostChain.output", scale: 1 });
-    // ...and the labels over it, on the screen too
-    expect(r.draws[r.draws.length - 1]).toEqual({ target: null, what: "scene", scale: 1 });
     expect(chain.output.uniforms.tScene!.value).toBe(chain.target.texture);
     expect(chain.output.uniforms.tBloom!.value).toBe(chain.bloomPass.renderTargetsHorizontal[0]!.texture);
     expect(chain.output.uniforms.toneMappingExposure!.value).toBe(1.4);
@@ -197,7 +195,7 @@ describe("PostChain.setScale: the frame governor's step, with nothing re-made", 
   });
 });
 
-describe("PostChain labels (fix/crisp-labels): drawn last, at full resolution, never in the scene pass", () => {
+describe("PostChain labels (fix/crisp-labels): never drawn by WebGL (the label overlay draws them)", () => {
   function labelled() {
     const scene = new Scene();
     const avatar = new Scene();
@@ -205,79 +203,23 @@ describe("PostChain labels (fix/crisp-labels): drawn last, at full resolution, n
     avatar.add(tag);
     scene.add(avatar);
     const camera = new PerspectiveCamera();
-    camera.layers.enable(LABEL_LAYER); // as NametagSystem leaves it
+    camera.layers.enable(LABEL_LAYER); // even a camera told to see the label layer
     return { scene, avatar, tag, camera };
   }
 
-  it("the scene pass leaves the label layer out; the label pass draws ONLY it, onto the finished frame", () => {
+  it("the scene pass leaves the label layer out, and there is no label pass", () => {
     const chain = new PostChain(BLOOM);
     chain.setSize(800, 600);
-    chain.setScale(0.5); // the governor's lowest step: the labels must not be stretched with the scene
-    const r = fakeRenderer();
-    const { scene, avatar, camera } = labelled();
-    const mask = camera.layers.mask;
-    chain.render(r.gl, scene, camera);
-    expect(r.scenes).toHaveLength(2);
-    const [scenePass, labelPass] = r.scenes;
-    expect(scenePass!.mask & (1 << LABEL_LAYER)).toBe(0);
-    expect(scenePass!.mask & 1).toBe(1);
-    expect(labelPass!.mask).toBe(1 << LABEL_LAYER);
-    // to the screen (not the scaled scene target), at render scale 1, after the final pass, clearing nothing
-    expect(r.draws.at(-1)).toEqual({ target: null, what: "scene", scale: 1 });
-    expect(labelPass!.autoClear).toBe(false);
-    // the label pass walks the real scene's children (the labels stay on their avatars) without re-updating matrices
-    expect(labelPass!.children).toEqual([avatar]);
-    expect(labelPass!.matrixWorldAutoUpdate).toBe(false);
-    // ...from a scene of its own (its own render state: no lights flip-flopping in the real scene's)
-    expect(avatar.parent).toBe(scene);
-    // everything handed back
-    expect(camera.layers.mask).toBe(mask);
-    expect(r.gl.autoClear).toBe(true);
-    expect(r.gl.info.autoReset).toBe(true);
-  });
-
-  it("the label pass's scene keeps no children between frames", () => {
-    const chain = new PostChain(BLOOM);
-    chain.setSize(800, 600);
+    chain.setScale(0.5);
     const r = fakeRenderer();
     const { scene, camera } = labelled();
+    const mask = camera.layers.mask;
     chain.render(r.gl, scene, camera);
-    const labels = (chain as unknown as { labels: Scene }).labels;
-    expect(labels.children).toHaveLength(0);
-    expect(labels.children).not.toBe(scene.children);
-    expect(scene.children).toHaveLength(1);
-  });
-
-  it("warmLabels compiles one stand-in label for the screen, in the label pass's own (light-less) scene, and keeps it", async () => {
-    vi.stubGlobal("document", { createElement: () => ({ width: 0, height: 0 }) });
-    try {
-      const chain = new PostChain(BLOOM);
-      const r = fakeRenderer();
-      const target = chain.target;
-      r.gl.setRenderTarget(target);
-      const compiled: { object: Object3D; scene: Object3D; target: WebGLRenderTarget | null }[] = [];
-      Object.assign(r.gl as object, {
-        compile: (object: Object3D, _c: Camera, scene: Object3D) => {
-          compiled.push({ object, scene, target: r.target() });
-          return new Set();
-        },
-        properties: { get: () => ({}) },
-        extensions: { has: () => true },
-      });
-      const camera = new PerspectiveCamera();
-      await chain.warmLabels(r.gl, camera);
-      await chain.warmLabels(r.gl, camera);
-      expect(compiled).toHaveLength(2);
-      const labels = (chain as unknown as { labels: Scene }).labels;
-      expect(compiled[0]!.scene).toBe(labels);
-      expect(compiled[0]!.target).toBeNull();
-      expect(compiled[0]!.object.layers.mask).toBe(1 << LABEL_LAYER);
-      expect(compiled[1]!.object).toBe(compiled[0]!.object); // the same stand-in: its program is never released
-      expect(r.target()).toBe(target); // the renderer's target is given back
-      chain.dispose();
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    expect(r.scenes).toHaveLength(1);
+    expect(r.scenes[0]!.mask & (1 << LABEL_LAYER)).toBe(0);
+    expect(r.scenes[0]!.mask & 1).toBe(1);
+    expect(camera.layers.mask).toBe(mask);
+    expect(r.gl.autoClear).toBe(true);
   });
 
   it("a throwing draw still gives the camera its layers back", () => {
@@ -291,10 +233,7 @@ describe("PostChain labels (fix/crisp-labels): drawn last, at full resolution, n
     };
     expect(() => chain.render(r.gl, scene, camera)).toThrow();
     expect(camera.layers.mask).toBe(mask);
-    expect(() => chain.renderLabels(r.gl, scene, camera)).toThrow();
-    expect(camera.layers.mask).toBe(mask);
     expect(r.gl.autoClear).toBe(true);
-    expect(r.gl.info.autoReset).toBe(true);
   });
 });
 

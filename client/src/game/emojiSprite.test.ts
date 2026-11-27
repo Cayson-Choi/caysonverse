@@ -45,43 +45,38 @@ describe("emoji reaction textures (perf/interaction-latency: no canvas draw or u
     expect(drawn - before).toBe(1);
   });
 
-  it("prewarm uploads every palette glyph once, one per idle slot, and can be cancelled", async () => {
+  it("prewarm draws every palette glyph once, one per idle slot, and can be cancelled", async () => {
+    vi.resetModules();
     const { prewarmEmojiTextures, emojiTexture } = await import("./emojiSprite");
     const queue: (() => void)[] = [];
     vi.stubGlobal("requestIdleCallback", (cb: () => void) => queue.push(cb));
-    const uploaded: unknown[] = [];
-    prewarmEmojiTextures({ initTexture: (t) => void uploaded.push(t) });
-    expect(uploaded).toHaveLength(0);
+    const before = drawn;
+    prewarmEmojiTextures();
+    expect(drawn - before).toBe(0);
     while (queue.length) queue.shift()!();
-    expect(uploaded).toEqual(EMOJIS.map((g) => emojiTexture(g)));
+    expect(drawn - before).toBe(EMOJIS.length);
+    for (const g of EMOJIS) emojiTexture(g); // already drawn: no more draws
+    expect(drawn - before).toBe(EMOJIS.length);
 
-    const more: unknown[] = [];
-    const cancel = prewarmEmojiTextures({ initTexture: (t) => void more.push(t) });
+    vi.resetModules();
+    const fresh = await import("./emojiSprite");
+    const mid = drawn;
+    const cancel = fresh.prewarmEmojiTextures();
     queue.shift()!();
     cancel();
     while (queue.length) queue.shift()!();
-    expect(more).toHaveLength(1);
+    expect(drawn - mid).toBe(1);
   });
 
-  it("(fix/crisp-labels) a 256 px mipmapped glyph sampled half a level sharp, on the label layer, never pixel-snapped", async () => {
-    const { createEmojiSprite, EMOJI_LOD_BIAS } = await import("./emojiSprite");
-    const { LABEL_LAYER } = await import("./spriteCanvas");
-    const { LinearMipmapLinearFilter } = await import("three");
+  it("(fix/crisp-labels) a 256 px glyph on the label layer, never pixel-snapped, not tone-mapped", async () => {
+    const { createEmojiSprite } = await import("./emojiSprite");
+    const { LABEL_LAYER, labelInfo } = await import("./spriteCanvas");
     const e = createEmojiSprite("🎉");
-    const material = e.sprite.material as unknown as {
-      map: { image: { width: number }; generateMipmaps: boolean; minFilter: number };
-      toneMapped: boolean;
-      onBeforeCompile(s: unknown, r: unknown): void;
-    };
+    const material = e.sprite.material as unknown as { map: { image: { width: number } }; toneMapped: boolean };
     expect(material.map.image.width).toBe(256);
-    expect(material.map.generateMipmaps).toBe(true);
-    expect(material.map.minFilter).toBe(LinearMipmapLinearFilter);
     expect(material.toneMapped).toBe(false);
     expect(e.sprite.layers.mask).toBe(1 << LABEL_LAYER);
-    const s = { uniforms: {} as Record<string, { value: unknown }>, vertexShader: "", fragmentShader: "void main() {}" };
-    material.onBeforeCompile(s, null);
-    expect(s.uniforms.uLodBias!.value).toBe(EMOJI_LOD_BIAS);
-    expect(s.uniforms.uSnap!.value).toBe(0);
+    expect(labelInfo(e.sprite).snap).toBe(0);
     e.dispose();
   });
 });

@@ -8,7 +8,7 @@ import {
   bubbleTextCssPx,
   createBubbleSprite,
 } from "./bubbleSprite";
-import { LABEL_LAYER, LABEL_SNAP } from "./spriteCanvas";
+import { LABEL_LAYER, LABEL_SNAP, labelInfo } from "./spriteCanvas";
 
 // A recording canvas (no DOM in the unit tests): 0.5 x the font size per UTF-16 unit.
 interface FakeCanvas {
@@ -84,9 +84,7 @@ describe("speech bubble at device pixels (fix/crisp-labels)", () => {
     }
     expect(b.sprite.center.toArray()).toEqual([0.5, 0]);
     expect(b.sprite.layers.mask).toBe(1 << LABEL_LAYER);
-    const s = { uniforms: {} as Record<string, { value: unknown }>, vertexShader: "", fragmentShader: "void main() {}" };
-    (b.sprite.material as SpriteMaterial).onBeforeCompile(s as never, null as never);
-    expect(s.uniforms.uSnap!.value).toBe(LABEL_SNAP);
+    expect(labelInfo(b.sprite).snap).toBe(LABEL_SNAP);
     b.dispose();
   });
 

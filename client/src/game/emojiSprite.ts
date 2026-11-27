@@ -6,28 +6,24 @@
  * mutates the sprite's position and material opacity (no per-frame canvas work,
  * no per-frame allocation).
  *
- * The glyph's texture is made once per glyph and shared (perf/interaction-latency: there are six glyphs, and drawing
- * one onto a fresh canvas and uploading it on every reaction cost 6-9 ms of the click's frame, 20+ ms on a slow CPU);
- * `prewarmEmojiTextures` uploads them all in idle time when a scene starts, so even the first reaction uploads
- * nothing. Each reaction still owns its material (its opacity fades on its own), released by `dispose()` when it is
+ * The glyph's canvas is made once per glyph and shared (perf/interaction-latency: there are six glyphs, and drawing
+ * one onto a fresh canvas on every reaction cost milliseconds of the click's frame on a slow CPU);
+ * `prewarmEmojiTextures` draws them all in idle time when a scene starts, so even the first reaction draws nothing. Each reaction still owns its material (its opacity fades on its own), released by `dispose()` when it is
  * replaced or its avatar leaves; the shared texture stays.
  *
- * Sharpness (fix/crisp-labels): drawn after the rich tier's post chain at full resolution with the other labels
- * (spriteCanvas.ts). The glyph is a picture whose size follows the distance smoothly, so it is not pixel-snapped like the
- * text: it is rasterized at 256 px (the 128 px one was magnified on a dpr-2 screen up close) with mipmaps, sampled half a
- * mip level sharper than three's default (LOD bias -0.5: no shimmer as it shrinks with distance, no blur at its usual
- * 1.5-3x minification).
+ * Sharpness (fix/crisp-labels): drawn by the label overlay at the device's pixel ratio with the other labels
+ * (labelOverlay.ts). The glyph is a picture whose size follows the distance smoothly, so it is not pixel-snapped like the
+ * text: it is rasterized at 256 px (larger than it is ever shown on a dpr-3 phone) and scaled down with high-quality
+ * smoothing.
  */
 
-import { LinearFilter, LinearMipmapLinearFilter, Sprite, SpriteMaterial, type CanvasTexture, type WebGLRenderer } from "three";
+import { Sprite, SpriteMaterial, type CanvasTexture } from "three";
 import { EMOJIS } from "@caysonverse/shared/constants";
 import { billboardSprite, canvas2d, canvasTexture } from "./spriteCanvas";
 import { EMOJI_BASE_HEIGHT, EMOJI_SPRITE_HEIGHT } from "./constants";
 
 /** Square canvas resolution (px) the glyph is rasterized onto. */
 const CANVAS_PX = 256;
-/** The glyph's map is sampled this many mip levels sharper than the default (see the header). */
-export const EMOJI_LOD_BIAS = -0.5;
 const FONT = `${Math.round(CANVAS_PX * 0.78)}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
 
 export interface EmojiSpriteHandle {
@@ -61,26 +57,20 @@ export function emojiTexture(glyph: string): CanvasTexture {
   let texture = textures.get(glyph);
   if (!texture) {
     texture = canvasTexture(renderCanvas(glyph));
-    texture.generateMipmaps = true;
-    texture.minFilter = LinearMipmapLinearFilter;
-    texture.magFilter = LinearFilter;
     textures.set(glyph, texture);
   }
   return texture;
 }
 
-/**
- * Draw and upload every reaction glyph ahead of time, one per idle slot (each is a canvas draw and a texture upload), so
- * no reaction's frame does it. Returns a cancel.
- */
-export function prewarmEmojiTextures(gl: Pick<WebGLRenderer, "initTexture">, glyphs: readonly string[] = EMOJIS): () => void {
+/** Draw every reaction glyph ahead of time, one per idle slot, so no reaction's frame does it. Returns a cancel. */
+export function prewarmEmojiTextures(glyphs: readonly string[] = EMOJIS): () => void {
   let i = 0;
   let cancelled = false;
   const idle: (cb: () => void) => void =
     typeof requestIdleCallback === "function" ? (cb) => requestIdleCallback(cb, { timeout: 2000 }) : (cb) => setTimeout(cb, 50);
   const next = () => {
     if (cancelled || i >= glyphs.length) return;
-    gl.initTexture(emojiTexture(glyphs[i++]!));
+    emojiTexture(glyphs[i++]!);
     idle(next);
   };
   idle(next);
@@ -92,7 +82,7 @@ export function prewarmEmojiTextures(gl: Pick<WebGLRenderer, "initTexture">, gly
 /** Build an emoji sprite for `glyph`, initially positioned at EMOJI_BASE_HEIGHT. */
 export function createEmojiSprite(glyph: string): EmojiSpriteHandle {
   const texture = emojiTexture(glyph);
-  const sprite = billboardSprite(texture, 1, EMOJI_SPRITE_HEIGHT, 1001, { lodBias: EMOJI_LOD_BIAS });
+  const sprite = billboardSprite(texture, 1, EMOJI_SPRITE_HEIGHT, 1001);
   sprite.position.set(0, EMOJI_BASE_HEIGHT, 0);
   const material = sprite.material as SpriteMaterial;
 

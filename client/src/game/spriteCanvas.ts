@@ -3,43 +3,35 @@
  * names). One pipeline: rasterize onto a 2D canvas, wrap it in a CanvasTexture, and mount it as a depth-independent
  * billboard sprite. Every label builds on these primitives so there is a single canvas/texture/sprite path, never two.
  *
- * Crisp text (fix/crisp-labels — the owner: "글씨가 왜 이렇게 흐리게 나오는거야?"). Measured at night in the village, the name
- * tags came out soft for four reasons, each fixed here or by the code that sizes the labels:
- *  1. The rich tier drew them in its SCENE pass (postChain.ts): when the frame governor lowered the render scale (dpr
- *     1.5 -> 1.25 -> 1) they were drawn at that lower resolution and stretched over the screen, then FXAA blended their
- *     glyph edges and the final pass tone-mapped their colours (a grey capsule, grey text). Labels now live on their own
- *     layer (LABEL_LAYER): the post chain leaves them out of the scene pass and draws them AFTER its final pass, straight
- *     to the screen at the canvas's full resolution — no stretch, no FXAA, no tone curve, no fog (`toneMapped: false`,
- *     `fog: false`). The light tier draws them in its one pass, as before (its canvas is not stretched by the game).
- *  2. A tag's text was rasterized at 48 px and shown at 12-16 CSS px: a 2-4x minification through trilinear mipmaps,
- *     which blends two blurred mip levels. The tags and bubbles are now rasterized at the size they are SHOWN at, in
- *     device pixels (font px = on-screen CSS px x dpr, re-rasterized only when that whole-pixel bucket changes:
- *     `fontBucket`), and sampled with a plain LinearFilter.
- *  3. Even at the right size a sprite lands on a fractional pixel position, and bilinear filtering then spreads every
- *     glyph edge over two pixels. The label vertex shader (`LABEL_VERTEX`) draws a sprite whose projected size is within
- *     `snap` of its texture's size at EXACTLY the texture's size, its corner on a whole pixel: every texel lands on one
- *     screen pixel, as the browser's own text does. Farther from it (a size the texture was not made for yet) it draws
- *     the projected size, as three's own sprite shader does.
- *  4. The colours were tone-mapped and fogged (1.) — the tags were dimmer than designed at night.
- * Sprites that are not text keep a smooth, unsnapped size (the emoji: a mipmapped glyph sampled with a small negative LOD
- * bias so it stays sharp without shimmering).
+ * Crisp text (fix/crisp-labels — the owner: "글씨가 왜 이렇게 흐리게 나오는거야?", and on a phone 2026-11-27: "모바일에서 왜
+ * 이렇게 글자 가독성이 안좋지? ... 닉네임을 봐봐"). The labels came out soft for these reasons, each fixed here or by the code
+ * that sizes them:
+ *  1. They were drawn INTO the WebGL canvas, at its resolution. A phone's canvas is drawn at dpr 1 (the light tier:
+ *     renderProfile / quality.ts, for the frame rate) and the browser stretches it ~3x over a dpr-3 screen, so every glyph
+ *     came out three device pixels wide and soft, next to the HUD's sharp HTML text; the rich tier stretched them by its
+ *     frame governor's render scale, FXAA'd and tone-mapped them. WebGL no longer draws them at all: the label overlay
+ *     (labelOverlay.ts) draws every label sprite's canvas on a 2D canvas laid over the WebGL one at the DEVICE's pixel
+ *     ratio, after the frame — no stretch, no FXAA, no tone curve, no fog — while the 3D scene keeps its own resolution.
+ *  2. A tag's text was rasterized at 48 px and shown at 12-16 CSS px. The tags and bubbles are now rasterized at the size
+ *     they are SHOWN at, in device pixels (font px = on-screen CSS px x the device's dpr, `labelPixelRatio`, re-rasterized
+ *     only when that whole-pixel bucket changes: `fontBucket`).
+ *  3. Even at the right size a label lands on a fractional pixel position, and filtering then spreads every glyph edge over
+ *     two pixels. The overlay draws a label whose projected size is within `snap` of its canvas's size at EXACTLY the
+ *     canvas's size, its corner on a whole device pixel (`placeLabel`): every texel lands on one screen pixel, as the
+ *     browser's own text does. Farther from it (a size the canvas was not made for yet) it draws the projected size.
+ * Sprites that are not text keep a smooth, unsnapped size (the emoji: a 256 px glyph scaled down with high-quality
+ * smoothing).
+ *
+ * The labels stay three.js Sprites on LABEL_LAYER (parented to their avatars, sized and faded by their owners as before);
+ * their CanvasTexture is only the holder of the canvas the overlay draws — no camera sees the layer, so it is never
+ * uploaded to the GPU.
  */
 
-import {
-  CanvasTexture,
-  LinearFilter,
-  Sprite,
-  SpriteMaterial,
-  SRGBColorSpace,
-  Vector2,
-  Vector4,
-  type WebGLRenderer,
-} from "three";
+import { CanvasTexture, LinearFilter, Sprite, SpriteMaterial, SRGBColorSpace } from "three";
 
 /**
- * The layer every label sprite is on (and only on). The scene's camera sees it (NametagSystem enables it), so the light
- * tier draws labels in its one pass; the rich tier's post chain hides it from its scene pass and draws it on its own,
- * after the final pass, at full resolution (postChain.ts `renderLabels`).
+ * The layer every label sprite is on (and only on). No camera sees it: WebGL never draws a label, the label overlay does
+ * (labelOverlay.ts). The rich tier's post chain still takes it out of its scene pass, in case a camera was told to.
  */
 export const LABEL_LAYER = 30;
 
@@ -75,7 +67,7 @@ export function canvas2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   return ctx;
 }
 
-/** A CanvasTexture for a UI canvas shown at about one texel per screen pixel: no mipmaps, linear, sRGB. */
+/** A CanvasTexture holding a label's canvas (the overlay draws the canvas; the texture is never uploaded): no mipmaps, linear, sRGB. */
 export function canvasTexture(canvas: HTMLCanvasElement): CanvasTexture {
   const texture = new CanvasTexture(canvas);
   texture.minFilter = LinearFilter;
@@ -123,92 +115,39 @@ export function takeRasterBudget(frame: number = frameKey(), perFrame: number = 
   return true;
 }
 
-// ── the label sprite's shader ────────────────────────────────────────────────
+// ── the label sprite ─────────────────────────────────────────────────────────
 
-/**
- * three's sprite vertex shader with the pixel snap (see the header, 3.): `uRes` is the viewport being drawn into (px),
- * `uTexPx` the map's size (texels), `uSnap` the share within which the texture's own size is drawn (0: never). Labels do
- * not rotate, so `rotation` is not applied.
- */
-export const LABEL_VERTEX = /* glsl */ `
-uniform float rotation;
-uniform vec2 center;
-uniform vec2 uRes;
-uniform vec2 uTexPx;
-uniform float uSnap;
+/** Every live label sprite (made by `billboardSprite`, gone when its material is disposed): what the label overlay draws. */
+const liveLabels = new Set<Sprite>();
 
-#include <common>
-#include <uv_pars_vertex>
-#include <fog_pars_vertex>
-#include <logdepthbuf_pars_vertex>
-#include <clipping_planes_pars_vertex>
-
-void main() {
-
-	#include <uv_vertex>
-
-	vec4 mvPosition = modelViewMatrix[ 3 ];
-
-	vec2 scale = vec2( length( modelMatrix[ 0 ].xyz ), length( modelMatrix[ 1 ].xyz ) );
-
-	#ifndef USE_SIZEATTENUATION
-
-		bool isPerspective = isPerspectiveMatrix( projectionMatrix );
-
-		if ( isPerspective ) scale *= - mvPosition.z;
-
-	#endif
-
-	// The sprite faces the camera, so its four corners share the anchor's w: work in pixels around the anchor.
-	vec4 anchorClip = projectionMatrix * mvPosition;
-	vec2 res = max( uRes, vec2( 1.0 ) );
-	vec2 anchorPx = ( anchorClip.xy / anchorClip.w * 0.5 + 0.5 ) * res;
-	vec2 sizePx = scale * vec2( projectionMatrix[ 0 ][ 0 ], projectionMatrix[ 1 ][ 1 ] ) / anchorClip.w * 0.5 * res;
-	vec2 texPx = max( uTexPx, vec2( 1.0 ) );
-	vec2 off = abs( sizePx / texPx - 1.0 );
-	vec2 originPx;
-	vec2 drawPx;
-	if ( uSnap > 0.0 && off.x <= uSnap && off.y <= uSnap ) {
-		// One texel per pixel, the corner on a whole pixel: every texel centre falls on a pixel centre.
-		drawPx = texPx;
-		originPx = floor( anchorPx - center * drawPx + 0.5 );
-	} else {
-		drawPx = sizePx;
-		originPx = anchorPx - center * drawPx;
-	}
-	vec2 cornerPx = originPx + ( position.xy + 0.5 ) * drawPx;
-	gl_Position = vec4( ( cornerPx / res * 2.0 - 1.0 ) * anchorClip.w, anchorClip.z, anchorClip.w );
-	mvPosition.xy += ( position.xy - ( center - vec2( 0.5 ) ) ) * scale;
-
-	#include <logdepthbuf_vertex>
-	#include <clipping_planes_vertex>
-	#include <fog_vertex>
-
+/** The label sprites alive now (labelOverlay.ts draws the ones that are in the scene and visible). Read-only. */
+export function labelSprites(): ReadonlySet<Sprite> {
+  return liveLabels;
 }
-`;
 
-/** The map sample with a LOD bias (`uLodBias`, in mip levels; 0 for the unmipmapped text labels). */
-const LABEL_MAP_FRAGMENT = /* glsl */ `
-#ifdef USE_MAP
-	diffuseColor *= texture2D( map, vMapUv, uLodBias );
-#endif
-`;
-
-/** The viewport size every label draw reads (set just before each draw: the pass it is in decides it). */
-const resolution = { value: new Vector2(1, 1) };
-const viewport = new Vector4();
+/** What the label overlay needs to know about a label sprite beyond the sprite itself. */
+export interface LabelSpriteInfo {
+  /** Pixel snap tolerance (see LABEL_SNAP); 0: always drawn at its projected size. */
+  snap: number;
+}
 
 export interface LabelSpriteOptions {
   /** Pixel snap tolerance (LABEL_SNAP for text; 0, the default: always the projected size, never snapped). */
   snap?: number;
-  /** LOD bias of the map sample, in mip levels (negative: sharper; only matters for a mipmapped map). Default 0. */
-  lodBias?: number;
+}
+
+/** The overlay's per-sprite settings (`billboardSprite` writes them; a sprite made otherwise reads as unsnapped). */
+export function labelInfo(sprite: Sprite): LabelSpriteInfo {
+  return (sprite.userData.label as LabelSpriteInfo | undefined) ?? { snap: 0 };
 }
 
 /**
- * A billboard sprite showing `texture`, `heightM` metres tall with width from the canvas `aspect`, on LABEL_LAYER. Always
- * readable: no depth test/write, high render order, its canvas colours as they are (no tone mapping, no fog). Each sprite
- * gets its OWN material (disposed by the caller) so per-sprite state never bleeds between avatars.
+ * A billboard sprite showing `texture`, `heightM` metres tall with width from the canvas `aspect`, on LABEL_LAYER. WebGL
+ * never draws it (no camera sees LABEL_LAYER): the label overlay (labelOverlay.ts) draws its canvas (`material.map.image`)
+ * at the sprite's projected place, with `material.opacity`, in `renderOrder` order, at the device's own pixel ratio. Each
+ * sprite gets its OWN material (disposed by the caller: that also takes it off the overlay) so per-sprite state never
+ * bleeds between avatars. The material keeps the settings a WebGL draw would need (no depth, no tone mapping, no fog) so
+ * the sprite still reads right if a camera is ever told to see the layer.
  */
 export function billboardSprite(
   texture: CanvasTexture,
@@ -225,29 +164,12 @@ export function billboardSprite(
     toneMapped: false,
     fog: false,
   });
-  const texPx = { value: new Vector2(1, 1) };
-  const snap = { value: options.snap ?? 0 };
-  const lodBias = { value: options.lodBias ?? 0 };
-  material.onBeforeCompile = (shader) => {
-    shader.uniforms.uRes = resolution;
-    shader.uniforms.uTexPx = texPx;
-    shader.uniforms.uSnap = snap;
-    shader.uniforms.uLodBias = lodBias;
-    shader.vertexShader = LABEL_VERTEX;
-    shader.fragmentShader = shader.fragmentShader
-      .replace("void main() {", "uniform float uLodBias;\nvoid main() {")
-      .replace("#include <map_fragment>", LABEL_MAP_FRAGMENT);
-  };
-  material.customProgramCacheKey = () => "cv-label-sprite";
   const sprite = new Sprite(material);
   sprite.scale.set(heightM * aspect, heightM, 1);
   sprite.renderOrder = renderOrder;
   sprite.layers.set(LABEL_LAYER);
-  sprite.onBeforeRender = (renderer: WebGLRenderer) => {
-    renderer.getCurrentViewport(viewport);
-    resolution.value.set(viewport.z, viewport.w);
-    const image = material.map?.image as { width?: number; height?: number } | undefined;
-    texPx.value.set(image?.width ?? 1, image?.height ?? 1);
-  };
+  sprite.userData.label = { snap: options.snap ?? 0 } satisfies LabelSpriteInfo;
+  liveLabels.add(sprite);
+  material.addEventListener("dispose", () => liveLabels.delete(sprite));
   return sprite;
 }
