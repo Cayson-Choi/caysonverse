@@ -144,7 +144,7 @@ function seatHalf(seats: readonly Seat[], i: number): number {
  */
 export function seatVolumeHolds(p: { x: number; y: number; z: number }, seats: readonly Seat[], i: number, tol = 0.04): number | null {
   const s = seats[i]!;
-  const backed = (s.lean ?? 0) > 0;
+  const backed = (s.lean ?? 0) > 0 || floorBacked(s);
   const fx = Math.sin(s.yaw);
   const fz = Math.cos(s.yaw);
   const fe = s.frontEdge ?? 0;
@@ -166,7 +166,16 @@ export function seatVolumeHolds(p: { x: number; y: number; z: number }, seats: r
  * sees the plaza's nearest benches, met the backrest first and did nothing at all).
  */
 function hasBackrest(s: Seat): boolean {
-  return (s.lean ?? 0) > 0 || (s as { kind?: string }).kind === "backed";
+  return (s.lean ?? 0) > 0 || (s as { kind?: string }).kind === "backed" || floorBacked(s);
+}
+
+/**
+ * A floor seat with a backrest (a house's floor sofa, a 보료: sat cross-legged, no lean, its `backrest` set — benchSeats.ts markerSeats).
+ * Its click volume is a backed seat's, cushion and backrest (fix/house-walk-sync: house 8's floor-sofa seat tapped on its low backrest
+ * from the room — the hit 0.49 m up, above a backless volume's 0.4 — was no seat, the walk ended by the next seat, and 앉기 sat on that one).
+ */
+function floorBacked(s: Seat): boolean {
+  return (s as { kind?: string }).kind === "floor" && s.backrest !== undefined;
 }
 
 /** The backrest's band of a backed seat's volume (`seatRayEntry`'s `part`): its back this deep (m), from this high above the seat. */

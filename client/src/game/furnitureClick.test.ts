@@ -212,3 +212,17 @@ describe("a click on a plaza bench, from any side (hotfix 2026-11-16)", () => {
     expect(fc?.seatIndex ?? null).not.toBe(6);
   });
 });
+
+describe("a house's floor sofa (a backed floor seat): its low backrest is part of the seat (fix/house-walk-sync)", () => {
+  it("house 8's second floor-sofa seat tapped on its backrest top from across the room is that seat, not the floor by the next one", () => {
+    const i = VILLAGE_SEATS.findIndex((s) => s.id === "h8_2_1");
+    expect(i).toBeGreaterThanOrEqual(0);
+    // seen from the top of the stair (the e2e's tap): the hit on the backrest's top, 0.49 m up, 0.35 m left of the seat's middle
+    const o = { x: 530.56, y: 2.1, z: 23.45 };
+    const hit = { x: 532.32, y: 0.49, z: 22.91 };
+    const len = Math.hypot(hit.x - o.x, hit.y - o.y, hit.z - o.z);
+    const ray: ClickRay = { o, d: { x: (hit.x - o.x) / len, y: (hit.y - o.y) / len, z: (hit.z - o.z) / len } };
+    const fc = furnitureClick({ ...hit, distance: len }, ray, VILLAGE_SEATS, "house:house_8:2", () => false, { x: o.x, z: o.z }, 0, true);
+    expect(fc?.seatIndex).toBe(i);
+  });
+});
