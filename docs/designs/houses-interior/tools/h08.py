@@ -62,7 +62,7 @@ H.piece(1, "seoanprops", HP.props_table, 2.5, 7.45, 0, 0.0, cols=False, top=0.32
 H.piece(1, "mungap", ST.mungap, 10.43, 2.2, 0, -PI / 2)   # moved off the stair foot (art round 2): the way from the entry corner to the 2F pad is open
 H.piece(1, "soban", TA.soban, 6.4, 7.4, 0, 0.0)
 H.piece(1, "orchid", DE.plant_orchid, 6.4, 7.4, 0.3, 0.0, cols=False)
-H.piece(1, "vase_big", HK.vase_on_plinth, 3.55, 7.2, 0, 0.0, h=0.55)
+H.piece(1, "vase_big", HK.vase_on_plinth, 3.62, 7.2, 0, 0.0, h=0.55)
 H.piece(1, "frame", DE.frame_art, 10.57, 2.2, 1.5, -PI / 2, cols=False, w=0.55, h=0.8, art=2)
 H.piece(1, "clock", DE.wall_clock, 8.6, 7.79, 2.15, PI, cols=False)
 H.piece(1, "snake", DE.plant_snake, 9.3, 0.5, 0, 0.0)
@@ -91,7 +91,7 @@ H.piece(2, "tableprops", HP.props_table, 5.1, 4.9, 0, 0.0, cols=False, top=0.33,
 H.piece(2, "strings", DE.string_lights, 5.3, 4.4, 3.05, 0.0, cols=False, length=8.2, sag=0.5, n=16)
 H.piece(2, "plant", HP.plant_big, 10.0, 0.6, 0, 0.0, kind="fiddle", h=1.3, leaves=28)
 H.piece(2, "trunk", ST.trunk, 3.95, 0.35, 0, 0.0)
-H.piece(2, "shelf", HP.bookwall_lite, 10.4, 6.3, 0, -PI / 2, w=1.6, h=1.2, d=0.3, seed=81, shelves=3)
+H.piece(2, "shelf", HP.bookwall_lite, 10.4, 6.85, 0, -PI / 2, w=1.4, h=1.2, d=0.3, seed=81, shelves=3)
 H.piece(2, "frame", DE.frame_art, 5.1, 7.78, 1.7, PI, cols=False, w=0.8, h=0.55, art=1)
 
 # ---- realism pass 2026-11-17 (refs: encykorea 우물마루, a brunch hanok interior): the things a lived-in 대청 keeps ---------------------
@@ -106,7 +106,7 @@ H.piece(2, "bookpile", HP.props_table, 2.2, 7.4, 0, 0.0, cols=False, top=0.0, se
 
 # ---- dream show-home styling (owner 2026-11-17): fresh flowers, styled tables, lamps and sconces, a console vignette --------
 H.piece(1, "flowers", KR.flower_vase, 9.5, 3.9, 0.35, 0.0, cols=False, tn=(0.66, 0.72, 0.9, 1), kind="hydrangea", h=0.24)
-H.piece(1, "vignette", KR.console_vignette, 8.6, 7.8, 0.0, PI, w=1.2, accent=(0.66, 0.74, 0.92, 1))
+pass  # (window alignment: no free back wall left for it) removed: H.piece(1, "vignette", KR.console_vignette, 8.6, 7.8, 0.0, PI, w=1.2, accent=(0.66, 0.74, 0.92, 1))
 
 VIEWS = [
     dict(name="f1_entry", floor=1, eye=[5.3, 0.55, 1.35], look=[5.3, 6.0, 1.5], lens=17),

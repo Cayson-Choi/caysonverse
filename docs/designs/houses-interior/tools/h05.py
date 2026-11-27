@@ -42,20 +42,10 @@ def face_center(cx, cz, x, z):
 
 # ================================================================================================ floor 1 ======
 # sunroom: two big front windows (wider, nearly to the ceiling), normal side windows, back-left window; the back-right one hides behind stair A
-sp1 = dict(front=[(2.68, 2.4), (7.92, 2.4)], left=[(7.8 - 4.13, 1.5)], right=[(4.13, 1.5)], back=[(10.6 - 3.04, 1.5)])
-ops = {w: [dict(s0=c - wd / 2, s1=c + wd / 2, y0=(0.5 if w == "front" else 0.95), y1=(3.0 if w == "front" else 2.4)) for (c, wd) in lst] for w, lst in sp1.items()}
+sp1 = HA.spec(H, 1)   # window alignment 2026-11-27: the shell's windows (the sunroom's front glass was 2.4 m wide, 0.5..3.0: the shell's are 1.4 m)
+ops = HA.ops_windows(sp1)
 HA.merge(ops, dict(front=[dict(s0=4.4, s1=6.2, y0=0.0, y1=2.9)]))
-wins = []
-for wall, lst in sp1.items():
-    for (c, w) in lst:
-        if wall == "front":
-            wins.append((wall, c - w / 2, c + w / 2, 0.5, 3.0, dict(style="grid", cols=4, rows=3)))
-        else:
-            wins.append((wall, c - w / 2, c + w / 2, 0.95, 2.4, dict(style="grid", cols=3, rows=2)))
-curt = [("front", 2.68 - 1.4, 2.68 + 1.4, 3.3, 0.04, dict(folds=9, tn=(0.97, 0.97, 0.94, 1))),
-        ("front", 7.92 - 1.4, 7.92 + 1.4, 3.3, 0.04, dict(folds=9, tn=(0.97, 0.97, 0.94, 1))),
-        ("left", 7.8 - 4.13 - 1.0, 7.8 - 4.13 + 1.0, 2.7, 0.04, dict(folds=9, tn=(0.97, 0.97, 0.94, 1))),
-        ("right", 4.13 - 1.0, 4.13 + 1.0, 2.7, 0.04, dict(folds=9, tn=(0.97, 0.97, 0.94, 1)))]
+wins, curt = HA.add_windows(sp1, cols=3, rows=2, curtain=("front", "left", "right"), curtain_kw=dict(folds=9, tn=(0.97, 0.97, 0.94, 1)))
 H.shell(1, ops=ops, wall_tn=MINT, floor_kind="tile_grey", floor_tn=(1.0, 0.95, 0.85, 1), windows=wins, curtains=curt,
         lights=((2.6, 2.8), (2.6, 5.4), (8.0, 1.8), (8.0, 4.0), (5.3, 1.4)),
         fixtures=[lambda fr: SH.entry_door(fr["front"][0], 4.4, 6.2, 2.9)])
@@ -95,7 +85,7 @@ H.piece(1, "rubber", FX.plant_rubber_full, 6.75, 0.6)
 H.piece(1, "monstera", FX.plant_monstera_full, 9.8, 0.6, seed=9, leaves=28)
 H.piece(1, "olive", FX.plant_olive_full, 0.6, 6.8, seed=11)
 H.piece(1, "rubber", FX.plant_rubber_full, 4.4, 7.15, seed=3)
-H.piece(1, "monstera", FX.plant_monstera_full, 0.65, 5.3, seed=12)
+pass  # (window alignment: no wall left for it between the chairs and the windows) removed: H.piece(1, "monstera", FX.plant_monstera_full, 0.65, 5.3, seed=12)  # window alignment 2026-11-27: was z 5.3
 for (x, z, s) in ((1.7, 0.45, 5), (3.4, 0.45, 6), (7.2, 0.45, 7), (8.7, 0.45, 8)):
     H.piece(1, "hang", DE.plant_hanging, x, z, 3.7, 0.0, seed=s, drop=0.9, cols=False)
 for x in (1.4, 3.2, 7.1, 8.7):
@@ -107,13 +97,13 @@ H.piece(1, "art", DE.frame_art, 0.04, 6.3, 1.6, PI / 2, w=0.8, h=0.6, art=1, col
 H.piece(1, "clock", DE.wall_clock, 10.56, 2.2, 1.9, -PI / 2, cols=False)
 
 # ================================================================================================ floor 2 ======
-sp2 = HA.spec(skip=[("back", 10.6 - 7.15)])
-ops2 = HA.ops_windows(sp2, y0=0.8, y1=2.3)
-HA.merge(ops2, dict(front=[dict(s0=4.4, s1=5.3, y0=0.0, y1=2.13)]))
-wins2 = [(w, c - wd / 2, c + wd / 2, 0.8, 2.3, dict(style="grid", cols=2, rows=2)) for w, lst in sp2.items() for (c, wd) in lst]
+sp2 = HA.spec(H, 2)
+ops2 = HA.ops_windows(sp2)
+HA.merge(ops2, dict(front=[dict(s0=6.5, s1=7.4, y0=0.0, y1=2.13)]))   # bathroom door (window alignment: was 4.4..5.3, behind the shell's middle window)
+wins2 = [(w, c - wd / 2, c + wd / 2, y0, y1, dict(style="grid", cols=2, rows=2)) for w, lst in sp2.items() for (c, wd, y0, y1) in lst]
 H.shell(2, ops=ops2, wall_tn=(0.86, 0.91, 0.84, 1), floor_kind="oak", floor_tn=(0.96, 0.94, 0.9, 1), windows=wins2,
         lights=((3.2, 2.6), (3.2, 5.2), (8.0, 2.4), (7.8, 4.8)),
-        fixtures=[lambda fr: SH.bath_door(fr["front"][0], 4.4, 5.3, 2.1)])
+        fixtures=[lambda fr: SH.bath_door(fr["front"][0], 6.5, 7.4, 2.1)])
 tx, tz = 3.2, 3.2
 H.piece(2, "rug", DE.rug_rect, tx, tz, 0, 0.0, w=3.0, d=2.6, cols=False, tn=(0.82, 0.78, 0.65, 1), border_tn=(0.45, 0.4, 0.3, 1), fringe=False)
 H.piece(2, "table", TA.table_low, tx, tz, 0, 0.0, w=1.4, d=0.8)
@@ -128,22 +118,22 @@ H.piece(2, "orchid", DE.plant_orchid, 0.25, 5.5, 0.6, 0.0, cols=False)
 H.piece(2, "teabox", DE.tea_set, 0.25, 5.95, 0.6, 0.0, cols=False)
 pass  # (cottage pass) removed: H.piece(2, "scroll", ST.scroll_hanging, 0.04, 5.2, 0.9, PI /
 pass  # (cottage pass) removed: H.piece(2, "scroll", ST.scroll_hanging, 0.04, 6.3, 0.9, PI /
-for (c, wd) in sp2["front"] + [(7.8 - 4.13, 1.5)]:
+for (c, wd, _y0, _y1) in sp2["front"]:
     pass
 H.piece(2, "bamboo", SH.blind_bamboo, 0, 0, 0, 0, cols=False, **{}) if False else None
 H.piece(2, "bed", BE.bed_single, 9.5, 1.9, 0, -PI / 2, tn=(0.6, 0.78, 0.7, 1))
 HA.drop_seat(H, 2, "bed", "min_lz")
 H.piece(2, "bedside", TA.bedside, 10.3, 0.7, 0, -PI / 2)
 H.piece(2, "tlamp", DE.table_lamp, 10.3, 0.7, 0.55, 0.0, cols=False)
-H.piece(2, "plant", FX.plant_olive_full, 9.8, 5.3, seed=21)
-H.piece(2, "plant2", FX.plant_monstera_full, 6.4, 0.6, seed=14)
+H.piece(2, "plant", FX.plant_olive_full, 9.8, 3.75, seed=21)  # window alignment 2026-11-27: was z 5.3
+H.piece(2, "plant2", FX.plant_monstera_full, 6.65, 0.6, seed=14)
 H.piece(2, "boughs", DE.vase_branch, 8.0, 0.2, 0.0, 0.0, cols=False) if False else None
 H.piece(2, "art", DE.frame_art, 10.56, 1.9, 1.7, -PI / 2, w=0.7, h=0.5, art=2, cols=False)
 H.piece(2, "tealamp", DE.floor_lamp, 5.8, 5.4)
 
 # ---- realism pass 2026-11-17 (refs: ohou.se plant rooms, a tea room with floor seating, a wicker sunroom): the gardener's things -------
 H.piece(1, "can", KR.watering_can, 6.25, 1.05, 0.0, 0.4, cols=False)
-H.piece(2, "ladder", KR.plant_ladder, 0.0, 2.1, 0, PI / 2, w=0.7, h=1.4)
+H.piece(2, "ladder", KR.plant_ladder, 0.0, 3.65, 0, PI / 2, w=0.7, h=1.4)  # window alignment 2026-11-27: was z 2.1
 pass  # (cottage pass) removed: H.piece(1, "aircon", KR.aircon_stand, 1.75, 7.55, 0, PI)
 H.piece(1, "throw", KR.throw_draped, 2.4, 5.1, 0.78, PI, cols=False, w=0.5, top_d=0.12, drop_front=0.32, drop_back=0.2, tn=(0.88, 0.85, 0.76, 1)) if False else None
 H.piece(1, "mats", KR.placemats, dx, dz, 0.745, 0.0, cols=False, spots=[(0.33, 0.0, PI / 2), (-0.33, 0.0, PI / 2), (0.0, 0.33, 0.0), (0.0, -0.33, 0.0)],

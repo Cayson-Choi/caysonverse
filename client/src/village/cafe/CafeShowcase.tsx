@@ -21,6 +21,7 @@ import { PICK_SOLID_KEY } from "../../game/clickPick";
 import { dayNight } from "../dayNightDriver";
 import { trimMesh } from "../street/streetTrim";
 import { driveRoomLights, holdLotRoom, lotRoomLoaded, showcaseMaterial, type LoadedRoom } from "../lots/LotRoom";
+import { makeKitchen, setKitchenLight } from "./cafeKitchen";
 
 /**
  * 케이슨 카페 from the village (owner 2026-11-21: "유리창이 뭔가 사실적이지 않아 … 불꺼진 창문도 불이 켜져있는 걸로", "모든 유리창을 투명하게
@@ -37,7 +38,8 @@ import { driveRoomLights, holdLotRoom, lotRoomLoaded, showcaseMaterial, type Loa
  *  3. …one mesh of real glass panes (`facadeGlass`): nearly clear (4 %) seen straight on, a Fresnel reflection of the sky and the street at a
  *     slant (Schlick), a faint frame line; farther than the rooms are drawn, the same panes turn into a dark reflective sheet with the warm
  *     glow of a lit room at night (no window is ever dark: every one has the room behind it).
- *  4. The kitchen behind the partition (not modelled) is a closed plaster box, so no window looks through the building.
+ *  4. The kitchen behind the partition is cafeKitchen.ts: a small café kitchen (cabinets, a range and its hood, shelves, copper pans, a
+ *     window-side bench, a prep table, pendant lamps) with baked day / night light, seen through the three back windows (#13 round 2).
  * The module is the café's alone; the glass shader (`facadeGlassMaterial`) is reusable for any building with an interior behind its panes.
  */
 
@@ -91,6 +93,17 @@ export const CAFE_OPENINGS: readonly Opening[] = Object.freeze([
   ]),
   ...(["front", "back"] as const).flatMap((wall) => [-5.4, -1.8, 1.8, 5.4].map((c) => ({ wall, a: up(c)[0], b: up(c)[1], y0: S + 0.9, y1: S + 2.9, d: 0.15 }))),
 ]);
+/**
+ * The kitchen's panes at the back (#13 round 2: village.glb's own glass there, measured): three windows and the back door's glass. Only
+ * their glass is taken out of the village (their sashes stay); the facade's glass stands in it, over the kitchen (cafeKitchen.ts).
+ */
+export const CAFE_BACK_PANES: readonly Opening[] = Object.freeze([
+  { wall: "back", a: -6.3, b: -4.9, y0: 1.025, y1: 2.625, d: 0.12 },
+  { wall: "back", a: -3.9, b: -2.5, y0: 1.025, y1: 2.625, d: 0.12 },
+  { wall: "back", a: -0.7, b: 0.7, y0: 1.025, y1: 2.625, d: 0.12 },
+  { wall: "back", a: 2.7, b: 3.7, y0: 0.3, y1: 2.3, d: 0.12 },
+]);
+
 /** The openings of the walls that village.glb glazes (the door's whole opening: its leaves are rebuilt by the room). */
 const STRIP_OPENINGS: readonly Opening[] = [
   ...CAFE_OPENINGS.filter((o) => !(o.wall === "front" && o.d < 0)),
@@ -171,6 +184,19 @@ export function stripCafeFromVillage(root: Object3D): { undo: () => void; remove
         return Math.abs(lx) <= 1.25 && lz >= IN.zf - E && lz <= IN.zf + IN.t + 0.02 && y > -0.05 && y < 3.06;
       },
     },
+    // the kitchen's back panes: their glass only (cafeKitchen.ts is seen through the facade's glass there)
+    ...CAFE_BACK_PANES.map((o): Foot => ({
+      minX: CX - 4.1,
+      maxX: CX + 9.7,
+      minZ: CZ - 7.2,
+      maxZ: CZ + 7.2,
+      maxY: o.y1 + 0.1,
+      minTop: -1,
+      inside: (x, y, z) => {
+        const { lx, lz } = toLocal(x, z);
+        return lx >= o.a - 0.03 && lx <= o.b + 0.03 && y >= o.y0 - 0.06 && y <= o.y1 + 0.06 && lz <= IN.zb + E && lz >= IN.zb - IN.t - 0.02;
+      },
+    })),
   ];
   const undo: Array<() => void> = [];
   let removed = 0;
@@ -293,29 +319,6 @@ export function facadeGlassGeometry(openings: readonly Opening[] = CAFE_OPENINGS
   return g;
 }
 
-/** The kitchen behind the café's partition (not modelled): a closed plaster box seen through no window but keeping the building shut. */
-function kitchenBox(): BufferGeometry {
-  const a = toWorld(-IN.x, IN.zb);
-  const b = toWorld(IN.x, -4.1);
-  const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), z0 = Math.min(a.z, b.z), z1 = Math.max(a.z, b.z);
-  const g = new BufferGeometry();
-  const p: number[] = [];
-  const quad = (q: number[][]) => {
-    p.push(...q[0]!, ...q[1]!, ...q[2]!, ...q[0]!, ...q[2]!, ...q[3]!);
-  };
-  const H = 4.3; // (the ground floor's kitchen only: the salon upstairs covers the whole upper floor)
-  // inward-facing walls, floor and ceiling (double-sided material)
-  quad([[x0, 0, z0], [x1, 0, z0], [x1, H, z0], [x0, H, z0]]);
-  quad([[x0, 0, z1], [x1, 0, z1], [x1, H, z1], [x0, H, z1]]);
-  quad([[x0, 0, z0], [x0, 0, z1], [x0, H, z1], [x0, H, z0]]);
-  quad([[x1, 0, z0], [x1, 0, z1], [x1, H, z1], [x1, H, z0]]);
-  quad([[x0, 0.01, z0], [x1, 0.01, z0], [x1, 0.01, z1], [x0, 0.01, z1]]);
-  quad([[x0, H, z0], [x1, H, z0], [x1, H, z1], [x0, H, z1]]);
-  g.setAttribute("position", new Float32BufferAttribute(p, 3));
-  g.computeVertexNormals();
-  return g;
-}
-
 // ─────────────────────────────── the rooms behind the glass ───────────────────────────────
 
 /** Room frame (the GLB's world: interior origin + room x, z) -> the village, at floor height `y`. */
@@ -425,23 +428,17 @@ export function CafeShowcase({ root }: { root: Object3D }) {
   const glass = useMemo(() => {
     const mat = facadeGlassMaterial();
     mat.userData[PICK_SOLID_KEY] = true; // (a see-through material is never picked: the glass is the door's and the wall's face for a tap)
-    const mesh = new Mesh(facadeGlassGeometry(), mat);
+    const mesh = new Mesh(facadeGlassGeometry([...CAFE_OPENINGS, ...CAFE_BACK_PANES]), mat);
     mesh.name = "cafe_facade_glass";
     mesh.renderOrder = 4;
     // (pickable, as village.glb's glass was: a tap on the door's glass is a tap on the door, lotDoorTap.ts)
     return { mesh, mat };
   }, []);
-  const kitchen = useMemo(() => {
-    const m = new Mesh(kitchenBox(), new ShaderMaterial({ vertexShader: "void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}", fragmentShader: "void main(){gl_FragColor=vec4(0.32,0.28,0.24,1.0);\n#include <colorspace_fragment>\n}", side: DoubleSide }));
-    m.name = "cafe_kitchen_box";
-    m.raycast = () => {};
-    return m;
-  }, []);
+  const kitchen = useMemo(() => makeKitchen(([lx, y, lz]) => [CX - lz, y, CZ + lx], ([nx, ny, nz]) => [-nz, ny, nx]), []);
   useEffect(() => () => {
     glass.mesh.geometry.dispose();
     glass.mat.dispose();
-    kitchen.geometry.dispose();
-    (kitchen.material as Material).dispose();
+    kitchen.dispose();
   }, [glass, kitchen]);
 
   // 1. village.glb's café interior out of the clone
@@ -479,11 +476,11 @@ export function CafeShowcase({ root }: { root: Object3D }) {
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     window.__cvCafeReady = () => lotRoomLoaded("lot:lot_cafe_room");
-    window.__cvCafeFacade = () => ({ stripped: strip, near, rooms: shown.map((s) => s.group.name), panes: CAFE_OPENINGS.length, opaque: glass.mat.uniforms.uOpaque!.value });
+    window.__cvCafeFacade = () => ({ stripped: strip, near, rooms: shown.map((s) => s.group.name), panes: CAFE_OPENINGS.length, opaque: glass.mat.uniforms.uOpaque!.value, kitchen: { shown: kitchen.room.visible, triangles: kitchen.triangles } });
     return () => {
       delete window.__cvCafeFacade;
     };
-  }, [strip, near, shown, glass]);
+  }, [strip, near, shown, glass, kitchen]);
 
   useFrame(({ clock }) => {
     const d = camera.position.distanceTo(CENTRE);
@@ -503,12 +500,16 @@ export function CafeShowcase({ root }: { root: Object3D }) {
     (u.uGround!.value as Vector3).set(0.2 * day + 0.02, 0.22 * day + 0.02, 0.18 * day + 0.02);
     direct.value = CAFE_SHOW_DIRECT * day;
     night.value = Math.max(o.night, o.lights * 0.8);
+    // the kitchen: drawn with the rooms (beyond, the panes are a dark sheet); daylight through its windows, its pendants with the village's lamps
+    kitchen.room.visible = kitchen.bulbs.visible = nearRef.current;
+    setKitchenLight(kitchen.material, kitchen.bulbMaterial, day, Math.min(1, Math.max(o.lights, o.night)));
     for (const s of shown) driveRoomLights(s.loaded, clock.elapsedTime);
   });
 
   return (
     <>
-      <primitive object={kitchen} dispose={null} />
+      <primitive object={kitchen.room} dispose={null} />
+      <primitive object={kitchen.bulbs} dispose={null} />
       {shown.map((s) => (
         <primitive key={s.group.name} object={s.group} dispose={null} />
       ))}

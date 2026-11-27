@@ -28,15 +28,16 @@ CREAM_WALL = (0.98, 0.93, 0.78, 1)          # warm cream paint: the yellow house
 HB.hb_mats.use_wallpaper(6)
 WOOD_TRIM = (0.55, 0.38, 0.26, 1)
 win1 = HB.ext_windows(H, 1, w=1.4, style="grid", cols=3, rows=2, drape=("curtain", dict(folds=8, tn=(0.74, 0.6, 0.38, 1))),
-                      over={("left", HB.EXT_SIDE): dict(w=1.5)})
+                      over={})
 HB.room(H, 1, floor_kind="oak", wall_tn=CREAM_WALL, wall_m="H_wallpaper", trim_tn=WOOD_TRIM, casing_tn=WOOD_TRIM, ceil_tn=PAL["white"], windows=win1, entry=True, bath=dict(wall="front", c=1.0))
 HB.entry_hall(H)
 HB.stairs(H)
 
 # --- walls of books (left wall + back wall, in bays between the windows)
-H.piece(1, "shelf_l1", HP.bookwall_lite, 0.17, 1.7, 0, PI / 2, w=3.1, ladder=True, ladder_x=0.7, seed=11)      # left wall z 0.15..3.25
-H.piece(1, "shelf_l2", HP.bookwall_lite, 0.17, 6.32, 0, PI / 2, w=2.65, seed=21)                                   # left wall z 5.0..7.65
-H.piece(1, "shelf_b1", HP.bookwall_lite, 1.35, 7.63, 0, PI, w=1.7, seed=31)                                          # back wall x 0.5..2.2
+H.piece(1, "shelf_l1", HP.bookwall_lite, 0.17, 0.85, 0, PI / 2, w=1.4, ladder=True, ladder_x=0.45, seed=11)  # window alignment 2026-11-27: the bookwalls stand between the shell's two left windows (were z 0.15..3.25 and 5.0..7.65)      # left wall z 0.15..3.25
+H.piece(1, "shelf_l2", HP.bookwall_lite, 0.17, 6.75, 0, PI / 2, w=1.3, seed=21)
+H.piece(1, "shelf_l3", HP.bookwall_lite, 0.17, 3.65, 0, PI / 2, w=1.0, seed=27)                                   # left wall z 5.0..7.65
+H.piece(1, "shelf_b1", HP.bookwall_lite, 1.1, 7.63, 0, PI, w=1.6, seed=31)  # window alignment 2026-11-27: was x 1.35 w 1.7                                          # back wall x 0.5..2.2
 H.piece(1, "shelf_b2", HP.bookwall_lite, 5.1, 7.63, 0, PI, w=2.4, seed=41)                                           # back wall x 3.9..6.3
 
 # --- reading lounge (front left): two leather armchairs facing each other, a low round table, two ottomans, lamp
@@ -44,8 +45,8 @@ H.piece(1, "rug_l", DE.rug_rect, 2.2, 2.3, 0, 0.0, w=2.9, d=2.0, cols=False, fri
 H.piece(1, "armchair", SE.armchair_reading, 0.95, 2.1, 0, PI / 2, tn=PAL["leather_tan"])
 H.piece(1, "armchair", SE.armchair_reading, 3.4, 2.4, 0, -PI / 2, tn=PAL["leather_tan"])
 H.piece(1, "sidetable", TA.table_coffee_round, 2.2, 1.0, 0, 0.0, d=0.62, h=0.5)
-H.piece(1, "ottoman", SE.ottoman, 1.4, 4.75, 0, 0.0, tn=PAL["leather_brown"])   # (seat-front pass) a pair at the rug's far edge: the armchairs' fronts stay clear
-H.piece(1, "ottoman", SE.ottoman, 2.55, 4.75, 0, 0.0, tn=PAL["leather_brown"])
+H.piece(1, "ottoman", SE.ottoman, 0.95, 4.75, 0, 0.0, tn=PAL["leather_brown"])   # (seat-front pass) a pair at the rug's far edge: the armchairs' fronts stay clear
+H.piece(1, "ottoman", SE.ottoman, 2.1, 4.75, 0, 0.0, tn=PAL["leather_brown"])
 H.piece(1, "lamp_l", DE.floor_lamp, 0.9, 0.7)
 
 # --- writing desk in front of the back bookcase, chair on the room side, globe, lamp, books
@@ -65,11 +66,11 @@ H.piece(1, "frame1", DE.frame_art, 3.47, 0.75, 1.45, -PI / 2, cols=False, w=0.6,
 H.piece(1, "clock", DE.wall_clock, 3.47, 1.25, 2.05, -PI / 2, cols=False)
 pass  # (cottage pass) removed: H.piece(1, "boots", DE.boots_pair, 4.2, 0.35, 0.0, 0.3, cols
 H.piece(1, "lamp_r", DE.floor_lamp, 8.75, 2.65)
-H.piece(1, "plant", HP.plant_big, 8.55, 7.05, 0, 0.0, kind="fiddle", h=1.5, leaves=26)
+H.piece(1, "plant", HP.plant_big, 6.75, 7.2, 0, 0.0, kind="fiddle", h=1.5, leaves=26)  # window alignment 2026-11-27: was x 8.55
 
 # ============================================================================================== floor 2: bedroom ====
 win2 = HB.ext_windows(H, 2, w=1.4, style="grid", cols=3, rows=2, drape=("curtain", dict(folds=8, tn=(0.9, 0.86, 0.74, 1))),
-                      over={("left", HB.EXT_SIDE): dict(w=1.7, y0=0.95, drape=("curtain", dict(folds=8, panels=2, tn=(0.9, 0.86, 0.74, 1))))})
+                      over={("left", 5.15): dict(drape=("curtain", dict(folds=8, panels=2, tn=(0.9, 0.86, 0.74, 1))))})
 HB.room(H, 2, floor_kind="oak", wall_tn=CREAM_WALL, wall_m="H_wallpaper", trim_tn=WOOD_TRIM, casing_tn=WOOD_TRIM, ceil_tn=PAL["white"], windows=win2, bath=dict(wall="front", c=1.0))
 H.piece(2, "bed", BE.bed, 5.3, 6.66, 0, PI, w=1.5, l=2.05, headboard="panel", tn=PAL["sage"])
 H.piece(2, "bedside", TA.bedside, 4.0, 7.5, 0, PI)
@@ -77,12 +78,12 @@ H.piece(2, "bedside", TA.bedside, 6.6, 7.5, 0, PI)
 H.piece(2, "lamp", DE.table_lamp, 4.0, 7.5, 0.55, 0.0)
 H.piece(2, "lamp", DE.table_lamp, 6.6, 7.5, 0.55, 0.0)
 H.piece(2, "rug", DE.rug_rect, 5.3, 5.6, 0, 0.0, w=2.2, d=1.5, cols=False)
-H.piece(2, "windowseat", BE.window_seat, 0.3, 4.13, 0, PI / 2, w=1.6, d=0.5)
-H.piece(2, "wardrobe", ST.wardrobe_builtin, 0.32, 6.35, 0, PI / 2, w=2.4, d=0.6, h=2.4, bays=3)
-H.piece(2, "desk", TA.desk, 0.4, 2.75, 0, PI / 2, w=0.9, d=0.55, h=1.0)
-H.piece(2, "deskprops", HP.props_desk, 0.4, 2.75, 0, PI / 2, cols=False, w=0.9, top=1.0, seed=12)
-H.piece(2, "shelf", HP.bookwall_lite, 9.7, 0.3, 0, 0.0, w=1.3, h=2.0, d=0.3, seed=61)
-H.piece(2, "shelf2", HP.bookwall_lite, 0.2, 1.3, 0, PI / 2, w=1.9, h=2.3, d=0.3, seed=71)
+H.piece(2, "windowseat", BE.window_seat, 0.3, 5.15, 0, PI / 2, w=1.6, d=0.5)  # window alignment 2026-11-27: under the shell's left window (was z 4.13)
+H.piece(2, "wardrobe", ST.wardrobe_builtin, 0.32, 6.85, 0, PI / 2, w=1.7, d=0.6, h=2.4, bays=2)
+H.piece(2, "desk", TA.desk, 0.4, 3.65, 0, PI / 2, w=0.9, d=0.55, h=1.0)
+H.piece(2, "deskprops", HP.props_desk, 0.4, 3.65, 0, PI / 2, cols=False, w=0.9, top=1.0, seed=12)
+H.piece(2, "shelf", HP.bookwall_lite, 9.95, 0.3, 0, 0.0, w=1.1, h=2.0, d=0.3, seed=61)
+H.piece(2, "shelf2", HP.bookwall_lite, 0.2, 0.9, 0, PI / 2, w=1.1, h=2.3, d=0.3, seed=71)
 H.piece(2, "plant", HP.plant_big, 3.9, 0.6, 0, 0.0, kind="monstera", h=1.15)
 H.piece(2, "frame_a", DE.frame_art, 5.3, 7.78, 1.55, PI, cols=False, w=0.9, h=0.62, art=2)
 H.piece(2, "frames", DE.frame_family, 4.35, 7.78, 1.5, PI, cols=False)
@@ -100,7 +101,7 @@ H.piece(1, "throw", KR.throw_folded, 3.0, 3.6, 0.42, -0.2, cols=False, w=0.45, d
 pass  # (cottage pass) removed: H.piece(2, "aircon", KR.aircon_wall, 5.3, 0.0, 2.3, 0.0, col
 H.piece(2, "throw", KR.throw_folded, 5.3, 6.0, 0.56, 0.0, cols=False, w=1.35, d=0.42, layers=2, tn=(0.8, 0.72, 0.55, 1))
 pass  # (cottage pass) removed: H.piece(2, "purifier", KR.air_purifier, 7.3, 7.45)
-H.piece(2, "dressing", TA.dressing_table, 6.3, 0.3, 0, 0.0)
+H.piece(2, "dressing", TA.dressing_table, 6.6, 0.3, 0, 0.0)  # window alignment 2026-11-27: was x 6.3
 pass  # (cottage pass) removed: H.piece(2, "laundry", KR.laundry_basket, 1.0, 7.4)
 
 # ---- dream show-home styling (owner 2026-11-17): fresh flowers, styled tables, lamps and sconces, a console vignette --------

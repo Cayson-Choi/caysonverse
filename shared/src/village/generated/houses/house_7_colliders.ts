@@ -11,7 +11,6 @@ export const HOUSE_7_COLLIDERS: readonly AABB[] = [
   { minX: 503.7, maxX: 514.9, minZ: 21.9, maxZ: 22.2 }, // col__h7_2_wall_back
   { minX: 503.7, maxX: 504, minZ: 22.2, maxZ: 30 }, // col__h7_2_wall_left
   { minX: 503.7, maxX: 514.9, minZ: 30, maxZ: 30.3 }, // col__h7_2_wall_front
-  { minX: 504, maxX: 504.41, minZ: 26.85, maxZ: 29.56 }, // col__h7_2_bookcase_built
   { minX: 504.04, maxX: 504.74, minZ: -3.08, maxZ: -1.32 }, // col__h7_1_fireplace
   { minX: 504.05, maxX: 504.65, minZ: -0.75, maxZ: -0.25 }, // col__h7_1_guitar
   { minX: 504.1, maxX: 505.46, minZ: -7.7, maxZ: -6.4 }, // col__h7_1_stair_low
@@ -22,6 +21,7 @@ export const HOUSE_7_COLLIDERS: readonly AABB[] = [
   { minX: 506.1, maxX: 507.9, minZ: 26, maxZ: 26.8 }, // col__h7_2_bench2
   { minX: 506.82, maxX: 507.18, minZ: -6.33, maxZ: -5.97 }, // col__h7_1_lamp
   { minX: 506.84, maxX: 507.36, minZ: 27.04, maxZ: 27.56 }, // col__h7_2_stool3
+  { minX: 506.94, maxX: 508.31, minZ: 29.59, maxZ: 30 }, // col__h7_2_bookcase_built
   { minX: 507.12, maxX: 507.98, minZ: -4.15, maxZ: -1.95 }, // col__h7_1_sofa
   { minX: 507.4, maxX: 507.8, minZ: -1.95, maxZ: -1.5 }, // col__h7_1_side
   { minX: 507.5, maxX: 507.6, minZ: -1.5, maxZ: 0 }, // col__h7_1_part_entry_0
@@ -35,16 +35,15 @@ export const HOUSE_7_COLLIDERS: readonly AABB[] = [
   { minX: 511.9, maxX: 513, minZ: -2.95, maxZ: -1.85 }, // col__h7_1_table
   { minX: 512.1, maxX: 514.1, minZ: 22.4, maxZ: 23.2 }, // col__h7_2_bench
   { minX: 512.18, maxX: 512.73, minZ: 23.37, maxZ: 23.92 }, // col__h7_2_stool
-  { minX: 512.66, maxX: 513.34, minZ: -6.09, maxZ: -5.41 }, // col__h7_1_musicstand
-  { minX: 512.9, maxX: 514.1, minZ: -0.35, maxZ: -0.05 }, // col__h7_1_case
+  { minX: 512.6, maxX: 513.28, minZ: -6.09, maxZ: -5.41 }, // col__h7_1_musicstand
+  { minX: 513.4, maxX: 514.2, minZ: -0.35, maxZ: -0.05 }, // col__h7_1_case
   { minX: 513.46, maxX: 514.04, minZ: 23.36, maxZ: 23.94 }, // col__h7_2_stool2
   { minX: 513.54, maxX: 513.9, minZ: -7.4, maxZ: -6.4 }, // col__h7_1_bench
   { minX: 513.87, maxX: 514.39, minZ: -2.65, maxZ: -2.15 }, // col__h7_1_dchair2
-  { minX: 513.88, maxX: 514.52, minZ: -5.57, maxZ: -4.93 }, // col__h7_1_plant_r
+  { minX: 513.88, maxX: 514.52, minZ: -3.97, maxZ: -3.33 }, // col__h7_1_plant_r
   { minX: 513.94, maxX: 514.61, minZ: -7.65, maxZ: -6.15 }, // col__h7_1_piano
-  { minX: 514.2, maxX: 514.6, minZ: 22.6, maxZ: 23.8 }, // col__h7_2_mat4
-  { minX: 514.2, maxX: 514.6, minZ: 23.85, maxZ: 25.05 }, // col__h7_2_mat3
-  { minX: 514.2, maxX: 514.6, minZ: 27.2, maxZ: 28.4 }, // col__h7_2_mat2
+  { minX: 514.2, maxX: 514.6, minZ: 22.8, maxZ: 24 }, // col__h7_2_mat3
+  { minX: 514.2, maxX: 514.6, minZ: 25.65, maxZ: 26.85 }, // col__h7_2_mat2
   { minX: 514.2, maxX: 514.6, minZ: 28.45, maxZ: 29.65 }, // col__h7_2_mat
   { minX: 514.22, maxX: 514.58, minZ: -1.6, maxZ: -0.3 }, // col__h7_1_records
   { minX: 514.6, maxX: 514.9, minZ: -7.8, maxZ: 0 }, // col__h7_1_wall_right
@@ -59,16 +58,15 @@ export const HOUSE_7_CAMERA_BOXES: readonly CameraBox[] = [
   { minX: 503.7, maxX: 514.9, minZ: 21.9, maxZ: 22.2, height: 3.7 }, // col__h7_2_wall_back
   { minX: 503.7, maxX: 504, minZ: 22.2, maxZ: 30, height: 3.7 }, // col__h7_2_wall_left
   { minX: 503.7, maxX: 514.9, minZ: 30, maxZ: 30.3, height: 3.7 }, // col__h7_2_wall_front
-  { minX: 504, maxX: 504.41, minZ: 26.85, maxZ: 29.56, height: 2.6 }, // col__h7_2_bookcase_built
   { minX: 504.04, maxX: 504.74, minZ: -3.08, maxZ: -1.32, height: 3.7 }, // col__h7_1_fireplace
   { minX: 505.46, maxX: 509.54, minZ: -7.7, maxZ: -6.4, height: 3.7 }, // col__h7_1_stair_high
+  { minX: 506.94, maxX: 508.31, minZ: 29.59, maxZ: 30, height: 2.6 }, // col__h7_2_bookcase_built
   { minX: 507.5, maxX: 507.6, minZ: -1.5, maxZ: 0, height: 3.7 }, // col__h7_1_part_entry_0
   { minX: 510.3, maxX: 511, minZ: -1.6, maxZ: -1.4, height: 2.4 }, // col__h7_1_part_entry_2
   { minX: 511, maxX: 511.1, minZ: -1.5, maxZ: 0, height: 3.7 }, // col__h7_1_part_entry_1
-  { minX: 512.9, maxX: 514.1, minZ: -0.35, maxZ: -0.05, height: 1.7 }, // col__h7_1_case
-  { minX: 514.2, maxX: 514.6, minZ: 22.6, maxZ: 23.8, height: 1.9 }, // col__h7_2_mat4
-  { minX: 514.2, maxX: 514.6, minZ: 23.85, maxZ: 25.05, height: 1.9 }, // col__h7_2_mat3
-  { minX: 514.2, maxX: 514.6, minZ: 27.2, maxZ: 28.4, height: 1.9 }, // col__h7_2_mat2
+  { minX: 513.4, maxX: 514.2, minZ: -0.35, maxZ: -0.05, height: 1.7 }, // col__h7_1_case
+  { minX: 514.2, maxX: 514.6, minZ: 22.8, maxZ: 24, height: 1.9 }, // col__h7_2_mat3
+  { minX: 514.2, maxX: 514.6, minZ: 25.65, maxZ: 26.85, height: 1.9 }, // col__h7_2_mat2
   { minX: 514.2, maxX: 514.6, minZ: 28.45, maxZ: 29.65, height: 1.9 }, // col__h7_2_mat
   { minX: 514.6, maxX: 514.9, minZ: -7.8, maxZ: 0, height: 3.7 }, // col__h7_1_wall_right
   { minX: 514.6, maxX: 514.9, minZ: 22.2, maxZ: 30, height: 3.7 }, // col__h7_2_wall_right

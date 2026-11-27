@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBooth, type BoothSpec } from "./ParkBooth";
+import { BOOTH_BACK, buildBooth, type BoothSpec } from "./ParkBooth";
 
 const booth: BoothSpec = {
   x: 55, z: -177, w: 4.2, d: 3.4, kind: "snack", plaster: "#eee", tile: "#a96",
@@ -37,5 +37,31 @@ describe("park booth awnings", () => {
     expect(railHeight - lowHem).toBeCloseTo(0.18);
     // Both kiosks retain the shared matte draw for awning and confectionery.
     expect(built.cloth.index!.count / 3).toBeLessThan(1600);
+  });
+});
+
+describe("park booth backs", () => {
+  it.each(["snack", "ticket"] as const)("gives the %s booth a door, a window and shutters on its back, within 0.4 m of the wall", (kind) => {
+    const spec = { ...booth, kind, w: kind === "ticket" ? 3.4 : 4.2, d: kind === "ticket" ? 3.0 : 3.4 };
+    const built = buildBooth(spec);
+    const back = spec.z - spec.d / 2;
+    let behind = 0;
+    for (const g of [built.wood, built.stone, built.goods]) {
+      const p = g.getAttribute("position");
+      for (let i = 0; i < p.count; i++) {
+        const z = p.getZ(i);
+        if (z >= back - 1e-6) continue;
+        // nothing past the plinth's step, nothing wider than the booth's eaves
+        if (z > back - 0.15 || g === built.stone) {
+          expect(z).toBeGreaterThan(back - 0.41);
+          expect(Math.abs(p.getX(i) - spec.x)).toBeLessThan(spec.w / 2 + 0.6);
+        }
+        behind++;
+      }
+    }
+    // the door's boards, ledges and braces, the window's frame and shutters: a few hundred corners behind the wall
+    expect(behind).toBeGreaterThan(300);
+    // the door is a person's height and stands on the plinth's cap
+    expect(BOOTH_BACK.doorTop - 0.37).toBeGreaterThan(1.95);
   });
 });
