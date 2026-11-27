@@ -45,7 +45,7 @@ def export_name(name):
     base = name.split("_", 1)[1]
     return ("M_" if name in UNLIT else "LM_") + base
 DAY = dict(sun=(4.8, math.radians(52), math.radians(-30)), sky=1.8, lamp_scale=0.10)   # layered pass: a little less sky fill, a little more sun = contrast
-NIGHT = dict(sky=(0.02, 0.03, 0.07), lamp_scale=0.45)
+NIGHT = dict(sky=(0.02, 0.03, 0.07), lamp_scale=0.12)   # houses-real night mood (owner 2026-11-22): was 0.45, the night room read as bright as day (p50 0.36 vs 0.39)
 
 
 def arg(name, default=None, cast=str):
@@ -157,7 +157,7 @@ def lightmap_uv(objs, margin=0.0014):
 
 
 KIND_DAY = {"downlight": 0.5, "lamp": 3.0, "sconce": 3.0, "pendant": 1.6, "fire": 1.2, "led": 1.5}
-KIND_NIGHT = {"downlight": 0.55, "lamp": 1.5, "sconce": 1.5, "pendant": 1.2, "fire": 0.45}   # houses-real: the fire a warm local pool, not a wash (was 1.4)
+KIND_NIGHT = {"downlight": 0.05, "lamp": 1.8, "sconce": 1.5, "pendant": 1.0, "fire": 0.45}   # houses-real night mood (owner 2026-11-22: the night room was as bright as day): ceiling downlights low, lamps / sconces / pendants and the fire make warm pools, corners fall dark (was downlight 0.55, pendant 1.2, fire 1.4)   # houses-real: the fire a warm local pool, not a wash (was 1.4)
 
 
 def setup_lights(scene, night):
