@@ -7,6 +7,7 @@
  */
 import table from "@caysonverse/shared/village/generated/house_flower_boxes.json";
 import type { Bed } from "../veg/flowerPlacement";
+import { houseSideBeds } from "./houseSideBoxes";
 
 interface BoxRow {
   x0: number;
@@ -18,10 +19,18 @@ interface BoxRow {
   plant?: "window" | "pot" | "border";
 }
 
-/** Every house's window boxes and baskets as `box` beds. */
+/**
+ * Every house's window boxes and baskets as `box` beds: the kit's (the table) and the side and back windows' boxes the houses'
+ * dressing added (houseSideBoxes.ts, once the houses' model is read; none before).
+ */
 export function houseFlowerBoxBeds(): Bed[] {
+  return [...kitFlowerBoxBeds(), ...houseSideBeds()];
+}
+
+/** The kit's window boxes, baskets, pots and borders only (the table). */
+export function kitFlowerBoxBeds(): Extract<Bed, { kind: "box" }>[] {
   const houses = (table as { houses: Record<string, BoxRow[]> }).houses;
-  const out: Bed[] = [];
+  const out: Extract<Bed, { kind: "box" }>[] = [];
   for (const rows of Object.values(houses))
     for (const r of rows) out.push({ kind: "box", x0: r.x0, x1: r.x1, z0: r.z0, z1: r.z1, y: r.y, out: r.out ?? null, plant: r.plant ?? "window" });
   return out;

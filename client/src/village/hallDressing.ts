@@ -9,7 +9,6 @@ import {
   DstColorFactor,
   Float32BufferAttribute,
   Group,
-  LinearMipmapLinearFilter,
   Mesh,
   MeshBasicMaterial,
   OneFactor,
@@ -24,6 +23,7 @@ import {
 } from "three";
 import { VILLAGE_LAYOUT, zoneLetter, type CubbyWall } from "@caysonverse/shared/village/villageLayout";
 import { versionedUrl } from "./modelUrl";
+import { crispTextTexture, sharpenTextMaterial } from "../game/sceneText";
 
 /**
  * Runtime dressing of the memorial hall (owner 2026-11-20), on top of memorial.glb without re-baking it:
@@ -87,11 +87,9 @@ function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContex
 }
 
 function canvasTexture(c: HTMLCanvasElement): CanvasTexture {
-  const t = new CanvasTexture(c);
+  // mipmapped, trilinear, the GPU's highest anisotropy (sceneText.ts; the renderer clamps it)
+  const t = crispTextTexture(new CanvasTexture(c));
   t.colorSpace = SRGBColorSpace;
-  t.anisotropy = 8; // the renderer clamps it
-  t.minFilter = LinearMipmapLinearFilter;
-  t.generateMipmaps = true;
   return t;
 }
 
@@ -340,25 +338,41 @@ export function takePaintingSlots(root: Object3D): PaintingSlot[] {
   return out;
 }
 
-/** The museum label beside the painting: artist, title, year. */
+/**
+ * The museum label beside the painting: artist, title, year. 26 x 10.1 cm (was 20 x 7.8: its two small lines were a grey
+ * smear on a phone, fix/pine-text), drawn at 768 x 300 with heavier weights, mipmapped and sampled half a mip sharper.
+ */
+export const MUSEUM_LABEL = { w: 0.26, h: 0.101 } as const;
 function labelTexture(): CanvasTexture {
-  const [c, g] = canvas(512, 200);
-  g.fillStyle = "#f6f1e7";
-  g.fillRect(0, 0, 512, 200);
-  g.strokeStyle = "rgba(60,40,20,0.25)";
-  g.lineWidth = 3;
-  g.strokeRect(1.5, 1.5, 509, 197);
-  g.fillStyle = "#2e241c";
-  g.textAlign = "left";
-  g.textBaseline = "alphabetic";
-  g.font = `700 46px ${FONT}`;
-  g.fillText(LOUNGE_PAINTING.artist, 30, 70);
-  g.font = `500 36px ${FONT}`;
-  g.fillText(`${LOUNGE_PAINTING.title}, ${LOUNGE_PAINTING.year}`, 30, 122);
-  g.fillStyle = "#6b5a4a";
-  g.font = `400 26px ${FONT}`;
-  g.fillText("Vincent van Gogh · Wheat Field with Cypresses", 30, 168);
-  return canvasTexture(c);
+  const W = 768;
+  const H = 300;
+  const k = W / 1024;
+  const [c, g] = canvas(W, H);
+  const paint = () => {
+    g.fillStyle = "#f6f1e7";
+    g.fillRect(0, 0, W, H);
+    g.strokeStyle = "rgba(60,40,20,0.25)";
+    g.lineWidth = 6 * k;
+    g.strokeRect(3 * k, 3 * k, W - 6 * k, H - 6 * k);
+    g.textAlign = "left";
+    g.textBaseline = "alphabetic";
+    g.fillStyle = "#241b14";
+    g.font = `800 ${Math.round(98 * k)}px ${FONT}`;
+    g.fillText(LOUNGE_PAINTING.artist, 56 * k, 142 * k, W - 112 * k);
+    g.font = `600 ${Math.round(74 * k)}px ${FONT}`;
+    g.fillText(`${LOUNGE_PAINTING.title}, ${LOUNGE_PAINTING.year}`, 56 * k, 248 * k, W - 112 * k);
+    g.fillStyle = "#4f4236";
+    g.font = `500 ${Math.round(52 * k)}px ${FONT}`;
+    g.fillText("Vincent van Gogh · Wheat Field with Cypresses", 56 * k, 336 * k, W - 112 * k);
+  };
+  paint();
+  const t = canvasTexture(c);
+  // the canvas is redrawn once the page's fonts are in (a first draw may use a fallback face)
+  void document.fonts?.ready.then(() => {
+    paint();
+    t.needsUpdate = true;
+  });
+  return t;
 }
 
 export interface HallDressing {
@@ -402,7 +416,7 @@ export function dressHall(root: Object3D, tier: "high" | "low"): HallDressing {
     const [c, g] = canvas(px, Math.round((px * ZONE_SIGN.h) / ZONE_SIGN.w));
     paintZoneSign(g, c.width, c.height, z.label);
     const tex = canvasTexture(c);
-    const face = new MeshBasicMaterial({ map: tex });
+    const face = sharpenTextMaterial(new MeshBasicMaterial({ map: tex }));
     face.name = `M_zone_${z.bank}`;
     own.push(tex, face);
     lit.push({ m: face, day: 1.0, night: 0.92 });
@@ -506,14 +520,14 @@ export function dressHall(root: Object3D, tier: "high" | "low"): HallDressing {
     };
     // the museum label, to the right of the frame at its lower third
     const lt = labelTexture();
-    const lg = new PlaneGeometry(0.2, 0.078);
-    const lm = new MeshBasicMaterial({ map: lt });
+    const lg = new PlaneGeometry(MUSEUM_LABEL.w, MUSEUM_LABEL.h);
+    const lm = sharpenTextMaterial(new MeshBasicMaterial({ map: lt }));
     lm.name = "M_hall_painting_label";
     own.push(lt, lg, lm);
     lit.push({ m: lm, day: 1, night: 0.66 });
     const label = new Mesh(lg, lm);
     label.name = "lounge_painting_label";
-    label.position.set(outerW / 2 + 0.16, -outerH / 2 + 0.2, 0.006);
+    label.position.set(outerW / 2 + 0.06 + MUSEUM_LABEL.w / 2, -outerH / 2 + 0.2, 0.006);
     frame.add(label);
     group.add(frame);
     painting = { x: wall.x, y: wall.y, z: wall.z, width: pw, height: ph, url };

@@ -1,3 +1,4 @@
+import { TEXT_ANISOTROPY, sharpenTextMaterial } from "../../game/sceneText";
 import {
   BoxGeometry,
   BufferGeometry,
@@ -245,10 +246,11 @@ export function buildGateBoard(low: boolean, patch: (m: MeshStandardMaterial, ke
     t.generateMipmaps = true;
     t.minFilter = LinearMipmapLinearFilter;
     t.magFilter = LinearFilter;
-    t.anisotropy = low ? 4 : 8;
+    t.anisotropy = TEXT_ANISOTROPY; // the GPU's highest (the renderer clamps it): the board is read at a slant from the road
   }
   const face = new MeshStandardMaterial({ name: "LM_gate_board_face", map: colour, bumpMap: bump, bumpScale: 2.4, roughness: 0.3, metalness: 0 });
   patch(face, "gate_board_face");
+  sharpenTextMaterial(face); // the lettering half a mip sharper (sceneText.ts)
   face.addEventListener("dispose", () => {
     colour.dispose();
     bump.dispose();

@@ -22,6 +22,7 @@ import { houseSlots, type HouseSlot } from "@caysonverse/shared/village/houseExt
 import type { HouseExteriorState } from "@caysonverse/shared/village/houseOwnership";
 import type { SceneryHouse } from "@caysonverse/shared/village/villageLayout";
 import { patchHouseLight } from "./housesPrep";
+import { crispTextTexture, sharpenTextMaterial } from "../../game/sceneText";
 
 /** A board to draw: where (the slot), how big (m), what it says. */
 export interface HouseBoard {
@@ -196,7 +197,8 @@ export function buildHouseSigns(boards: readonly HouseBoard[], anisotropy = 4): 
   boards.forEach((b, i) => drawBoard(ctx, b, cells[i]!));
   ctx.fillStyle = PLATE;
   ctx.fillRect(edge.x, edge.y, edge.w, edge.h);
-  const tex = new CanvasTexture(canvas);
+  // mipmapped, trilinear, the anisotropy asked (sceneText.ts), and the lettering sampled half a mip sharper (below)
+  const tex = crispTextTexture(new CanvasTexture(canvas));
   tex.colorSpace = SRGBColorSpace;
   tex.anisotropy = anisotropy;
   const edgeUv = cellUv({ x: edge.x + 4, y: edge.y + 4, w: 8, h: 8 }, W, height);
@@ -208,6 +210,7 @@ export function buildHouseSigns(boards: readonly HouseBoard[], anisotropy = 4): 
   // the nameplate's lettering is see-through round its letters (blended, no depth write: a click goes on to the plate)
   const mat = new MeshStandardMaterial({ name: "M_house_boards", map: tex, roughness: 0.5, metalness: 0.05, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   patchHouseLight(mat, "boards");
+  sharpenTextMaterial(mat);
   const mesh = new Mesh(geo, mat);
   mesh.name = "house_boards";
   mesh.castShadow = false;

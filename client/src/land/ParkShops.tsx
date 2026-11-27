@@ -1,3 +1,4 @@
+import { crispTextTexture, sharpenTextMaterial } from "../game/sceneText";
 import { useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import { dayNight } from "../village/dayNightDriver";
@@ -28,14 +29,19 @@ function shopSignTexture(name: string, wall: V3): CanvasTexture {
   ctx.strokeStyle = "#f2c14e";
   ctx.lineWidth = 12;
   ctx.strokeRect(10, 10, 492, 236);
-  ctx.fillStyle = "#fff6e0";
   ctx.font = "bold 96px 'Jua', 'Malgun Gothic', 'Noto Sans KR', sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(name, 256, 134);
-  const t = new CanvasTexture(c);
+  // a dark rim round the cream letters: they stay apart from the painted board when the sign is far and small (fix/pine-text)
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = "rgba(30, 20, 30, 0.55)";
+  ctx.strokeText(name, 256, 134, 460);
+  ctx.fillStyle = "#fff6e0";
+  ctx.fillText(name, 256, 134, 460);
+  // mipmapped, trilinear, the GPU's highest anisotropy (sceneText.ts); its material samples it half a mip sharper
+  const t = crispTextTexture(new CanvasTexture(c));
   t.colorSpace = SRGBColorSpace;
-  t.anisotropy = 4;
   return t;
 }
 
@@ -183,7 +189,7 @@ export function Shops({ all }: { all: Texture[] }) {
     () =>
       PARK_SHOPS.map((s) => {
         const tex = shopSignTexture(SHOP_NAMES[s.id] ?? s.id, s.wall);
-        return { s, mat: new MeshStandardMaterial({ map: tex, roughness: 0.6 }) };
+        return { s, mat: sharpenTextMaterial(new MeshStandardMaterial({ map: tex, roughness: 0.6 })) };
       }),
     [],
   );

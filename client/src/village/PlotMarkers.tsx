@@ -6,6 +6,7 @@ import { fitFontPx, labelCanvasSize } from "../game/hub/hubSignSpecs";
 import { plotMarkerSpecs, type PlotMarkerSpec } from "./plotSigns";
 import { VILLAGE_LOTS } from "@caysonverse/shared/village/villageLots";
 import { useLotsDrawn } from "./lots/lotsStore";
+import { crispTextTexture, sharpenTextMaterial } from "../game/sceneText";
 
 /**
  * The words on the empty building plots' signs (케이슨 마을, Task 4; Task 7: on the model's boards). The village
@@ -44,9 +45,9 @@ function signTexture(spec: PlotMarkerSpec): CanvasTexture {
   const lineH = px * 1.12;
   const top = height / 2 - ((spec.lines.length - 1) * lineH) / 2;
   spec.lines.forEach((line, i) => ctx.fillText(line, width / 2, top + i * lineH + px * 0.04));
-  const texture = new CanvasTexture(canvas);
+  // mipmapped, trilinear, the GPU's highest anisotropy (sceneText.ts); its material samples it half a mip sharper
+  const texture = crispTextTexture(new CanvasTexture(canvas));
   texture.colorSpace = SRGBColorSpace;
-  texture.anisotropy = 4;
   return texture;
 }
 
@@ -57,7 +58,7 @@ export function PlotMarkers() {
     const words = new Map<string, MeshBasicMaterial>(
       specs.map((s) => [
         s.id,
-        new MeshBasicMaterial({
+        sharpenTextMaterial(new MeshBasicMaterial({
           map: textures.get(s.id),
           transparent: true,
           depthWrite: false,
@@ -65,7 +66,7 @@ export function PlotMarkers() {
           polygonOffset: true,
           polygonOffsetFactor: -1,
           polygonOffsetUnits: -4,
-        }),
+        })),
       ]),
     );
     return { textures, words, plane: new PlaneGeometry(SIGN_FACE.w, SIGN_FACE.h) };

@@ -83,6 +83,8 @@ export type Bed =
       out?: [number, number] | null;
       /** "window" (geraniums and trailing petunias, dense), "pot" (the same in a terracotta pot or basket), "border" (a mixed edge). */
       plant?: "window" | "pot" | "border";
+      /** The box's own flowers (PALETTES; the side boxes, houseSideBoxes.ts): instead of the geranium reds. */
+      palette?: PaletteName;
       soilProvided?: boolean;
     }
   | { kind: "square"; x: number; z: number; half: number; hole: number; lean: number }
@@ -202,6 +204,25 @@ export const PALETTES = {
     ["#E8559A", 1.5],
     ["#F7A1C0", 1],
     ["#FBF7F9", 0.5],
+  ],
+  /** The side window boxes (houseSideBoxes.ts), varied per house: pink geraniums, coral geraniums, white with purple petunias. */
+  geraniumPink: [
+    ["#E8559A", 4],
+    ["#F7A1C0", 3],
+    ["#C2187A", 2],
+    ["#FBF7F9", 1],
+  ],
+  geraniumCoral: [
+    ["#F25A4E", 4],
+    ["#FF7F45", 2],
+    ["#E8323C", 2],
+    ["#FBF7F9", 1],
+  ],
+  boxWhite: [
+    ["#FBF7F9", 4],
+    ["#F3E6EE", 1.5],
+    ["#7A2C93", 2],
+    ["#E8559A", 1.2],
   ],
   petunia: [
     ["#C2187A", 3],
@@ -402,7 +423,7 @@ export function placeFlowers(cards: readonly Card[], beds: readonly Bed[] = PLAZ
     const box = onBed?.bed.kind === "box" ? onBed.bed : null;
     const rim = box ? Math.hypot(onBed!.out[0], onBed!.out[1]) : 0;
     const { species, palette } = box
-      ? { species: SPECIES.petunia, palette: (box.plant === "border" ? (rand() < 0.5 ? "geranium" : "trailing") : rim > 0.75 && rand() < 0.4 ? "trailing" : "geranium") as PaletteName }
+      ? { species: SPECIES.petunia, palette: (box.plant === "border" ? (rand() < 0.5 ? "geranium" : "trailing") : rim > 0.75 && rand() < 0.4 ? "trailing" : (box.palette ?? "geranium")) as PaletteName }
       : speciesFor(row, x, z);
     if (tooClose(x, y, z, box ? BOX_SPACING : SPACING[species] * (c.wild ? WILD_SPACING : 1))) continue;
     const drift = driftUnit(x, z, species * 7 + row);

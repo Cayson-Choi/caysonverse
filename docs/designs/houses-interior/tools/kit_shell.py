@@ -429,7 +429,7 @@ def _stair_y(i):
 
 def stairs(F, wall_side="left", i_from=1, width=STAIR_WIDTH, treads_m="H_wood_oak", tread_tn=None,
            paint_tn=None, rail="steel", balusters=True, soffit=True, newel_bottom=True, nose=0.03, run=STAIR_RUN,
-           steps=STAIR_STEPS, closed_under=False, open_low=0, top_open=0.0):
+           steps=STAIR_STEPS, closed_under=False, open_low=0, top_open=0.0, lite=False):
     """Straight stair, 17 risers x 0.2353 = 4.0 m, 16 treads x 0.34 = 5.44 m, width 1.3 m. Local frame: origin = the
     middle of the first riser's foot on the floor, +z = running up, x across, y up. `wall_side` = 'left' (-x) or
     'right' (+x): that side stands against a wall and gets only a slim wall handrail on brackets; the OPEN side
@@ -438,7 +438,9 @@ def stairs(F, wall_side="left", i_from=1, width=STAIR_WIDTH, treads_m="H_wood_oa
     i_from > 1 draws only the upper steps (the view from the 2F, call with the frame y = -4.0; the contract's wellSteps = 8 -> i_from = 10).
     open_low = the first N treads have NO guard on the open side (stairs A/B: the foot is against a side wall, you step on from the room
     side; contract 4: 3-4 open steps) - the open-side newel, balusters and rail start above them; top_open = metres at the top end
-    of the open side left free of rail (stairs C/D: the 2F landing is beside the top tread)."""
+    of the open side left free of rail (stairs C/D: the 2F landing is beside the top tread).
+    lite (interior polish, triangle budget): the copy seen down the floor-2 stairwell, from a metre and more above, gets square treads and
+    two balusters a tread instead of four (about 1,000 triangles less; the floor-1 stair keeps its rounded nosings)."""
     rise = FLOOR_HEIGHT / steps
     hw = width / 2
     wsx = -1 if wall_side == "left" else 1       # sign of x of the wall side
@@ -454,7 +456,7 @@ def stairs(F, wall_side="left", i_from=1, width=STAIR_WIDTH, treads_m="H_wood_oa
         y = _stair_y(i)
         if i <= nT:
             rbox(F, -hw + stw * 0 + (stw if osx < 0 else 0), hw - (stw if osx > 0 else 0), z - nose, z + run, y - 0.04, y,
-                 treads_m, r=0.008, seg=2, grain=(1, 0, 0), tile=0.9, tn=tt, bottom=True)
+                 treads_m, r=0.0 if lite else 0.008, seg=2, grain=(1, 0, 0), tile=0.9, tn=tt, bottom=True)
         # riser board (painted), under the tread above it
         yb = _stair_y(i - 1)
         if i - 1 >= 0:
@@ -542,8 +544,9 @@ def stairs(F, wall_side="left", i_from=1, width=STAIR_WIDTH, treads_m="H_wood_oa
     bk = (0.14, 0.14, 0.15, 1)
     if balusters:
         for i in range(max(i_from, 1), steps):
-            for k in range(4):
-                z = zr(i) + run * (k + 0.5) / 4
+            nb = 2 if lite else 4
+            for k in range(nb):
+                z = zr(i) + run * (k + 0.5) / nb
                 if z < zs0 + 0.02 or z > zt - ns / 2 - 0.01:
                     continue
                 yb = _stair_y(i)

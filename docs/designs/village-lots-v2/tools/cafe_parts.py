@@ -58,6 +58,9 @@ VELVET_UP = S("LM_cafe_fabric", hx("1F4F5A"))   # the salon's sofa: petrol blue
 MUSTARD = S("LM_cafe_fabric", hx("C99A3A"))     # wing chairs
 LINEN = S("LM_cafe_fabric", hx("F5EEDF"))       # curtains
 LEAF = S("LM_cafe_leaf", hx("6FA052"))
+# the vases' petals (flora.py): their own smooth plaster material so the game gives them a flower's translucent fill (LotRoom.tsx
+# `_petal`), as the church's altar flowers (props round 3, 2026-11-27); their colour is the vertex colour (base-to-tip gradient)
+PETAL = S("LM_cafe_petal")
 LEAF_DK = S("LM_cafe_leaf", hx("3E7A38"))
 TERRA = S("LM_cafe_plaster", hx("C8734A"))      # terracotta pots
 SOIL = S("LM_cafe_floor", hx("3A2A20"))
@@ -77,6 +80,7 @@ MATS = {
     "LM_cafe_tile": {"set": "tile_white", "rough": 0.5},
     "LM_cafe_fabric": {"set": "fabric_upholstery", "gain": (2.6, 2.6, 2.6)},
     "LM_cafe_leaf": {"set": "grass", "normal": 0.5},
+    "LM_cafe_petal": {"set": "plaster_painted", "rough": 0.6},
     "M_glass": {"glass": True},
     "M_cafe_art": {"own": "lot_cafe_room_art", "normal": "lot_cafe_room_art_normal", "orm": "lot_cafe_room_art_orm", "vertexColor": True,
                    "note": "procedural (cafe_art.mjs): marble, chalk menus, the sign's enamel, gauge, latte, pastries, beans, labels, spines, clock, prints; COLOR_0 tints the glaze / matte cells (cups, macarons, jars). Albedo 2048 UASTC sRGB, normal + ORM 1024 UASTC linear"},

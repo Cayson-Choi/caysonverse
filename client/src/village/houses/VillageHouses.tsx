@@ -156,7 +156,7 @@ export function VillageHouses({ villageRoot, tier }: { villageRoot: Object3D; ti
 
   const signs = useMemo(() => {
     const houses = VILLAGE_LAYOUT.sceneryHouses.filter((h) => h.kind === "house");
-    return buildHouseSigns(houseBoards(houses, HOUSE_EXTERIOR_DEFAULT), Math.min(8, gl.capabilities.getMaxAnisotropy()));
+    return buildHouseSigns(houseBoards(houses, HOUSE_EXTERIOR_DEFAULT), gl.capabilities.getMaxAnisotropy());
   }, [gl]);
   useEffect(() => {
     if (signs.mesh) nodes.root.add(signs.mesh);

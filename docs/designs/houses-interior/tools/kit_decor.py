@@ -318,7 +318,7 @@ def calendar_wall(F, w=0.3, h=0.42):
 def mirror_round(F, r=0.4):
     """round wall mirror (back at z = 0): a brass ring on a shallow bevelled dish and a SILVERED glass (H_mirror, opaque: it used to be
     H_glass, 84 % see-through, so the ring looked like an empty hoop on the wall: owner 2026-11-20 '왜 이런 원들이 여기 저기 있는거야')."""
-    n = 40
+    n = 28              # interior polish (triangle budget): was 40, a 28-sided ring still reads round at a mirror's size
     G = F.sub(0, 0.0, r, 0)
     ang = [2 * math.pi * i / n for i in range(n)]
     # a thin backing board the size of the ring, so nothing but the mirror shows through it

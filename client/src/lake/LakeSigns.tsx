@@ -3,6 +3,7 @@
 // Small procedural models (a square timber post, a pointed board with a painted face), no file to load: they stand from the
 // first frame, before the lake itself is fetched.
 
+import { crispTextTexture, sharpenTextMaterial } from "../game/sceneText";
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
@@ -61,7 +62,7 @@ function faceTexture(tipRight: boolean): CanvasTexture {
   g.fillText(text, tipRight ? c.width * 0.45 : c.width * 0.55, c.height / 2 + 2);
   const t = new CanvasTexture(c);
   t.colorSpace = SRGBColorSpace;
-  t.anisotropy = 4;
+  crispTextTexture(t); // mipmapped, trilinear, the GPU's highest anisotropy (sceneText.ts)
   return t;
 }
 
@@ -95,8 +96,8 @@ function useSignParts() {
     const front = faceTexture(true);
     const back = faceTexture(false);
     const wood = new MeshStandardMaterial({ color: "#6b4a2c", roughness: 0.92 });
-    const faceFront = new MeshStandardMaterial({ map: front, roughness: 0.85 });
-    const faceBack = new MeshStandardMaterial({ map: back, roughness: 0.85 });
+    const faceFront = sharpenTextMaterial(new MeshStandardMaterial({ map: front, roughness: 0.85 }));
+    const faceBack = sharpenTextMaterial(new MeshStandardMaterial({ map: back, roughness: 0.85 }));
     const post = new BoxGeometry(POST.side, POST.height, POST.side);
     post.translate(0, POST.height / 2, 0);
     const cap = new BoxGeometry(POST.side + 0.04, 0.04, POST.side + 0.04);

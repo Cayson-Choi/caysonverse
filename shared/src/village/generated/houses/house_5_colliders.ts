@@ -12,17 +12,24 @@ export const HOUSE_5_COLLIDERS: readonly AABB[] = [
   { minX: 455.7, maxX: 456, minZ: 22.2, maxZ: 30 }, // col__h5_2_wall_left
   { minX: 455.7, maxX: 466.9, minZ: 30, maxZ: 30.3 }, // col__h5_2_wall_front
   { minX: 456, maxX: 456.4, minZ: 25.98, maxZ: 26.72 }, // col__h5_2_ladder
+  { minX: 456, maxX: 456.39, minZ: 28.57, maxZ: 29.58 }, // col__h5_2_store_case2
+  { minX: 456.01, maxX: 456.33, minZ: -5.8, maxZ: -4.6 }, // col__h5_1_store_shelf
   { minX: 456.1, maxX: 456.4, minZ: 23.85, maxZ: 24.75 }, // col__h5_2_teacab
   { minX: 456.3, maxX: 456.9, minZ: -7.1, maxZ: -6.5 }, // col__h5_1_olive2
   { minX: 456.4, maxX: 457, minZ: -0.9, maxZ: -0.3 }, // col__h5_1_monstera
+  { minX: 456.47, maxX: 457.78, minZ: -7.8, maxZ: -7.41 }, // col__h5_1_store_case
+  { minX: 456.47, maxX: 457.78, minZ: 22.2, maxZ: 22.59 }, // col__h5_2_store_case
   { minX: 456.49, maxX: 457.33, minZ: -3.76, maxZ: -3.04 }, // col__h5_1_chair
   { minX: 456.49, maxX: 457.33, minZ: -1.96, maxZ: -1.24 }, // col__h5_1_chair2
+  { minX: 457.38, maxX: 458.57, minZ: 29.56, maxZ: 29.99 }, // col__h5_2_store_chest
   { minX: 457.55, maxX: 459.25, minZ: -5.18, maxZ: -4.32 }, // col__h5_1_sofa
+  { minX: 457.63, maxX: 458.57, minZ: -0.44, maxZ: -0.01 }, // col__h5_1_store_chest
   { minX: 457.9, maxX: 458.9, minZ: -2.78, maxZ: -2.22 }, // col__h5_1_coffee
   { minX: 458.5, maxX: 459.9, minZ: 26.4, maxZ: 27.2 }, // col__h5_2_table
   { minX: 458.94, maxX: 460.31, minZ: 29.59, maxZ: 30 }, // col__h5_2_bookcase_built
   { minX: 459.6, maxX: 460.2, minZ: -0.85, maxZ: -0.25 }, // col__h5_1_olive
   { minX: 460.08, maxX: 460.72, minZ: -7.47, maxZ: -6.83 }, // col__h5_1_rubber2
+  { minX: 460.73, maxX: 461.87, minZ: 29.67, maxZ: 29.99 }, // col__h5_2_store_shelf
   { minX: 460.78, maxX: 461.22, minZ: -7.67, maxZ: -7.22 }, // col__h5_1_stand
   { minX: 461.06, maxX: 465.14, minZ: -7.7, maxZ: -6.4 }, // col__h5_1_stair_high
   { minX: 461.06, maxX: 466.5, minZ: 22.3, maxZ: 23.6 }, // col__h5_2_stairwell
@@ -54,7 +61,10 @@ export const HOUSE_5_CAMERA_BOXES: readonly CameraBox[] = [
   { minX: 455.7, maxX: 466.9, minZ: 21.9, maxZ: 22.2, height: 3.7 }, // col__h5_2_wall_back
   { minX: 455.7, maxX: 456, minZ: 22.2, maxZ: 30, height: 3.7 }, // col__h5_2_wall_left
   { minX: 455.7, maxX: 466.9, minZ: 30, maxZ: 30.3, height: 3.7 }, // col__h5_2_wall_front
+  { minX: 456, maxX: 456.39, minZ: 28.57, maxZ: 29.58, height: 2.3 }, // col__h5_2_store_case2
   { minX: 456.3, maxX: 456.9, minZ: -7.1, maxZ: -6.5, height: 1.7 }, // col__h5_1_olive2
+  { minX: 456.47, maxX: 457.78, minZ: -7.8, maxZ: -7.41, height: 2.3 }, // col__h5_1_store_case
+  { minX: 456.47, maxX: 457.78, minZ: 22.2, maxZ: 22.59, height: 2.3 }, // col__h5_2_store_case
   { minX: 458.94, maxX: 460.31, minZ: 29.59, maxZ: 30, height: 2.6 }, // col__h5_2_bookcase_built
   { minX: 459.6, maxX: 460.2, minZ: -0.85, maxZ: -0.25, height: 1.7 }, // col__h5_1_olive
   { minX: 461.06, maxX: 465.14, minZ: -7.7, maxZ: -6.4, height: 3.7 }, // col__h5_1_stair_high

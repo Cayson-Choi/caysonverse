@@ -295,6 +295,8 @@ def bake_lightmap(scene, obs, size, samples, out_png, lift, passes=1, override=N
         a = px.reshape(size, size, 4)[..., :3].copy()
         acc = a if acc is None else acc + a
     a = acc / passes
+    import uv_compact    # interior polish: upholstery strips under a texel wide take the light of the cushion round them
+    log("thin upholstery islands filled", uv_compact.fill_thin_lm_islands(obs, a))
     for s, v in saved:
         s.default_value = v
     for m, n in added:

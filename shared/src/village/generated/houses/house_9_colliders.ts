@@ -22,6 +22,7 @@ export const HOUSE_9_COLLIDERS: readonly AABB[] = [
   { minX: 553.04, maxX: 554.06, minZ: -6.97, maxZ: -5.93 }, // col__h9_1_nookchair
   { minX: 553.07, maxX: 554.83, minZ: -7.8, maxZ: -7.1 }, // col__h9_1_fireplace
   { minX: 553.28, maxX: 553.72, minZ: 22.23, maxZ: 22.63 }, // col__h9_2_bedside
+  { minX: 553.53, maxX: 554.42, minZ: 29.56, maxZ: 29.99 }, // col__h9_2_store_chest
   { minX: 553.83, maxX: 554.75, minZ: -2.97, maxZ: -0.73 }, // col__h9_1_island
   { minX: 554.15, maxX: 554.65, minZ: -6.8, maxZ: -6.3 }, // col__h9_1_nook_table
   { minX: 554.74, maxX: 555.76, minZ: -6.97, maxZ: -5.93 }, // col__h9_1_nookchair2
@@ -32,6 +33,7 @@ export const HOUSE_9_COLLIDERS: readonly AABB[] = [
   { minX: 555.58, maxX: 556.22, minZ: 29.08, maxZ: 29.72 }, // col__h9_2_plant
   { minX: 555.6, maxX: 555.92, minZ: -1.4, maxZ: -0.1 }, // col__h9_1_part_entry_3
   { minX: 555.7, maxX: 556, minZ: 25.64, maxZ: 25.76 }, // col__h9_2_part_bedroom_1
+  { minX: 556.83, maxX: 557.72, minZ: 29.67, maxZ: 29.99 }, // col__h9_2_store_shelf
   { minX: 557.06, maxX: 561.14, minZ: -7.7, maxZ: -6.4 }, // col__h9_1_stair_high
   { minX: 557.06, maxX: 562.5, minZ: 22.3, maxZ: 23.6 }, // col__h9_2_stairwell
   { minX: 557.38, maxX: 557.9, minZ: -5.25, maxZ: -4.75 }, // col__h9_1_dchair3
@@ -42,6 +44,7 @@ export const HOUSE_9_COLLIDERS: readonly AABB[] = [
   { minX: 558.82, maxX: 559.68, minZ: 26.6, maxZ: 29 }, // col__h9_2_sofa
   { minX: 558.9, maxX: 559.7, minZ: -5.4, maxZ: -3.8 }, // col__h9_1_table
   { minX: 559, maxX: 559.1, minZ: -1.5, maxZ: 0 }, // col__h9_1_part_entry_1
+  { minX: 560.13, maxX: 561.02, minZ: -0.33, maxZ: -0.01 }, // col__h9_1_store_shelf
   { minX: 560.58, maxX: 561.22, minZ: 24.08, maxZ: 24.72 }, // col__h9_2_plant2
   { minX: 560.7, maxX: 561.22, minZ: -5.25, maxZ: -4.75 }, // col__h9_1_dchair4
   { minX: 560.7, maxX: 561.22, minZ: -4.45, maxZ: -3.95 }, // col__h9_1_dchair2

@@ -395,13 +395,16 @@ def quad(F, a, b, c, d, m, **kw):
     return gface(F, [a, b, c, d], m, **kw)
 
 
+RBOX_MIN_BEVEL = 0.0035   # interior polish: a house over its triangle budget may raise it (house 2: 6.5 mm trims read square under the light map)
+
+
 def rbox(F, x0, x1, z0, z1, y0, y1, m, r=0.01, seg=2, grain=(1, 0, 0), tile=1.0, tn=None, bottom=False, puff=0.0,
          sag=0.0, cuts=0, smooth=False, skip=(), tilt=0.0, taper=0.0, uvc=None):
     """Bevelled box between local corners. puff lifts the top near the edges, sag dips its centre (cushions); cuts
     subdivides the box first so puff/sag have vertices to move. skip = face directions to leave out ('+x','-x','+z',
     '-z','+y','-y')."""
     sx, sz, sy = abs(x1 - x0), abs(z1 - z0), abs(y1 - y0)
-    if r < 0.0035 and not (puff or sag or cuts):     # HA triangle budget: a bevel under 3.5 mm is invisible, 26 faces instead of 6
+    if r < RBOX_MIN_BEVEL and not (puff or sag or cuts):     # HA triangle budget: a bevel under 3.5 mm is invisible, 26 faces instead of 6
         r = 0
     cuts = min(cuts, 3)
     if r < 0.012:

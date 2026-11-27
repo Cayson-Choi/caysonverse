@@ -11,6 +11,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import house_common as HC  # noqa: E402
 import kit_core as K  # noqa: E402
+K.RBOX_MIN_BEVEL = 0.0065   # interior polish 2026-11-27 (triangle budget for the curtains on all 13 windows): trims, casings and boards under 6.5 mm round-over are drawn square
 import kit_shell as SH  # noqa: E402
 import kit_seating as SE  # noqa: E402
 import kit_tables as TA  # noqa: E402
@@ -49,7 +50,7 @@ SOFA4.__name__ = "sofa_fabric"
 sp1 = HA.spec(H, 1)   # window alignment 2026-11-27: the shell's windows (any behind the stair left out)
 ops = HA.ops_windows(sp1)
 HA.merge(ops, dict(front=[dict(s0=4.4, s1=6.2, y0=0.0, y1=2.9)], right=[dict(s0=0.45, s1=1.35, y0=0.0, y1=2.13)]))
-wins, curt = HA.add_windows(sp1, curtain=("right", "back"))   # window alignment: the kitchen's two left windows bare (triangle budget: 2 windows a side now)
+wins, curt = HA.add_windows(sp1, curtain=("left", "right", "back"))   # interior polish 2026-11-27: every window dressed again (the kitchen's left pair was bare for the triangle budget)
 H.shell(1, ops=ops, wall_tn=WALL1, windows=wins, curtains=curt, floor_tn=(0.96, 0.95, 0.94, 1),
         lights=((2.4, 2.0), (2.6, 5.0), (5.3, 1.8), (8.2, 2.2), (8.6, 5.4)),
         fixtures=[lambda fr: SH.entry_door(fr["front"][0], 4.4, 6.2, 2.9),
@@ -110,7 +111,7 @@ H.piece(1, "sofa_pic", DE.frame_art, 10.56, 6.0, 1.5, -PI / 2, w=0.6, h=0.45, ar
 sp2 = HA.spec(H, 2)
 ops2 = HA.ops_windows(sp2)
 HA.merge(ops2, dict(front=[dict(s0=6.2, s1=7.1, y0=0.0, y1=2.13)]))
-wins2, curt2 = HA.add_windows(sp2, curtain=("left", "right", "back"))   # the three front windows upstairs bare (budget)
+wins2, curt2 = HA.add_windows(sp2, curtain=("left", "right", "back", "front"))   # interior polish: the three front windows upstairs dressed again
 H.shell(2, ops=ops2, wall_tn=WALL2, windows=wins2, curtains=curt2, floor_tn=(0.96, 0.95, 0.94, 1),
         lights=((2.2, 2.2), (3.4, 4.6), (8.4, 2.0), (8.6, 5.2)),
         fixtures=[lambda fr: SH.bath_door(fr["front"][0], 6.2, 7.1, 2.1)])

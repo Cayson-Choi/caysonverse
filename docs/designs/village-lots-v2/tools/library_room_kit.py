@@ -48,6 +48,7 @@ GLASS = P.GLASS
 MATS = {
     "LM_library_floor": {"set": "floor_wood"},
     "LM_library_plaster": {"set": "plaster_painted"},
+    "LM_library_petal": {"set": "plaster_painted", "rough": 0.6},
     "LM_library_paint": {"set": "wood_painted", "normal": 0.5},
     "LM_library_oak": {"set": "wood_oak", "rough": 0.85},
     "LM_library_stone": {"set": "stone_ashlar"},
@@ -391,7 +392,8 @@ def bouquet(m, cx, y, cz, seed):
         mid = (cx + out * 0.4 * math.cos(a), y + 0.26, cz + out * 0.4 * math.sin(a))
         m.member((cx, y + 0.12, cz), mid, G.prof_round(0.0035, 5), LEAF_DK)
         m.member(mid, top, G.prof_round(0.003, 5), LEAF_DK)
-        col = S("LM_library_plaster", (1.0, 1.0, 1.0))
+        # (the petals' own material: the game gives them a flower's translucent fill, LotRoom.tsx `_petal`; props round 3, 2026-11-27)
+        col = S("LM_library_petal", (1.0, 1.0, 1.0))
         lod0, G.LOD = G.LOD, min(G.LOD, 0.6)
         if k % 3 == 0:
             # a tulip: a closed cup of overlapping petals (flora.py)

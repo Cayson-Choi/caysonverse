@@ -27,6 +27,16 @@ type BoxBed = Extract<Bed, { kind: "box" }>;
 const BLOOMS = ["#D21F2C", "#E8323C", "#C81A2A", "#F25A4E", "#E8559A", "#F7A1C0", "#C2187A", "#FBF7F9"];
 const LEAVES = ["#3F6B2E", "#4F7D35"];
 
+/**
+ * A box's own flowers (Bed.palette, the side boxes: houseSideBoxes.ts): the picture's geranium reds become the first colour, its
+ * pinks the second (linear, from sRGB); its whites and leaves stay. A bed without a palette keeps the picture as it is.
+ */
+const BLOOM_REMAP: Readonly<Record<string, readonly [string, string]>> = {
+  geraniumPink: ["#E8559A", "#F7A1C0"],
+  geraniumCoral: ["#F25A4E", "#FF9A6B"],
+  boxWhite: ["#FBF7F9", "#8A3AA3"],
+};
+
 function hash(x: number, y: number, z: number): number {
   const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
   return s - Math.floor(s);
@@ -60,6 +70,8 @@ export function flowerMassGeometry(beds: readonly BoxBed[], style: "house" | "pa
   const col: number[] = [];
   const uv: number[] = [];
   const idx: number[] = [];
+  const bloomA: number[] = [];
+  const bloomB: number[] = [];
   const blooms = BLOOMS.map((h) => new Color(h));
   const leaves = LEAVES.map((h) => new Color(h));
   const parkPetals = ["#fff7e3", "#ffdbe3", "#ff9bb3", "#f5679a"].map(h => new Color(h));
@@ -85,6 +97,9 @@ export function flowerMassGeometry(beds: readonly BoxBed[], style: "house" | "pa
     const nv = kind === "window" || kind === "border" ? 3 : nu;
     const along = lx >= lz ? "x" : "z";
     const base = pos.length / 3;
+    const remap = b.palette ? BLOOM_REMAP[b.palette] : undefined;
+    const ra = remap ? new Color(remap[0]) : null;
+    const rb = remap ? new Color(remap[1]) : null;
     // the dome: (u, v) over the soil grown to the bulge, height by an ellipse profile + lumps
     for (let j = 0; j <= nv; j++)
       for (let i = 0; i <= nu; i++) {
@@ -206,12 +221,24 @@ export function flowerMassGeometry(beds: readonly BoxBed[], style: "house" | "pa
         }
       }
     }
+    // this bed's vertices: its remap colours (x < 0: none)
+    for (let v = base; v < pos.length / 3; v++) {
+      if (ra && rb) {
+        bloomA.push(ra.r, ra.g, ra.b);
+        bloomB.push(rb.r, rb.g, rb.b);
+      } else {
+        bloomA.push(-1, 0, 0);
+        bloomB.push(0, 0, 0);
+      }
+    }
   }
   const g = new BufferGeometry();
   g.setAttribute("position", new BufferAttribute(new Float32Array(pos), 3));
   g.setAttribute("aSoil", new BufferAttribute(new Float32Array(soil), 3));
   g.setAttribute("color", new BufferAttribute(new Float32Array(col), 3));
   g.setAttribute("uv", new BufferAttribute(new Float32Array(uv), 2));
+  g.setAttribute("aBloomA", new BufferAttribute(new Float32Array(bloomA), 3));
+  g.setAttribute("aBloomB", new BufferAttribute(new Float32Array(bloomB), 3));
   g.setIndex(idx);
   g.computeVertexNormals();
   g.computeBoundingSphere();
@@ -306,7 +333,10 @@ export function flowerMassMesh(beds: readonly BoxBed[], near: number, full: numb
     sh.uniforms.uMassNear = { value: near };
     sh.uniforms.uMassFull = { value: full };
     sh.vertexShader = sh.vertexShader
-      .replace("#include <common>", "#include <common>\nattribute vec3 aSoil;\nuniform float uMassNear;\nuniform float uMassFull;")
+      .replace(
+        "#include <common>",
+        "#include <common>\nattribute vec3 aSoil;\nattribute vec3 aBloomA;\nattribute vec3 aBloomB;\nvarying vec3 vBloomA;\nvarying vec3 vBloomB;\nuniform float uMassNear;\nuniform float uMassFull;",
+      )
       .replace(
         "#include <begin_vertex>",
         [
@@ -314,10 +344,28 @@ export function flowerMassMesh(beds: readonly BoxBed[], near: number, full: numb
           "vec3 mWorld = ( modelMatrix * vec4( position, 1.0 ) ).xyz;",
           "float mGrow = smoothstep( uMassNear, uMassFull, distance( mWorld, cameraPosition ) );",
           "transformed = mix( aSoil, position, mGrow );",
+          "vBloomA = aBloomA;",
+          "vBloomB = aBloomB;",
         ].join("\n"),
       );
+    // a box's own flowers (BLOOM_REMAP): the picture's saturated reds take the bed's first colour, its pinks (more blue in them)
+    // the second, as bright as they were; whites and leaves stay
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vBloomA;\nvarying vec3 vBloomB;").replace(
+      "#include <map_fragment>",
+      [
+        "#include <map_fragment>",
+        "#ifdef USE_MAP",
+        "if ( vBloomA.x >= 0.0 ) {",
+        "\tvec3 bt = sampledDiffuseColor.rgb;",
+        "\tfloat bW = smoothstep( 0.12, 0.3, bt.r - max( bt.g, bt.b ) );",
+        "\tvec3 bTo = mix( vBloomA, vBloomB, smoothstep( 0.22, 0.42, bt.b / max( bt.r, 1e-3 ) ) );",
+        "\tdiffuseColor.rgb = mix( diffuseColor.rgb, diffuse * bTo * clamp( bt.r / 0.62, 0.55, 1.2 ), bW );",
+        "}",
+        "#endif",
+      ].join("\n"),
+    );
   };
-  mat.customProgramCacheKey = () => `flowerMass:${near}:${full}`;
+  mat.customProgramCacheKey = () => `flowerMass2:${near}:${full}`;
   const mesh = new Mesh(geometry, mat);
   mesh.name = "house_flower_mass";
   mesh.castShadow = false;
