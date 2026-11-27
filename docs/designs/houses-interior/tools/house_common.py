@@ -83,7 +83,7 @@ class House:
             lx, lz = self.pull_out(floor, name, lx, lz, yaw) if pb is None else self.pull_out(floor, name, lx, lz, yaw, body=pb, force_body=True)
         if not hasattr(self, "placed"):
             self.placed = []
-        self.placed.append(dict(floor=floor, name=name, fn=getattr(fn, "__name__", ""), lx=lx, lz=lz, yaw=yaw, kw=dict(kw)))
+        self.placed.append(dict(floor=floor, name=name, fn=getattr(fn, "__name__", ""), lx=lx, lz=lz, y=y, yaw=yaw, kw=dict(kw)))
         self.count[(floor, name)] = self.count.get((floor, name), 0) + 1
         k = self.count[(floor, name)]
         nm = name if k == 1 else f"{name}{k}"
@@ -309,7 +309,7 @@ class House:
         self.piece(1, "stairs", SH.stairs, foot["x"], foot["z"], 0.0, kit["yaw"], cols=False, wall_side=kit["wall_side"], open_low=ol,
                    top_open=kit["landing"])
         self.piece(2, "stairwell_steps", SH.stairs, foot["x"], foot["z"], -K.FLOOR_HEIGHT, kit["yaw"], cols=False,
-                   wall_side=kit["wall_side"], i_from=1, top_open=kit["landing"])      # owner 2026-11-20: the WHOLE flight in the well (it was steps 10-17 only: a handrail rose out of nothing)
+                   wall_side=kit["wall_side"], i_from=1, top_open=kit["landing"], lite=True)      # owner 2026-11-20: the WHOLE flight in the well (it was steps 10-17 only: a handrail rose out of nothing)
         self.piece(2, "stairwell_guard", SH.stair_guard_2f, foot["x"], foot["z"], 0.0, kit["yaw"], cols=False,
                    wall_side=kit["wall_side"], landing=kit["landing"])
 

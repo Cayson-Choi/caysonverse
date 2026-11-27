@@ -42,7 +42,10 @@ def cushion_seat(F, x0, x1, z0, z1, y0, y1, m, tn, puff=0.012, sag=0.012, r=0.05
 
 
 def back_cushion(F, x0, x1, z, y0, y1, thick, m, tn, tilt=0.2, puff=0.025):
-    rbox(F, x0, x1, z - thick, z, y0, y1, m, r=0.05, seg=3, tile=0.5, tn=tn, puff=puff, cuts=3, smooth=True, tilt=tilt)
+    """interior polish (owner 2026-11-27: "faint dark bars on top of the sofa back cushions, seen from behind"): the crown is capped at
+    6 mm. The top of a back cushion is only its 0.2 m thickness; the old 25 mm crown on the 10 cm between its round-overs stood up as a
+    ridge with a crease all round it, and from behind it read as a separate darker / lighter bar on every cushion, day and night."""
+    rbox(F, x0, x1, z - thick, z, y0, y1, m, r=0.05, seg=3, tile=0.5, tn=tn, puff=min(puff, 0.006), cuts=3, smooth=True, tilt=tilt)
 
 
 _PILLOW_K = [0]

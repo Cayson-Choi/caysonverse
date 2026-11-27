@@ -11,6 +11,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import house_common as HC  # noqa: E402
 import kit_core as K  # noqa: E402
+K.RBOX_MIN_BEVEL = 0.0065   # interior polish 2026-11-27 (triangle budget for the storage upstairs): trims, casings and boards under 6.5 mm round-over are drawn square
 import kit_shell as SH  # noqa: E402
 import kit_seating as SE  # noqa: E402
 import kit_tables as TA  # noqa: E402

@@ -177,6 +177,9 @@ def _tv_to_fireplace(H, floor):
     stands = [p for p in getattr(H, "placed", []) if p["floor"] == floor and p["fn"] in ("tv_stand", "tv_cabinet_audio")]
     for st in stands:
         tvs = [p for p in H.placed if p["floor"] == floor and p["fn"] in ("tv_wall", "soundbar", "settop", "turntable") and math.hypot(p["lx"] - st["lx"], p["lz"] - st["lz"]) < 0.6]
+        # interior polish: the props standing on the stand go with it (house 1's books stayed inside the new chimney breast's pilaster)
+        tvs += [p for p in H.placed if p["floor"] == floor and p["fn"] == "prop" and p.get("y", 0.0) > 0.3 and p not in tvs and
+                math.hypot(p["lx"] - st["lx"], p["lz"] - st["lz"]) < st["kw"].get("w", 1.6) / 2 + 0.1]
         yaw = st["yaw"]
         fx, fz = math.sin(yaw), math.cos(yaw)
         rx, rz = math.cos(yaw), -math.sin(yaw)
@@ -401,6 +404,169 @@ def _sofa_tables(H, floor):
         print(f"DRESS floor {floor}: {k} sofa end tables with lamps")
 
 
+# ============================================================================== storage on the free walls (interior polish) ===
+# owner 2026-11-27 ("1번 2번 전부"): after the window alignment every wall had two windows, no stretch was long enough for the focal
+# bookcase or dresser any more, and the rooms went plain. Lived-in but brand-new: a built-in bookcase (or, by a kitchen, a crockery dresser)
+# on the free stretches of wall between and beside the windows, and a low chest or low bookshelf under a window where nothing stands. Each
+# one is kept only when the click-to-walk aisles, every backed seat's stand spot and the contract's keep-clear areas stay as they are
+# (_reach_ok), and only while the house stays inside its triangle budget (the GLB contract: <= 54k).
+STORE_TALL_MIN = 0.8          # a free eye-level stretch this long takes a tall piece
+STORE_TALL = {1: 2, 2: 3}     # at most this many tall pieces per floor
+STORE_LOW = {1: 2, 2: 2}      # at most this many low pieces per floor (under windows)
+LOW_BAND = (0.06, 0.84)       # under a 0.9 m sill
+
+
+def _house_tris(H):
+    return sum(sum(len(p.vertices) - 2 for p in ob.data.polygons) for f in (1, 2) for ob in H.lm[f])
+
+
+def _low_occupancy(H, floor, objs):
+    """per wall: bins taken below the window sills: furniture near the wall, curtains, door openings (no wall face down there)"""
+    occ = {}
+    hx0, hx1, hz0, hz1 = H.hole()
+    for wname, (ln, to_sd, _) in _walls().items():
+        nb = int(ln / STEP) + 1
+        b = [False] * nb
+        cover = [False] * nb
+        for (nm, shell, vs, ps) in objs:
+            sd = [to_sd(x, z) for (x, z, y) in vs]
+            for p in ps:
+                ys = [vs[i][2] for i in p]
+                ds = [sd[i][1] for i in p]
+                ss = [sd[i][0] for i in p]
+                if shell and max(abs(d) for d in ds) < 0.004 and min(ys) <= LOW_BAND[0] + 0.15 and max(ys) >= LOW_BAND[1] - 0.1:
+                    for i in range(max(0, int(min(ss) / STEP) + 1), min(nb, int(max(ss) / STEP))):
+                        cover[i] = True
+                if max(ys) < LOW_BAND[0] or min(ys) > LOW_BAND[1] + 0.04:
+                    continue
+                if shell:
+                    if max(ds) <= 0.035 or min(ds) > 0.5 or min(ys) > LOW_BAND[1] - 0.06:   # baseboard, chair rail, wall, window stool
+                        continue
+                elif min(ds) > 0.6:
+                    continue
+                for i in range(max(0, int(min(ss) / STEP)), min(nb, int(max(ss) / STEP) + 1)):
+                    b[i] = True
+        for i in range(nb):
+            if not cover[i] or i * STEP < 0.3 or i * STEP > ln - 0.3:
+                b[i] = True
+        cs = [to_sd(x, z) for x in (hx0, hx1) for z in (hz0, hz1)]
+        if min(c[1] for c in cs) < 1.1:
+            a0, a1 = min(c[0] for c in cs), max(c[0] for c in cs)
+            for i in range(max(0, int(a0 / STEP) - 4), min(nb, int(a1 / STEP) + 5)):
+                b[i] = True
+        g = list(b)
+        for i in range(nb):
+            if b[i]:
+                for j in range(max(0, i - 1), min(nb, i + 2)):
+                    g[j] = True
+        occ[wname] = g
+    return occ
+
+
+def _try_store(H, floor, wname, mid, w, depth, h, kind, k):
+    ln, to_sd, place = _walls()[wname]
+    if not _strip_free(H, floor, wname, mid - w / 2 - 0.05, mid + w / 2 + 0.05, depth):
+        print(f"STORE floor {floor}: {kind} on the {wname} wall at {mid:.2f}: furniture in the way")
+        return False
+    lx, lz, yaw = place(mid)
+    fx, fz = math.sin(yaw), math.cos(yaw)
+    rx, rz = math.cos(yaw), -math.sin(yaw)
+    pts = [(lx + rx * u + fx * v, lz + rz * u + fz * v) for u in (-w / 2 - 0.03, w / 2 + 0.03) for v in (0.0, depth + 0.03)]
+    box = (floor, "focal_try", min(p[0] for p in pts), max(p[0] for p in pts), min(p[1] for p in pts), max(p[1] for p in pts), h)
+    if not _reach_ok(H, floor, box):
+        print(f"STORE floor {floor}: {kind} on the {wname} wall at {mid:.2f} would block a path or a seat: skipped")
+        return False
+    seed = H.n * 31 + floor * 7 + k
+    if kind == "bookcase":
+        H.piece(floor, "store_case", KL.bookcase_built, lx, lz, 0.0, yaw, w=w, h=h, d=0.34, tn=H.pal["trim"], seed=seed, cupboard=0.78)
+    elif kind == "dresser":
+        H.piece(floor, "store_dresser", KL.dresser_crockery, lx, lz, 0.0, yaw, w=w, tn=H.pal["low"], seed=seed)
+    elif kind == "chest":
+        d = 0.42
+        H.piece(floor, "store_chest", KR.chest_drawers, lx + fx * (d / 2 + 0.01), lz + fz * (d / 2 + 0.01), 0.0, yaw, w=w, d=d, h=0.74,
+                tn=H.pal["low"], rows=3)
+    else:   # a low bookshelf
+        import hb_pieces as HP
+        d = 0.32
+        H.piece(floor, "store_shelf", HP.bookcase_lite, lx + fx * (d / 2 + 0.01), lz + fz * (d / 2 + 0.01), 0.0, yaw, w=w, d=d, h=0.76,
+                shelves=2, seed=seed, tn=H.pal["trim"] if H.n % 2 else None)
+    print(f"STORE floor {floor}: {kind} on the {wname} wall at s {mid:.2f} (w {w:.2f}): {_house_tris(H)} tris")
+    return True
+
+
+def _storage(H, floor, objs, occ):
+    """fills the free walls with storage (see the block comment above); marks the eye-level bins it took in occ"""
+    cap = getattr(H, "store_tri_cap", 51800)
+    walls = _walls()
+    cands = []
+    for wname, bins in occ.items():
+        for (a, b) in _spans(bins):
+            if b - a >= STORE_TALL_MIN:
+                cands.append((-(b - a), wname, a, b))
+    cands.sort()
+    nt = 0
+    for (negL, wname, a, b) in cands:
+        if nt >= STORE_TALL.get(floor, 2):
+            break
+        L = b - a
+        ln, to_sd, place = walls[wname]
+        kitchen = _near_kitchen(objs, to_sd, a, b)
+        kind = "dresser" if kitchen else "bookcase"
+        if kitchen and L < 1.05:
+            continue
+        w = min(L - 0.1, 1.5 if kind == "bookcase" else 1.4)
+        est = 300 + int(450 * w) if kind == "bookcase" else 520
+        if _house_tris(H) + est > cap:
+            print(f"STORE floor {floor}: triangle budget reached ({_house_tris(H)}), no {kind} on the {wname} wall")
+            continue
+        if _try_store(H, floor, wname, (a + b) / 2, w, 0.4 if kind == "bookcase" else 0.52, 2.3, kind, nt):
+            for i in range(max(0, int(a / STEP)), min(len(occ[wname]), int(b / STEP) + 1)):
+                occ[wname][i] = True
+            nt += 1
+    objs = _verts(H, floor)
+    low = _low_occupancy(H, floor, objs)
+    import ext_openings as EO
+    nl = 0
+    wins = sorted(EO.openings(H.n, floor, kinds=("window",)), key=lambda o: -o[2])
+    for (wname, at, width, y0, y1, kind_) in wins:
+        if nl >= STORE_LOW.get(floor, 2):
+            break
+        if y0 < 0.8:
+            continue
+        ln, to_sd, place = walls[wname]
+        c = EO.wall_s(wname, at)
+        s0, s1 = c - width / 2, c + width / 2
+        bins = low[wname]
+        i0, i1 = max(0, int(s0 / STEP)), min(len(bins) - 1, int(s1 / STEP))
+        best = None
+        i = i0
+        while i <= i1:
+            if not bins[i]:
+                j = i
+                while j <= i1 and not bins[j]:
+                    j += 1
+                if best is None or (j - i) > (best[1] - best[0]):
+                    best = (i, j)
+                i = j
+            else:
+                i += 1
+        if not best:
+            print(f"STORE floor {floor}: under the {wname} window at {c:.2f}: nothing free")
+            continue
+        a, b = best[0] * STEP, (best[1] - 1) * STEP
+        if b - a < 0.75 or _near_kitchen(objs, to_sd, a, b):
+            print(f"STORE floor {floor}: under the {wname} window at {c:.2f}: free {b - a:.2f} m{' (kitchen)' if b - a >= 0.75 else ''}")
+            continue
+        w = min(b - a - 0.06, 1.2)
+        kind = "chest" if (H.n + floor + nl) % 2 else "lowshelf"
+        if _house_tris(H) + 320 > cap:
+            print(f"STORE floor {floor}: triangle budget reached ({_house_tris(H)}), no low piece under the {wname} window")
+            break
+        if _try_store(H, floor, wname, (a + b) / 2, w, 0.44, 0.8, kind, 10 + nl):
+            nl += 1
+    print(f"STORE floor {floor}: {nt} tall, {nl} low")
+
+
 def dress(H, floor):
     if floor in getattr(H, "no_dress_floors", ()):
         return
@@ -416,6 +582,8 @@ def dress(H, floor):
         wname, a, b = used
         for i in range(max(0, int(a / STEP)), min(len(occ[wname]), int(b / STEP) + 1)):
             occ[wname][i] = True
+    if getattr(H, "storage_on", True):
+        _storage(H, floor, objs, occ)
     walls = _walls()
     k = 0
     tn_frame = (0.45, 0.3, 0.18, 1)
