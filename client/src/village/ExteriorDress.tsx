@@ -118,6 +118,21 @@ function litSurface(spec: SurfaceSpec, set: PbrSet): MeshStandardMaterial {
     params: { color: new Color().setRGB(spec.tint[0], spec.tint[1], spec.tint[2]), roughness: spec.roughness, metalness: spec.metalness, ...(spec.doubleSided ? { side: DoubleSide } : {}) },
   });
   patchHouseLight(m, `dress-${set.id}`);
+  const glow = spec.nightGlow;
+  if (glow) {
+    // the facade's own night spill (see SurfaceSpec.nightGlow): emissive radiance times how lit the village is
+    const prev = m.onBeforeCompile;
+    m.onBeforeCompile = (shader, r) => {
+      prev.call(m, shader, r);
+      shader.uniforms.uDressLit = litUniform;
+      shader.fragmentShader = shader.fragmentShader
+        .replace("void main() {", "uniform float uDressLit;\nvoid main() {")
+        .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>\ntotalEmissiveRadiance += texture2D( map, vMapUv ).rgb * vec3( ${glow.map((v) => v.toFixed(4)).join(", ")} ) * 2.0 * uDressLit;`);
+    };
+    const key = m.customProgramCacheKey.bind(m);
+    m.customProgramCacheKey = () => `${key()}|dress-glow-${glow.join(",")}`;
+    m.needsUpdate = true;
+  }
   return m;
 }
 
