@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { CanvasTexture, Matrix4, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, TextureLoader, Vector3, type Texture } from "three";
+import { CanvasTexture, Matrix4, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, TextureLoader, Vector3, type Mesh, type Texture } from "three";
+import { addPlanarLabel } from "../../game/labelOverlay";
+import { crispTextTexture, sharpenTextMaterial } from "../../game/sceneText";
 import type { CubbyAnchor } from "@caysonverse/shared/village/villageLayout";
 import { placementMatrix } from "../cubbyProps";
 import { cubbyCardAnchor, useCubbyCard } from "../cubbyCard";
@@ -81,6 +83,34 @@ function useTextureUrl(url: string): Texture | null {
 const PLATE = { w: 0.062, h: 0.0135 } as const;
 const plateGeo = new PlaneGeometry(PLATE.w, PLATE.h);
 
+const PLATE_INK = "rgba(58, 40, 22, 0.94)";
+const PLATE_FONT = `"Noto Serif KR", "Nanum Myeongjo", serif`;
+
+/**
+ * The name engraved on the plate, drawn into `g` (a `w` x `h` canvas): a bold serif (a 600 serif's hairlines vanished on a
+ * phone, fix/pine-text), fitted to the plate. No light rim: at the plate's few pixels a rim only greyed the letters.
+ */
+function paintName(g: CanvasRenderingContext2D, w: number, h: number, name: string): void {
+  g.clearRect(0, 0, w, h);
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  let size = Math.round(h * 0.69);
+  const font = (px: number) => `700 ${px}px ${PLATE_FONT}`;
+  g.font = font(size);
+  while (g.measureText(name).width > w * 0.92 && size > Math.max(6, h * 0.28)) {
+    size -= Math.max(1, Math.round(size * 0.04));
+    g.font = font(size);
+  }
+  const x = w / 2;
+  const y = h / 2 + h * 0.025;
+  g.fillStyle = PLATE_INK;
+  g.fillText(name, x, y);
+}
+
+/**
+ * The plate's 3D lettering: 384 x 84 as before (the GPU memory unchanged: the close view's plate is drawn on the overlay),
+ * mipmapped, the GPU's anisotropy, sampled half a mip sharper.
+ */
 function nameTexture(name: string): CanvasTexture | null {
   if (typeof document === "undefined") return null;
   const c = document.createElement("canvas");
@@ -88,27 +118,44 @@ function nameTexture(name: string): CanvasTexture | null {
   c.height = 84;
   const g = c.getContext("2d");
   if (!g) return null;
-  g.clearRect(0, 0, c.width, c.height);
-  g.fillStyle = "rgba(58, 40, 22, 0.92)";
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  let size = 58;
-  g.font = `600 ${size}px "Noto Serif KR", "Nanum Myeongjo", serif`;
-  while (g.measureText(name).width > c.width - 24 && size > 24) {
-    size -= 2;
-    g.font = `600 ${size}px "Noto Serif KR", "Nanum Myeongjo", serif`;
-  }
-  g.fillText(name, c.width / 2, c.height / 2 + 2);
-  const t = new CanvasTexture(c);
+  paintName(g, c.width, c.height, name);
+  const t = crispTextTexture(new CanvasTexture(c));
   t.colorSpace = SRGBColorSpace;
-  t.anisotropy = 4;
+  // a first draw may have used a fallback face: redraw once the page's fonts are in
+  void document.fonts?.ready.then(() => {
+    paintName(g, c.width, c.height, name);
+    t.needsUpdate = true;
+  });
   return t;
 }
 
+/**
+ * The name at `w` x `h` device px for the label overlay (the focused cubby's plate, labelOverlay.ts `addPlanarLabel`): drawn at
+ * that size, so every glyph is the device's own pixels; the last size kept (the close view holds still).
+ */
+function overlayName(name: string): (w: number, h: number) => HTMLCanvasElement | null {
+  let c: HTMLCanvasElement | null = null;
+  return (w, h) => {
+    if (typeof document === "undefined") return null;
+    if (c && c.width === w && c.height === h) return c;
+    c ??= document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const g = c.getContext("2d");
+    if (!g) return null;
+    paintName(g, w, h, name);
+    return c;
+  };
+}
+
 const plateOffset = new Vector3();
-function NamePlate({ anchor, name }: { anchor: CubbyAnchor; name: string }) {
+function NamePlate({ anchor, name, focused }: { anchor: CubbyAnchor; name: string; focused: boolean }) {
   const tex = useMemo(() => nameTexture(name), [name]);
-  const mat = useMemo(() => (tex ? new MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }) : null), [tex]);
+  const mat = useMemo(
+    () => (tex ? sharpenTextMaterial(new MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false })) : null),
+    [tex],
+  );
+  const [mesh, setMesh] = useState<Mesh | null>(null);
   useEffect(
     () => () => {
       mat?.dispose();
@@ -116,13 +163,26 @@ function NamePlate({ anchor, name }: { anchor: CubbyAnchor; name: string }) {
     },
     [mat, tex],
   );
+  // the cubby the card looks at: its name on the overlay at the device's pixel ratio (the 3D copy hidden while it is)
+  useEffect(() => {
+    if (!focused || !mesh || !mat) return;
+    return addPlanarLabel({
+      object: mesh,
+      w: PLATE.w,
+      h: PLATE.h,
+      image: overlayName(name),
+      shown: (on) => {
+        mat.visible = !on;
+      },
+    });
+  }, [focused, mesh, mat, name]);
   const matrix = useMemo(() => {
     // on the plate's face: the board's middle under the door (opening centre 0.2 + half the 2.5 cm board down), 4.7 mm out
     plateOffset.set(Math.sin(anchor.yaw) * 0.0047, -(0.2 + 0.0125), Math.cos(anchor.yaw) * 0.0047);
     return new Matrix4().makeRotationY(anchor.yaw).setPosition(anchor.x + plateOffset.x, anchor.y + plateOffset.y, anchor.z + plateOffset.z);
   }, [anchor]);
   if (!mat) return null;
-  return <mesh geometry={plateGeo} material={mat} matrixAutoUpdate={false} matrix={matrix} renderOrder={2} />;
+  return <mesh ref={setMesh} name={`cubby_name_plate__${anchor.id}`} geometry={plateGeo} material={mat} matrixAutoUpdate={false} matrix={matrix} renderOrder={2} />;
 }
 
 function Picture({ anchor, url }: { anchor: CubbyAnchor; url: string }) {
@@ -162,7 +222,7 @@ export function ClaimFrames({ anchors }: { anchors: readonly CubbyAnchor[] }) {
       {items.map((it) => (
         <group key={it.anchor.id}>
           <Picture anchor={it.anchor} url={it.url} />
-          {it.name ? <NamePlate anchor={it.anchor} name={it.name} /> : null}
+          {it.name ? <NamePlate anchor={it.anchor} name={it.name} focused={it.anchor.id === focused} /> : null}
         </group>
       ))}
     </group>

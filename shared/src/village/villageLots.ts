@@ -513,7 +513,7 @@ const TEMPLE: VillageLot = {
     { suffix: "bell_pavilion", rect: rect(-11.2, -8.2, -10, -7), cameraHeight: 7 }, // 범종각
     { suffix: "pine_1", rect: rect(-10.3, -9.7, 7.5, 8.1), cameraHeight: 0 }, // pine trunks (crowns over the walk)
     { suffix: "pine_2", rect: rect(-9.8, -9.2, -1.5, -0.9), cameraHeight: 0 },
-    { suffix: "pine_3", rect: rect(9.7, 10.3, -5.2, -4.6), cameraHeight: 0 },
+    { suffix: "pine_3", rect: rect(10.3, 10.9, -2.1, -1.5), cameraHeight: 0 }, // 2026-11-27: off the hall's eaves (was 9.7..10.3, -5.2..-4.6)
     { suffix: "pine_4", rect: rect(8.3, 8.9, 10.6, 11.2), cameraHeight: 0 },
   ],
   seats: [

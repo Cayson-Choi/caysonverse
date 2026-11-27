@@ -181,7 +181,8 @@ async function oneHouse(p, n, tag, data) {
     await sleep(1500);
     if (await tapWorld(p, pl.upPad.x, 0, pl.upPad.z)) {
       const pk = await pickInfo(p);
-      // (from some sides the stair itself stands in front of its pad: a tap that landed on the stair's own steps climbs, by design)
+      // (from some sides the stair itself stands in front of its pad: a tap on its steps walks to the pad, never climbs — owner 2026-11-27;
+      // the floor tap is what this checks, so take another view; a stray climb is still undone below)
       if (!pk || pk.y > 0.15 || pk.ny < 0.8) {
         console.log(`      (the tap landed on ${pk ? `${pk.name} y ${pk.y}` : "nothing"}, not the floor: next view)`);
         await sleep(3500);

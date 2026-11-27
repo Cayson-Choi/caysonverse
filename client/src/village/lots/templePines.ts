@@ -13,18 +13,28 @@ import { versionedUrl } from "../modelUrl";
  */
 
 /**
- * Where the art file stood them (x, z; the boxes `col__lot_temple_pine_N`), their height (m) and shape (pineKit's variant; the
- * upright compact one by the hall's corner, where the roof leaves the least room).
+ * Where the pines stand (x, z; the boxes `col__lot_temple_pine_N`, N = index + 1, in the lot file and shared villageLots.ts), their
+ * height (m) and shape (pineKit's variant; the upright compact one by the hall's north-east corner). The art file stood the third
+ * one at (-56.9, -47.0), 2.25 m off the hall's eaves, where its crown could only grow 3.0 m round; it stands 3.1 m east and
+ * 0.6 m north of there now (2026-11-27, owner "2번 소나무가 너무 좁다"), 3.2 m off the eaves' corner and 1 m inside the north
+ * wall, its crown 4.1-4.2 m round like the others.
  */
 export const TEMPLE_PINES: ReadonlyArray<{ x: number; z: number; H: number; shape: number }> = [
   { x: -44.2, z: -27.0, H: 8.4, shape: 0 },
   { x: -53.2, z: -27.5, H: 7.8, shape: 0 },
-  { x: -56.9, z: -47.0, H: 8.8, shape: 2 },
+  { x: -53.8, z: -47.6, H: 8.8, shape: 2 },
   { x: -41.1, z: -45.6, H: 8.0, shape: 1 },
 ];
+/** Where the art file's own pines stood (its trunks and needle plates there are cut: `cutOldPines`, `pineGroundY`). */
+export const ART_PINES: ReadonlyArray<{ x: number; z: number }> = [
+  { x: -44.2, z: -27.0 },
+  { x: -53.2, z: -27.5 },
+  { x: -56.9, z: -47.0 },
+  { x: -41.1, z: -45.6 },
+];
 /**
- * Where each pine's trunk leans (x, z): the yard's middle, the pond's pine over its pond, the pine at the hall's south-east corner
- * along the south wall (away from the hall's eaves, 2026-11-27). A pine model leans toward its own +x; turning it by `atan2(-dz, dx)`
+ * Where each pine's trunk leans (x, z): the yard's middle, the pond's pine over its pond, the pine by the hall's north-east corner
+ * along the north wall (away from the hall's eaves, 2026-11-27). A pine model leans toward its own +x; turning it by `atan2(-dz, dx)`
  * aims it. The trunk's foot stays at the pine's place (its collision box); the crown sits over the foot whatever the lean (pineKit).
  */
 export const PINE_LEAN_TO: ReadonlyArray<readonly [number, number]> = [
@@ -81,7 +91,7 @@ const FOLIAGE_Y = 3.4;
 
 function wasPine(material: string, x: number, y: number, z: number): boolean {
   if (material === "LM_temple_green") return y > FOLIAGE_Y;
-  if (material === "LM_temple_rock") return TEMPLE_PINES.some((p) => Math.hypot(p.x - x, p.z - z) < CUT_R);
+  if (material === "LM_temple_rock") return ART_PINES.some((p) => Math.hypot(p.x - x, p.z - z) < CUT_R);
   return false;
 }
 
@@ -215,7 +225,7 @@ export function pineGroundY(root: Object3D, fallback = 0): number {
     mesh.updateWorldMatrix(true, false);
     for (let i = 0; i < pos.count; i++) {
       v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
-      if (TEMPLE_PINES.some((t) => Math.hypot(t.x - v.x, t.z - v.z) < 0.6)) y = Math.min(y, v.y);
+      if (ART_PINES.some((t) => Math.hypot(t.x - v.x, t.z - v.z) < 0.6)) y = Math.min(y, v.y);
     }
   });
   return Number.isFinite(y) ? Math.max(-0.2, Math.min(0.4, y)) : fallback;

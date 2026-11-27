@@ -29,7 +29,7 @@ const OUT = args.out ?? join(process.cwd(), "temple-pines-out");
 mkdirSync(OUT, { recursive: true });
 const TIMES = { noon: "12:00", golden: "16:40", dusk: "17:25", night: "21:00" };
 
-/** Poses (game metres): eye, target, vertical fov. The pines stand at (-44.2,-27), (-53.2,-27.5), (-56.9,-47), (-41.1,-45.6). */
+/** Poses (game metres): eye, target, vertical fov. The pines stand at (-44.2,-27), (-53.2,-27.5), (-53.8,-47.6) (was (-56.9,-47) until 2026-11-27), (-41.1,-45.6). */
 const POSES = {
   // the owner's screenshot: the pine beside the lotus pond, the yard's stone wall behind it, looking a little up
   owner: { eye: [-40.6, 1.9, -38.4], target: [-41.1, 4.6, -45.6], fov: 60 },
@@ -46,6 +46,12 @@ const POSES = {
   // the other pines
   north: { eye: [-48.6, 2.0, -18.0], target: [-48.6, 4.5, -27.2], fov: 60 },
   far: { eye: [-49.0, 2.0, -36.0], target: [-56.9, 4.5, -47.0], fov: 60 },
+  // the hall's north-east pine (col__lot_temple_pine_3) from four sides, aimed between its old place and its new one
+  p3e: { eye: [-43.5, 2.6, -48.0], target: [-55.3, 4.8, -47.3], fov: 60 },
+  p3n: { eye: [-55.3, 3.4, -59.0], target: [-55.3, 4.8, -47.3], fov: 60 },
+  p3w: { eye: [-67.5, 3.6, -50.0], target: [-55.3, 4.8, -47.3], fov: 60 },
+  p3s: { eye: [-51.6, 2.0, -36.2], target: [-55.3, 4.8, -47.3], fov: 60 },
+  p3top: { eye: [-55.3, 26.0, -40.0], target: [-55.3, 0, -46.5], fov: 50 },
 };
 
 let seq = 0;

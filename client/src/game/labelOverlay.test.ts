@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { CanvasTexture, Group, PerspectiveCamera, Scene, Vector3, type SpriteMaterial } from "three";
-import { LabelOverlay, placeLabel, type LabelPlacement, type OverlayCanvas, type OverlayContext } from "./labelOverlay";
+import { CanvasTexture, Group, Mesh, PerspectiveCamera, Scene, Vector3, type SpriteMaterial } from "three";
+import { LabelOverlay, addPlanarLabel, placeLabel, planarLabelCount, type LabelPlacement, type OverlayCanvas, type OverlayContext } from "./labelOverlay";
 import { LABEL_SNAP, billboardSprite } from "./spriteCanvas";
 
 function camera(): PerspectiveCamera {
@@ -164,5 +164,58 @@ describe("LabelOverlay: every shown label sprite, over the 3D canvas, at the dev
     overlay.draw(w.scene, w.cam, 400, 900, 3);
     expect(calls.some((c) => c.op === "clear")).toBe(false);
     for (const s of [w.back, w.tag, w.bubble]) (s.material as SpriteMaterial).dispose();
+  });
+});
+
+describe("LabelOverlay planar labels (fix/pine-text: the focused cubby's name plate)", () => {
+  function planarOverlay() {
+    const calls: { op: string; args: unknown[] }[] = [];
+    const ctx = {
+      globalAlpha: 1,
+      imageSmoothingEnabled: false,
+      imageSmoothingQuality: "low",
+      clearRect: (...args: unknown[]) => void calls.push({ op: "clear", args }),
+      drawImage: (...args: unknown[]) => void calls.push({ op: "draw", args }),
+      setTransform: (...args: unknown[]) => void calls.push({ op: "transform", args }),
+    } as unknown as OverlayContext;
+    const canvas: OverlayCanvas = { width: 0, height: 0, style: {}, getContext: () => ctx };
+    return { calls, overlay: new LabelOverlay(canvas) };
+  }
+
+  it("maps a plane facing the eye onto its projected corners, rasterized at its on-screen size; tells it shown, then not", () => {
+    const { calls, overlay } = planarOverlay();
+    const scene = new Scene();
+    const plate = new Mesh();
+    plate.position.set(0, 1.4, 0); // facing +z, toward the camera at z 6
+    scene.add(plate);
+    scene.updateMatrixWorld(true);
+    const asked: Array<[number, number]> = [];
+    const shown: boolean[] = [];
+    const img = { width: 1, height: 1 };
+    const off = addPlanarLabel({ object: plate, w: 0.62, h: 0.135, image: (w, h) => (asked.push([w, h]), img as never), shown: (on) => shown.push(on) });
+    expect(planarLabelCount()).toBe(1);
+    expect(overlay.draw(scene, camera(), 412, 915, 3)).toBe(1);
+    expect(asked).toHaveLength(1);
+    const [w, h] = asked[0]!;
+    expect(w / h).toBeGreaterThan(4.2);
+    expect(w / h).toBeLessThan(5);
+    const t = calls.find((c) => c.op === "transform")!.args as number[];
+    // straight on: no shear, one image px per device px
+    expect(t[0]).toBeCloseTo(1, 1);
+    expect(t[3]).toBeCloseTo(1, 1);
+    expect(Math.abs(t[1]!)).toBeLessThan(0.02);
+    expect(Math.abs(t[2]!)).toBeLessThan(0.02);
+    // the transform is reset after the draw
+    expect(calls.filter((c) => c.op === "transform").at(-1)!.args).toEqual([1, 0, 0, 1, 0, 0]);
+    expect(shown).toEqual([true]);
+    // its back to the eye: not drawn
+    plate.rotation.y = Math.PI;
+    scene.updateMatrixWorld(true);
+    expect(overlay.draw(scene, camera(), 412, 915, 3)).toBe(0);
+    expect(shown).toEqual([true, false]);
+    off();
+    expect(planarLabelCount()).toBe(0);
+    expect(shown.at(-1)).toBe(false);
+    overlay.dispose();
   });
 });

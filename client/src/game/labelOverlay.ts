@@ -21,7 +21,7 @@
  * a pool of entries that grows to the most labels seen.
  */
 
-import type { Camera, Object3D, Sprite, SpriteMaterial } from "three";
+import type { Camera, Object3D, SpriteMaterial } from "three";
 import { labelInfo, labelSprites } from "./spriteCanvas";
 
 /** The overlay's pixel ratio is the device's, held inside [MIN, MAX] (a dpr-5 screen gains nothing visible past 4). */
@@ -114,7 +114,59 @@ const MAX_DIRTY_RECTS = 48;
 export type OverlayContext = Pick<
   CanvasRenderingContext2D,
   "clearRect" | "drawImage" | "globalAlpha" | "imageSmoothingEnabled" | "imageSmoothingQuality"
->;
+> &
+  Partial<Pick<CanvasRenderingContext2D, "setTransform">>;
+
+/**
+ * Flat text that belongs to the scene but is read up close like UI (fix/pine-text: the focused cubby's name plate) — drawn
+ * on the overlay too, at the device's pixel ratio, mapped onto its plane: the plane's three corners' projections give the
+ * 2D transform (affine; exact for a plane seen straight on, as the close views see it, and close at a slant). The owner of
+ * the text rasterizes it at the size asked (device px) and hides its 3D copy while `shown(true)`.
+ * Nothing occludes it: register one only while nothing can stand between the eye and it (the cubby card's close view).
+ */
+export interface PlanarLabel {
+  /** Its matrixWorld places the `w` x `h` (m) rectangle centred on its origin, in its local x-y plane, facing +z. */
+  object: Object3D;
+  w: number;
+  h: number;
+  /** The text at `wPx` x `hPx` device px (the caller caches it), or null for nothing to draw. */
+  image(wPx: number, hPx: number): CanvasImageSource | null;
+  /** Whether the overlay drew it this frame. */
+  shown?(on: boolean): void;
+}
+
+const planarLabels = new Set<PlanarLabel>();
+
+/** Draw `label` on the overlay from the next frame on; the returned function takes it off (and tells it `shown(false)`). */
+export function addPlanarLabel(label: PlanarLabel): () => void {
+  planarLabels.add(label);
+  return () => {
+    planarLabels.delete(label);
+    label.shown?.(false);
+  };
+}
+
+/** The planar labels registered now (read-only; tests). */
+export function planarLabelCount(): number {
+  return planarLabels.size;
+}
+
+/** A local point (lx, ly, 0) of a plane with world matrix `m` on a W x H device-px overlay; false behind the eye. */
+function projectPx(m: ArrayLike<number>, lx: number, ly: number, view: ArrayLike<number>, proj: ArrayLike<number>, W: number, H: number, out: number[], at: number): boolean {
+  const wx = m[0]! * lx + m[4]! * ly + m[12]!;
+  const wy = m[1]! * lx + m[5]! * ly + m[13]!;
+  const wz = m[2]! * lx + m[6]! * ly + m[14]!;
+  const mx = view[0]! * wx + view[4]! * wy + view[8]! * wz + view[12]!;
+  const my = view[1]! * wx + view[5]! * wy + view[9]! * wz + view[13]!;
+  const mz = view[2]! * wx + view[6]! * wy + view[10]! * wz + view[14]!;
+  const cx = proj[0]! * mx + proj[4]! * my + proj[8]! * mz + proj[12]!;
+  const cy = proj[1]! * mx + proj[5]! * my + proj[9]! * mz + proj[13]!;
+  const cw = proj[3]! * mx + proj[7]! * my + proj[11]! * mz + proj[15]!;
+  if (!(cw > 1e-6)) return false;
+  out[at] = ((cx / cw) * 0.5 + 0.5) * W;
+  out[at + 1] = (0.5 - (cy / cw) * 0.5) * H;
+  return true;
+}
 
 export interface OverlayCanvas {
   width: number;
@@ -208,9 +260,11 @@ export class LabelOverlay {
     }
     entries.sort(byDrawOrder);
 
-    // draw
+    // draw: the planar labels first (on the scene's surfaces, under the tags and bubbles), then the sprites
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
+    let planarDrawn = 0;
+    if (planarLabels.size > 0) planarDrawn = this.drawPlanar(scene, view, proj, W, H);
     for (const e of entries) {
       ctx.globalAlpha = e.alpha;
       ctx.drawImage(e.image, e.x, e.y, e.w, e.h);
@@ -219,13 +273,64 @@ export class LabelOverlay {
       d.push(x0, y0, Math.min(W, Math.ceil(e.x + e.w) + 1) - x0, Math.min(H, Math.ceil(e.y + e.h) + 1) - y0);
     }
     ctx.globalAlpha = 1;
-    this.lastDrawn = entries.length;
+    this.lastDrawn = entries.length + planarDrawn;
     entries.length = 0; // keep no image alive past the frame (the pool keeps its last, until reused)
     this.lastMs = performance.now() - t0;
     this.totalMs += this.lastMs;
     this.totalFrames += 1;
     this.totalDrawn += this.lastDrawn;
     return this.lastDrawn;
+  }
+
+  private readonly q: number[] = [0, 0, 0, 0, 0, 0];
+
+  /** Draw the planar labels of `scene` that face the eye and are on screen; tell each whether it was drawn. */
+  private drawPlanar(scene: Object3D, view: ArrayLike<number>, proj: ArrayLike<number>, W: number, H: number): number {
+    const ctx = this.ctx;
+    const q = this.q;
+    let n = 0;
+    for (const l of planarLabels) {
+      let on = false;
+      if (ctx.setTransform && shownIn(l.object, scene)) {
+        const m = l.object.matrixWorld.elements;
+        const hw = l.w / 2;
+        const hh = l.h / 2;
+        if (projectPx(m, -hw, hh, view, proj, W, H, q, 0) && projectPx(m, hw, hh, view, proj, W, H, q, 2) && projectPx(m, -hw, -hh, view, proj, W, H, q, 4)) {
+          const ux = q[2]! - q[0]!;
+          const uy = q[3]! - q[1]!;
+          const vx = q[4]! - q[0]!;
+          const vy = q[5]! - q[1]!;
+          const wPx = Math.hypot(ux, uy);
+          const hPx = Math.hypot(vx, vy);
+          // its front toward the eye (x right, y down on screen: the cross of across and down is positive), big enough to read
+          const front = ux * vy - uy * vx > 0;
+          const xs = [q[0]!, q[2]!, q[4]!, q[2]! + vx];
+          const ys = [q[1]!, q[3]!, q[5]!, q[3]! + vy];
+          const x0 = Math.min(...xs);
+          const x1 = Math.max(...xs);
+          const y0 = Math.min(...ys);
+          const y1 = Math.max(...ys);
+          if (front && hPx >= 2 && wPx >= 2 && x1 > 0 && y1 > 0 && x0 < W && y0 < H) {
+            const iw = Math.max(1, Math.round(wPx));
+            const ih = Math.max(1, Math.round(hPx));
+            const img = l.image(iw, ih);
+            if (img) {
+              ctx.globalAlpha = 1;
+              ctx.setTransform(ux / iw, uy / iw, vx / ih, vy / ih, q[0]!, q[1]!);
+              ctx.drawImage(img, 0, 0, iw, ih);
+              ctx.setTransform(1, 0, 0, 1, 0, 0);
+              const X0 = Math.max(0, Math.floor(x0) - 1);
+              const Y0 = Math.max(0, Math.floor(y0) - 1);
+              this.dirty.push(X0, Y0, Math.min(W, Math.ceil(x1) + 1) - X0, Math.min(H, Math.ceil(y1) + 1) - Y0);
+              on = true;
+              n++;
+            }
+          }
+        }
+      }
+      l.shown?.(on);
+    }
+    return n;
   }
 
   /** Take the overlay off the page. */
@@ -242,9 +347,9 @@ function byDrawOrder(a: Entry, b: Entry): number {
   return a.order - b.order || b.depth - a.depth;
 }
 
-/** The sprite and all its ancestors are visible, and its root is `scene`. */
-function shownIn(sprite: Sprite, scene: Object3D): boolean {
-  let o: Object3D = sprite;
+/** The object and all its ancestors are visible, and its root is `scene`. */
+function shownIn(object: Object3D, scene: Object3D): boolean {
+  let o: Object3D = object;
   for (;;) {
     if (!o.visible) return false;
     if (!o.parent) return o === scene;

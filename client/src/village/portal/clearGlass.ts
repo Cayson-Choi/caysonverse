@@ -51,6 +51,7 @@ uniform vec3 uGround;
 uniform vec3 uGlow;
 uniform float uNight;
 uniform float uDarkAlpha;
+uniform float uWarmVeil;
 uniform vec4 uShown[ ${CLEAR_GLASS_BOXES} ];
 uniform int uShownCount;
 varying vec3 vWorld;
@@ -87,6 +88,10 @@ void main() {
 	// a clear pane at night: the warm haze of the lit room on the glass itself
 	col += uGlow * 0.04 * uNight * ( 1.0 - opaque );
 	a = max( a, 0.04 * uNight * ( 1.0 - opaque ) );
+	// (uWarmVeil, the houses) and the lamplight in the room's air and lace seen from the dark street: a warm veil over the room
+	float veil = uWarmVeil * uNight * ( 1.0 - opaque );
+	col += uGlow * 0.6 * veil;
+	a += veil * ( 1.0 - a );
 	gl_FragColor = vec4( col / max( a, 1e-3 ), a );
 	#include <tonemapping_fragment>
 	#include <colorspace_fragment>
@@ -102,16 +107,17 @@ export interface ClearGlass {
 
 /**
  * A clear-glass material (replaces a model's `M_glass`). `darkAlpha`: how much the far pane hides what is behind it (the lots' shells are
- * hollow: nearly all).
+ * hollow: nearly all). `warmVeil`: at night, how much of a drawn room is seen through a warm lamplit haze (the houses, 2026-11-27: their
+ * real rooms behind clear glass read darker and greyer from the street than the old lit cards).
  */
-export function clearGlassMaterial(name = "M_glass", darkAlpha = 0.94): ClearGlass {
+export function clearGlassMaterial(name = "M_glass", darkAlpha = 0.94, warmVeil = 0): ClearGlass {
   const shown = Array.from({ length: CLEAR_GLASS_BOXES }, () => new Vector4(0, 0, -1, -1));
   const count = { value: 0 };
   const material = new ShaderMaterial({
     name,
     vertexShader: VERT,
     fragmentShader: FRAG,
-    uniforms: { ...shared, uShown: { value: shown }, uShownCount: count, uDarkAlpha: { value: darkAlpha } },
+    uniforms: { ...shared, uShown: { value: shown }, uShownCount: count, uDarkAlpha: { value: darkAlpha }, uWarmVeil: { value: warmVeil } },
     transparent: true,
     depthWrite: false,
     side: DoubleSide,
