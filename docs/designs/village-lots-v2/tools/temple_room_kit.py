@@ -18,6 +18,7 @@ import math
 
 import b1_geom as G
 import b1_parts as P
+import flora as F
 import temple_parts as T
 from b1_geom import Mesh, S
 from temple_atlas import ruv
@@ -79,6 +80,22 @@ def painted(m, col, region="paint"):
         p.mat = "LM_temple_dancheong"
         p.col = [(col[0], col[1], col[2], 1.0)] * len(p.pts)
     return m
+
+
+def paint_keep(m, start, region="paint"):
+    """flora.py parts on the atlas's flat painted strip, KEEPING their vertex colours (petal gradients, the bell's dark
+    hollow): painted() would flatten them to one tint."""
+    for p in m.polys[start:]:
+        p.uv = [ruv(region, 0.5 + 0.004 * (k % 2), 0.5 + 0.004 * ((k // 2) % 2)) for k in range(len(p.pts))]
+        p.mat = "LM_temple_dancheong"
+
+
+def gild_keep(m, start):
+    """flora.py parts on the gold-leaf strip (metal), keeping their vertex colours."""
+    for i, p in enumerate(m.polys[start:]):
+        u = 0.1 + 0.8 * ((i * 0.137) % 1.0)
+        p.uv = [ruv("gold_scroll", u + 0.004 * (k % 2), 0.98) for k in range(len(p.pts))]
+        p.mat = "LM_temple_dancheong"
 
 
 def build(spec, unit, layout):
@@ -557,28 +574,39 @@ def offering(kit):
 
 
 def bouquet(m, x, y, z):
+    """A vase of lotus and peony (owner 2026-11-21: real flowers, not flat diamonds): two open pink lotuses, a white one,
+    a closed bud on a tall stem, a deep-pink peony, and broad lotus leaves cupped round the rim (flora.py: every bloom built
+    from its own curved petals)."""
+    k0 = len(m.polys)
+    lod0, G.LOD = G.LOD, 0.7   # (a vase on the offering table, seen from the cushions: fewer petals per ring)
     rg = G.rng(int(x * 100))
-    for k in range(7):
-        a = k * 2 * math.pi / 7 + rg.uniform(-0.3, 0.3)
-        r = rg.uniform(0.04, 0.12)
-        top = (x + r * math.cos(a), y + rg.uniform(0.18, 0.34), z - r * math.sin(a))
-        m.member((x, y - 0.05, z), top, G.prof_round(0.006, 4), DAN.t(G.hexc("4C8A3C")))
-        if k % 3 == 0:
-            leaf = Mesh("leaf")
-            leaf.lathe([(0.0, 0.0), (0.09, 0.02), (0.11, 0.04), (0.0, 0.05)], 8, DAN, top[0], top[2], top[1] - 0.12)
-            m.extend(painted(leaf, G.hexc("5E9E4A")))
+    green = DAN.t(G.hexc("4C8A3C"))
+    blooms = [("lotus", -0.08, 0.13, 0.03, G.hexc("F08CA8")), ("lotus", 0.08, 0.16, -0.03, G.hexc("F4A2B8")),
+              ("lotus_w", 0.0, 0.22, 0.04, G.hexc("FBE3EA")), ("peony", 0.03, 0.1, -0.08, G.hexc("D8466E")),
+              ("bud", -0.03, 0.3, -0.02, G.hexc("EE7F9F"))]
+    for kind, dx, dy, dz, col in blooms:
+        c = (x + dx, y + dy, z + dz)
+        F.stem(m, (x + dx * 0.2, y - 0.04, z + dz * 0.2), c, 0.005, green, bend=(dx * 0.3, 0.0, dz * 0.3))
+        sd = int(abs(dx) * 1000 + dy * 100)
+        if kind == "lotus":
+            F.lotus(m, c, 0.1, DAN, col, seed=sd, open_=0.95)
+        elif kind == "lotus_w":
+            F.lotus(m, c, 0.09, DAN, col, col_base=(1.0, 0.99, 0.97), seed=sd, open_=0.8)
+        elif kind == "peony":
+            F.peony(m, c, 0.075, DAN, col, seed=sd)
         else:
-            fl = Mesh("flower")
-            for i in range(7):
-                aa = 2 * math.pi * i / 7
-                d = (math.cos(aa), 0.0, -math.sin(aa))
-                base = (top[0], top[1], top[2])
-                tip = (top[0] + d[0] * 0.05, top[1] + 0.06, top[2] + d[2] * 0.05)
-                side = (-d[2], 0.0, d[0])
-                l = G.add(G.add(base, G.mul(d, 0.04)), G.add(G.mul(side, 0.025), (0, 0.02, 0)))
-                rr = G.add(G.add(base, G.mul(d, 0.04)), G.add(G.mul(side, -0.025), (0, 0.02, 0)))
-                T.apoly(fl, [base, rr, tip, l], DAN, "lotus_paper", [(0.45, 0.02), (0.55, 0.02), (0.55, 0.2), (0.45, 0.2)], out=(d[0], 0.4, d[2]))
-            m.extend(fl)
+            F.lotus_bud(m, c, 0.04, DAN, col, seed=sd)
+    # round lotus pads on their own stems, cupped and tilted out over the rim
+    for k, (dx, dy, dz, r) in enumerate(((0.12, 0.05, 0.06, 0.085), (-0.12, 0.07, -0.05, 0.08), (0.02, 0.04, 0.12, 0.07))):
+        c = (x + dx, y + dy, z + dz)
+        F.stem(m, (x, y - 0.04, z), c, 0.004, green)
+        F.leaf(m, c, (dx, 0.25, dz), r * 1.6, r * 1.5, green, rise=0.2, fall=0.5, fold=0.05, c0=G.hexc("3A7434"), c1=G.hexc("6FAE55"), seed=60 + k)
+    for k in range(4):
+        a = 2 * math.pi * k / 4 + rg.uniform(-0.25, 0.25)
+        F.leaf(m, (x + 0.03 * math.cos(a), y + rg.uniform(0.0, 0.04), z + 0.03 * math.sin(a)), (math.cos(a), 0, math.sin(a)),
+               rg.uniform(0.11, 0.14), 0.07, green, rise=0.55, fall=1.2, c0=G.hexc("2F6A2C"), c1=G.hexc("5E9E4A"), seed=k + int(x * 10))
+    paint_keep(m, k0)
+    G.LOD = lod0
 
 
 def fruit_pile(m, x, y, z, seed):
@@ -607,34 +635,47 @@ def side_pieces(kit):
     for dz in (-0.33, 0.33):
         D.cbox(cx - 0.03, cx + 0.03, 0.1, 1.18, cz + dz - 0.03, cz + dz + 0.03, red, c=0.008)
     D.cbox(cx - 0.035, cx + 0.035, 1.12, 1.19, cz - 0.38, cz + 0.38, red, c=0.008)
-    b = Mesh("bell")
-    b.lathe([(0.0, 0.62), (0.12, 0.62), (0.16, 0.58), (0.17, 0.4), (0.19, 0.25), (0.2, 0.22), (0.17, 0.23)], 12, DAN, cx, cz, 0.42)
-    b.member((cx, 1.04, cz), (cx, 1.12, cz), G.prof_round(0.012, 4), DAN)
-    D.extend(gold(b))
-    # 목탁 on a small cushion beside the stand
-    cu = Mesh("cushion_s")
-    cu.cbox(0.38, 0.82, 0.1, 0.15, 5.86, 6.0, FAB.t(G.hexc("8E2E2A")), c=0.02)
-    D.extend(cu)
-    D.sphere(0.6, 0.21, 5.93, 0.06, PINE.t(G.hexc("A0683C")), n=8, rings=5, sy=0.85)
+    # a bronze 범종 (flora.bell: banded body, 유곽 bosses, the lotus 당좌, the hook loop) hanging under the crossbar
+    k0 = len(D.polys)
+    F.bell(D, cx, 0.62, cz, 0.4, 0.17, DAN.t((1.0, 1.0, 1.0)), n=28)
+    gild_keep(D, k0)
+    # 목탁 on a small cushion beside the stand: a plump silk cushion, the wooden fish-bell (round body, the mouth slit, a
+    # little handle loop) and its mallet
+    F.pillow(D, 0.6, 0.1, 5.93, 0.42, 0.16, 0.06, FAB.t(G.hexc("8E2E2A")), piping=FAB.t(G.hexc("FFD27A")), dip=0.1)
+    wood = PINE.t(G.hexc("B57A46"))
+    F.superellipsoid(D, (0.6, 0.152, 5.93), 0.075, 0.058, 0.065, wood, e_v=0.85, e_h=0.85, n=20, rings=10, flat_bottom=True)
+    D.cbox(0.535, 0.665, 0.205, 0.215, 5.862, 5.868, PINE.t(G.hexc("3A2414")), c=0.002)
+    D.tube([(0.67, 0.19, 5.93), (0.7, 0.215, 5.93), (0.71, 0.25, 5.93), (0.69, 0.27, 5.93), (0.665, 0.262, 5.93)], 0.011, 6, wood)
+    D.member((0.4, 0.165, 5.88), (0.53, 0.165, 5.86), G.prof_round(0.007, 6), wood)
+    D.sphere(0.395, 0.165, 5.88, 0.017, wood, n=8, rings=5)
     # the 법고 drum on its stand
     cx = 10.8
     D.cbox(10.5, 11.1, 0.0, 0.1, 5.8, 6.6, red, c=0.01, skip=("-y",))
     for dz in (-0.3, 0.3):
         D.cbox(cx - 0.03, cx + 0.03, 0.1, 1.15, cz + dz - 0.03, cz + dz + 0.03, red, c=0.008)
-    r = 0.26
+    # the barrel: flora.drum (bulging staves, domed cowhide heads nailed with brass studs); the barrel red lacquer, the
+    # heads keep the painted lotus (the atlas's coffer rosette), the studs gilt
+    r = 0.24
     yc = 0.8
-    ring = 14
-    for i in range(ring):
-        a0, a1 = 2 * math.pi * i / ring, 2 * math.pi * (i + 1) / ring
-        p = lambda a, x: (x, yc + r * math.sin(a) * (1.06 if abs(x - cx) < 0.05 else 1.0), cz + r * math.cos(a))
-        q = [p(a0, cx - 0.2), p(a1, cx - 0.2), p(a1, cx), p(a0, cx)]
-        T.apoly(D, q, DAN.t(G.hexc("B3392C")), "paint", out=(0, math.sin((a0 + a1) / 2), math.cos((a0 + a1) / 2)))
-        q = [p(a0, cx), p(a1, cx), p(a1, cx + 0.2), p(a0, cx + 0.2)]
-        T.apoly(D, q, DAN.t(G.hexc("B3392C")), "paint", out=(0, math.sin((a0 + a1) / 2), math.cos((a0 + a1) / 2)))
-    for x, out in ((cx - 0.2, (-1, 0, 0)), (cx + 0.2, (1, 0, 0))):
-        pts = [(x, yc + r * math.sin(2 * math.pi * i / ring), cz + r * math.cos(2 * math.pi * i / ring)) for i in range(ring)]
-        st = [(0.5 + 0.5 * math.cos(2 * math.pi * i / ring), 0.5 + 0.5 * math.sin(2 * math.pi * i / ring)) for i in range(ring)]
-        T.apoly(D, pts, DAN, "coffer", st, out=out)
+    k0 = len(D.polys)
+    wood_s, hide_s, stud_s = DAN.t(G.hexc("B3392C")), DAN.t(G.hexc("F3E6CC")), DAN.t(G.hexc("FFD27A"))
+    F.drum(D, cx, yc, cz, r, 0.42, wood_s, hide_s, stud_s, axis="x", n=28)
+    for i, p in enumerate(D.polys[k0:]):
+        c = tuple(round(v, 4) for v in p.col[0][:3])
+        if c == tuple(round(v, 4) for v in hide_s.col):
+            p.uv = [ruv("coffer", u / (2 * r), v / (2 * r)) for (u, v) in p.uv]
+            p.col = [(1.0, 1.0, 1.0, 1.0)] * len(p.pts)
+            p.mat = "LM_temple_dancheong"
+        elif c == tuple(round(v, 4) for v in stud_s.col):
+            p.uv = [ruv("gold_scroll", 0.1 + 0.8 * ((i * 0.137) % 1.0) + 0.004 * (k % 2), 0.98) for k in range(len(p.pts))]
+            p.col = [(1.0, 1.0, 1.0, 1.0)] * len(p.pts)
+            p.mat = "LM_temple_dancheong"
+        else:
+            p.uv = [ruv("paint", 0.5 + 0.004 * (k % 2), 0.5 + 0.004 * ((k // 2) % 2)) for k in range(len(p.pts))]
+            p.mat = "LM_temple_dancheong"
+    # the drumsticks resting across the stand's foot
+    for dz in (-0.05, 0.05):
+        D.member((10.6, 0.115, cz + dz), (11.0, 0.13, cz + dz * 1.4), G.prof_round(0.012, 6), PINE.t(G.hexc("B57A46")))
 
 
 # ------------------------------------------------------------------------------------------------ 연등 --
@@ -710,11 +751,11 @@ def lanterns(kit):
 def cushions(kit, spec):
     """Twelve 방석 (0.66 square, 9 cm, deep red-brown silk with an ochre border and a centre tuft) on the seat spots."""
     m = Mesh("cushion")
-    w, h = 0.33, 0.09
-    m.cbox(-w, w, 0.0, h * 0.7, -w, w, FAB.t(G.hexc("E0584A")), c=0.03)
-    m.cbox(-w + 0.06, w - 0.06, h * 0.7 - 0.01, h, -w + 0.06, w - 0.06, FAB.t(G.hexc("F06A55")), c=0.03, skip=("-y",))
-    for (a, b, c_, d) in ((-w + 0.02, w - 0.02, -w + 0.02, -w + 0.05), (-w + 0.02, w - 0.02, w - 0.05, w - 0.02), (-w + 0.02, -w + 0.05, -w + 0.05, w - 0.05), (w - 0.05, w - 0.02, -w + 0.05, w - 0.05)):
-        m.box(a, b, h * 0.7 - 0.005, h * 0.7 + 0.004, c_, d, FAB.t(G.hexc("FFD27A")), skip=("-y",))
-    m.sphere(0.0, h + 0.004, 0.0, 0.025, FAB.t(G.hexc("FFD27A")), n=6, rings=3, sy=0.5)
+    lod0, G.LOD = G.LOD, 0.6   # twelve of them, seen from standing height: a lighter section is enough
+    # a real 방석: plump silk, puffed top with the tufted middle, rounded corners, an ochre piped seam round the waist and a
+    # covered button (flora.pillow), not a box
+    F.pillow(m, 0.0, 0.0, 0.0, 0.66, 0.66, 0.1, FAB.t(G.hexc("D9533F")), piping=FAB.t(G.hexc("FFC96A")), tuft=FAB.t(G.hexc("FFC96A")),
+             dip=0.25, e_h=0.18, e_v=0.5)
+    G.LOD = lod0
     for s in spec["seats"]:
         kit.place("cushion", m, s["x"], 0.0, s["z"], 0.0)

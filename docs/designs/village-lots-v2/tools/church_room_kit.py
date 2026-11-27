@@ -16,6 +16,7 @@ import b1_geom as G
 import b1_parts as P
 import b2_parts as Q
 import b2_room as R2
+import flora as F
 from b1_geom import Mesh, S
 
 UNIT = "lot_church_nave"
@@ -79,7 +80,7 @@ def build(spec, unit, layout, sacred, phone=False):
     kit.room_lights = []
     kit.pools = Mesh("pools")
     kit.fire = {"candles": Mesh("candles")}
-    kit.fire_lights = {"light": (3.9, 1.4, 9.6)}
+    kit.fire_lights = {"light": (3.9, 1.95, 9.35)}   # above and before the altar: not inside the flowers (it burned them white-orange)
     sol = {s["name"]: s for s in spec["solids"]}
     walls(kit)
     ceiling(kit)
@@ -316,12 +317,17 @@ def chancel(kit, sol):
             D.lathe([(0.05, 0.0), (0.05, 0.1), (0.035, 0.2), (0.05, 0.42), (0.035, 0.7), (0.045, 0.78), (0.0, 0.79)], 8, OAK, x, z, 0.3)
     D.cbox(tx0 + 0.03, tx1 - 0.03, 0.95, 1.09, tz0 + 0.03, tz1 - 0.03, OAK, c=0.012)
     D.cbox(tx0 - 0.05, tx1 + 0.05, 1.09, 1.14, tz0 - 0.05, tz1 + 0.05, OAK_DK, c=0.012)
-    D.box(tx0 - 0.04, tx1 + 0.04, 1.14, 1.15, tz0 - 0.04, tz1 + 0.04, LINEN)
-    D.box(tx0 + 0.3, tx1 - 0.3, 0.86, 1.15, tz0 - 0.045, tz0 - 0.04, LINEN)
+    # white linen: the top cloth (flat, a soft rolled edge) and a frontal falling in soft folds with a gilt-thread hem
+    k0 = len(D.polys)
+    D.cbox(tx0 - 0.04, tx1 + 0.04, 1.14, 1.152, tz0 - 0.04, tz1 + 0.04, LINEN, c=0.005)
+    F.flat_from(D, k0)
+    F.drape(D, tx0 + 0.3, tx1 - 0.3, 0.84, 1.15, tz0 - 0.045, LINEN, folds=6, depth=0.01, face=-1,
+            hem=S("LM_church_brass", G.hexc("F2CE7A")), seed=3)
     for x in (tx0 + 0.3, tx1 - 0.3):
-        D.lathe([(0.07, 0.0), (0.065, 0.02), (0.025, 0.05), (0.02, 0.24), (0.05, 0.26), (0.05, 0.27), (0.0, 0.272)], 8, BRASS, x, 9.75, 1.15)
-        D.lathe([(0.018, 0.0), (0.018, 0.3), (0.0, 0.31)], 8, WAX, x, 9.75, 1.42)
-        R2.candle_flame(fire, x, 1.73, 9.75, 0.045, 0.011, seed=int(x * 10))
+        D.lathe([(0.07, 0.0), (0.068, 0.012), (0.06, 0.02), (0.03, 0.045), (0.022, 0.07), (0.03, 0.1), (0.02, 0.13),
+                 (0.02, 0.22), (0.032, 0.235), (0.05, 0.255), (0.052, 0.268), (0.02, 0.272), (0.0, 0.272)], 16, BRASS, x, 9.75, 1.15)
+        F.candle(D, x, 1.422, 9.75, 0.019, 0.3, WAX)
+        R2.candle_flame(fire, x, 1.732, 9.75, 0.045, 0.011, seed=int(x * 10))
     bouquet(Gd, 3.9, 1.15, 9.75, 0.35)
     D.cbox(3.62, 4.18, 1.15, 1.2, 9.48, 9.62, S("LM_church_plaster", G.hexc("2F3E5E")), c=0.008)   # a closed book (blue cloth)
     # an oak reredos behind the table: a panelled dado with three pointed arches and a moulded cresting, a soft blue
@@ -330,7 +336,7 @@ def chancel(kit, sol):
     # the cross on the east wall (the sacred builder's oak cross, merged), a soft light on it
     R2.merge_prop(D, "lotprop__lot_church_nave_cross", (X / 2, 2.35, Z - 0.035), math.pi, {"M_pbr_wood_oak": OAK.t(G.hexc("A8774A"))})
     kit.room_lights.append(("spot", X / 2, 5.6, 6.6, (1.0, 0.9, 0.76), 260.0, (X / 2, 3.2, Z), 26))
-    kit.room_lights.append(("point", X / 2, 1.5, 9.7, (1.0, 0.72, 0.45), 8.0))
+    kit.room_lights.append(("point", X / 2, 1.95, 9.35, (1.0, 0.72, 0.45), 8.0))
     # the pulpit: hexagonal oak drum on a turned stem, a stair of four treads from the chancel, a blue fall, a book rest
     pulpit(kit, 1.2, 9.1)
     # flower stands with white hydrangeas either side
@@ -401,28 +407,55 @@ def pulpit(kit, x, z):
 
 
 def bouquet(m, x, y, z, h):
-    m.lathe([(0.05, 0.0), (0.07, 0.04), (0.05, 0.12), (0.08, 0.2), (0.0, 0.2)], 8, LINEN, x, z, y)
+    """White altar flowers in a low porcelain vase: open lilies, white roses, two lily buds, baby's breath and glossy
+    leaves (flora.py: every bloom built from its petals)."""
+    k0 = len(m.polys)
+    m.lathe([(0.05, 0.0), (0.06, 0.01), (0.075, 0.05), (0.07, 0.11), (0.05, 0.16), (0.058, 0.19), (0.062, 0.2), (0.0, 0.2)], 20, LINEN, x, z, y)
+    F.flat_from(m, k0)
+    lod0, G.LOD = G.LOD, min(G.LOD, 0.6)   # (on the altar, seen from the pews: fewer sections per petal)
     rg = G.rng(int(x * 31 + z))
-    for k in range(10):
-        a = rg.uniform(0, 2 * math.pi)
-        r = rg.uniform(0.0, 0.14)
-        m.sphere(x + r * math.cos(a), y + 0.22 + (0.16 - r) * rg.uniform(0.7, 1.3), z + r * math.sin(a), rg.uniform(0.04, 0.06), PET_W, n=6, rings=4, sy=0.85)
-    for k in range(7):
-        a = rg.uniform(0, 2 * math.pi)
-        r = rg.uniform(0.1, 0.2)
-        m.sphere(x + r * math.cos(a), y + 0.2 + rg.uniform(0.0, 0.1), z + r * math.sin(a), 0.05, LEAF, n=5, rings=3, sy=0.55)
+    top = y + 0.19
+    green = LEAF.t(G.hexc("3F6E35"))
+    # (a full, low dome of blooms over the vase's lip: on the first pass the stems stood tall and the heads read as sparse dots)
+    blooms = [("lily", -0.11, 0.14, 0.02, 0.4), ("lily", 0.1, 0.16, -0.02, -0.6), ("lily", 0.0, 0.22, 0.03, 2.0),
+              ("rose", -0.05, 0.1, -0.06, 0.0), ("rose", 0.05, 0.09, 0.06, 0.0), ("rose", 0.14, 0.07, 0.02, 0.0), ("rose", -0.15, 0.07, -0.02, 0.0),
+              ("rose", 0.03, 0.12, -0.08, 0.0), ("rose", -0.04, 0.11, 0.08, 0.0)]
+    for kind, dx, dy, dz, tilt in blooms:
+        c = (x + dx, top + dy, z + dz)
+        F.stem(m, (x + dx * 0.2, top - 0.05, z + dz * 0.2), c, 0.004, green, bend=(dx * 0.3, 0.0, dz * 0.3))
+        if kind == "lily":
+            F.lily(m, c, 0.11, PET_W, G.hexc("FFFFFF"), throat=G.hexc("E6EDC4"), seed=int(dy * 100) + 7, stamen_s=LEAF)
+        else:
+            F.rose(m, c, 0.055, PET_W, G.hexc("FBF6EC"), open_=0.7, seed=int(dx * 100) + int(dz * 100) + 50, centre_dk=0.9)
+    for (dx, dz, dy) in ((0.06, -0.06, 0.34), (-0.07, 0.05, 0.32)):
+        b = (x + dx, top + dy - 0.1, z + dz)
+        F.stem(m, (x, top - 0.05, z), b, 0.004, green)
+        F.lily_bud(m, b, (dx, 1.0, dz), 0.1, PET_W, G.hexc("FFFFFF"))
+    for k in range(9):
+        a = 2 * math.pi * k / 9 + rg.uniform(-0.2, 0.2)
+        F.leaf(m, (x + 0.03 * math.cos(a), top + rg.uniform(0.02, 0.08), z + 0.03 * math.sin(a)), (math.cos(a), 0, math.sin(a)),
+               rg.uniform(0.11, 0.15), 0.04, green, rise=0.7, fall=1.3, c0=G.hexc("2E5A2A"), c1=G.hexc("4F8A3E"), seed=k)
+    F.babys_breath(m, (x - 0.02, top + 0.12, z - 0.03), 0.16, LEAF, seed=5, n=28)
+    G.LOD = lod0
 
 
 def hydrangea(m, x, y, z):
+    """A white porcelain urn of hydrangea heads (florets of four petals) with their broad toothed leaves."""
     rg = G.rng(int(x * 17))
-    m.lathe([(0.1, 0.0), (0.14, 0.05), (0.12, 0.22), (0.15, 0.26), (0.0, 0.26)], 8, LINEN, x, z, y)
-    for k in range(12):
-        a = rg.uniform(0, 2 * math.pi)
-        r = rg.uniform(0.0, 0.24)
-        m.sphere(x + r * math.cos(a), y + 0.32 + (0.26 - r) * rg.uniform(0.5, 1.0), z + r * math.sin(a), rg.uniform(0.08, 0.11), PET_HY, n=6, rings=4, sy=0.9)
-    for k in range(9):
-        a = rg.uniform(0, 2 * math.pi)
-        m.sphere(x + 0.24 * math.cos(a), y + 0.3, z + 0.24 * math.sin(a), 0.08, LEAF, n=5, rings=3, sy=0.5)
+    k0 = len(m.polys)
+    m.lathe([(0.1, 0.0), (0.12, 0.02), (0.14, 0.06), (0.125, 0.2), (0.14, 0.24), (0.15, 0.26), (0.0, 0.26)], 20, LINEN, x, z, y)
+    F.flat_from(m, k0)
+    green = LEAF.t(G.hexc("3F6E35"))
+    lod0, G.LOD = G.LOD, min(G.LOD, 0.35)   # (three big heads on a stand by the chancel: fewer, larger florets)
+    for k, (dx, dy, dz, r) in enumerate(((0.0, 0.42, 0.0, 0.13), (-0.12, 0.35, 0.07, 0.115), (0.12, 0.34, -0.06, 0.115))):
+        c = (x + dx, y + dy, z + dz)
+        F.stem(m, (x + dx * 0.3, y + 0.22, z + dz * 0.3), c, 0.006, green)
+        F.hydrangea(m, c, r, PET_HY, G.hexc("F4F6FB"), seed=k + int(x * 10), col2=G.hexc("E3ECF6"))
+    for k in range(8):
+        a = 2 * math.pi * k / 8 + rg.uniform(-0.2, 0.2)
+        F.leaf(m, (x + 0.08 * math.cos(a), y + 0.27, z + 0.08 * math.sin(a)), (math.cos(a), 0, math.sin(a)), 0.16, 0.08, green,
+               rise=0.5, fall=1.1, c0=G.hexc("2E5A2A"), c1=G.hexc("5A8F45"), seed=40 + k)
+    G.LOD = lod0
 
 
 # ------------------------------------------------------------------------------------------------ pews, organ, hymn board --

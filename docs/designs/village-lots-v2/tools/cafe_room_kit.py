@@ -21,6 +21,7 @@ import b1_geom as G
 import b1_parts as P
 import b1_room as R
 import cafe_parts as C
+import flora as F
 from b1_geom import Mesh, S
 
 STAIR = dict(x0=0.0, x1=2.45, z0=3.85, z1=7.8, ax0=0.05, ax1=1.15, bx0=1.25, bx1=2.35, foot=3.9, landing=6.6, risers=20, riser=0.23, tread=0.3)
@@ -403,17 +404,73 @@ def counter(kit, sol):
     vase(Gd, 7.12, y, 5.62, (0.9, 0.35, 0.4))
 
 
+def matte_keep(m, n0):
+    """flora.py parts onto the atlas's plain matte cell, keeping their vertex colours (the petals' base-to-tip gradient)."""
+    u0, u1, v0, v1 = C.cuv("matte")
+    uc, vc = (u0 + u1) / 2, (v0 + v1) / 2
+    for p in m.polys[n0:]:
+        p.uv = [(uc + 0.001 * (k % 2), vc + 0.001 * ((k // 2) % 2)) for k in range(len(p.pts))]
+        p.mat = C.ART.mat
+
+
 def vase(m, x, y, z, flower):
+    """A glazed bud vase of three garden roses on real stems with two leaves (flora.py: each bloom built from its petals; before
+    2026-11-27 five lathed blobs)."""
     n0 = len(m.polys)
     m.lathe([(0.0, 0.0), (0.03, 0.0), (0.04, 0.05), (0.025, 0.12), (0.03, 0.14), (0.0, 0.13)], C.seg(12, 8), C.ART, x, z, y)
     C.glaze(m, n0, (0.36, 0.55, 0.62))
-    for k in range(5):
-        a = k * 1.3
-        tip = (x + 0.05 * math.cos(a), y + 0.27 + 0.03 * math.sin(k), z + 0.05 * math.sin(a))
-        m.tube([(x, y + 0.1, z), tip], 0.003, 4, C.LEAF_DK)
-        n1 = len(m.polys)
-        m.lathe([(0.0, 0.0), (0.014, 0.01), (0.016, 0.035), (0.0, 0.03)], 6, C.ART, tip[0], tip[2], tip[1])
-        C.matte(m, n1, flower)
+    n1 = len(m.polys)
+    lod0, G.LOD = G.LOD, min(G.LOD, 0.6)
+    green = C.LEAF_DK.t(G.hexc("3F6E35"))
+    for k, (dx, dy, dz) in enumerate(((0.0, 0.25, 0.0), (0.035, 0.21, 0.02), (-0.03, 0.2, -0.025))):
+        c = (x + dx, y + dy, z + dz)
+        F.stem(m, (x, y + 0.1, z), c, 0.0025, green)
+        F.rose(m, c, 0.022 if k else 0.026, C.ART, flower, open_=0.5 + 0.15 * k, seed=int(x * 37 + z * 11) + k)
+    for k, a in enumerate((0.6, 3.6)):
+        F.leaf(m, (x, y + 0.15, z), (math.cos(a), 0.3, math.sin(a)), 0.05, 0.025, green, rise=0.5, fall=0.9,
+               c0=G.hexc("2E5A2A"), c1=G.hexc("4F8A3E"), seed=k)
+    G.LOD = lod0
+    matte_keep(m, n1)
+
+
+def centre_bouquet(m, x, y, z):
+    """The salon's centre piece: a footed white porcelain urn of garden roses, peonies, white hydrangeas, two lily buds, baby's
+    breath and trailing leaves (flora.py)."""
+    n0 = len(m.polys)
+    m.lathe([(0.0, 0.0), (0.09, 0.0), (0.095, 0.015), (0.05, 0.04), (0.045, 0.09), (0.09, 0.13), (0.13, 0.2), (0.14, 0.26),
+             (0.15, 0.28), (0.0, 0.27)], C.seg(24, 12), C.ART, x, z, y)
+    C.glaze(m, n0, (0.98, 0.97, 0.94))
+    n1 = len(m.polys)
+    lod0, G.LOD = G.LOD, min(G.LOD, 0.8)
+    top = y + 0.27
+    green = C.LEAF_DK.t(G.hexc("3F6E35"))
+    rg = G.rng(int(x * 100 + z))
+    blooms = [("peony", 0.0, 0.22, 0.0, G.hexc("F3B4C2")), ("peony", -0.13, 0.15, 0.06, G.hexc("F7C9D2")),
+              ("rose", 0.12, 0.17, -0.05, G.hexc("FBF2E6")), ("rose", 0.08, 0.13, 0.12, G.hexc("F4A9A8")),
+              ("rose", -0.09, 0.12, -0.11, G.hexc("FBF2E6")), ("rose", -0.02, 0.26, -0.09, G.hexc("E98C96")),
+              ("hyd", 0.15, 0.1, 0.08, G.hexc("F4F6FB")), ("hyd", -0.16, 0.09, -0.04, G.hexc("EEF2FA")),
+              ("rose", 0.02, 0.18, 0.15, G.hexc("F7D8C9"))]
+    for kind, dx, dy, dz, col in blooms:
+        c = (x + dx, top + dy, z + dz)
+        F.stem(m, (x + dx * 0.25, top - 0.05, z + dz * 0.25), c, 0.004, green, bend=(dx * 0.3, 0.0, dz * 0.3))
+        sd = int(abs(dx) * 1000 + dy * 300 + abs(dz) * 70)
+        if kind == "peony":
+            F.peony(m, c, 0.075, C.ART, col, seed=sd)
+        elif kind == "rose":
+            F.rose(m, c, 0.045, C.ART, col, open_=0.6, seed=sd)
+        else:
+            F.hydrangea(m, c, 0.08, C.ART, col, seed=sd, col2=G.hexc("E3ECF6"))
+    for (dx, dz, dy) in ((0.07, -0.05, 0.38), (-0.08, 0.04, 0.35)):
+        b = (x + dx, top + dy, z + dz)
+        F.stem(m, (x, top - 0.05, z), b, 0.004, green)
+        F.lily_bud(m, b, (dx, 1.0, dz), 0.09, C.ART, G.hexc("FFFFFF"))
+    for k in range(10):
+        a = 2 * math.pi * k / 10 + rg.uniform(-0.2, 0.2)
+        F.leaf(m, (x + 0.08 * math.cos(a), top + rg.uniform(-0.01, 0.06), z + 0.08 * math.sin(a)), (math.cos(a), 0, math.sin(a)),
+               rg.uniform(0.13, 0.18), 0.05, green, rise=0.4, fall=1.5, c0=G.hexc("2E5A2A"), c1=G.hexc("5A8F45"), seed=k)
+    F.babys_breath(m, (x + 0.03, top + 0.2, z + 0.02), 0.16, C.ART, seed=7, n=36)
+    G.LOD = lod0
+    matte_keep(m, n1)
 
 
 def pastry_case(kit, m, x0, x1, zc, y):
@@ -807,6 +864,124 @@ def upstairs(kit, spec):
     C.framed(D, W["door"], 6.8, 1.9, 0.5, 0.66, "print_street")
     C.framed(D, W["left"], Z - 6.5, 1.9, 0.5, 0.66, "print_poster")
     mirror(kit, W["back"], X - 10.4, 1.95)
+    salon_dress(kit, sol, W, X, Z, H)
+
+
+def _up(q):
+    """A horizontal quad / polygon wound to face up."""
+    return q if G.poly_normal(q)[1] >= 0 else list(reversed(q))
+
+
+def salon_dress(kit, sol, W, X, Z, H):
+    """(interiors pass 2026-11-27: the salon read as a big empty floor under a bare ceiling) a round centre table under a tall bouquet,
+    a demilune console with a lamp and books on the left wall, a brass reading lamp by the wing chairs, two more plants, the rug's
+    patterned border and fringe, plaster ceiling roses over the chandeliers and a moulded panel round the ceiling's middle."""
+    D, Gd = kit.D, kit.G
+    # the round centre table: a turned oak pedestal on three splayed feet, a marble top in a moulded oak rim
+    r = sol["centretable_up"]
+    cx, cz = (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2
+    D.lathe([(0.0, 0.0), (0.09, 0.0), (0.1, 0.03), (0.06, 0.08), (0.045, 0.2), (0.06, 0.32), (0.04, 0.45), (0.05, 0.62), (0.09, 0.7), (0.0, 0.7)],
+            C.seg(20, 10), C.OAK_DK, cx, cz, 0.0)
+    for k in range(3):
+        a = 2 * math.pi * k / 3 + 0.3
+        D.tube([(cx + 0.06 * math.cos(a), 0.12, cz + 0.06 * math.sin(a)), (cx + 0.22 * math.cos(a), 0.05, cz + 0.22 * math.sin(a)),
+                (cx + 0.32 * math.cos(a), 0.015, cz + 0.32 * math.sin(a))], 0.025, C.seg(8, 5), C.OAK_DK)
+    D.lathe([(0.39, 0.0), (0.4, 0.012), (0.4, 0.035), (0.385, 0.045), (0.0, 0.045)], C.seg(36, 18), C.OAK_DK, cx, cz, 0.7)
+    n0 = len(D.polys)
+    D.lathe([(0.37, 0.0), (0.37, 0.03), (0.0, 0.03)], C.seg(36, 18), C.ART, cx, cz, 0.745)
+    C.planar(D, n0, "marble_round", cx, cz, 0.37)
+    if not PHONE:
+        centre_bouquet(Gd, cx, 0.775, cz)
+    yp = C.plate(Gd, cx + 0.22, 0.775, cz + 0.14, 0.08)
+    for i, col in enumerate(((0.96, 0.72, 0.78), (0.78, 0.89, 0.69), (0.96, 0.87, 0.54))):
+        C.macaron(Gd, cx + 0.19 + 0.03 * i, yp + 0.008, cz + 0.14 + 0.015 * (i % 2), col)
+    Gd.cbox(cx - 0.3, cx - 0.1, 0.775, 0.8, cz - 0.22, cz - 0.07, S("LM_cafe_fabric", G.hexc("2F4E66")), c=0.004)
+    if PHONE:
+        vase(Gd, cx, 0.775, cz, G.hexc("F3B4C2"))
+    # the demilune console on the left wall (x = 0): an oak half-moon top on a curved apron and four tapered legs
+    r = sol["console_up"]
+    cz = (r["z0"] + r["z1"]) / 2
+    half = (r["z1"] - r["z0"]) / 2
+    dep = r["x1"] - 0.01
+    nseg = C.seg(16, 8)
+    arc = [(dep * math.sin(math.pi * i / nseg), cz + half * math.cos(math.pi * i / nseg)) for i in range(nseg + 1)]
+    D.poly(_up([(x, 0.84, z) for (x, z) in arc]), C.OAK)
+    for i in range(nseg):
+        (ax, az), (bx, bz) = arc[i], arc[i + 1]
+        q = [(ax, 0.81, az), (bx, 0.81, bz), (bx, 0.84, bz), (ax, 0.84, az)]
+        if G.dot(G.poly_normal(q), (ax + bx, 0.0, az + bz - 2 * cz)) < 0:
+            q.reverse()
+        D.poly(q, C.OAK_DK)
+        q = [(ax * 0.9, 0.68, cz + (az - cz) * 0.94), (bx * 0.9, 0.68, cz + (bz - cz) * 0.94), (bx * 0.9, 0.81, cz + (bz - cz) * 0.94), (ax * 0.9, 0.81, cz + (az - cz) * 0.94)]
+        if G.dot(G.poly_normal(q), (ax + bx, 0.0, az + bz - 2 * cz)) < 0:
+            q.reverse()
+        D.poly(q, C.OAK)
+    for (lx, lz) in ((0.05, cz - half * 0.86), (0.05, cz + half * 0.86), (dep * 0.62, cz - half * 0.5), (dep * 0.62, cz + half * 0.5)):
+        D.lathe([(0.01, 0.0), (0.014, 0.3), (0.02, 0.62), (0.024, 0.68)], C.seg(8, 5), C.OAK_DK, lx, lz, 0.0)
+    # its lamp: a brass column on a round foot under a pleated linen drum shade (glows with the room's lamps at night)
+    lx, lz = 0.2, cz - 0.24
+    D.lathe([(0.0, 0.0), (0.08, 0.0), (0.085, 0.015), (0.03, 0.03), (0.018, 0.06), (0.018, 0.36), (0.03, 0.38), (0.0, 0.39)], C.seg(16, 8), C.BRASS, lx, lz, 0.84)
+    n0 = len(D.polys)
+    D.lathe([(0.16, 0.0), (0.11, 0.2), (0.0, 0.2)], C.seg(20, 10), C.ART, lx, lz, 1.14)
+    C.matte(D, n0, (0.98, 0.93, 0.82))
+    kit.glow("lamps").lathe([(0.158, 0.0), (0.108, 0.2), (0.0, 0.2)], C.seg(20, 10), C.GLOW, lx, lz, 1.139)
+    kit.lights.append(("point", lx, 1.2, lz, (1.0, 0.8, 0.58), 22.0))
+    yb = 0.84
+    for k, col in enumerate(("8E3B3B", "2F4E66", "C9A65A")):
+        t = 0.035 + 0.01 * k
+        Gd.cbox(0.06 + 0.01 * k, 0.3 - 0.02 * k, yb, yb + t, cz + 0.06, cz + 0.3 - 0.015 * k, S("LM_cafe_fabric", G.hexc(col)), c=0.003)
+        yb += t
+    C.cup(Gd, 0.22, 0.84, cz + 0.42, tint=(0.36, 0.55, 0.62), coffee=False)
+    C.framed(D, W["left"], Z - cz, 1.95, 0.56, 0.74, "print_street")
+    # the brass reading lamp by the wing chairs: a weighted foot, a slim column, a pleated shade at reading height
+    r = sol["floorlamp_up"]
+    lx, lz = (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2
+    D.lathe([(0.0, 0.0), (0.15, 0.0), (0.155, 0.02), (0.1, 0.04), (0.02, 0.06), (0.014, 0.08), (0.014, 1.3), (0.025, 1.33), (0.0, 1.34)],
+            C.seg(16, 8), C.BRASS, lx, lz, 0.0)
+    n0 = len(D.polys)
+    D.lathe([(0.2, 0.0), (0.14, 0.26), (0.0, 0.26)], C.seg(20, 10), C.ART, lx, lz, 1.3)
+    C.matte(D, n0, (0.97, 0.9, 0.78))
+    kit.glow("lamps").lathe([(0.198, 0.0), (0.138, 0.26), (0.0, 0.26)], C.seg(20, 10), C.GLOW, lx, lz, 1.299)
+    kit.lights.append(("point", lx, 1.35, lz, (1.0, 0.8, 0.58), 26.0))
+    # two more plants
+    for name, kind, h in (("plant_up_4", "pothos", 1.2), ("plant_up_5", "fig", 2.0)):
+        r = sol[name]
+        C.plant_pot(Gd, (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2, (r["x1"] - r["x0"]) / 2 - 0.02, h, kind, seed=sum(map(ord, name)))
+    # the rug: two terracotta bands with a ring of small lozenges between them, and a short cream fringe round its edge
+    rx, rz, R0 = 7.6, 6.4, 2.3
+    nb = 28 if not PHONE else 16
+    for i in range(nb):
+        a = 2 * math.pi * (i + 0.5) / nb
+        px, pz = rx + 1.82 * math.cos(a), rz + 1.82 * math.sin(a)
+        q = [(px + 0.1 * math.cos(a + d) * (1.0 if j % 2 == 0 else 0.55), 0.0095, pz + 0.1 * math.sin(a + d) * (1.0 if j % 2 == 0 else 0.55))
+             for j, d in enumerate((0.0, math.pi / 2, math.pi, 3 * math.pi / 2))]
+        Gd.poly(_up(q), S("LM_cafe_fabric", G.hexc("8E5A4A" if i % 2 else "4F6B5A")))
+    nr = C.seg(48, 24)
+    for rr in (1.98, 1.66):
+        for i in range(nr):
+            a0, a1 = 2 * math.pi * i / nr, 2 * math.pi * (i + 1) / nr
+            q = [(rx + (rr - 0.03) * math.cos(a0), 0.0092, rz + (rr - 0.03) * math.sin(a0)), (rx + (rr + 0.03) * math.cos(a0), 0.0092, rz + (rr + 0.03) * math.sin(a0)),
+                 (rx + (rr + 0.03) * math.cos(a1), 0.0092, rz + (rr + 0.03) * math.sin(a1)), (rx + (rr - 0.03) * math.cos(a1), 0.0092, rz + (rr - 0.03) * math.sin(a1))]
+            Gd.poly(_up(q), S("LM_cafe_fabric", G.hexc("8E5A4A")))
+    if not PHONE:
+        nf = 120
+        for i in range(nf):
+            a = 2 * math.pi * i / nf
+            c_, s2 = math.cos(a), math.sin(a)
+            p0 = (rx + R0 * c_, 0.004, rz + R0 * s2)
+            p1 = (rx + (R0 + 0.06) * c_, 0.002, rz + (R0 + 0.06) * s2)
+            w = (-s2 * 0.009, 0.0, c_ * 0.009)
+            Gd.poly(_up([G.sub(p0, w), G.add(p0, w), G.add(p1, w), G.sub(p1, w)]), S("LM_cafe_fabric", G.hexc("EFE4CF")))
+    # plaster ceiling roses over the two chandeliers, and a moulded panel round the middle of the ceiling
+    for (x, z) in ((6.0, 4.0), (8.6, 8.6)):
+        D.lathe([(0.34, 0.0), (0.33, -0.012), (0.27, -0.02), (0.24, -0.035), (0.16, -0.04), (0.12, -0.055), (0.0, -0.06)], C.seg(32, 14), C.PAINT, x, z, H)
+        nbud = 16 if not PHONE else 8
+        for i in range(nbud):
+            a = 2 * math.pi * i / nbud
+            D.sphere(x + 0.2 * math.cos(a), H - 0.035, z + 0.2 * math.sin(a), 0.03, C.PAINT, n=6, rings=3, sy=0.6)
+    prof = [(-0.04, 0.0), (-0.035, -0.015), (-0.01, -0.03), (0.01, -0.03), (0.035, -0.015), (0.04, 0.0)]
+    for (a, b) in (((3.3, H, 2.3), (12.3, H, 2.3)), ((12.3, H, 2.3), (12.3, H, 10.6)), ((12.3, H, 10.6), (3.3, H, 10.6)), ((3.3, H, 10.6), (3.3, H, 2.3))):
+        D.member(a, b, prof, C.PAINT)
 
 
 def wainscot_dado(m, f, a, b, h, skip):

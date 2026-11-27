@@ -15,6 +15,7 @@ import math
 import b1_geom as G
 import b1_parts as P
 import b1_room as R
+import flora as F
 import library_books as LB
 from b1_geom import Mesh, S
 
@@ -395,9 +396,23 @@ def fireplace(kit):
     Gd.sphere(cx, 1.86, zf - 0.142, 0.09, PAPER, n=12, rings=5, sy=0.12)
     for (x, c) in ((cx - 0.75, "9FC2B0"), (cx + 0.75, "E0C49A")):
         Gd.lathe([(0.0, 0.0), (0.06, 0.0), (0.08, 0.1), (0.045, 0.2), (0.05, 0.24), (0.0, 0.24)], 18, S("LM_library_paint", G.hexc(c)), x, zf - 0.08, 1.72)
-        for j in range(6):
-            a = j * 1.05
-            Gd.sphere(x + 0.06 * math.cos(a), 2.05 + 0.04 * (j % 2), zf - 0.08 + 0.06 * math.sin(a), 0.045, S("LM_library_plaster", G.hexc(("F7B9C8", "FFFFFF", "F5D06A")[j % 3])), n=6, rings=4)
+        # (2026-11-27: real blooms from their petals, flora.py; before, six plaster spheres) roses and a peony with leaves
+        lod0, G.LOD = G.LOD, min(G.LOD, 0.6)
+        petal_s = S("LM_library_plaster", (1.0, 1.0, 1.0))
+        # a full low posy over the vase's mouth (heads touching, a peony in the middle), not tall single stems
+        F.stem(Gd, (x, 1.9, zf - 0.08), (x, 2.03, zf - 0.08), 0.003, LEAF_DK)
+        F.peony(Gd, (x, 2.03, zf - 0.08), 0.07, petal_s, G.hexc("F7B9C8"), seed=int(x * 10))
+        for j in range(7):
+            a = j * 2 * math.pi / 7 + 0.3
+            c_ = (x + 0.085 * math.cos(a), 1.99 + 0.025 * (j % 2), zf - 0.08 + 0.085 * math.sin(a))
+            F.stem(Gd, (x, 1.9, zf - 0.08), c_, 0.003, LEAF_DK)
+            col = G.hexc(("FFFFFF", "F5D06A", "F7B9C8", "FFF4E0")[j % 4])
+            F.rose(Gd, c_, 0.05, petal_s, col, open_=0.75, seed=j + int(x * 10), centre_dk=0.85)
+        for j in range(4):
+            a = j * 1.57 + 0.4
+            F.leaf(Gd, (x, 1.96, zf - 0.08), (math.cos(a), 0.2, math.sin(a)), 0.09, 0.035, LEAF, rise=0.4, fall=1.1,
+                   c0=G.hexc("2E5A2A"), c1=G.hexc("5A8F45"), seed=j)
+        G.LOD = lod0
 
 
 def canvas(m, f, u0, u1, v0, v1, w):
