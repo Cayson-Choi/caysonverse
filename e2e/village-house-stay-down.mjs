@@ -138,7 +138,7 @@ for (const n of houses) {
           await sleep(1800);
           const ar = await areaOf();
           if (ar !== `house:house_${n}:1`) {
-            // a tap that really landed on the stair's own steps / rail is a tap on the stair (deliberate); anything else is the bug
+            // (kept apart in the report: a tap on the stair's own steps / rail, and one on the room; since 2026-11-27 both are bugs)
             const info = await page.evaluate(async (nn) => {
               const k = window.__cvClickPick?.();
               const pk = k && k.pick;
@@ -157,7 +157,8 @@ for (const n of houses) {
           }
         }
       }
-      run.check(`h${n}: no tap on the room (wall, ceiling, floor) climbed the stair; only taps on its own steps do`, climbed.length === 0, { climbed, deliberate });
+      // owner 2026-11-27 ("계단을 탭하면 올라가게 하지 말고 계단 버튼을 누르면 올라가도록"): not even a tap on the stair's own steps climbs
+      run.check(`h${n}: no tap climbed the stair (not the room, not the stair's own steps: only its button climbs)`, climbed.length === 0 && deliberate.length === 0, { climbed, deliberate });
     }
     await page.screenshot({ path: `${run.evidence}/h${n}-entered.png` });
     // walk to the stair pad: only offered, never taken

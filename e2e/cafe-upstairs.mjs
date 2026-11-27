@@ -6,13 +6,13 @@
  *   CV_CLIENT_URL=http://localhost:5561 CV_E2E_SLOW=6 node e2e/cafe-upstairs.mjs [--out=<folder>] [--only=up,walk,seats,camera,phone,down,shots]
  *
  * Two players, A on a PC (mouse + keyboard) and B on a phone (375x812, touch):
- *   up      A in the café: the stair's pad offers "2층으로 올라가기"; a CLICK on the stair walks to its pad and goes up (the houses' stair
- *           tap); standing at the pad without pressing anything never climbs; upstairs the room is drawn;
+ *   up      A in the café: the stair's pad offers "2층으로 올라가기"; a CLICK on the stair walks to its pad and does NOT climb (owner
+ *           2026-11-27), its button does; standing at the pad without pressing anything never climbs; upstairs the room is drawn;
  *   walk    click-to-move round the salon (the windows, the sofa, the sideboard, the far corner), never into the stairwell or a table;
  *   seats   every upstairs seat (chairs, the sofa's places, the wing chairs): sit, B sees it, stand up in front;
  *   camera  the follow camera at every yaw / pitch stays inside the salon's walls and under its ceiling; and downstairs by the stair;
  *   phone   B goes up with the touch button, both see each other upstairs, an emoji upstairs reaches the other;
- *   down    "1층으로 내려가기" at the stairwell: A comes down at the stair's foot and stays down; B comes down by tapping the balustrade;
+ *   down    "1층으로 내려가기" at the stairwell: A comes down at the stair's foot and stays down; B taps the balustrade (walks there, no climb), then its button;
  *   shots   the stair from the café, the stairwell, the salon at day / dusk / night (PC and phone).
  * Shots to --out (default D:/ClaudeCode/tmpshots/cafe-real/upstairs).
  */
@@ -131,7 +131,7 @@ try {
 
   // ───────────────────────────────── up ─────────────────────────────────
   if (ONLY.includes("up")) {
-    await run.step("1. the stair: its pad offers 2층, standing there never climbs, a click on the stair walks there and goes up", async () => {
+    await run.step("1. the stair: its pad offers 2층, standing there never climbs, a click on the stair walks there (no climb), the button goes up", async () => {
       await walkAndWait(A, G.stair.pad.x, G.stair.pad.z - 0.3, 40000, 0.5);
       await sleep(1500);
       const t = await targets(A);
@@ -146,13 +146,15 @@ try {
       await sleep(2200);
       const tap = await tapWorld(A, G.origin.x + 0.6, 1.2, G.origin.z + 5.0);
       run.check("the stair is on A's screen (a real click on a step)", tap.ok, tap.s);
-      const went = await waitArea(A, UP, 90000);
-      run.check("a click on the stair: A walks to its pad and goes up", went, await inArea(A));
-      if (!went) {
-        await walkAndWait(A, G.stair.pad.x, G.stair.pad.z - 0.3, 30000, 0.5);
-        await act(A);
-        await waitArea(A, UP, 60000);
-      }
+      // owner 2026-11-27 ("계단을 탭하면 올라가게 하지 말고 계단 버튼을 누르면 올라가도록"): the click walks to the pad and never climbs
+      await A.page.waitForFunction(() => window.__cvClickTarget?.() === null, null, { timeout: 60000 }).catch(() => {});
+      await sleep(4000);
+      run.check("a click on the stair: A walks to its pad and does NOT go up", (await inArea(A)) === GROUND, await inArea(A));
+      const ta = await targets(A);
+      run.check("after the click A stands at the pad: '2층으로 올라가기' is offered", ta.some((x) => /2층/.test(x.label)), { p: await pos(A), ta });
+      if (!ta.some((x) => /2층/.test(x.label))) await walkAndWait(A, G.stair.pad.x, G.stair.pad.z - 0.3, 30000, 0.5);
+      await act(A);
+      run.check("then the button: A goes up", await waitArea(A, UP, 60000), await inArea(A));
       run.check("upstairs the salon is drawn", await waitRoom(A, "lot_cafe_upstairs"));
       await sleep(3000);
       const info = await A.page.evaluate(() => window.__cvLotRoom());
@@ -285,7 +287,7 @@ try {
 
   // ───────────────────────────────── down ─────────────────────────────────
   if (ONLY.includes("down")) {
-    await run.step("7. down: the button at the stairwell (A), a tap on the balustrade (B); both stay down", async () => {
+    await run.step("7. down: the button at the stairwell (A), a tap on the balustrade then the button (B); both stay down", async () => {
       if ((await inArea(A)) !== UP) run.check("A is upstairs before going down", false, await inArea(A));
       await walkAndWait(A, U.stair.pad.x, U.stair.pad.z - 0.3, 40000, 0.5);
       await sleep(1200);
@@ -316,7 +318,14 @@ try {
           if (s) tap = await tapWorld(B, U.origin.x + 2.48, 0.95, U.origin.z + 5.5);
         }
         run.check("the balustrade is on B's screen (a real tap)", tap.ok, tap.s);
-        run.check("a tap on the stairwell: B walks to it and goes down", await waitArea(B, GROUND, 90000), await inArea(B));
+        await B.page.waitForFunction(() => window.__cvClickTarget?.() === null, null, { timeout: 60000 }).catch(() => {});
+        await sleep(4000);
+        run.check("a tap on the stairwell: B walks to it and does NOT go down", (await inArea(B)) === UP, await inArea(B));
+        const tb = await targets(B);
+        run.check("after the tap B is offered '1층으로 내려가기'", tb.some((x) => /1층/.test(x.label)), { p: await pos(B), tb });
+        if (!tb.some((x) => /1층/.test(x.label))) await walkAndWait(B, U.stair.pad.x, U.stair.pad.z - 0.3, 40000, 0.5);
+        await act(B);
+        run.check("then the button: B goes down", await waitArea(B, GROUND, 90000), await inArea(B));
       }
     });
   }
