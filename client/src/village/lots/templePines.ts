@@ -1,6 +1,6 @@
 import { BufferGeometry, BufferAttribute, ClampToEdgeWrapping, Group, InstancedMesh, LinearFilter, LinearMipmapLinearFilter, Matrix4, NoColorSpace, Quaternion, RepeatWrapping, SRGBColorSpace, TextureLoader, Vector3, type Material, type Mesh, type Object3D, type Texture } from "three";
 import { flatNormal } from "../veg/barkGeometry";
-import { PINE_FILES, pineGeo } from "../veg/pineKit";
+import { PINE_FILES, PINE_VARIANTS, pineGeo, type PineOptions } from "../veg/pineKit";
 import { vegMaterial } from "../veg/vegMaterial";
 import { versionedUrl } from "../modelUrl";
 
@@ -12,25 +12,63 @@ import { versionedUrl } from "../modelUrl";
  * flaky upper bark, few irregular limbs, the needles in flat layered pads, three shapes, each pine leaning toward the yard (or the pond).
  */
 
-/** Where the art file stood them (x, z; the boxes `col__lot_temple_pine_N`), their height (m) and shape (pineKit's variant). */
+/**
+ * Where the art file stood them (x, z; the boxes `col__lot_temple_pine_N`), their height (m) and shape (pineKit's variant; the
+ * upright compact one by the hall's corner, where the roof leaves the least room).
+ */
 export const TEMPLE_PINES: ReadonlyArray<{ x: number; z: number; H: number; shape: number }> = [
   { x: -44.2, z: -27.0, H: 8.4, shape: 0 },
-  { x: -53.2, z: -27.5, H: 7.8, shape: 2 },
-  { x: -56.9, z: -47.0, H: 8.8, shape: 0 },
+  { x: -53.2, z: -27.5, H: 7.8, shape: 0 },
+  { x: -56.9, z: -47.0, H: 8.8, shape: 2 },
   { x: -41.1, z: -45.6, H: 8.0, shape: 1 },
 ];
 /**
- * Where each pine leans (x, z): the yard's middle, the pond's pine over its pond. A pine model leans toward its own +x; turning it by
- * `atan2(-dz, dx)` aims it. The trunk's foot stays at the pine's place (its collision box).
+ * Where each pine's trunk leans (x, z): the yard's middle, the pond's pine over its pond, the pine at the hall's south-east corner
+ * along the south wall (away from the hall's eaves, 2026-11-27). A pine model leans toward its own +x; turning it by `atan2(-dz, dx)`
+ * aims it. The trunk's foot stays at the pine's place (its collision box); the crown sits over the foot whatever the lean (pineKit).
  */
 export const PINE_LEAN_TO: ReadonlyArray<readonly [number, number]> = [
   [-49.5, -36.5],
   [-48.5, -37.5],
-  [-49.0, -38.5],
+  [-49.0, -48.0],
   [-46.0, -44.0],
 ];
-/** World directions (x, z) a pine's crown keeps out of: the main hall and the bell pavilion are west of the two west pines. */
-export const PINE_AVOID: ReadonlyArray<readonly [number, number] | null> = [null, [-1, 0], [-1, 0], null];
+/**
+ * The roofs beside the pines (world x, z box; the eaves' height and the ridge's; how fast the roof rises inward, m per m), measured
+ * from the art file's roof tiles (`LM_temple_giwa`, raycast down on a 0.5 m grid, 2026-11-27): the main hall west of the two west
+ * pines, the bell pavilion north of it, the small roof (x -40) by the east side. A pine's limb whose wood or pad would come within
+ * `ROOF_CLEAR` of one is shortened (pineKit `blocked`): only that limb, the crown stays full round (owner 2026-11-27).
+ */
+export const TEMPLE_ROOFS: ReadonlyArray<{ x0: number; x1: number; z0: number; z1: number; eave: number; ridge: number; rise: number }> = [
+  { x0: -64.75, x1: -55.25, z0: -44.75, z1: -29.75, eave: 5.8, ridge: 10.9, rise: 1.2 },
+  { x0: -62.75, x1: -58.25, z0: -29.75, z1: -25.25, eave: 4.0, ridge: 7.0, rise: 1.5 },
+  { x0: -40.75, x1: -39.25, z0: -40.75, z1: -33.25, eave: 5.4, ridge: 7.2, rise: 2.5 },
+];
+const ROOF_CLEAR = 0.5;
+/** Is the world point (x, y, z) in a roof or within `ROOF_CLEAR` of it (the roof taken as solid down to the ground)? */
+export function inTempleRoof(x: number, y: number, z: number): boolean {
+  for (const r of TEMPLE_ROOFS) {
+    const dx = Math.max(r.x0 - x, x - r.x1);
+    const dz = Math.max(r.z0 - z, z - r.z1);
+    if (dx > ROOF_CLEAR || dz > ROOF_CLEAR) continue;
+    // the roof's height here: the eaves at its edge, rising inward to the ridge (just outside the edge: the eaves')
+    const inward = Math.max(0, -Math.max(dx, dz));
+    if (y < Math.min(r.ridge, r.eave + r.rise * inward) + ROOF_CLEAR) return true;
+  }
+  return false;
+}
+/** Pine `i`'s generator options: its crown kept out of the roofs beside it (the test in the tree's own nominal frame). */
+export function pineOptions(i: number, low: boolean, groundY = 0): PineOptions {
+  const t = TEMPLE_PINES[i]!;
+  const yaw = pineYaw(i);
+  const sc = t.H / PINE_VARIANTS[t.shape % PINE_VARIANTS.length]!.H;
+  const c = Math.cos(yaw);
+  const sn = Math.sin(yaw);
+  // the instance's turn about y: local (x, z) to world (x c + z s, -x s + z c), then scaled and placed
+  return { low, blocked: ([x, y, z]) => inTempleRoof(t.x + sc * (x * c + z * sn), groundY + sc * y, t.z + sc * (-x * sn + z * c)) };
+}
+/** Pine `i`'s seed (pineGeo). */
+export const PINE_SEED = (i: number) => 11 + i * 7;
 export function pineYaw(i: number): number {
   const t = TEMPLE_PINES[i]!;
   const [x, z] = PINE_LEAN_TO[i]!;
@@ -136,13 +174,10 @@ export function makeTemplePines(groundY: number, low: boolean): TemplePines | nu
   const q = new Quaternion();
   const s = new Vector3();
   const up = new Vector3(0, 1, 0);
-  // every pine its own tree (its own shape, seed, crown kept off the roofs beside it): no two alike
+  // every pine its own tree (its own shape, seed, limbs kept out of the roofs beside it): no two alike
   TEMPLE_PINES.forEach((t, i) => {
     const yaw = pineYaw(i);
-    const av = PINE_AVOID[i];
-    // the avoided direction in the tree's own frame (the instance turns +x to (cos yaw, -sin yaw))
-    const avoid = av ? { x: av[0] * Math.cos(yaw) - av[1] * Math.sin(yaw), z: av[0] * Math.sin(yaw) + av[1] * Math.cos(yaw), cos: 0.25 } : undefined;
-    const geo = pineGeo(t.shape, 11 + i * 7, { low, avoid });
+    const geo = pineGeo(t.shape, PINE_SEED(i), pineOptions(i, low, groundY));
     geometries.push(geo.bark, geo.needles);
     const sc = t.H / geo.H;
     p.set(t.x, groundY, t.z);

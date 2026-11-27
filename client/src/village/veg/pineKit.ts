@@ -13,11 +13,14 @@ import { mulberry32 } from "./vegRandom";
  *  - the needles in flat, layered PADS at the ends of the limbs and side branches (not a ball): each pad is a flattened cloud of
  *    alpha cards (pine_needles atlas, rendered from real 3D needles in Blender, render_pine_needles.py): flat sprays over its top,
  *    upright brush-like tufts round its rim and poking up from its top, flat sprays under it; gaps between pads where the sky
- *    shows; the crown open and one-sided;
+ *    shows; the crown open, but FULL ALL ROUND: the limbs leave the trunk in every direction (a spiral, layered by height) and the
+ *    crown's mass sits over the trunk's foot whatever the lean (owner 2026-11-27: "한쪽으로만 가지가 뻗어있고 ... 전체적으로 골고루
+ *    있어야지"; a healthy, well-kept temple 적송: a leaning, bending trunk under a balanced, layered crown);
  *  - light: a pad's top bright, its rim less, its underside dark; a pad under another pad darker again (its shade), the pads deep
  *    in the crown darker than the outer ones (`aLight`, baked).
  * Three variants (a slender leaning tree with tiered pads, a broad one with a long low limb, an upright twisting one). Sizes in metres
- * of the nominal tree (`PINE_VARIANTS[k].H`): an instance scales it; it leans toward its local +x (turn the instance to aim it).
+ * of the nominal tree (`PINE_VARIANTS[k].H`): an instance scales it; its trunk leans toward its local +x (turn the instance to aim it),
+ * the limbs on the far side reaching further so the crown stays centred over the foot.
  */
 
 type V3 = [number, number, number];
@@ -50,8 +53,6 @@ export interface PineVariant {
   start: number;
   end: number;
   limbs: number;
-  /** How strongly the limbs keep to the lean's side (0 all round .. 1 one-sided). */
-  side: number;
   /** A long low limb (the broad variant): its share of R, or 0. */
   longLimb: number;
   /** Pad size (m, radius) at the limb ends. */
@@ -60,11 +61,11 @@ export interface PineVariant {
 
 export const PINE_VARIANTS: readonly PineVariant[] = [
   // slender, leaning, a few tiers of pads up its upper half and an umbrella of pads at the top (Myogaksa)
-  { H: 9, R: 2.9, r0: 0.31, lean: 0.2, rightUp: 0.24, sway: 0.35, start: 0.5, end: 0.93, limbs: 8, side: 0.6, longLimb: 0, pad: 0.85 },
-  // broad: a heavier trunk leaning more, a long limb reaching out low on the lean side, a wide flat crown (Songbulam)
-  { H: 8.2, R: 3.1, r0: 0.36, lean: 0.3, rightUp: 0.38, sway: 0.25, start: 0.44, end: 0.92, limbs: 8, side: 0.65, longLimb: 1.15, pad: 0.9 },
+  { H: 9, R: 2.9, r0: 0.31, lean: 0.2, rightUp: 0.4, sway: 0.35, start: 0.5, end: 0.93, limbs: 9, longLimb: 0, pad: 0.85 },
+  // broad: a heavier trunk leaning more, a long limb reaching out low, a wide flat crown (Songbulam)
+  { H: 8.2, R: 3.1, r0: 0.36, lean: 0.28, rightUp: 0.6, sway: 0.25, start: 0.44, end: 0.92, limbs: 9, longLimb: 1.05, pad: 0.9 },
   // upright and twisting: an S-bent trunk, limbs all round, a compact crown of overlapping pads (Yeongtapsa)
-  { H: 8.6, R: 2.6, r0: 0.3, lean: 0.1, rightUp: 0.12, sway: 0.7, start: 0.48, end: 0.95, limbs: 9, side: 0.35, longLimb: 0, pad: 0.8 },
+  { H: 8.6, R: 3.0, r0: 0.3, lean: 0.1, rightUp: 0.18, sway: 0.7, start: 0.48, end: 0.95, limbs: 10, longLimb: 0, pad: 0.8 },
 ];
 
 /**
@@ -148,10 +149,45 @@ export interface PineOptions {
   /** The phone: fewer cards, fewer bark sides. */
   low: boolean;
   /**
-   * Keep the limbs out of this direction (the tree's own frame, horizontal unit x, z) within the cone `cos` (a limb pointing that
-   * way is mirrored away): a pine beside a hall keeps its crown off the roof.
+   * Is this point (the tree's own frame, nominal metres) inside something the crown must stay out of (a hall's roof beside it)?
+   * Only the limbs whose wood or pad would reach in change: shortened to half, then turned aside along it, then lifted up past it
+   * (to 0.3 of their length at the last): the rest of the crown stays as it was, full round.
    */
-  avoid?: { x: number; z: number; cos: number };
+  blocked?: (p: V3) => boolean;
+}
+
+/** Crown balance (the tree's own frame, the trunk's foot at 0): needle area in `n` azimuth sectors (share of the mean), the centroid's offset (m). */
+export function crownBalance(needles: BufferGeometry, n = 8): { sectors: number[]; offset: number; min: number } {
+  const pos = needles.getAttribute("position");
+  const idx = needles.index;
+  const sec = new Array<number>(n).fill(0);
+  let m = 0;
+  let cx = 0;
+  let cz = 0;
+  const count = idx ? idx.count : pos.count;
+  const vi = (k: number) => (idx ? idx.getX(k) : k);
+  for (let k = 0; k + 2 < count; k += 3) {
+    const a = vi(k);
+    const b = vi(k + 1);
+    const c = vi(k + 2);
+    const ux = pos.getX(b) - pos.getX(a);
+    const uy = pos.getY(b) - pos.getY(a);
+    const uz = pos.getZ(b) - pos.getZ(a);
+    const wx = pos.getX(c) - pos.getX(a);
+    const wy = pos.getY(c) - pos.getY(a);
+    const wz = pos.getZ(c) - pos.getZ(a);
+    const ar = 0.5 * Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx);
+    const x = (pos.getX(a) + pos.getX(b) + pos.getX(c)) / 3;
+    const z = (pos.getZ(a) + pos.getZ(b) + pos.getZ(c)) / 3;
+    const s = Math.floor((((Math.atan2(z, x) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / ((2 * Math.PI) / n)) % n;
+    sec[s] += ar;
+    m += ar;
+    cx += x * ar;
+    cz += z * ar;
+  }
+  const avg = m / n || 1;
+  const sectors = sec.map((v) => v / avg);
+  return { sectors, offset: m ? Math.hypot(cx / m, cz / m) : 0, min: Math.min(...sectors) };
 }
 
 /** One red pine of variant `k` (0..2), `seed` varies it further. */
@@ -162,17 +198,6 @@ export function pineGeo(k: number, seed: number, o: PineOptions): PineGeo {
   bb.surface = true;
   const pads: Pad[] = [];
   const style = PINE_BARK;
-  /** A horizontal direction (x, z) mirrored out of the avoided cone. */
-  const steer = (x: number, z: number): [number, number] => {
-    const a = o.avoid;
-    if (!a) return [x, z];
-    const l = Math.hypot(x, z) || 1;
-    const d = (x * a.x + z * a.z) / l;
-    if (d <= a.cos) return [x, z];
-    // reflect across the plane facing the avoided direction, then a little further round
-    const k = 2 * (x * a.x + z * a.z);
-    return [x - k * a.x, z - k * a.z];
-  };
   // ── the trunk: it leaves the ground at a slant toward +x, bends back up as it rises, swings a little sideways (z) ──
   const nT = o.low ? 12 : 18;
   const trunkLen = V.H * 0.9;
@@ -198,65 +223,148 @@ export function pineGeo(k: number, seed: number, o: PineOptions): PineGeo {
   };
   barkTube(bb, trunk, trunkR, sideOf(V.r0), style, light, { irregular: { k: 0.08, seed: seed + 5 }, flare: { k: 0.42, top: 0.9, seed: seed * 1.7, groundY: 0 }, wraps: Math.max(1, Math.round(V.r0 / 0.15)) });
   const top = trunk[nT]!;
-  // ── the limbs ──
+  // ── the limbs: all round the trunk in a spiral (the golden angle), layered up it; their lengths then tuned so the crown's mass
+  // sits over the foot (the trunk's lean taken back by the limbs on the far side) and no limb reaches into a roof ──
   const limbSpec: Array<{ t: number; az: number; L: number; long: boolean }> = [];
   const nL = V.limbs;
+  const az0 = rnd() * 6.28;
   for (let i = 0; i < nL; i++) {
     const u = (i + 0.2 + rnd() * 0.6) / nL;
-    // the limbs keep mostly to the lean's side (+x), the rest spread round
-    let az = i * 2.39996 + rnd() * 0.6;
-    const toward = Math.atan2(Math.sin(az), Math.cos(az));
-    az = toward * (1 - V.side * 0.6);
-    const L = V.R * lerp(1.0, 0.45, Math.pow(u, 1.1)) * (0.8 + rnd() * 0.35);
+    const az = az0 + i * 2.39996 + (rnd() - 0.5) * 0.35;
+    const L = V.R * lerp(1.0, 0.5, Math.pow(u, 1.1)) * (0.82 + rnd() * 0.3);
     limbSpec.push({ t: lerp(V.start, V.end, u), az, L, long: false });
   }
-  if (V.longLimb > 0) limbSpec.push({ t: V.start - 0.04, az: 0.35, L: V.R * V.longLimb, long: true });
-  for (const ls of limbSpec) {
-    const a = at(trunk, trunkR, ls.t);
-    const [hx, hz] = steer(Math.cos(ls.az), Math.sin(ls.az));
-    const d: V3 = [hx, lerp(0.25, 0.55, ls.t) + (rnd() - 0.5) * 0.2, hz];
-    const segs = ls.long ? 7 : 5;
-    const pts = limbPath(rnd, a.p, d, ls.L, segs, 0.32, ls.long ? 0.55 : 0.4, ls.long ? 0.35 : 0.15);
-    const r0 = Math.max(0.035, a.r * (ls.long ? 0.62 : 0.5));
-    const rs = radii(pts.length, r0, 0.022, 0.75);
-    barkTube(bb, pts, rs, sideOf(r0), style, light, { wraps: 1 });
-    const tip = pts[pts.length - 1]!;
-    const dirH = norm([tip[0] - a.p[0], 0, tip[2] - a.p[2]]);
-    const padK = V.pad * (0.75 + 0.35 * clamp(ls.L / V.R, 0, 1.2));
-    pads.push({ c: add(tip, [0, 0.1, 0]), ra: padK * 1.15, rb: padK * 0.9, t: 0.42 * padK + 0.12, dir: dirH });
-    // side branches off the outer half, level, each ending in a smaller pad; a long limb carries pads along it too
-    const nS = ls.long ? 4 : ls.L > V.R * 0.6 ? 2 : 1;
-    for (let s = 0; s < nS; s++) {
-      const tt = lerp(0.42, 0.82, (s + 0.3 + rnd() * 0.4) / nS);
-      const sa = at(pts, rs, tt);
-      const sgn = s % 2 ? 1 : -1;
-      const perp = norm(cross(sa.d, [0, 1, 0]));
-      let sd = norm(add(add(mul(sa.d, 0.55), mul(perp, sgn * (0.8 + rnd() * 0.4))), [0, 0.1 + rnd() * 0.15, 0]));
-      const [sx, sz] = steer(sd[0], sd[2]);
-      sd = norm([sx, sd[1], sz]);
-      const sL = ls.L * (0.3 + rnd() * 0.22);
-      const sp = limbPath(rnd, sa.p, sd, sL, 3, 0.3, 0.3);
-      const sr = radii(sp.length, Math.max(0.018, sa.r * 0.55), 0.012, 0.8);
-      barkTube(bb, sp, sr, sideOf(sr[0]!), style, light, { wraps: 1 });
-      const st = sp[sp.length - 1]!;
-      const pk = V.pad * (0.6 + 0.25 * rnd());
-      pads.push({ c: add(st, [0, 0.08, 0]), ra: pk * 1.1, rb: pk * 0.85, t: 0.38 * pk + 0.1, dir: norm([sd[0], 0, sd[2]]) });
-    }
-  }
-  // the top: the leader's end splits into 3-4 short limbs, an umbrella of pads (the oldest pines' flat top)
+  // the broad pine's long low limb, reaching back over the foot against the trunk's lean (the counterweight of a leaning pine)
+  if (V.longLimb > 0) limbSpec.push({ t: V.start - 0.04, az: Math.PI + (rnd() - 0.5) * 0.7, L: V.R * V.longLimb, long: true });
   const nTop = 3 + Math.floor(rnd() * 2);
-  for (let i = 0; i < nTop; i++) {
-    const az0 = (i / nTop) * Math.PI * 2 + rnd() * 0.8;
-    const [tx, tz] = steer(Math.cos(az0), Math.sin(az0));
-    const az = Math.atan2(tz, tx);
-    const L = V.R * (0.32 + rnd() * 0.18);
-    const pts = limbPath(rnd, top, [Math.cos(az), 0.55, Math.sin(az)], L, 3, 0.3, 0.2);
-    const rs = radii(pts.length, 0.045, 0.016, 0.8);
-    barkTube(bb, pts, rs, sideOf(0.045), style, light, { wraps: 1 });
-    const pk = V.pad * (0.85 + rnd() * 0.25);
-    pads.push({ c: add(pts[pts.length - 1]!, [0, 0.12, 0]), ra: pk * 1.1, rb: pk, t: 0.45 * pk + 0.12, dir: norm([Math.cos(az), 0, Math.sin(az)]) });
+  const topAz = Array.from({ length: nTop }, (_, i) => az0 + 0.6 + (i / nTop) * Math.PI * 2 + (rnd() - 0.5) * 0.6);
+  const topL = Array.from({ length: nTop }, () => V.R * (0.34 + rnd() * 0.16));
+  const seedGrow = Math.floor(rnd() * 1e9);
+  interface Wood {
+    pts: V3[];
+    rs: number[];
+    r0: number;
   }
-  pads.push({ c: add(top, [0, 0.25, 0]), ra: V.pad * 1.0, rb: V.pad * 0.9, t: 0.5 * V.pad + 0.12, dir: [1, 0, 0] });
+  /**
+   * The crown's skeleton for these limb-length factors (`f`: the limbs, then the top's short limbs): its wood, its pads, and per
+   * limb whether any of its wood or pad is blocked. The same random draws every call (its own generator): only the lengths change.
+   */
+  const grow = (f: number[], lift: number[], turn: number[]) => {
+    const r2 = mulberry32(seedGrow);
+    const wood: Wood[] = [];
+    const ps: Pad[] = [];
+    const hit = new Array<boolean>(f.length).fill(false);
+    const test = (limb: number, p: V3) => {
+      if (!hit[limb] && o.blocked?.(p)) hit[limb] = true;
+    };
+    const padTest = (limb: number, q: Pad) => {
+      // the pad's clumps reach ~1.25 of its radius, their tufts and sprays a card further (~0.5 m)
+      test(limb, q.c);
+      test(limb, add(q.c, [0, q.t * 0.6 + 0.45, 0]));
+      const dB = norm(cross([0, 1, 0], q.dir));
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2;
+        for (const [rr, h] of [[0.7, q.t * 0.5 + 0.3], [1.0, -q.t * 0.5], [1.0, q.t * 0.3]] as const) {
+          const e = add(mul(q.dir, Math.cos(a) * (q.ra * 1.25 * rr + 0.5 * rr)), mul(dB, Math.sin(a) * (q.rb * 1.25 * rr + 0.5 * rr)));
+          test(limb, add(add(q.c, e), [0, h, 0]));
+        }
+      }
+    };
+    limbSpec.forEach((ls, li) => {
+      const a = at(trunk, trunkR, ls.t);
+      const L = ls.L * f[li]!;
+      const az = ls.az + turn[li]!;
+      const d: V3 = [Math.cos(az), lerp(0.25, 0.55, ls.t) + (r2() - 0.5) * 0.2 + lift[li]!, Math.sin(az)];
+      const segs = ls.long ? 7 : 5;
+      const pts = limbPath(r2, a.p, d, L, segs, 0.32, ls.long ? 0.55 : 0.4, ls.long ? 0.35 : 0.15);
+      const r0 = Math.max(0.035, a.r * (ls.long ? 0.62 : 0.5));
+      const rs = radii(pts.length, r0, 0.022, 0.75);
+      wood.push({ pts, rs, r0 });
+      for (const q of pts) test(li, q);
+      const tip = pts[pts.length - 1]!;
+      const dirH = norm([tip[0] - a.p[0], 0, tip[2] - a.p[2]]);
+      const padK = V.pad * (0.75 + 0.35 * clamp(L / V.R, 0, 1.2));
+      const tipPad: Pad = { c: add(tip, [0, 0.1, 0]), ra: padK * 1.15, rb: padK * 0.9, t: 0.42 * padK + 0.12, dir: dirH };
+      ps.push(tipPad);
+      padTest(li, tipPad);
+      // side branches off the outer half, level, each ending in a smaller pad; a long limb carries pads along it too
+      const nS = ls.long ? 4 : ls.L > V.R * 0.6 ? 2 : 1;
+      for (let s = 0; s < nS; s++) {
+        const tt = lerp(0.42, 0.82, (s + 0.3 + r2() * 0.4) / nS);
+        const sa = at(pts, rs, tt);
+        const sgn = (s + li) % 2 ? 1 : -1;
+        const perp = norm(cross(sa.d, [0, 1, 0]));
+        const sd = norm(add(add(mul(sa.d, 0.55), mul(perp, sgn * (0.8 + r2() * 0.4))), [0, 0.1 + r2() * 0.15, 0]));
+        const sL = L * (0.3 + r2() * 0.22);
+        const sp = limbPath(r2, sa.p, sd, sL, 3, 0.3, 0.3);
+        const sr = radii(sp.length, Math.max(0.018, sa.r * 0.55), 0.012, 0.8);
+        wood.push({ pts: sp, rs: sr, r0: sr[0]! });
+        for (const q of sp) test(li, q);
+        const st = sp[sp.length - 1]!;
+        const pk = V.pad * (0.6 + 0.25 * r2());
+        const sidePad: Pad = { c: add(st, [0, 0.08, 0]), ra: pk * 1.1, rb: pk * 0.85, t: 0.38 * pk + 0.1, dir: norm([sd[0], 0, sd[2]]) };
+        ps.push(sidePad);
+        padTest(li, sidePad);
+      }
+    });
+    // the top: the leader's end splits into 3-4 short limbs, an umbrella of pads (the oldest pines' flat top)
+    for (let i = 0; i < nTop; i++) {
+      const li = limbSpec.length + i;
+      const az = topAz[i]! + turn[li]!;
+      const pts = limbPath(r2, top, [Math.cos(az), 0.55 + lift[li]!, Math.sin(az)], topL[i]! * f[li]!, 3, 0.3, 0.2);
+      const rs = radii(pts.length, 0.045, 0.016, 0.8);
+      wood.push({ pts, rs, r0: 0.045 });
+      for (const q of pts) test(li, q);
+      const pk = V.pad * (0.85 + r2() * 0.25);
+      const topPad: Pad = { c: add(pts[pts.length - 1]!, [0, 0.12, 0]), ra: pk * 1.1, rb: pk, t: 0.45 * pk + 0.12, dir: norm([Math.cos(az), 0, Math.sin(az)]) };
+      ps.push(topPad);
+      padTest(li, topPad);
+    }
+    const crownPad: Pad = { c: add(top, [0, 0.25, 0]), ra: V.pad * 1.0, rb: V.pad * 0.9, t: 0.5 * V.pad + 0.12, dir: [1, 0, 0] };
+    ps.push(crownPad);
+    return { wood, ps, hit };
+  };
+  // each limb's horizontal direction (the top's short limbs too): a limb on the side the crown leans to is shortened, the far one lengthened
+  const azs = [...limbSpec.map((l) => l.az), ...topAz];
+  const trim = new Array<number>(azs.length).fill(1);
+  // a limb still in a roof at half length turns aside along it, then climbs (a pine's limb by a wall grows round and up past the eaves)
+  const turn = new Array<number>(azs.length).fill(0);
+  const lift = new Array<number>(azs.length).fill(0);
+  let bx = 0;
+  let bz = 0;
+  const factors = () => azs.map((a, i) => trim[i]! * clamp(1 + bx * Math.cos(a + turn[i]!) + bz * Math.sin(a + turn[i]!), 0.5, 1.6));
+  let g = grow(factors(), lift, turn);
+  for (let it = 0; it < 32; it++) {
+    // a limb into a roof: shorter (its pad follows it in); then the crown's centroid (the pads' area) back over the foot
+    let any = false;
+    g.hit.forEach((h, i) => {
+      if (!h) return;
+      if (trim[i]! > 0.5) trim[i] = Math.max(0.5, trim[i]! * 0.86);
+      else if (Math.abs(turn[i]!) < 0.9) turn[i] = turn[i]! + (i % 2 ? 0.15 : -0.15);
+      else if (lift[i]! < 1.2) lift[i] = lift[i]! + 0.2;
+      else if (trim[i]! > 0.3) trim[i] = Math.max(0.3, trim[i]! * 0.86);
+      else return;
+      any = true;
+    });
+    let m = 0;
+    let cx = 0;
+    let cz = 0;
+    for (const q of g.ps) {
+      // its needles' share: the cards over its area and round its rim
+      const w = q.ra * q.rb + 0.35 * (q.ra + q.rb);
+      m += w;
+      cx += q.c[0] * w;
+      cz += q.c[2] * w;
+    }
+    cx /= m;
+    cz /= m;
+    if (!any && Math.hypot(cx, cz) < 0.03 * V.R) break;
+    bx = clamp(bx - (cx / V.R) * 1.4, -1.1, 1.1);
+    bz = clamp(bz - (cz / V.R) * 1.4, -1.1, 1.1);
+    g = grow(factors(), lift, turn);
+  }
+  for (const w of g.wood) barkTube(bb, w.pts, w.rs, sideOf(w.r0), style, light, { wraps: 1 });
+  pads.push(...g.ps);
 
   // ── the bark's two pictures: the foot's (vertex alpha 1) up to ~2.4 m, the orange flaky bark above (0) ──
   const barkG = bb.build();
@@ -275,7 +383,7 @@ export function pineGeo(k: number, seed: number, o: PineOptions): PineGeo {
   // ── the pads: how much each is shaded by the pads above it and by the crown round it ──
   const lb = new GeoBuilder();
   const crownC: V3 = [top[0] * 0.6, V.H * 0.7, top[2] * 0.6];
-  const keep = o.low ? 0.55 : 1;
+  const keep = o.low ? 0.45 : 0.9;
   // each pad is a few overlapping clumps (a real pad is lumpy: tufts bunched round each shoot, not one smooth dome)
   const clumps: Pad[] = [];
   for (const p of pads) {
