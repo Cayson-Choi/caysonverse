@@ -250,6 +250,13 @@ export const CAFE_UP: LotInteriorSpec = {
     { name: "plant_up_1", rect: { x0: 0.15, x1: 0.75, z0: 0.15, z1: 0.75 }, height: 1.9 },
     { name: "plant_up_2", rect: { x0: 12.95, x1: 13.45, z0: 0.15, z1: 0.65 }, height: 1.9 },
     { name: "plant_up_3", rect: { x0: 12.95, x1: 13.45, z0: 12.35, z1: 12.85 }, height: 2.1 },
+    // (interiors pass 2026-11-27: the salon was a big empty floor) a round centre table under a tall bouquet on the rug, a console
+    // with a lamp on the left wall between the stairwell and the bookcase, a reading lamp beside the wing chairs, two more plants
+    { name: "centretable_up", rect: { x0: 7.2, x1: 8.0, z0: 6.0, z1: 6.8 }, height: 0.78 },
+    { name: "console_up", rect: { x0: 0.0, x1: 0.42, z0: 8.2, z1: 9.3 }, height: 0.85 },
+    { name: "floorlamp_up", rect: { x0: 12.25, x1: 12.6, z0: 11.2, z1: 11.55 }, height: 1.6 },
+    { name: "plant_up_4", rect: { x0: 6.55, x1: 7.05, z0: 0.15, z1: 0.6 }, height: 1.3 },
+    { name: "plant_up_5", rect: { x0: 0.15, x1: 0.65, z0: 12.5, z1: 12.95 }, height: 2.0 },
   ],
   seats: [...upChairSeats, upSofa, ...upArm],
   stair: { pad: { x: 1.8, z: 3.35, radius: 0.5 }, faces: "in", to: "lot_cafe_room", arrival: { x: 1.8, z: 2.65, faces: "right" } },

@@ -412,19 +412,22 @@ def bouquet(m, x, y, z, h):
     k0 = len(m.polys)
     m.lathe([(0.05, 0.0), (0.06, 0.01), (0.075, 0.05), (0.07, 0.11), (0.05, 0.16), (0.058, 0.19), (0.062, 0.2), (0.0, 0.2)], 20, LINEN, x, z, y)
     F.flat_from(m, k0)
+    lod0, G.LOD = G.LOD, min(G.LOD, 0.6)   # (on the altar, seen from the pews: fewer sections per petal)
     rg = G.rng(int(x * 31 + z))
     top = y + 0.19
     green = LEAF.t(G.hexc("3F6E35"))
-    blooms = [("lily", -0.1, 0.27, 0.02, 0.4), ("lily", 0.09, 0.3, -0.02, -0.6), ("lily", 0.0, 0.36, 0.04, 2.0),
-              ("rose", -0.05, 0.22, -0.05, 0.0), ("rose", 0.05, 0.21, 0.05, 0.0), ("rose", 0.13, 0.17, 0.0, 0.0), ("rose", -0.14, 0.18, -0.01, 0.0)]
+    # (a full, low dome of blooms over the vase's lip: on the first pass the stems stood tall and the heads read as sparse dots)
+    blooms = [("lily", -0.11, 0.14, 0.02, 0.4), ("lily", 0.1, 0.16, -0.02, -0.6), ("lily", 0.0, 0.22, 0.03, 2.0),
+              ("rose", -0.05, 0.1, -0.06, 0.0), ("rose", 0.05, 0.09, 0.06, 0.0), ("rose", 0.14, 0.07, 0.02, 0.0), ("rose", -0.15, 0.07, -0.02, 0.0),
+              ("rose", 0.03, 0.12, -0.08, 0.0), ("rose", -0.04, 0.11, 0.08, 0.0)]
     for kind, dx, dy, dz, tilt in blooms:
         c = (x + dx, top + dy, z + dz)
         F.stem(m, (x + dx * 0.2, top - 0.05, z + dz * 0.2), c, 0.004, green, bend=(dx * 0.3, 0.0, dz * 0.3))
         if kind == "lily":
-            F.lily(m, c, 0.085, PET_W, G.hexc("FFFFFF"), throat=G.hexc("E6EDC4"), seed=int(dy * 100) + 7, stamen_s=LEAF)
+            F.lily(m, c, 0.11, PET_W, G.hexc("FFFFFF"), throat=G.hexc("E6EDC4"), seed=int(dy * 100) + 7, stamen_s=LEAF)
         else:
-            F.rose(m, c, 0.04, PET_W, G.hexc("FBF6EC"), open_=0.55, seed=int(dx * 100) + 50, centre_dk=0.9)
-    for (dx, dz, dy) in ((0.06, -0.06, 0.42), (-0.07, 0.05, 0.4)):
+            F.rose(m, c, 0.055, PET_W, G.hexc("FBF6EC"), open_=0.7, seed=int(dx * 100) + int(dz * 100) + 50, centre_dk=0.9)
+    for (dx, dz, dy) in ((0.06, -0.06, 0.34), (-0.07, 0.05, 0.32)):
         b = (x + dx, top + dy - 0.1, z + dz)
         F.stem(m, (x, top - 0.05, z), b, 0.004, green)
         F.lily_bud(m, b, (dx, 1.0, dz), 0.1, PET_W, G.hexc("FFFFFF"))
@@ -432,7 +435,8 @@ def bouquet(m, x, y, z, h):
         a = 2 * math.pi * k / 9 + rg.uniform(-0.2, 0.2)
         F.leaf(m, (x + 0.03 * math.cos(a), top + rg.uniform(0.02, 0.08), z + 0.03 * math.sin(a)), (math.cos(a), 0, math.sin(a)),
                rg.uniform(0.11, 0.15), 0.04, green, rise=0.7, fall=1.3, c0=G.hexc("2E5A2A"), c1=G.hexc("4F8A3E"), seed=k)
-    F.babys_breath(m, (x - 0.02, top + 0.2, z - 0.03), 0.12, LEAF, seed=5, n=28)
+    F.babys_breath(m, (x - 0.02, top + 0.12, z - 0.03), 0.16, LEAF, seed=5, n=28)
+    G.LOD = lod0
 
 
 def hydrangea(m, x, y, z):
@@ -442,7 +446,8 @@ def hydrangea(m, x, y, z):
     m.lathe([(0.1, 0.0), (0.12, 0.02), (0.14, 0.06), (0.125, 0.2), (0.14, 0.24), (0.15, 0.26), (0.0, 0.26)], 20, LINEN, x, z, y)
     F.flat_from(m, k0)
     green = LEAF.t(G.hexc("3F6E35"))
-    for k, (dx, dy, dz, r) in enumerate(((0.0, 0.42, 0.0, 0.12), (-0.13, 0.36, 0.06, 0.1), (0.12, 0.35, -0.05, 0.1), (0.04, 0.33, 0.14, 0.09), (-0.05, 0.34, -0.13, 0.09))):
+    lod0, G.LOD = G.LOD, min(G.LOD, 0.35)   # (three big heads on a stand by the chancel: fewer, larger florets)
+    for k, (dx, dy, dz, r) in enumerate(((0.0, 0.42, 0.0, 0.13), (-0.12, 0.35, 0.07, 0.115), (0.12, 0.34, -0.06, 0.115))):
         c = (x + dx, y + dy, z + dz)
         F.stem(m, (x + dx * 0.3, y + 0.22, z + dz * 0.3), c, 0.006, green)
         F.hydrangea(m, c, r, PET_HY, G.hexc("F4F6FB"), seed=k + int(x * 10), col2=G.hexc("E3ECF6"))
@@ -450,6 +455,7 @@ def hydrangea(m, x, y, z):
         a = 2 * math.pi * k / 8 + rg.uniform(-0.2, 0.2)
         F.leaf(m, (x + 0.08 * math.cos(a), y + 0.27, z + 0.08 * math.sin(a)), (math.cos(a), 0, math.sin(a)), 0.16, 0.08, green,
                rise=0.5, fall=1.1, c0=G.hexc("2E5A2A"), c1=G.hexc("5A8F45"), seed=40 + k)
+    G.LOD = lod0
 
 
 # ------------------------------------------------------------------------------------------------ pews, organ, hymn board --

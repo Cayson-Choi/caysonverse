@@ -11,6 +11,7 @@ oak beams and brass lanterns. Brand-new, tidy; no words (LOT_SIGN_WORDS only; no
 import math
 
 import b1_geom as G
+import flora as F
 import b1_parts as P
 import b1_room as R
 import library_books as LB
@@ -390,21 +391,19 @@ def bouquet(m, cx, y, cz, seed):
         mid = (cx + out * 0.4 * math.cos(a), y + 0.26, cz + out * 0.4 * math.sin(a))
         m.member((cx, y + 0.12, cz), mid, G.prof_round(0.0035, 5), LEAF_DK)
         m.member(mid, top, G.prof_round(0.003, 5), LEAF_DK)
-        col = S("LM_library_plaster", G.hexc(cols[k % len(cols)]))
+        col = S("LM_library_plaster", (1.0, 1.0, 1.0))
+        lod0, G.LOD = G.LOD, min(G.LOD, 0.6)
         if k % 3 == 0:
-            # a tulip: a tall closed cup
-            m.lathe([(0.0, 0.0), (0.012, 0.004), (0.02, 0.02), (0.019, 0.04), (0.012, 0.052), (0.0, 0.045)], 12, col, top[0], top[2], top[1])
+            # a tulip: a closed cup of overlapping petals (flora.py)
+            F.lily_bud(m, top, (0.0, 1.0, 0.0), 0.055, col, G.hexc(cols[k % len(cols)]))
         else:
-            # a rose: an open cup with rolled petals, a darker heart
-            m.lathe([(0.0, 0.0), (0.014, 0.004), (0.026, 0.016), (0.03, 0.028), (0.024, 0.032), (0.012, 0.026), (0.0, 0.03)], 14, col, top[0], top[2], top[1], phase=rg.uniform(0, 1))
+            # a garden rose built from its own petals (flora.py; before 2026-11-27 a lathed cup)
+            F.rose(m, top, 0.032, col, G.hexc(cols[k % len(cols)]), open_=0.55 + 0.1 * (k % 2), seed=seed + k)
         for sg in (-1, 1):
             b = a + sg * 0.9
             l0 = G.lerp((cx, y + 0.12, cz), mid, 0.7)
-            tip = (l0[0] + 0.07 * math.cos(b), l0[1] + 0.02, l0[2] + 0.07 * math.sin(b))
-            side = (-math.sin(b) * 0.014, 0.0, math.cos(b) * 0.014)
-            q = [l0, G.add(G.lerp(l0, tip, 0.5), side), tip, G.sub(G.lerp(l0, tip, 0.5), side)]
-            m.poly(q, LEAF, smooth=True)
-            m.poly(list(reversed(q)), LEAF, smooth=True)
+            F.leaf(m, l0, (math.cos(b), 0.2, math.sin(b)), 0.075, 0.028, LEAF, rise=0.4, fall=1.0, c0=G.hexc("2E5A2A"), c1=G.hexc("5A8F45"), seed=seed + k * 2 + sg)
+        G.LOD = lod0
 
 
 def tables(kit, spec, sol):

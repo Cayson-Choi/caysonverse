@@ -3,6 +3,7 @@
  * walks in by the real doors, then shoots a fixed set of photo cameras (window.__cvShot) in each room's own frame.
  *   server:  PORT=2993 npx tsx src/index.ts   (server/)      client: VITE_SERVER_URL=http://localhost:2993 npx vite --port 5993 --strictPort (client/)
  *   CV_CLIENT_URL=http://localhost:5993 node e2e/interiors-audit.mjs --what=houses [--houses=2,3] [--phone] [--night] [--out=<dir>] [--tag=before]
+ *   --extra=name:lx,ly,lz,tx,ty,tz;...  extra room-frame close-up cameras
  *   --what=houses|lots|shop|cafe   (lots: --rooms=lot_school_class,lot_library_reading; --q=cafe=off adds a DEV address flag)
  */
 import { mkdirSync } from "node:fs";
@@ -58,7 +59,7 @@ async function walkWay(placeId, x, z) {
   const here = await pos(p);
   if (Math.hypot(here.x, here.z - 14) > 25) await planned(0, 14, 2);
   const h2 = await pos(p);
-  const way = await page.evaluate(async ([id, x, z]) => { const m = await window.__imp("/src/village/villagePlaces.ts"); return m.wayTo(m.mapPlace(id), x, z); }, [placeId, h2.x, h2.z]);
+  const way = await page.evaluate(async ([id, x, z]) => { const m = await window.__imp("/src/village/villagePlaces.ts"); return m.wayTo(m.mapPlace(id) ?? m.mapPlace(id.replace(/^lot_/, "")), x, z); }, [placeId, h2.x, h2.z]);
   for (const w of way) await planned(w.x, w.z, 1.2);
   return planned(x, z, 0.8);
 }
@@ -97,6 +98,13 @@ function roomViews(frame, w, d, h, fov) {
   V.dn = view([w / 2, 2.2, d * 0.2], [w / 2, 0, d * 0.65]);
   V.fw = view([w / 2, 1.55, 0.6], [w / 2, 1.3, d]);
   V.bw = view([w / 2, 1.55, d - 0.6], [w / 2, 1.3, 0]);
+  if (process.argv.includes("--only-extra")) for (const k of Object.keys(V)) delete V[k];
+  // --extra=name:lx,ly,lz,tx,ty,tz;... : more cameras in the room frame (close-ups of one piece)
+  for (const e of (arg("extra", "") || "").split(";").filter(Boolean)) {
+    const [name, nums] = e.split(":");
+    const n = nums.split(",").map(Number);
+    V[name] = view(n.slice(0, 3), n.slice(3, 6));
+  }
   if (CLOSE) {
     // close-ups: from the room's middle band, 1.6 m off each wall, at three spots along it (left, middle, right), eye 1.3 m
     const k = [0.2, 0.5, 0.8];
