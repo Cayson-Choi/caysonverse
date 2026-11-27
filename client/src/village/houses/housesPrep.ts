@@ -126,6 +126,11 @@ export const HOUSE_LOOK = {
    * behind it (owner 2026-11-21: clear glass; the house nearest the camera shows its real rooms through clear panes).
    */
   glassDark: 0.78,
+  /**
+   * At night, over the house whose real rooms are drawn: how much of the room is seen through the warm haze of its lamplight
+   * (clearGlass.ts `warmVeil`; 2026-11-27, the lit windows read warm and inviting from the street again, as the lit cards did).
+   */
+  glassNightVeil: 0.2,
   /** The rooms behind the windows at night: LIT.window's warm colour, this bright (× the village's lit weight). */
   windowGlow: 1.35,
   /** The keypad's screen (M_lamp: X2 hand-over, only the door lock's pad): a faint glow by day, a soft one at night. */
@@ -693,7 +698,7 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
     else if (src.name.startsWith("LM_")) m = houseSurfaceMaterial(s, maps[src.name] ?? null);
     else if (src.name === "M_window") m = glow.window = windowMaterial(s);
     else if (src.name === "M_lamp") m = glow.lamp = lampMaterial(s);
-    else if (src.name === "M_glass") m = (glow.glass = clearGlassMaterial("M_glass", HOUSE_LOOK.glassDark)).material;
+    else if (src.name === "M_glass") m = (glow.glass = clearGlassMaterial("M_glass", HOUSE_LOOK.glassDark, HOUSE_LOOK.glassNightVeil)).material;
     else if (src.name === "M_screen") m = screenMaterial(s);
     else {
       // what a later kit adds (X2's M_leaf_flora: flower cards): the file's own material, lit, cut out
