@@ -38,7 +38,7 @@ import {
 /** The audible range (m) from the basin's centre. */
 export const FOUNTAIN_RANGE_M = 25;
 /** The level at the rim (0..1 of the context's output; the BGM plays around 0.35, the falls at 0.2). */
-export const FOUNTAIN_PEAK = 0.3; // owner 11-27 "분수 물소리가 너무 크게": 0.52 → 0.3
+export const FOUNTAIN_PEAK = 0.12; // owner 11-27 "분수 물소리가 너무 크게": 0.52 → 0.3, then "아직도 너무 크게" → 0.12 (−13 dB in all)
 /** Seconds a silent state lasts before the nodes are stopped. */
 export const FOUNTAIN_IDLE_STOP_S = 3;
 const GLIDE_S = 0.3;
