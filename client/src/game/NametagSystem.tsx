@@ -1,7 +1,8 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { addAfterEffect, useThree } from "@react-three/fiber";
 import type { PerspectiveCamera } from "three";
 import { createNametagFrame } from "./nametagFrame";
+import { LabelOverlay, labelPixelRatio } from "./labelOverlay";
 import { LABEL_LAYER } from "./spriteCanvas";
 
 /**
@@ -9,8 +10,8 @@ import { LABEL_LAYER } from "./spriteCanvas";
  * nearest 15 + speakers + pinned, overlap stacking, wall-occlusion dimming, sizing,
  * fading, typing "…", the speaking highlight and the speech bubble's anchor. See
  * nametagFrame.ts for the per-frame logic; this component only feeds it the camera, the
- * clock and the renderer's pixel ratio (a tag is rasterized at its on-screen size in device
- * pixels). Renders nothing. Mount it once, inside the Canvas.
+ * clock and the DEVICE's pixel ratio (a tag is rasterized at its on-screen size in device
+ * pixels: labelPixelRatio). Renders nothing in the scene. Mount it once, inside the Canvas.
  *
  * It runs AFTER the frame is drawn (R3F's after-effect), not as one more useFrame: every avatar's useFrame (they mount as
  * players join, so after this component) and the camera's have then written this frame's poses. As a useFrame it ran
@@ -20,10 +21,10 @@ import { LABEL_LAYER } from "./spriteCanvas";
  * opacity) is drawn from the next frame on, a frame behind the measurement, which is invisible while nothing moves
  * relative to the eye.
  *
- * It also lets the scene's camera see LABEL_LAYER, the layer every label sprite (tags,
- * speech bubbles, emoji, the overview's room names) is on: the light tier draws them in its
- * one pass; the rich tier's post chain takes them out of its scene pass and draws them
- * after its final pass, at full resolution (spriteCanvas.ts, postChain.ts).
+ * It also owns the label overlay (labelOverlay.ts, fix/crisp-labels): a 2D canvas over the 3D one, at the device's pixel
+ * ratio, on which every label sprite (tags, speech bubbles, emoji; LABEL_LAYER) is drawn each frame — in the same
+ * after-effect, BEFORE the tags are updated, so it draws exactly what the frame's matrices and opacities say (what WebGL
+ * would have drawn). No camera sees LABEL_LAYER: WebGL draws no label.
  */
 export function NametagSystem(): null {
   const frame = useMemo(() => createNametagFrame(), []);
@@ -31,9 +32,26 @@ export function NametagSystem(): null {
   useEffect(() => () => frame.reset(), [frame]);
   const camera = useThree((s) => s.camera);
   const get = useThree((s) => s.get);
+  const gl = useThree((s) => s.gl);
+  const overlay = useRef<LabelOverlay | null>(null);
   useEffect(() => {
-    camera.layers.enable(LABEL_LAYER);
+    camera.layers.disable(LABEL_LAYER);
   }, [camera]);
+  useEffect(() => {
+    const parent = gl.domElement.parentElement;
+    if (!parent) return;
+    const o = new LabelOverlay();
+    (o.canvas as unknown as HTMLCanvasElement).className = "cv-label-overlay";
+    // right after the 3D canvas: under every drei <Html> marker (MapPlaces, OverviewMarker), which are added to the same
+    // container, as the labels were when WebGL drew them
+    parent.insertBefore(o.canvas as unknown as HTMLCanvasElement, gl.domElement.nextSibling);
+    overlay.current = o;
+    if (import.meta.env.DEV) (window as unknown as { __cvLabelOverlay?: LabelOverlay }).__cvLabelOverlay = o;
+    return () => {
+      if (overlay.current === o) overlay.current = null;
+      o.dispose();
+    };
+  }, [gl]);
 
   useEffect(() => {
     let last = Number.NaN;
@@ -43,7 +61,9 @@ export function NametagSystem(): null {
       // seconds since the last drawn frame (the first one: a 60 Hz frame), capped as R3F caps its own delta
       const delta = Number.isNaN(last) ? 1 / 60 : Math.min((now - last) / 1000, 0.25);
       last = now;
-      frame.update(state.camera as PerspectiveCamera, state.size.width, state.size.height, delta, now, state.gl.getPixelRatio());
+      const dpr = labelPixelRatio();
+      overlay.current?.draw(state.scene, state.camera, state.size.width, state.size.height, dpr);
+      frame.update(state.camera as PerspectiveCamera, state.size.width, state.size.height, delta, now, dpr);
     });
   }, [frame, get]);
 

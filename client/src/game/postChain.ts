@@ -13,9 +13,6 @@ import {
   RawShaderMaterial,
   ReinhardToneMapping,
   SRGBTransfer,
-  Scene,
-  type Sprite,
-  type SpriteMaterial,
   Vector2,
   WebGLRenderTarget,
   type Camera,
@@ -28,9 +25,8 @@ import {
 } from "three";
 import { FullScreenQuad } from "three/examples/jsm/postprocessing/Pass.js";
 import { UnrealBloomPass } from "three-stdlib";
-import { compileSafely } from "./compileSafely";
 import { setRenderScale } from "./renderScale";
-import { LABEL_LAYER, billboardSprite, canvasTexture } from "./spriteCanvas";
+import { LABEL_LAYER } from "./spriteCanvas";
 
 /**
  * The rich tier's post chain (Task 21's bloom, made cheap enough for a laptop's integrated GPU — perf/interaction-latency).
@@ -56,8 +52,9 @@ import { LABEL_LAYER, billboardSprite, canvasTexture } from "./spriteCanvas";
  * re-made only when the drawing buffer itself changes size (`setSize`: the window was resized).
  *
  * The labels (name tags, speech bubbles, emoji: LABEL_LAYER, spriteCanvas.ts) are not part of that picture
- * (fix/crisp-labels): the scene pass leaves their layer out, and `renderLabels` draws them last, straight to the screen at
- * the drawing buffer's full resolution — never stretched by a render scale, smeared by FXAA, tone-mapped or bloomed.
+ * (fix/crisp-labels): WebGL never draws them — the label overlay (labelOverlay.ts) draws them on a 2D canvas over this one,
+ * at the device's own pixel ratio, never stretched by a render scale, smeared by FXAA, tone-mapped or bloomed. The scene
+ * pass still leaves their layer out (a camera that was told to see it must not draw them stretched).
  */
 
 /** The final pass's defines for the renderer's tone curve and output colour space (OutputPass's own rule). */
@@ -369,16 +366,6 @@ export class PostChain {
   /** The part of the target the scene is drawn into, in pixels (the whole target at scale 1). */
   readonly region = new Vector2(1, 1);
   private readonly quad = new FullScreenQuad();
-  /**
-   * The label pass's scene: no children of its own — for the pass it borrows the real scene's child list, so the labels
-   * stay where they are (on the avatars) while this pass gets its OWN render state. Drawing the real scene a second time
-   * with only the label layer would collect no lights into the scene's render state and every lit material would see the
-   * light setup change twice a frame (a program look-up per material per frame); this scene's state has no lights, always.
-   */
-  private readonly labels = new Scene();
-  private readonly noChildren: Object3D[] = [];
-  /** A stand-in label kept alive so its compiled program (shared by every label) is never released (`warmLabels`). */
-  private labelWarmer: Sprite | null = null;
   private readonly size = new Vector2(0, 0);
   private renderScale = 1;
   private readonly oldClear = new Color();
@@ -477,7 +464,7 @@ export class PostChain {
 
   /**
    * One frame: the scene into the target (without the labels), the bloom from it, the final pass to the screen (the default
-   * framebuffer), then the labels on top at full resolution.
+   * framebuffer). The labels are not drawn here (labelOverlay.ts).
    */
   render(renderer: WebGLRenderer, scene: Object3D, camera: Camera): void {
     const oldAutoClear = renderer.autoClear;
@@ -502,33 +489,6 @@ export class PostChain {
     this.quad.material = this.output;
     renderer.setRenderTarget(null);
     this.quad.render(renderer);
-    this.renderLabels(renderer, scene, camera);
-  }
-
-  /**
-   * The labels, over the finished frame on the screen: the scene's LABEL_LAYER only, nothing cleared, at the drawing
-   * buffer's own size. Their materials are not tone-mapped and not fogged (spriteCanvas.ts), so they come out in their
-   * canvas colours; the matrices are this frame's (the scene pass updated them).
-   */
-  renderLabels(renderer: WebGLRenderer, scene: Object3D, camera: Camera): void {
-    const labels = this.labels;
-    const oldMask = camera.layers.mask;
-    const oldAutoClear = renderer.autoClear;
-    const oldInfoReset = renderer.info.autoReset;
-    labels.children = scene.children;
-    labels.matrixWorldAutoUpdate = false;
-    camera.layers.set(LABEL_LAYER);
-    renderer.autoClear = false;
-    renderer.info.autoReset = false; // adds to the draw counts three keeps for the frame instead of starting them over
-    renderer.setRenderTarget(null);
-    try {
-      renderer.render(labels, camera);
-    } finally {
-      labels.children = this.noChildren;
-      camera.layers.mask = oldMask;
-      renderer.autoClear = oldAutoClear;
-      renderer.info.autoReset = oldInfoReset;
-    }
   }
 
   /**
@@ -580,27 +540,6 @@ export class PostChain {
     return p.renderTargetsHorizontal[0]!.texture;
   }
 
-  /**
-   * Compile the label pass's program ahead of the first label (SceneWarmUp): the labels share one program, but the label
-   * pass draws to the screen from a render state with no lights, a variant the scene's own warm-up (for the scene's target,
-   * with its lights) does not make. A 1 x 1 stand-in label is compiled in exactly that state.
-   */
-  warmLabels(renderer: WebGLRenderer, camera: Camera): Promise<unknown> {
-    if (!this.labelWarmer) {
-      const canvas = document.createElement("canvas");
-      canvas.width = 1;
-      canvas.height = 1;
-      this.labelWarmer = billboardSprite(canvasTexture(canvas), 1, 1, 0);
-    }
-    const prev = renderer.getRenderTarget();
-    renderer.setRenderTarget(null);
-    try {
-      return compileSafely(renderer, this.labelWarmer, camera, this.labels);
-    } finally {
-      renderer.setRenderTarget(prev);
-    }
-  }
-
   /** Rebuild the final pass's defines when the renderer's tone curve or colour space changed (OutputPass's rule). */
   private prepareOutput(renderer: WebGLRenderer): void {
     if (this.toneMapping === renderer.toneMapping && this.colorSpace === renderer.outputColorSpace) return;
@@ -615,11 +554,5 @@ export class PostChain {
     this.bloomPass.dispose();
     this.highPass.dispose();
     this.output.dispose();
-    if (this.labelWarmer) {
-      const m = this.labelWarmer.material as SpriteMaterial;
-      m.map?.dispose();
-      m.dispose();
-      this.labelWarmer = null;
-    }
   }
 }

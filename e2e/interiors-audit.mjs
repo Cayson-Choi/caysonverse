@@ -195,6 +195,15 @@ if (what === "bus") {
   // the bus where it stands: a camera set in its own frame (x across, z along: measured from its mesh bounds in the root frame)
   await walkWay("busstop", 38.6, -3.6).catch(() => {});
   await sleep(3000);
+  // the bus drives its route: wait until it stands at the stop (its root still for 2 s), so every camera shares one pose
+  const busAt = () => page.evaluate(() => { const r = window.__cvBus?.()?.root; return r ? [r.position.x, r.position.z, r.rotation.y] : null; });
+  for (let t0 = Date.now(), last = null, still = 0; Date.now() - t0 < 240000; ) {
+    const q = await busAt();
+    still = q && last && Math.hypot(q[0] - last[0], q[1] - last[1]) < 0.002 ? still + 1 : 0;
+    last = q;
+    if (still >= 4) { console.log("bus standing at", JSON.stringify(q)); break; }
+    await sleep(500);
+  }
   const box = await page.evaluate(() => {
     const n = window.__cvBus?.();
     if (!n) return null;
@@ -212,16 +221,32 @@ if (what === "bus") {
     const [x0, y0, z0] = box.mn, [x1, y1, z1] = box.mx;
     const long = x1 - x0 > z1 - z0 ? "x" : "z";
     const P = (a, h, b) => (long === "x" ? [x0 + (x1 - x0) * a, y0 + h, z0 + (z1 - z0) * b] : [x0 + (x1 - x0) * b, y0 + h, z0 + (z1 - z0) * a]);
-    const defs = {
+    // in the bus's own frame (the glTF root: nose toward -z, the doors toward +x, the floor at 0.34; the box above also holds the
+    // road quad round the bus, so the cabin's cameras are set in metres from the root, not as fractions of it)
+    const defs = process.argv.includes("--bus-box") ? {
       fwd: [P(0.85, 1.75, 0.5), P(0.05, 1.2, 0.5)], back: [P(0.15, 1.75, 0.5), P(0.95, 1.2, 0.5)],
       seatsL: [P(0.5, 1.7, 0.7), P(0.5, 0.6, 0.1)], seatsR: [P(0.5, 1.7, 0.3), P(0.5, 0.6, 0.9)],
       dash: [P(0.75, 1.6, 0.5), P(0.97, 1.0, 0.3)], floor: [P(0.5, 2.0, 0.5), P(0.6, 0.0, 0.5)],
       roof: [P(0.5, 1.2, 0.5), P(0.7, 3.0, 0.5)], seatClose: [P(0.45, 1.3, 0.55), P(0.4, 0.5, 0.15)],
+    } : {
+      fwd: [[0, 1.75, 3.4], [0, 1.25, -3.8]], back: [[0, 1.75, -2.4], [0, 1.2, 4.2]],
+      seatsL: [[0.5, 1.6, 1.4], [-1.0, 0.7, 0.4]], seatsR: [[-0.5, 1.6, 2.6], [1.0, 0.7, 1.6]],
+      seatClose: [[0.1, 1.15, 0.9], [-0.85, 0.55, 1.9]], housing: [[0.25, 1.45, 3.4], [-0.9, 0.8, 1.6]],
+      roof: [[0, 1.4, 1.2], [0, 2.9, -1.2]], floor: [[0, 1.9, 0.6], [0, 0.3, -0.5]],
     };
     const V = {};
     for (const [k, [a, b]] of Object.entries(defs)) { const [ea, eb] = await L([a, b]); V[k] = [...ea, ...eb, phone ? 80 : 70]; }
     await shoot("bus", V);
+    console.log("bus after shots", JSON.stringify(await busAt()));
   }
+  // the shelter (village_busstop.glb: x 41..42.8, z -7.1..-2.7, open to the road on the west): its inside from the kerb
+  const fov = phone ? 80 : 70;
+  await shoot("shelter", {
+    front: [39.4, 1.6, -4.9, 41.7, 1.1, -4.9, fov],
+    oblique: [40.1, 1.55, -2.0, 41.7, 1.0, -6.4, fov],
+    bench: [40.2, 1.15, -5.7, 41.3, 0.45, -4.5, fov],
+    roof: [40.6, 1.3, -4.9, 41.9, 2.6, -5.6, fov],
+  });
 }
 
 if (what === "shop") {

@@ -720,6 +720,115 @@ swatch("note_green", (150, 180, 140), 0.08)
 swatch("note_blue", (150, 170, 200), 0.08)
 
 
+# --- 2026-11-27 (interiors round 2, owner: "아이스박스와 박스가 그냥 상자"): real cartons and ice boxes need their print.
+# Kraft board (corrugated: fine flutes show as faint bands), the cartons' printed sides and ends, packing tape, the ice boxes'
+# moulded-in labels. Every word is a generic product word; no brand, no logo, no business name.
+def kraft_base(W, H, seed, flutes=True, tone=(178, 136, 90)):
+    n = noise(W, H, 24, seed, 4)
+    f = noise(W, H, 3, seed + 1, 2)
+    a = np.array(tone, np.float32)[None, None] / 255 * (0.93 + 0.1 * n[..., None]) * (0.95 + 0.07 * f[..., None])
+    if flutes:
+        a *= (0.975 + 0.025 * np.sin(np.arange(W) * 0.9))[None, :, None]
+    return from_arr(a).convert("RGBA")
+
+
+def fish_mark(d, cx, cy, L, ink, w=3):
+    """A simple outline fish (a generic pictogram, not a mark): body ellipse, tail, eye."""
+    d.ellipse((cx - L * 0.5, cy - L * 0.22, cx + L * 0.3, cy + L * 0.22), outline=ink, width=w)
+    d.polygon([(cx + L * 0.28, cy), (cx + L * 0.55, cy - L * 0.2), (cx + L * 0.55, cy + L * 0.2)], outline=ink, fill=None, width=w)
+    d.ellipse((cx - L * 0.36, cy - L * 0.06, cx - L * 0.28, cy + L * 0.02), fill=ink)
+
+
+def up_arrows(d, x, y, s, ink):
+    """The 'this way up' pictogram: two arrows over a bar, in a box."""
+    d.rectangle((x, y, x + s, y + s), outline=ink, width=3)
+    for k in (0.3, 0.7):
+        cx = x + s * k
+        d.line((cx, y + s * 0.78, cx, y + s * 0.3), fill=ink, width=4)
+        d.polygon([(cx - s * 0.12, y + s * 0.36), (cx + s * 0.12, y + s * 0.36), (cx, y + s * 0.16)], fill=ink)
+    d.line((x + s * 0.15, y + s * 0.86, x + s * 0.85, y + s * 0.86), fill=ink, width=4)
+
+
+CARTON_PRINTS = (
+    ("집어제 떡밥", "어분 · 곡물 배합", "20 kg", (46, 86, 52)),
+    ("옥수수 미끼 캔", "24 x 340 g", "24 입", (150, 40, 32)),
+    ("낚시 소품", "찌 · 봉돌 · 바늘", "1 BOX", (30, 60, 120)),
+)
+for _i, (_t1, _t2, _t3, _ink) in enumerate(CARTON_PRINTS):
+    @item(f"carton_side{_i}", 320, 192)
+    def _cs(img, i=_i, t1=_t1, t2=_t2, t3=_t3, ink=_ink):
+        W, H = img.size
+        img.paste(kraft_base(W, H, 300 + i), (0, 0))
+        d = ImageDraw.Draw(img)
+        # one-colour flexo print: a framed panel, the product words, a fish pictogram, the weight; a white barcode sticker
+        d.rectangle((14, 14, W - 15, H - 15), outline=ink + (230,), width=3)
+        text_c(d, (W * 0.4, 56), t1, font(29), ink + (235,))
+        text_c(d, (W * 0.4, 98), t2, font(18, False), ink + (230,))
+        d.line((36, 122, W * 0.66, 122), fill=ink + (220,), width=2)
+        text_c(d, (W * 0.36, 152), t3, font(24), ink + (235,))
+        fish_mark(d, W - 50, 52, 44, ink + (230,), 3)
+        d.rounded_rectangle((W - 96, H - 70, W - 24, H - 26), radius=4, fill=(246, 246, 240))
+        barcode(d, W - 88, H - 64, 56, 22, 700 + i)
+
+
+@item("carton_end", 192, 192)
+def _ce(img):
+    W, H = img.size
+    img.paste(kraft_base(W, H, 330), (0, 0))
+    d = ImageDraw.Draw(img)
+    ink = (60, 48, 36, 230)
+    up_arrows(d, 26, 26, 64, ink)
+    d.rectangle((104, 26, W - 26, 90), outline=ink, width=3)
+    text_c(d, ((104 + W - 26) / 2, 58), "취급주의", font(14), ink)
+    text_c(d, (W / 2, 128), "물기 주의 · 적재 5단", font(15, False), ink)
+    text_c(d, (W / 2, 158), "MADE IN KOREA", font(13, False), ink)
+
+
+@item("carton_top", 192, 192)
+def _ct(img):
+    W, H = img.size
+    img.paste(kraft_base(W, H, 340), (0, 0))
+
+
+@item("kraft_in", 64, 64)
+def _ki(img):
+    W, H = img.size
+    img.paste(kraft_base(W, H, 350, flutes=False, tone=(196, 160, 112)), (0, 0))
+
+
+@item("tape", 64, 32)
+def _tp(img):
+    W, H = img.size
+    a = np.array((214, 178, 118), np.float32)[None, None] / 255 * (0.96 + 0.06 * noise(W, H, 8, 360, 2)[..., None])
+    a = a * (1 + 0.18 * np.exp(-((np.arange(H)[:, None, None] / H - 0.35) ** 2) / 0.01))   # the tape's sheen
+    img.paste(from_arr(np.clip(a, 0, 1)).convert("RGBA"), (0, 0))
+
+
+for _i, (_band, _cap) in enumerate((((40, 110, 200), "32 L"), ((210, 40, 36), "25 L"))):
+    @item(f"cooler_label{_i}", 256, 96)
+    def _cl(img, band=_band, cap=_cap):
+        W, H = img.size
+        d = ImageDraw.Draw(img)
+        d.rectangle((0, 0, W, H), fill=(240, 240, 234))
+        d.rounded_rectangle((4, 4, W - 5, H - 5), radius=10, fill=(250, 250, 246), outline=band, width=3)
+        d.rounded_rectangle((10, 10, 74, H - 11), radius=7, fill=band)
+        # a snowflake
+        cx, cy = 42, H / 2
+        for k in range(3):
+            a = k * math.pi / 3
+            d.line((cx - math.cos(a) * 22, cy - math.sin(a) * 22, cx + math.cos(a) * 22, cy + math.sin(a) * 22), fill=(255, 255, 255), width=4)
+        text_c(d, (164, 32), "ICE BOX", font(28), band)
+        text_c(d, (164, 66), f"아이스박스  {cap}", font(17, False), (60, 64, 70))
+
+
+@item("cooler_vent", 64, 32)
+def _cv(img):
+    d = ImageDraw.Draw(img)
+    d.rectangle((0, 0, 64, 32), fill=(200, 202, 204))
+    for k in range(5):
+        d.rounded_rectangle((6 + k * 11, 6, 12 + k * 11, 26), radius=3, fill=(90, 92, 96))
+
+
 def pack_atlas():
     order = sorted(items, key=lambda it: (-it[2], -it[1]))
     pad = 6

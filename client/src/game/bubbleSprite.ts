@@ -11,7 +11,7 @@
  * Crisp text (fix/crisp-labels, spriteCanvas.ts): the bubble is rasterized at the size it is SHOWN at — its font in whole
  * device pixels (`setTextDevicePx`, from its owner every frame: the bubble's distance changes as people walk), every other
  * metric scaled from the design below and rounded to whole pixels — and drawn one texel per screen pixel by the label
- * shader. The lines are wrapped ONCE, at the design size, so a re-rasterized bubble never re-flows. Its world size stays
+ * overlay (labelOverlay.ts, at the device dpr). The lines are wrapped ONCE, at the design size, so a re-rasterized bubble never re-flows. Its world size stays
  * the design's (`heightM`); the sprite's origin is its bottom edge, so it sits on its anchor whatever size it is drawn at.
  */
 

@@ -5,6 +5,11 @@
  * circles (poses fed every 100 ms like the server's patches), random looks from randomAppearance.
  *
  *   CV_CLIENT_URL=http://localhost:5411 node e2e/crowd-100.mjs --device pc|phone [--n 100] [--ms 12000] [--label before]
+ *     [--dsf 3] [--tags all|nearby] [--bubbles 20]
+ *
+ * --dsf: the page's deviceScaleFactor (phone: also a 412 x 915 Android-sized view; fix/crisp-labels measured the label overlay
+ * at a real phone's 3). --tags all: every avatar's name tag shown (the "이름표 보기: 모두" setting), not the nearest 15.
+ * --bubbles N: N of the crowd keep a speech bubble up the whole run.
  *
  * Output (stdout + <out>/crowd-<device>-<label>.json): frame stats (mean/p50/p95/p99/max ms, fps, frames over 50 / 100 ms), draw
  * calls, triangles, skinned meshes in the scene and how many are visible, and a CPU profile's self time per function group
@@ -27,6 +32,9 @@ const { values: args } = parseArgs({
     walkers: { type: "string", default: "0.5" },
     lod: { type: "string", default: "new" },
     "no-profile": { type: "boolean", default: false },
+    dsf: { type: "string" },
+    tags: { type: "string" },
+    bubbles: { type: "string", default: "0" },
   },
 });
 const PHONE_DEV = args.device === "phone";
@@ -39,7 +47,9 @@ mkdirSync(OUT, { recursive: true });
 const run = createRun("crowd-100");
 run.evidence = OUT;
 const b = await launchBrowser();
-const p = await openPlayer(b, run, { tag: "V", device: PHONE_DEV ? PHONE : DESKTOP, settings: PHONE_DEV ? { graphics: "low" } : {} });
+const DSF = args.dsf ? Number(args.dsf) : undefined;
+const baseDevice = PHONE_DEV ? (DSF ? { ...PHONE, viewport: { width: 412, height: 915 }, deviceScaleFactor: DSF } : PHONE) : DSF ? { ...DESKTOP, deviceScaleFactor: DSF } : DESKTOP;
+const p = await openPlayer(b, run, { tag: "V", device: baseDevice, settings: PHONE_DEV ? { graphics: "low" } : {} });
 if (args.lod === "old") await p.ctx.addInitScript(() => (window.__cvLodOff = true)); // DEV switch: no stand-ins, no still-avatar skipping
 await joinVillage(p, "Cw");
 const session = await cdp(p);
@@ -85,6 +95,16 @@ await p.page.evaluate(
   },
   { n: N, walkers: Number(args.walkers) },
 );
+if (args.tags) await p.page.evaluate(async (m) => (await window.__imp("/src/game/labelRegistry.ts")).setNametagMode(m), args.tags);
+if (Number(args.bubbles) > 0)
+  await p.page.evaluate(async (k) => {
+    const { bubbleRegistry } = await window.__imp("/src/game/bubbleRegistry.ts");
+    const say = () => {
+      for (let i = 0; i < k; i++) bubbleRegistry.set(`crowd${i}`, `안녕하세요 ${i}번 손님이에요! 반가워요`, performance.now());
+    };
+    say();
+    window.__crowdSay = setInterval(say, 3000);
+  }, Number(args.bubbles));
 await sleep(6000); // let the avatars assemble and the shaders compile
 
 if (THROTTLE > 1) await session.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE });
@@ -108,9 +128,13 @@ if (PROFILE) await session.send("Profiler.start");
 // ThreadTime = the main thread's CPU seconds actually used (not wall time): robust to other processes taking the CPU away
 await session.send("Performance.enable");
 const metric = async () => Object.fromEntries((await session.send("Performance.getMetrics")).metrics.map((m) => [m.name, m.value]));
+const ovStat = () => p.page.evaluate(() => { const o = window.__cvLabelOverlay; return o ? { ms: o.totalMs, frames: o.totalFrames, drawn: o.totalDrawn } : null; });
+const o0 = await ovStat();
 const m0 = await metric();
 await sleep(MS);
 const m1 = await metric();
+const o1 = await ovStat();
+const overlay = o0 && o1 ? { msPerFrame: Math.round(((o1.ms - o0.ms) / Math.max(1, o1.frames - o0.frames)) * 1000) / 1000, labelsPerFrame: Math.round(((o1.drawn - o0.drawn) / Math.max(1, o1.frames - o0.frames)) * 10) / 10 } : null;
 // draw calls per rendered frame: three resets the counters per render() call, so sum them over a few frames by hand
 const draws = await p.page.evaluate(
   () =>
@@ -159,6 +183,8 @@ const res = await p.page.evaluate(() => {
     trimmedMean: fr.slice(0, Math.max(1, fr.length - Math.ceil(fr.length * 0.005))).reduce((a, b) => a + b, 0) / Math.max(1, fr.length - Math.ceil(fr.length * 0.005)),
     over50: fr.filter((x) => x > 50).length, over100: fr.filter((x) => x > 100).length,
     skinned, skinnedVisible: visible, meshes, remotes: window.__crowdN,
+    labelsDrawn: window.__cvLabelOverlay?.lastDrawn ?? null,
+    nametagCostMs: window.__cv?.getNametagCostMs?.() ?? null,
   };
 });
 
@@ -211,7 +237,8 @@ const out = {
   threadMsPerFrame: Math.round(threadMsPerFrame * 100) / 100,
   perFrameMs: Object.fromEntries(['ScriptDuration','LayoutDuration','RecalcStyleDuration','TaskDuration','ThreadTime'].map((k) => [k, Math.round(((m1[k] - m0[k]) * 1000 / nFrames) * 100) / 100])),
   taskMsPerFrame: Math.round(((m1.TaskDuration - m0.TaskDuration) * 1000 / nFrames) * 100) / 100,
-  device: args.device, lod: args.lod, n: N, throttle: THROTTLE, label: args.label,
+  device: args.device, lod: args.lod, n: N, throttle: THROTTLE, label: args.label, dsf: DSF ?? null, tags: args.tags ?? "nearby", bubbles: Number(args.bubbles),
+  overlay,
   draws,
   ...Object.fromEntries(Object.entries(res).map(([k, v]) => [k, typeof v === "number" ? Math.round(v * 100) / 100 : v])),
   cpuMsPerFrame: Object.fromEntries(Object.entries(groups).map(([k, us]) => [k, perFrame(us)])),
@@ -223,7 +250,7 @@ const out = {
 console.log(JSON.stringify(out, null, 1));
 writeFileSync(join(OUT, `crowd-${args.device}-${args.label}.json`), JSON.stringify(out, null, 2));
 await p.page.screenshot({ path: join(OUT, `crowd-${args.device}-${args.label}.png`) }).catch(() => {});
-await p.page.evaluate(() => clearInterval(window.__crowdTimer));
+await p.page.evaluate(() => (clearInterval(window.__crowdTimer), clearInterval(window.__crowdSay)));
 const code = run.finish();
 await b.close();
 process.exit(code);

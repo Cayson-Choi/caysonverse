@@ -52,7 +52,7 @@ TEX = os.path.abspath(arg("--tex", os.path.join(REPO, "art", "shop", "tex")))
 GLB = os.path.abspath(arg("--glb", os.path.join(REPO, "client", "public", "models", "lake", "lake_shop_interior.glb")))
 BLEND = arg("--blend", os.path.join(REPO, "art", "shop", "shop_interior.blend"))
 PREVIEW = arg("--preview")
-SAMPLES = int(arg("--samples", "256"))
+SAMPLES = int(arg("--samples", "512"))
 ATL = json.load(open(os.path.join(TEX, "atlas.json"), encoding="utf-8"))
 rng = random.Random(20261116)
 
@@ -692,17 +692,208 @@ def tackle_box(f, w, h, d, key, latch="pl_white"):
         box("atlas", f, sx * w * 0.24 - 0.01, sx * w * 0.24 + 0.01, h, h + 0.015, -0.01, 0.01, key="pl_black")
 
 
-def cooler(f, w, h, d, body="cooler_white", lid="cooler_blue"):
-    """An ice box: rounded-ish body (chamfered with a second box), a coloured lid with a hinge line, side handles, a drain plug."""
-    box("atlas", f, -w / 2, w / 2, 0.0, h * 0.78, -d / 2, d / 2, key=body, skip="D")
-    box("atlas", f, -w / 2 + 0.01, w / 2 - 0.01, h * 0.78, h * 0.8, -d / 2 + 0.01, d / 2 - 0.01, key="pl_grey")
-    box("atlas", f, -w / 2 - 0.005, w / 2 + 0.005, h * 0.8, h * 0.94, -d / 2 - 0.005, d / 2 + 0.005, key=lid)
-    box("atlas", f, -w / 2 + 0.02, w / 2 - 0.02, h * 0.94, h, -d / 2 + 0.02, d / 2 - 0.02, key=lid)
+def rounded_box(fr, x0, x1, y0, y1, z0, z1, r, key, rt=0.0, keys=None, top=True, top_key=None, segs=3, rings=2):
+    """A box with rounded vertical edges (radius r, `segs` per corner) and a rounded top edge (radius rt, `rings` steps), in
+    frame fr; atlas UVs: the straight sides take keys {'F','B','L','R'} (u along the side as seen from outside, v up), the
+    corners and the top's roll the body key, the top cap `top_key` (planar). Open at the bottom. (2026-11-27: the ice boxes
+    and the cartons were plain boxes; rounded corners catch the baked light like real moulded or folded edges.)"""
+    keys = keys or {}
+    cx0, cx1, cz0, cz1 = x0 + r, x1 - r, z0 + r, z1 - r
+    outline = []  # (x, z, tag) clockwise from above, starting at the front's left end
+
+    def arc(cx, cz, a0, a1):
+        for k in range(segs + 1):
+            t = a0 + (a1 - a0) * k / segs
+            outline.append((cx + r * math.cos(t), cz + r * math.sin(t), "c"))
+    outline.append((cx0, z1, "F"))
+    outline.append((cx1, z1, "F"))
+    arc(cx1, cz1, math.pi / 2, 0.0)
+    outline.append((x1, cz1, "R"))
+    outline.append((x1, cz0, "R"))
+    arc(cx1, cz0, 0.0, -math.pi / 2)
+    outline.append((cx1, z0, "B"))
+    outline.append((cx0, z0, "B"))
+    arc(cx0, cz0, -math.pi / 2, -math.pi)
+    outline.append((x0, cz0, "L"))
+    outline.append((x0, cz1, "L"))
+    arc(cx0, cz1, math.pi, math.pi / 2)
+    pts = []
+    for q in outline:
+        if pts and abs(pts[-1][0] - q[0]) + abs(pts[-1][1] - q[1]) < 1e-7:
+            if q[2] != "c":
+                pts[-1] = q   # (a straight run's end wins over the arc's coincident end: it carries the side's tag)
+            continue
+        pts.append(q)
+    if abs(pts[-1][0] - pts[0][0]) + abs(pts[-1][1] - pts[0][1]) < 1e-7:
+        pts.pop()
+    n = len(pts)
+    hs = [(y0, 0.0)]
+    if rt > 0:
+        for k in range(rings + 1):
+            th = (math.pi / 2) * k / rings
+            hs.append((y1 - rt + rt * math.sin(th), rt * (1 - math.cos(th))))
+    else:
+        hs.append((y1, 0.0))
+
+    def at(q, inset):
+        x, z = q[0], q[1]
+        if inset <= 0:
+            return x, z
+        ccx = min(max(x, cx0), cx1)
+        ccz = min(max(z, cz0), cz1)
+        dx, dz = x - ccx, z - ccz
+        L = math.hypot(dx, dz)
+        if L > 1e-9:
+            k = max(0.0, L - inset) / L
+            x, z = ccx + dx * k, ccz + dz * k
+        return x, z
+
+    def u_of(tag, q):
+        if tag == "F":
+            return (q[0] - x0) / (x1 - x0)
+        if tag == "B":
+            return (x1 - q[0]) / (x1 - x0)
+        if tag == "L":
+            return (q[1] - z0) / (z1 - z0)
+        return (z1 - q[1]) / (z1 - z0)
+
+    for i in range(len(hs) - 1):
+        (ya, ia), (yb, ib) = hs[i], hs[i + 1]
+        for k in range(n):
+            q0, q1 = pts[k], pts[(k + 1) % n]
+            a0, a1 = at(q0, ia), at(q1, ia)
+            b0, b1 = at(q0, ib), at(q1, ib)
+            quad = (fr.g(a0[0], ya, a0[1]), fr.g(a1[0], ya, a1[1]), fr.g(b1[0], yb, b1[1]), fr.g(b0[0], yb, b0[1]))
+            tag = q0[2] if (q0[2] == q1[2] and q0[2] != "c") else None
+            kk = keys.get(tag) if tag else None
+            if kk and ib == 0.0:
+                va, vb = (ya - y0) / (y1 - y0), (yb - y0) / (y1 - y0)
+                uvs = [auv(kk, u_of(tag, q0), va), auv(kk, u_of(tag, q1), va), auv(kk, u_of(tag, q1), vb), auv(kk, u_of(tag, q0), vb)]
+            else:
+                uvs = [auv(key, 0.3, 0.3), auv(key, 0.7, 0.3), auv(key, 0.7, 0.7), auv(key, 0.3, 0.7)]
+            face("atlas", quad, uvs, smooth=True)
+    if top:
+        yt, it = hs[-1]
+        tk = top_key or key
+        ring = [at(q, it) for q in pts]
+        face("atlas", [fr.g(x, yt, z) for (x, z) in ring], [auv(tk, (x - x0) / (x1 - x0), (z1 - z) / (z1 - z0)) for (x, z) in ring], smooth=False)
+
+
+def cooler(f, w, h, d, body="cooler_white", lid="cooler_blue", handle=True):
+    """An ice box (아이스박스) as the rental ones are (2026-11-27, was two stacked boxes): a moulded body with rounded corners on
+    four rubber feet, a printed label on its front, a grey seal line, an overhanging rounded lid with a raised crown and two
+    cup rings, a carry handle on the crown, two hinge knuckles at the back, two swing latches with their keepers at the front,
+    moulded grips on both ends and a drain plug with its cap."""
+    hb = h * 0.72
+    sr = min(0.045, d * 0.11)
     for sx in (-1, 1):
-        box("atlas", f, sx * (w / 2) - 0.012 * (1 - sx) / 2 * 2 + (0 if sx > 0 else 0), sx * (w / 2) + 0.012 * (1 + sx) / 2 * 2 - (0.012 if sx > 0 else 0), h * 0.6, h * 0.68, -0.06, 0.06, key="pl_grey")
-    cyl("atlas", f.g(w * 0.35, h * 0.08, d / 2), f.g(w * 0.35, h * 0.08, d / 2 + 0.012), 0.012, sides=8, key="pl_black")
-    # the push-button latch on the lid's front
-    box("atlas", f, -0.03, 0.03, h * 0.82, h * 0.9, d / 2 + 0.004, d / 2 + 0.012, key="pl_white")
+        for sz in (-1, 1):
+            box("atlas", f, sx * (w / 2 - 0.06) - 0.025, sx * (w / 2 - 0.06) + 0.025, 0.0, 0.012, sz * (d / 2 - 0.05) - 0.02, sz * (d / 2 - 0.05) + 0.02,
+                key="rubber", skip="D")
+    rounded_box(f, -w / 2, w / 2, 0.012, hb, -d / 2, d / 2, sr, body, rt=0.008, top=False, segs=3, rings=1)
+    # the printed label on the front, the drain plug and its cap
+    lw, lh = min(0.26, w * 0.42), min(0.1, hb * 0.32)
+    lab = "cooler_label1" if "red" in lid else "cooler_label0"
+    box("atlas", f, -lw / 2, lw / 2, hb * 0.38, hb * 0.38 + lh, d / 2, d / 2 + 0.002, keys={"F": lab}, key=body, skip="BD")
+    cyl("atlas", f.g(w * 0.34, 0.06, d / 2 - 0.002), f.g(w * 0.34, 0.06, d / 2 + 0.012), 0.016, 0.016, 10, "pl_grey", capkey="pl_grey")
+    cyl("atlas", f.g(w * 0.34, 0.06, d / 2 + 0.012), f.g(w * 0.34, 0.06, d / 2 + 0.02), 0.011, 0.011, 8, "pl_black")
+    # the seal line between the body and the lid
+    rounded_box(f, -w / 2 + 0.006, w / 2 - 0.006, hb, hb + 0.012, -d / 2 + 0.006, d / 2 - 0.006, sr - 0.006, "pl_grey", top=False, segs=2)
+    # the lid: overhanging, rounded, a raised crown with two cup rings and the carry handle
+    lt = h - 0.022
+    rounded_box(f, -w / 2 - 0.007, w / 2 + 0.007, hb + 0.012, lt, -d / 2 - 0.007, d / 2 + 0.007, sr + 0.007, lid, rt=0.014, top=True, segs=3, rings=2)
+    rounded_box(f, -w / 2 + 0.05, w / 2 - 0.05, lt - 0.002, h, -d / 2 + 0.05, d / 2 - 0.05, max(0.012, sr - 0.02), lid, rt=0.01, top=True, segs=3, rings=2)
+    for sx in (-1, 1):
+        c = f.g(sx * (w / 2 - 0.12), h, -d * 0.12)
+        cyl("atlas", c, c + f.d(0, 0.0015, 0), 0.036, 0.036, 16, "pl_grey", caps=(False, True), capkey="pl_grey")
+        cyl("atlas", c + f.d(0, 0.0015, 0), c + f.d(0, 0.002, 0), 0.027, 0.027, 16, lid, caps=(False, True), capkey="dark")
+    hx = min(0.12, w * 0.2)
+    if handle:   # (folded down flat when another box stands on it)
+        for sx in (-1, 1):
+            cyl("atlas", f.g(sx * hx, h - 0.004, d * 0.18), f.g(sx * hx, h + 0.03, d * 0.18), 0.012, 0.011, 8, "pl_grey")
+        cyl("atlas", f.g(-hx - 0.012, h + 0.034, d * 0.18), f.g(hx + 0.012, h + 0.034, d * 0.18), 0.013, 0.013, 10, "pl_grey", capkey="pl_grey")
+    else:
+        cyl("atlas", f.g(-hx, h + 0.006, d * 0.3), f.g(hx, h + 0.006, d * 0.3), 0.006, 0.006, 8, "pl_grey", capkey="pl_grey")
+    # hinge knuckles at the back, swing latches and keepers at the front
+    for sx in (-1, 1):
+        a = f.g(sx * w * 0.3 - 0.04, hb + 0.012, -d / 2 - 0.012)
+        cyl("atlas", a, a + f.d(0.08, 0, 0), 0.01, 0.01, 8, "pl_grey", capkey="pl_grey")
+        lx = sx * w * 0.3
+        box("atlas", f, lx - 0.026, lx + 0.026, hb - 0.05, hb + 0.034, d / 2 + 0.008, d / 2 + 0.02, key="pl_white")
+        box("atlas", f, lx - 0.02, lx + 0.02, hb - 0.058, hb - 0.046, d / 2 + 0.004, d / 2 + 0.024, key="pl_grey", skip="D")
+        cyl("atlas", f.g(lx - 0.028, hb + 0.022, d / 2 + 0.014), f.g(lx + 0.028, hb + 0.022, d / 2 + 0.014), 0.006, 0.006, 6, "pl_grey")
+    # moulded grips on the ends: a bar on two stand-offs, under the lid line
+    for sx in (-1, 1):
+        x = sx * (w / 2 + 0.024)
+        for sz in (-1, 1):
+            cyl("atlas", f.g(sx * w / 2, hb * 0.8, sz * 0.055), f.g(x, hb * 0.8, sz * 0.055), 0.01, 0.01, 6, "pl_grey", caps=(False, True))
+        cyl("atlas", f.g(x, hb * 0.8, -0.07), f.g(x, hb * 0.8, 0.07), 0.012, 0.012, 8, "pl_grey", capkey="pl_grey")
+
+
+def carton(f, w, h, d, print_key="carton_side0", back_key=None, tape=True):
+    """A shipping carton (골판지 박스), closed and taped (2026-11-27, was a plain box): folded edges (a small radius), printed long
+    sides and 'this way up' ends, the two top flaps meeting in a seam and rising a little at it, packing tape over the seam and
+    down both ends. Local: x -w/2..w/2 (the long side), y 0..h, front (+z) printed."""
+    rounded_box(f, -w / 2, w / 2, 0.0, h, -d / 2, d / 2, 0.006, "carton_top", rt=0.004,
+                keys={"F": print_key, "B": back_key or print_key, "L": "carton_end", "R": "carton_end"}, top=False, segs=2, rings=1)
+    rise = 0.005
+    e = 0.004
+    # the two outer flaps (front half, back half), rising to the seam
+    face("atlas", [f.g(-w / 2 + e, h, d / 2 - e), f.g(w / 2 - e, h, d / 2 - e), f.g(w / 2 - e, h + rise, 0.0015), f.g(-w / 2 + e, h + rise, 0.0015)],
+         [auv("carton_top", 0, 0), auv("carton_top", 1, 0), auv("carton_top", 1, 0.5), auv("carton_top", 0, 0.5)])
+    face("atlas", [f.g(-w / 2 + e, h + rise, -0.0015), f.g(w / 2 - e, h + rise, -0.0015), f.g(w / 2 - e, h, -d / 2 + e), f.g(-w / 2 + e, h, -d / 2 + e)],
+         [auv("carton_top", 0, 0.5), auv("carton_top", 1, 0.5), auv("carton_top", 1, 1), auv("carton_top", 0, 1)])
+    # the seam's dark gap between the flaps
+    face("atlas", [f.g(-w / 2 + e, h + rise - 0.0006, 0.0015), f.g(w / 2 - e, h + rise - 0.0006, 0.0015), f.g(w / 2 - e, h + rise - 0.0006, -0.0015),
+                   f.g(-w / 2 + e, h + rise - 0.0006, -0.0015)], [auv("dark", 0.5, 0.5)] * 4)
+    if tape:
+        tw = 0.024
+        yt = h + rise + 0.0008
+        for (za, zb, ya, yb, va, vb) in ((tw, 0.0, yt - 0.003 * (tw / (d / 2)), yt, 0.0, 0.5), (0.0, -tw, yt, yt - 0.003 * (tw / (d / 2)), 0.5, 1.0)):
+            face("atlas", [f.g(-w / 2 - 0.0012, ya, za), f.g(w / 2 + 0.0012, ya, za), f.g(w / 2 + 0.0012, yb, zb), f.g(-w / 2 - 0.0012, yb, zb)],
+                 [auv("tape", 0, va), auv("tape", 1, va), auv("tape", 1, vb), auv("tape", 0, vb)])
+        for sx in (-1, 1):
+            x = sx * (w / 2 + 0.0012)
+            q = [f.g(x, h - 0.075, -tw * sx), f.g(x, h - 0.075, tw * sx), f.g(x, yt, tw * sx), f.g(x, yt, -tw * sx)]
+            face("atlas", q, [auv("tape", 0, 0), auv("tape", 1, 0), auv("tape", 1, 1), auv("tape", 0, 1)])
+
+
+def carton_open(f, w, h, d, print_key, bag_keys):
+    """An opened carton of bait bags (stock waiting for the shelves): kraft walls with a 4 mm board edge, the four flaps folded
+    out and down at an angle, the bags standing inside."""
+    t = 0.004
+    rounded_box(f, -w / 2, w / 2, 0.0, h, -d / 2, d / 2, 0.005, "carton_top", keys={"F": print_key, "B": print_key, "L": "carton_end", "R": "carton_end"},
+                top=False, segs=2)
+    # the inside walls (kraft, facing in) and the floor
+    for (a, b_) in (((-w / 2 + t, d / 2 - t), (w / 2 - t, d / 2 - t)), ((w / 2 - t, -d / 2 + t), (-w / 2 + t, -d / 2 + t)),
+                    ((-w / 2 + t, -d / 2 + t), (-w / 2 + t, d / 2 - t)), ((w / 2 - t, d / 2 - t), (w / 2 - t, -d / 2 + t))):
+        q = [f.g(b_[0], 0.01, b_[1]), f.g(a[0], 0.01, a[1]), f.g(a[0], h, a[1]), f.g(b_[0], h, b_[1])]
+        face("atlas", q, [auv("kraft_in", 0, 0), auv("kraft_in", 1, 0), auv("kraft_in", 1, 1), auv("kraft_in", 0, 1)])
+    face("atlas", [f.g(-w / 2 + t, 0.01, d / 2 - t), f.g(w / 2 - t, 0.01, d / 2 - t), f.g(w / 2 - t, 0.01, -d / 2 + t), f.g(-w / 2 + t, 0.01, -d / 2 + t)],
+         [auv("kraft_in", 0, 0), auv("kraft_in", 1, 0), auv("kraft_in", 1, 1), auv("kraft_in", 0, 1)])
+    # the board's cut edge on the rim
+    for (a, b_) in (((-w / 2, d / 2), (w / 2, d / 2)), ((w / 2, -d / 2), (-w / 2, -d / 2)), ((-w / 2, -d / 2), (-w / 2, d / 2)), ((w / 2, d / 2), (w / 2, -d / 2))):
+        nx, nz = (b_[1] - a[1]), -(b_[0] - a[0])
+        L = math.hypot(nx, nz)
+        nx, nz = nx / L * t, nz / L * t
+        face("atlas", [f.g(a[0] - nx, h, a[1] - nz), f.g(b_[0] - nx, h, b_[1] - nz), f.g(b_[0], h, b_[1]), f.g(a[0], h, a[1])], [auv("kraft_in", 0.5, 0.5)] * 4)
+    # the flaps: hinged on the rim, folded out and down (~35 degrees below the horizon); both faces kraft
+    out = math.radians(35)
+    for (p0, p1, nrm, L) in (((-w / 2, d / 2), (w / 2, d / 2), (0, 1), d / 2), ((w / 2, -d / 2), (-w / 2, -d / 2), (0, -1), d / 2),
+                             ((-w / 2, -d / 2), (-w / 2, d / 2), (-1, 0), w * 0.32), ((w / 2, d / 2), (w / 2, -d / 2), (1, 0), w * 0.32)):
+        L = min(L, 0.2)
+        dx, dz = nrm[0] * math.cos(out) * L, nrm[1] * math.cos(out) * L
+        dy = -math.sin(out) * L
+        q = [f.g(p0[0], h, p0[1]), f.g(p1[0], h, p1[1]), f.g(p1[0] + dx, h + dy, p1[1] + dz), f.g(p0[0] + dx, h + dy, p0[1] + dz)]
+        uv = [auv("kraft_in", 0, 0), auv("kraft_in", 1, 0), auv("kraft_in", 1, 1), auv("kraft_in", 0, 1)]
+        face("atlas", list(reversed(q)), list(reversed(uv)))      # the flap's inside, now on top
+        face("atlas", [p - Vector((0.0, 0.003, 0.0)) for p in q], [auv("carton_top", 0, 0), auv("carton_top", 1, 0), auv("carton_top", 1, 0.6), auv("carton_top", 0, 0.6)])
+    # the bags standing in it
+    nb = max(2, int(w / 0.11))
+    for k in range(nb):
+        x = -w / 2 + 0.06 + k * (w - 0.12) / max(1, nb - 1)
+        p = f.sub(x, 0.01, rng.uniform(-0.03, 0.03), yaw=rng.uniform(-0.2, 0.2), pitch=rng.uniform(-0.18, 0.05))
+        pillow(p, 0.12, h + 0.04, 0.03, rng.choice(bag_keys), back="pl_white", nu=3, nv=4)
 
 
 def bin_with_bags(f, w, h, d, keys):
@@ -726,9 +917,8 @@ def build_cabinet():
     bin_with_bags(Fr(100.93, FY + 0.2, ZB + 0.2), 1.5, 0.16, 0.3, keys)
     f = W0
     box("wood", f, 101.9, 103.22, FY, 0.62, ZB, ZB + 0.3)
-    box("atlas", f, 101.95, 102.5, 0.62, 0.84, ZB + 0.04, ZB + 0.28, key="cardboard")
-    box("atlas", f, 102.55, 103.15, 0.62, 0.78, ZB + 0.05, ZB + 0.27, key="cardboard")
-    box("atlas", f, 102.55, 103.15, 0.78, 0.782, ZB + 0.14, ZB + 0.18, key="pl_clear")
+    carton(Fr(102.225, 0.62, ZB + 0.16, 0.0), 0.55, 0.22, 0.24, "carton_side2")
+    carton(Fr(102.85, 0.62, ZB + 0.16, 0.0), 0.6, 0.16, 0.22, "carton_side1")
     # left of the shopkeeper: two crates of bags, a tackle-box pile
     bin_with_bags(Fr(100.75, FY, -22.05, 0.12), 0.62, 0.3, 0.42, keys)
     bin_with_bags(Fr(100.78, FY + 0.3, -22.08, 0.05), 0.62, 0.28, 0.42, keys)
@@ -736,14 +926,15 @@ def build_cabinet():
     tackle_box(Fr(100.62, FY + 0.2, -21.35, -0.2), 0.36, 0.15, 0.24, "pl_pink")
     tackle_box(Fr(100.65, FY + 0.35, -21.33, -0.3), 0.3, 0.12, 0.2, "pl_clear", latch="pl_orange")
     # middle: a pallet of bait cartons and an open carton of bags (stock waiting for the shelves)
-    for (x, z, w, h, d, yaw) in ((102.35, -23.35, 0.5, 0.3, 0.36, 0.05), (102.95, -23.3, 0.46, 0.3, 0.34, -0.08), (102.6, -23.32, 0.48, 0.28, 0.34, 0.15)):
-        yb = FY if h == 0.3 else FY + 0.3
+    for k, (x, z, w, h, d, yaw) in enumerate(((102.35, -23.35, 0.5, 0.3, 0.36, 0.05), (102.95, -23.3, 0.46, 0.3, 0.34, -0.08), (102.6, -23.32, 0.48, 0.28, 0.34, 0.15))):
+        yb = FY if h == 0.3 else FY + 0.3 + 0.005
         c = Fr(x, yb, z, yaw)
-        box("atlas", c, -w / 2, w / 2, 0.0, h, -d / 2, d / 2, key="cardboard", skip="D")
-        box("atlas", c, -w / 2 - 0.002, w / 2 + 0.002, h * 0.45, h * 0.55, -d / 2 - 0.002, d / 2 + 0.002, key="pl_clear", skip="UD")
-        box("atlas", c, -0.12, 0.12, h * 0.3, h * 0.7, d / 2 + 0.002, d / 2 + 0.004, key=f"bait{rng.randrange(8)}")
+        if k == 2:
+            carton_open(c, w, h, d, "carton_side0", keys)
+        else:
+            carton(c, w, h, d, f"carton_side{k % 2}")
     # right: coolers for rent with a tag, a bundle of rod stands (받침틀) in a bucket
-    cooler(Fr(103.75, FY, -22.05, -0.1), 0.62, 0.42, 0.4, "cooler_white", "cooler_blue")
+    cooler(Fr(103.75, FY, -22.05, -0.1), 0.62, 0.42, 0.4, "cooler_white", "cooler_blue", handle=False)
     cooler(Fr(103.78, FY + 0.42, -22.05, 0.05), 0.5, 0.36, 0.34, "cooler_white", "cooler_red")
     box("atlas", Fr(103.78, FY + 0.78, -22.05, 0.05), -0.08, 0.08, 0.0, 0.002, -0.05, 0.05, key="paper")
     cyl("atlas", (104.55, FY, -21.75), (104.55, FY + 0.32, -21.75), 0.15, 0.17, 14, "pl_blue", caps=(True, False))
@@ -923,9 +1114,9 @@ def build_west():
     frame_photo(Fr(X0 + 0.01, 2.0, -20.9, math.pi / 2), 0.4, 0.32, "photo")
     box("atlas", Fr(X0 + 0.01, 0, 0, math.pi / 2), 20.95 - 0.08, 20.95 + 0.08, 2.24, 2.27, 0, 0.004, key="paper")
     # coolers under the side window
-    cooler(Fr(X0 + 0.32, FY, -22.75, math.pi / 2), 0.62, 0.42, 0.4, "cooler_white", "cooler_blue")
+    cooler(Fr(X0 + 0.32, FY, -22.75, math.pi / 2), 0.62, 0.42, 0.4, "cooler_white", "cooler_blue", handle=False)
     cooler(Fr(X0 + 0.32, FY + 0.42, -22.72, math.pi / 2 + 0.06), 0.46, 0.32, 0.32, "cooler_white", "cooler_red")
-    cooler(Fr(X0 + 0.3, FY, -22.05, math.pi / 2), 0.5, 0.36, 0.36, "cooler_blue", "cooler_white")
+    cooler(Fr(X0 + 0.3, FY, -22.05, math.pi / 2), 0.5, 0.36, 0.36, "cooler_blue", "cooler_white", handle=False)
     tackle_box(Fr(X0 + 0.3, FY + 0.36, -22.05, math.pi / 2 - 0.08), 0.34, 0.14, 0.22, "pl_orange", latch="pl_black")
     box("atlas", Fr(X0 + 0.01, 0, 0, math.pi / 2), 22.4 - 0.12, 22.4 + 0.12, 1.35, 1.5, 0, 0.004, key="paper")
     # folding chairs and closed parasols in the corner by the rod rack
@@ -1202,9 +1393,8 @@ def build_density():
     bin_with_bags(Fr(98.62, FY, -20.55, math.pi / 2), 0.55, 0.3, 0.4, keys)
     bin_with_bags(Fr(98.62, FY + 0.3, -20.52, math.pi / 2 + 0.05), 0.55, 0.26, 0.4, keys)
     for (x, z, w, h, d, yaw, y0) in ((99.3, -20.05, 0.5, 0.32, 0.38, 0.04, FY), (99.32, -20.05, 0.46, 0.28, 0.34, -0.06, FY + 0.32), (99.75, -20.25, 0.32, 0.22, 0.3, 0.3, FY)):
-        c = Fr(x, y0, z, yaw)
-        box("atlas", c, -w / 2, w / 2, 0.0, h, -d / 2, d / 2, key="cardboard", skip="D")
-        box("atlas", c, -0.1, 0.1, h * 0.3, h * 0.7, -d / 2 - 0.002, -d / 2, key=f"bait{rng.randrange(8)}")
+        c = Fr(x, y0 + (0.005 if y0 > FY else 0.0), z, yaw + math.pi)   # (their printed sides toward the room)
+        carton(c, w, h, d, f"carton_side{int(x * 10) % 3}")
     bin_with_bags(Fr(103.72, FY, ZB + 0.32), 0.8, 0.22, 0.4, keys)
     bin_with_bags(Fr(105.45, FY, -20.55, -math.pi / 2), 0.5, 0.26, 0.38, keys)
     # --- the counter's front (toward the shopkeeper): clip strips on its lip, a price sheet; a hook-pack stand on the top
@@ -1358,6 +1548,32 @@ def bake(objs):
     sc.render.bake.use_pass_color = False
     sc.cycles.max_bounces = 4
     bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT"}, target="VERTEX_COLORS")
+    # 2026-11-27 (round 2, owner: "천장과 벽이 얼룩덜룩"): the shell's light lives on a 15 cm vertex grid and every vertex is its
+    # own Monte Carlo estimate, so the plaster and the ceiling tiles came out mottled (blotches of +-15 %). More samples (512 by
+    # default, was 256) and a few passes of neighbour averaging over the shell's own grid (edges only: the props' contact
+    # shadows on the floor stay, the floor is smoothed least) leave the soft gradients of the tubes and the windows, clean.
+    import numpy as np
+    for k, passes in (("ceiling", 6), ("wall", 6), ("wainscot", 4), ("floor", 2)):
+        if k not in objs:
+            continue
+        me = objs[k].data
+        a = me.color_attributes["Light"]
+        col = np.zeros(len(a.data) * 4, np.float32)
+        a.data.foreach_get("color", col)
+        col = col.reshape(-1, 4)
+        ev = np.zeros(len(me.edges) * 2, np.int64)
+        me.edges.foreach_get("vertices", ev)
+        ev = ev.reshape(-1, 2)
+        for _ in range(passes):
+            acc = col[:, :3].copy()
+            cnt = np.ones(len(col), np.float32)
+            np.add.at(acc, ev[:, 0], col[ev[:, 1], :3])
+            np.add.at(acc, ev[:, 1], col[ev[:, 0], :3])
+            np.add.at(cnt, ev[:, 0], 1.0)
+            np.add.at(cnt, ev[:, 1], 1.0)
+            col[:, :3] = acc / cnt[:, None]
+        a.data.foreach_set("color", col.ravel())
+        print("smoothed", k, passes, "passes over", len(ev), "edges")
     # exposure: the cream plaster's median irradiance -> 0.33 (x 2 in the game = 0.66 of the albedo; the window glass of the
     # office adds its own veil, measured in the game 2026-11-17)
     import numpy as np

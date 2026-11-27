@@ -63,10 +63,8 @@ export function SceneWarmUp({ emoji = false }: { emoji?: boolean }) {
       stopIdle = whenIdle(() => {
         const chain = activePostChain();
         void warmScene(gl, scene, camera, chain?.target ?? null);
-        // the rich tier draws the labels in a pass of their own, to the screen (postChain.ts renderLabels)
-        if (chain) void chain.warmLabels(gl, camera);
       });
-      if (emoji) stopEmoji = prewarmEmojiTextures(gl);
+      if (emoji) stopEmoji = prewarmEmojiTextures();
     });
     return () => {
       cancelAnimationFrame(id);

@@ -553,6 +553,31 @@ const LAMP_FRAG = /* glsl */ `#include <lights_fragment_end>
   reflectedLight.directSpecular += rSpec;
 }`;
 
+/**
+ * A flower's petals (`LM_*_petal`, church_room_kit.py): a thin white bloom is lit through as well as on — the candle and the chancel spot
+ * stand above the altar flowers and the pews see their undersides, so lit only by the lamps and the room's low fill (a lightmapped
+ * room keeps 30 % of it) the petals read grey (owner 2026-11-27 "교회 제대 꽃이 회색"). This share of the petal's own colour (albedo x
+ * vertex colour, linear) is added as a warm candlelit glow: white and cream again, the hydrangeas' cool tint kept. No extra lamp, no texture.
+ */
+export const PETAL_FILL: readonly [number, number, number] = [0.55, 0.48, 0.38];
+
+export function patchPetalFill(m: MeshStandardMaterial): void {
+  if (m.userData.petalFill) return;
+  m.userData.petalFill = true;
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = (shader, r) => {
+    prev?.call(m, shader, r);
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <emissivemap_fragment>",
+      `#include <emissivemap_fragment>
+totalEmissiveRadiance += diffuseColor.rgb * vec3( ${PETAL_FILL.map((v) => v.toFixed(3)).join(", ")} );`,
+    );
+  };
+  const key = m.customProgramCacheKey.bind(m);
+  m.customProgramCacheKey = () => `${key()}|petal`;
+  m.needsUpdate = true;
+}
+
 /** A room material lit by its lamps too (once per material; the program key carries the lamp count). */
 function patchRoomLamps(m: MeshStandardMaterial, lamps: RoomLamps): void {
   const n = lamps.base.length;
@@ -753,6 +778,7 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
           sm.envMap = roomEnv(gl);
           sm.envMapIntensity = /_metal$/.test(src.name) ? 0.9 : 0.6;
         }
+        if (/_petal$/.test(src.name)) patchPetalFill(sm);
         if (baked && lm) {
           sm.lightMap = lm.day;
           sm.lightMapIntensity = lm.scale * LIGHTMAP_GAIN;

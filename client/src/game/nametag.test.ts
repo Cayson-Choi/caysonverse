@@ -20,7 +20,7 @@ import {
   NAMETAG_MIN_FONT_PX,
   type Nametag,
 } from "./nametag";
-import { LABEL_LAYER, LABEL_SNAP, RASTERS_PER_FRAME } from "./spriteCanvas";
+import { LABEL_LAYER, LABEL_SNAP, RASTERS_PER_FRAME, labelInfo } from "./spriteCanvas";
 
 // ── a recording canvas: the module only needs getContext("2d") ──────────────
 
@@ -215,13 +215,7 @@ describe("rasterized looks", () => {
     expect(material.toneMapped).toBe(false);
     expect(material.fog).toBe(false);
     expect(tag.sprite.layers.mask).toBe(1 << LABEL_LAYER);
-    const shader = {
-      uniforms: {} as Record<string, { value: unknown }>,
-      vertexShader: "",
-      fragmentShader: "void main() {\n#include <map_fragment>\n}",
-    };
-    material.onBeforeCompile(shader as never, null as never);
-    expect(shader.uniforms.uSnap!.value).toBe(LABEL_SNAP);
+    expect(labelInfo(tag.sprite).snap).toBe(LABEL_SNAP);
     tag.dispose();
   });
 });

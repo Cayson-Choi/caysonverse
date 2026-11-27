@@ -17,7 +17,7 @@
  * is off. BUBBLE_BASE_HEIGHT is only the fallback for a call without an anchor.
  *
  * Size: every frame the bubble is told how tall its text is on screen in device pixels (its view depth,
- * the camera's field of view, the canvas's height and the renderer's pixel ratio), and re-rasterizes
+ * the camera's field of view, the canvas's height and the device's pixel ratio: labelPixelRatio), and re-rasterizes
  * when that whole-pixel size changed enough (bubbleSprite.ts, fix/crisp-labels): it is drawn one texel
  * per screen pixel. A new bubble is rasterized at that size straight away.
  *
@@ -27,6 +27,7 @@
  * run in the same frame, in registration order.
  */
 
+import { labelPixelRatio } from "./labelOverlay";
 import { useEffect, useRef, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { Group, PerspectiveCamera } from "three";
@@ -88,7 +89,7 @@ export function useSpeechBubble(
     const bottomY = anchor?.y ?? BUBBLE_BASE_HEIGHT;
     const camera = state.camera as PerspectiveCamera;
     const px = camera.isPerspectiveCamera
-      ? bubbleDevicePx(group, bottomY, camera, state.size.height, state.gl.getPixelRatio())
+      ? bubbleDevicePx(group, bottomY, camera, state.size.height, labelPixelRatio())
       : undefined;
     // (Re)build only when the active message actually changed.
     if (!s.bubble || s.seq !== entry.seq) {
