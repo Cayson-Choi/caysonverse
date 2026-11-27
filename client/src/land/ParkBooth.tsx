@@ -103,6 +103,89 @@ function addCandyFloss(matte: GeoBuilder, x: number, baseY: number, z: number, t
   matte.smoothNormals(bottom);
 }
 
+/**
+ * The booth's back (#13 exteriors round 2, owner 2026-11-27 "매표소 뒷면": a plain white wall): the staff's way in and a little window,
+ * as a real kiosk's back has them. A ledged-and-braced plank door painted in the awning's colour in a timber frame, black iron T-hinges,
+ * a ring latch and a stone step; a four-light window in a timber frame on a stone sill, with louvred shutters folded back. All stands
+ * proud of the back wall (nothing is cut), within 0.3 m of it.
+ */
+export const BOOTH_BACK = Object.freeze({ doorW: 0.8, doorTop: 2.42, winW: 0.64, winY0: 1.32, winY1: 2.06 });
+function addBack(stone: GeoBuilder, wood: GeoBuilder, goods: GeoBuilder, s: BoothSpec) {
+  const { x, z, w, d } = s;
+  const zb = z - d / 2; // the back wall's outer face (it looks along -z)
+  const floor = 0.37; // the plinth's cap
+  const B = BOOTH_BACK;
+  const timber: V3 = [0.4, 0.26, 0.16];
+  const paint: V3 = s.stripes[0].map((c) => 0.25 + c * 0.75) as V3;
+  const iron: V3 = [0.1, 0.1, 0.11];
+  // ── the door
+  const dx = x - w * 0.18;
+  const hw = B.doorW / 2;
+  for (const sx of [-1, 1]) wood.box([dx + sx * (hw + 0.045), (floor + B.doorTop + 0.1) / 2, zb - 0.035], X, Y, 0.045, (B.doorTop + 0.1 - floor) / 2, 0.035, timber, 1);
+  wood.box([dx, B.doorTop + 0.05, zb - 0.04], X, Y, hw + 0.13, 0.05, 0.04, timber, 1);
+  wood.box([dx, B.doorTop + 0.12, zb - 0.06], X, Y, hw + 0.17, 0.025, 0.06, timber, 1); // the drip cap over the head
+  const boards = 5;
+  for (let i = 0; i < boards; i++) {
+    const bw = B.doorW / boards;
+    const bx = dx - hw + bw * (i + 0.5);
+    const tone = 0.94 + 0.06 * Math.sin(i * 2.3);
+    wood.box([bx, (floor + B.doorTop) / 2, zb - 0.016], X, Y, bw / 2 - 0.0012, (B.doorTop - floor) / 2, 0.016, paint.map((c) => c * tone) as V3, 1);
+  }
+  const ledges = [floor + 0.28, (floor + B.doorTop) / 2, B.doorTop - 0.24];
+  for (const ly of ledges) wood.box([dx, ly, zb - 0.044], X, Y, hw - 0.03, 0.055, 0.013, paint, 1);
+  for (let i = 0; i + 1 < ledges.length; i++) {
+    // the brace climbs from the hinge side's lower ledge to the latch side's upper one
+    const a: V3 = [dx - hw + 0.1, ledges[i]! + 0.04, zb - 0.044];
+    const b: V3 = [dx + hw - 0.1, ledges[i + 1]! - 0.04, zb - 0.044];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const ax: V3 = [(b[0] - a[0]) / len, (b[1] - a[1]) / len, 0];
+    const ay: V3 = [-ax[1], ax[0], 0];
+    wood.box([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, a[2]], ax, ay, len / 2, 0.045, 0.012, paint, 1);
+  }
+  // black iron T-hinges on the ledges' hinge ends, the ring latch on the other side
+  for (const ly of [ledges[0]!, ledges[2]!]) {
+    goods.box([dx - hw + 0.22, ly, zb - 0.06], X, Y, 0.22, 0.018, 0.004, iron);
+    goods.box([dx - hw - 0.02, ly, zb - 0.06], X, Y, 0.012, 0.09, 0.004, iron);
+    goods.cylinder([dx - hw + 0.44, ly, zb - 0.058], [dx - hw + 0.44, ly, zb - 0.066], 0.02, 0.02, 8, iron, true);
+  }
+  const lx = dx + hw - 0.12;
+  const ly = 1.15;
+  goods.cylinder([lx, ly, zb - 0.032], [lx, ly, zb - 0.05], 0.035, 0.035, 10, iron, true);
+  const ring: V3[] = [];
+  for (let i = 0; i <= 14; i++) {
+    const a = (i / 14) * Math.PI * 2;
+    ring.push([lx + Math.sin(a) * 0.045, ly - 0.045 + Math.cos(a) * 0.045, zb - 0.058]);
+  }
+  goods.tube(ring, 0.007, 5, iron);
+  // the stone step
+  stone.box([dx, 0.07, zb - 0.27], X, Y, hw + 0.16, 0.07, 0.13, [0.86, 0.84, 0.8], 1);
+  // ── the window
+  const wx = x + w * 0.22;
+  const hwin = B.winW / 2;
+  const wy = (B.winY0 + B.winY1) / 2;
+  const hh = (B.winY1 - B.winY0) / 2;
+  goods.box([wx, wy, zb - 0.008], X, Y, hwin, hh, 0.006, [0.1, 0.12, 0.14]);
+  for (const sx of [-1, 1]) wood.box([wx + sx * (hwin + 0.035), wy, zb - 0.03], X, Y, 0.035, hh + 0.07, 0.03, timber, 1);
+  wood.box([wx, B.winY1 + 0.035, zb - 0.03], X, Y, hwin + 0.07, 0.035, 0.03, timber, 1);
+  wood.box([wx, B.winY0 - 0.02, zb - 0.03], X, Y, hwin + 0.07, 0.02, 0.03, timber, 1);
+  wood.box([wx, wy, zb - 0.022], X, Y, 0.015, hh, 0.012, timber, 1);
+  wood.box([wx, wy, zb - 0.022], X, Y, hwin, 0.015, 0.012, timber, 1);
+  stone.box([wx, B.winY0 - 0.075, zb - 0.07], X, Y, hwin + 0.13, 0.035, 0.07, [0.9, 0.88, 0.84], 1);
+  // the louvred shutters, folded back flat against the wall either side
+  const sw = hwin + 0.02;
+  for (const sx of [-1, 1]) {
+    const cx = wx + sx * (hwin + 0.07 + sw / 2 + 0.01);
+    for (const ex of [-1, 1]) wood.box([cx + ex * (sw / 2 - 0.025), wy, zb - 0.018], X, Y, 0.025, hh + 0.07, 0.018, paint, 1);
+    for (const ey of [-1, 1]) wood.box([cx, wy + ey * (hh + 0.045), zb - 0.018], X, Y, sw / 2 - 0.05, 0.025, 0.018, paint, 1);
+    const slats = 7;
+    for (let i = 0; i < slats; i++) {
+      const sy = wy - hh + 0.03 + ((2 * hh - 0.06) * (i + 0.5)) / slats;
+      wood.box([cx, sy, zb - 0.02], X, norm([0, 1, -0.7]), sw / 2 - 0.05, 0.05, 0.004, paint.map((c) => c * 0.92) as V3, 1);
+    }
+    goods.box([cx - sx * (sw / 2 - 0.02), wy, zb - 0.04], X, Y, 0.008, 0.02, 0.008, iron); // the shutter dog
+  }
+}
+
 /** The booth's parts as merged geometry per material (the goods and the awning stand out of the plaster). */
 export function buildBooth(s: BoothSpec) {
   const stone = new GeoBuilder();
@@ -193,6 +276,7 @@ export function buildBooth(s: BoothSpec) {
     wood.box([x + 0.12, counterTop + 0.083, counterZ + 0.104], X, Y, 0.23, 0.058, 0.009, [0.58, 0.41, 0.25], 0.65);
     goods.cylinder([x + 0.12, counterTop + 0.085, counterZ + 0.11], [x + 0.12, counterTop + 0.085, counterZ + 0.14], 0.012, 0.018, 8, brass, true);
   }
+  addBack(stone, wood, goods, s);
   addAwning(cloth, goods, x, z + hz, ww + 0.6, s.stripes);
   // a tiled hip roof with a deep overhang, a ridge cap, fascia and a finial
   const over = 0.55;
