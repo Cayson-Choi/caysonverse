@@ -34,8 +34,11 @@ OAK_LT = S("LM_church_oak", G.hexc("D6B78C"))
 BLUE = S("LM_church_plaster", G.hexc("4F6F9E"))                    # cushions, the pulpit fall, the runner (plaster scan's fine grain)
 LINEN = S("LM_church_plaster", G.hexc("FFFDF8"))
 LEAF = S("LM_church_plaster", G.hexc("6F9E58"))
-PET_W = S("LM_church_plaster", G.hexc("FFFFFF"))
-PET_HY = S("LM_church_plaster", G.hexc("E9EEF8"))
+# the petals: their own material (the same plaster set, smooth) so the game gives them the translucent fill of a white bloom
+# (LotRoom.tsx `_petal`): lit only from the front they read grey from the pews — the candle and the chancel spot are above
+# them and the pews see their undersides (2026-11-27 round 2, owner: "교회 제대 꽃이 회색으로 보여")
+PET_W = S("LM_church_petal", G.hexc("FFFFFF"))
+PET_HY = S("LM_church_petal", G.hexc("EEF2FA"))
 WAX = S("LM_church_plaster", G.hexc("FFF8EC"))
 BRASS = S("LM_church_brass", G.hexc("E9B85E"))
 IRON = S("LM_church_brass", G.hexc("3B3B3E"))
@@ -49,6 +52,7 @@ MATS = {
     "LM_church_floor": {"set": "floor_wood", "rough": 0.75},
     "LM_church_oak": {"set": "wood_oak", "rough": 0.8},
     "LM_church_plaster": {"set": "plaster_painted"},
+    "LM_church_petal": {"set": "plaster_painted", "rough": 0.6},
     "LM_church_brass": {"set": "aluminium_brushed", "rough": 0.42},   # polished brass: a bright dielectric (gold without an environment map)
     "M_glass": {"glass": True},
     "M_screen": {"screen": True},
@@ -328,7 +332,9 @@ def chancel(kit, sol):
                  (0.02, 0.22), (0.032, 0.235), (0.05, 0.255), (0.052, 0.268), (0.02, 0.272), (0.0, 0.272)], 16, BRASS, x, 9.75, 1.15)
         F.candle(D, x, 1.422, 9.75, 0.019, 0.3, WAX)
         R2.candle_flame(fire, x, 1.732, 9.75, 0.045, 0.011, seed=int(x * 10))
-    bouquet(Gd, 3.9, 1.15, 9.75, 0.35)
+    # (the phone's file has no small goods; the altar's flowers go in its furniture there, at the phone's petal detail: 2026-11-27,
+    # without them the phone's altar was two candles and a book)
+    bouquet(D if PHONE else Gd, 3.9, 1.15, 9.75, 0.35)
     D.cbox(3.62, 4.18, 1.15, 1.2, 9.48, 9.62, S("LM_church_plaster", G.hexc("2F3E5E")), c=0.008)   # a closed book (blue cloth)
     # an oak reredos behind the table: a panelled dado with three pointed arches and a moulded cresting, a soft blue
     # arched panel above it framing the cross
@@ -407,35 +413,49 @@ def pulpit(kit, x, z):
 
 
 def bouquet(m, x, y, z, h):
-    """White altar flowers in a low porcelain vase: open lilies, white roses, two lily buds, baby's breath and glossy
-    leaves (flora.py: every bloom built from its petals)."""
+    """White altar flowers in a low porcelain vase (flora.py: every bloom built from its petals). 2026-11-27 round 2: a florist's
+    low dome — eleven white roses packed over the vase's mouth, three open casablanca lilies rising out of it toward the pews,
+    two lily buds, a collar of glossy ruscus leaves and baby's breath — at the PC's full petal detail (it is the room's focal
+    point; the phone file has no small goods). Was: nine coarse roses (LOD 0.6) and three lilies on long bare stems, sparse."""
     k0 = len(m.polys)
     m.lathe([(0.05, 0.0), (0.06, 0.01), (0.075, 0.05), (0.07, 0.11), (0.05, 0.16), (0.058, 0.19), (0.062, 0.2), (0.0, 0.2)], 20, LINEN, x, z, y)
     F.flat_from(m, k0)
-    lod0, G.LOD = G.LOD, min(G.LOD, 0.6)   # (on the altar, seen from the pews: fewer sections per petal)
+    lod0, G.LOD = G.LOD, (0.45 if PHONE else G.LOD)
     rg = G.rng(int(x * 31 + z))
     top = y + 0.19
     green = LEAF.t(G.hexc("3F6E35"))
-    # (a full, low dome of blooms over the vase's lip: on the first pass the stems stood tall and the heads read as sparse dots)
-    blooms = [("lily", -0.11, 0.14, 0.02, 0.4), ("lily", 0.1, 0.16, -0.02, -0.6), ("lily", 0.0, 0.22, 0.03, 2.0),
-              ("rose", -0.05, 0.1, -0.06, 0.0), ("rose", 0.05, 0.09, 0.06, 0.0), ("rose", 0.14, 0.07, 0.02, 0.0), ("rose", -0.15, 0.07, -0.02, 0.0),
-              ("rose", 0.03, 0.12, -0.08, 0.0), ("rose", -0.04, 0.11, 0.08, 0.0)]
-    for kind, dx, dy, dz, tilt in blooms:
+    # the collar of leaves first (under the blooms): broad glossy salal leaves arching out and down over the lip
+    for k in range(12):
+        a = 2 * math.pi * k / 12 + rg.uniform(-0.15, 0.15)
+        F.leaf(m, (x + 0.05 * math.cos(a), top + rg.uniform(-0.03, -0.01), z + 0.05 * math.sin(a)), (math.cos(a), 0, math.sin(a)),
+               rg.uniform(0.1, 0.13), 0.065, green, rise=rg.uniform(0.15, 0.4), fall=1.1, c0=G.hexc("2E5A2A"), c1=G.hexc("5C9448"), seed=k)
+    # the rose dome: one in the middle, a ring of six, a lower ring of seven at the lip — the heads touching, no gaps
+    roses = [(0.0, 0.0, 0.07)]
+    for k in range(6):
+        a = 2 * math.pi * (k + 0.3) / 6
+        roses.append((0.066 * math.cos(a), 0.066 * math.sin(a), 0.032))
+    for k in range(7):
+        a = 2 * math.pi * (k + 0.1) / 7
+        roses.append((0.122 * math.cos(a), 0.122 * math.sin(a), -0.012))
+    if PHONE:
+        roses = roses[:1] + roses[7:]   # (the phone: the crown and the lip's ring; its petal count is the phone's)
+    for i, (dx, dz, dy) in enumerate(roses):
         c = (x + dx, top + dy, z + dz)
-        F.stem(m, (x + dx * 0.2, top - 0.05, z + dz * 0.2), c, 0.004, green, bend=(dx * 0.3, 0.0, dz * 0.3))
-        if kind == "lily":
-            F.lily(m, c, 0.11, PET_W, G.hexc("FFFFFF"), throat=G.hexc("E6EDC4"), seed=int(dy * 100) + 7, stamen_s=LEAF)
-        else:
-            F.rose(m, c, 0.055, PET_W, G.hexc("FBF6EC"), open_=0.7, seed=int(dx * 100) + int(dz * 100) + 50, centre_dk=0.9)
-    for (dx, dz, dy) in ((0.06, -0.06, 0.34), (-0.07, 0.05, 0.32)):
+        F.stem(m, (x + dx * 0.3, top - 0.04, z + dz * 0.3), c, 0.004, green)
+        r = 0.068 if i == 0 else 0.062
+        F.rose(m, c, r, PET_W, G.hexc("FFFCF5" if i % 3 else "FBF4E6"), open_=0.5 + 0.08 * (i % 2), seed=60 + i * 7, centre_dk=0.9)
+    # three open lilies rising out of the dome toward the nave (casablanca: white with a pale green throat)
+    for i, (dx, dz, dy) in enumerate(((-0.08, -0.06, 0.13), (0.085, -0.05, 0.12), (0.0, 0.05, 0.17))):
+        c = (x + dx, top + dy, z + dz)
+        F.stem(m, (x + dx * 0.2, top - 0.04, z + dz * 0.2), c, 0.0045, green, bend=(dx * 0.25, 0.0, dz * 0.25))
+        F.lily(m, c, 0.105, PET_W, G.hexc("FFFFFF"), throat=G.hexc("E3EDC0"), seed=11 + i * 5, stamen_s=LEAF)
+    for (dx, dz, dy) in ((0.05, 0.07, 0.24), (-0.06, 0.06, 0.22)):
         b = (x + dx, top + dy - 0.1, z + dz)
-        F.stem(m, (x, top - 0.05, z), b, 0.004, green)
-        F.lily_bud(m, b, (dx, 1.0, dz), 0.1, PET_W, G.hexc("FFFFFF"))
-    for k in range(9):
-        a = 2 * math.pi * k / 9 + rg.uniform(-0.2, 0.2)
-        F.leaf(m, (x + 0.03 * math.cos(a), top + rg.uniform(0.02, 0.08), z + 0.03 * math.sin(a)), (math.cos(a), 0, math.sin(a)),
-               rg.uniform(0.11, 0.15), 0.04, green, rise=0.7, fall=1.3, c0=G.hexc("2E5A2A"), c1=G.hexc("4F8A3E"), seed=k)
-    F.babys_breath(m, (x - 0.02, top + 0.12, z - 0.03), 0.16, LEAF, seed=5, n=28)
+        F.stem(m, (x, top - 0.04, z), b, 0.004, green)
+        F.lily_bud(m, b, (dx, 1.0, dz), 0.1, PET_W, G.hexc("F6FBEA"))
+    # baby's breath in the gaps
+    if not PHONE:
+        F.babys_breath(m, (x, top + 0.08, z), 0.15, LEAF, seed=5, n=30)
     G.LOD = lod0
 
 
@@ -446,7 +466,7 @@ def hydrangea(m, x, y, z):
     m.lathe([(0.1, 0.0), (0.12, 0.02), (0.14, 0.06), (0.125, 0.2), (0.14, 0.24), (0.15, 0.26), (0.0, 0.26)], 20, LINEN, x, z, y)
     F.flat_from(m, k0)
     green = LEAF.t(G.hexc("3F6E35"))
-    lod0, G.LOD = G.LOD, min(G.LOD, 0.35)   # (three big heads on a stand by the chancel: fewer, larger florets)
+    lod0, G.LOD = G.LOD, min(G.LOD, 0.55)   # (three big heads on a stand by the chancel; was 0.35: coarse, gappy domes)
     for k, (dx, dy, dz, r) in enumerate(((0.0, 0.42, 0.0, 0.13), (-0.12, 0.35, 0.07, 0.115), (0.12, 0.34, -0.06, 0.115))):
         c = (x + dx, y + dy, z + dz)
         F.stem(m, (x + dx * 0.3, y + 0.22, z + dz * 0.3), c, 0.006, green)
