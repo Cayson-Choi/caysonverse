@@ -241,13 +241,13 @@ export function applyDress(root: Object3D, splits: FaceSplit[], sets: ReadonlyMa
 }
 
 /** The memorial's stone order (exteriorFaces.ts memorialTrimBoxes): the surfaces it is made of. */
-const TRIM_SURFACES = ["trimGranite", "trimAshlar"] as const;
+const TRIM_SURFACES = ["trimGranite", "trimAshlar", "trimPanel"] as const;
 
 /** Add the memorial's plinth, pilasters and cornice to the village clone (one mesh per surface); returns what takes them away. */
 export function addMemorialTrim(root: Object3D, sets: ReadonlyMap<string, PbrSet>): () => void {
   const boxes = memorialTrimBoxes();
   const made: Mesh[] = [];
-  for (const [key, list] of [["trimGranite", boxes.granite], ["trimAshlar", boxes.ashlar]] as const) {
+  for (const [key, list] of [["trimGranite", boxes.granite], ["trimAshlar", boxes.ashlar], ["trimPanel", boxes.panel]] as const) {
     const spec = SURFACES[key]!;
     const set = spec.pbr ? sets.get(spec.pbr) : undefined;
     if (!set || !spec.pbr) continue;
