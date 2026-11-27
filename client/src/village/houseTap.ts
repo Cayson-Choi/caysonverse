@@ -12,11 +12,11 @@ import {
   worldToLocal,
 } from "@caysonverse/shared/village/houseAreas";
 import { doorTapOnFlat, type TapRayLike } from "./lotDoorTap";
-import { HOUSE_EXIT_TARGET_ID, HOUSE_STAIR_DOWN_TARGET_ID, HOUSE_STAIR_UP_TARGET_ID } from "@caysonverse/shared/village/houseTargets";
+import { HOUSE_EXIT_TARGET_ID, HOUSE_STAIR_DOWN_TARGET_ID, HOUSE_STAIR_TARGET_PREFIX, HOUSE_STAIR_UP_TARGET_ID } from "@caysonverse/shared/village/houseTargets";
 
 /**
- * Tapping the stair or the front door inside a house (집 실내 G; design 3 and 7.6): the avatar walks to the pad and uses it on arrival, as a
- * tap on a seat walks there and sits (seatOnArrival.ts). `houseTapTarget` says whether a picked point on the model is the stair or the
+ * Tapping the stair or the front door inside a house (집 실내 G; design 3 and 7.6): the avatar walks to the pad; the front door is used on
+ * arrival, the stair never (its button climbs: `tapUsesOnArrival`, owner 2026-11-27). `houseTapTarget` says whether a picked point on the model is the stair or the
  * front door and where its pad is; the camera rig plans the walk to that pad instead of to the (unwalkable) point and arms the use
  * (`armHouseUse`), and the village scene's frame loop fires it once the button for that pad is offered (`takeArmedHouseUse`).
  * Pure plus one module variable; a new tap, or too long a wait, disarms it.
@@ -106,6 +106,16 @@ export function houseTapTarget(area: string, x: number, y: number, z: number, ny
     }
   }
   return null;
+}
+
+/**
+ * Whether a tap on target `id` uses it on arrival at its pad. A stair never does (owner 2026-11-27: "계단을 탭하면 올라가게 하지 말고 계단
+ * 버튼을 누르면 올라가도록 하는게 맞아"): the tap walks to the stair's pad, where its 올라가기 / 내려가기 button is offered, and only that
+ * button (E, the round button) climbs. A house's or a lot building's door still opens on arrival (owner 2026-11-20: "문을 누르면 들어가기").
+ * Covers the houses' stairs and the café's (lotDoorTap.ts returns the same stair ids).
+ */
+export function tapUsesOnArrival(id: string): boolean {
+  return !id.startsWith(HOUSE_STAIR_TARGET_PREFIX);
 }
 
 /** A node name that is a house's stair or door (for the dev hooks). */

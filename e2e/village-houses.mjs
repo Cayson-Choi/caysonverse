@@ -484,7 +484,7 @@ for (const n of houses) {
   await run.step(`house ${n}: floor 1 rooms`, async () => floorShots(1));
   await run.step(`house ${n}: floor 1 seats`, async () => seatSweep(1));
 
-  await run.step(`house ${n}: up the stair (a tap on it), and down again (the button)`, async () => {
+  await run.step(`house ${n}: up the stair (a tap on it walks there, the button climbs), and down again (the button)`, async () => {
     if ((await areaOf()) !== `house:house_${n}:1`) return;
     const up = P.upPad;
     // a tap on the stair from ~2.4 m in front of its pad. Stairs C / D start at the front wall (the pad 1.3 m in): straight back is outside
@@ -516,14 +516,26 @@ for (const n of houses) {
         }
       }
     }
-    let upstairs = false;
+    // owner 2026-11-27 ("계단을 탭하면 올라가게 하지 말고 계단 버튼을 누르면 올라가도록"): the tap walks to the pad and never climbs; the button does
     if (s) {
       await tapAt(s);
-      upstairs = await waitArea(`house:house_${n}:2`, 15000);
-    }
-    run.check(`h${n}: a tap on the stair walks there and goes up`, upstairs, { s, at, last: await page.evaluate(() => window.__cvLastProject ?? null), pick: await page.evaluate(() => window.__cvClickPick?.()?.pick?.name ?? null) });
-    if (!upstairs) {
-      at = await goto(up.x, up.z, 0.3);
+      await page.waitForFunction(() => window.__cvClickTarget?.() === null, null, { timeout: 15000 }).catch(() => {});
+      await sleep(2500);
+      run.check(`h${n}: a tap on the stair does NOT climb (still floor 1)`, (await areaOf()) === `house:house_${n}:1`, { s, at, area: await areaOf(), pick: await page.evaluate(() => window.__cvClickPick?.()?.pick?.name ?? null) });
+      const tt = await targets(p);
+      const tapInfo = await page.evaluate(async (nn) => {
+        const k = window.__cvClickPick?.();
+        const pk = k && k.pick;
+        if (!pk) return null;
+        const ht = await window.__imp("/src/village/houseTap.ts");
+        return { pick: { name: pk.name, x: +pk.x.toFixed(2), y: +pk.y.toFixed(2), z: +pk.z.toFixed(2), ny: pk.ny }, plan: k.plan, stair: ht.houseTapTarget(`house:house_${nn}:1`, pk.x, pk.y, pk.z, pk.ny, pk.ray, pk.distance) };
+      }, n);
+      run.check(`h${n}: the tap walked to the stair's pad: the up button is offered`, tt.some((x) => x.id === "house_stair:up"), { at: await pos(p), t: tt.slice(0, 3), tapInfo });
+    } else run.check(`h${n}: the stair is on screen to tap`, false, { at });
+    if ((await areaOf()) !== `house:house_${n}:1`) return;
+    let upstairs = false;
+    {
+      if (!(await targets(p)).some((x) => x.id === "house_stair:up")) at = await goto(up.x, up.z, 0.3);
       const t = await targets(p);
       run.check(`h${n}: at the stair pad the up button is offered`, t.some((x) => x.id === "house_stair:up"), { at, t: t.slice(0, 3) });
       if (phone) {

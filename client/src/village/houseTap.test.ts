@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { HOUSE_NUMBERS, HOUSE_PLACES, HOUSE_STAIR_TYPE, STAIR_PLANS, houseFloorArea, localRectToWorld, localToWorld } from "@caysonverse/shared/village/houseAreas";
 import { HOUSE_EXIT_TARGET_ID, HOUSE_STAIR_DOWN_TARGET_ID, HOUSE_STAIR_UP_TARGET_ID, houseOffers } from "@caysonverse/shared/village/houseTargets";
-import { HOUSE_USE_ARM_MS, armHouseUse, armedHouseUse, disarmHouseUse, houseTapTarget, onStairSurface, takeArmedHouseUse } from "./houseTap";
+import { HOUSE_USE_ARM_MS, armHouseUse, armedHouseUse, disarmHouseUse, houseTapTarget, onStairSurface, takeArmedHouseUse, tapUsesOnArrival } from "./houseTap";
 
 afterEach(() => armHouseUse(null));
 
@@ -78,6 +78,14 @@ describe("houseTapTarget: a tap on the stair or the front door", () => {
     expect(houseTapTarget("village", 0, 0, 0)).toBeNull();
     expect(houseTapTarget("hall", 300, 1, 0)).toBeNull();
     expect(houseTapTarget(houseFloorArea(1, 1), Number.NaN, 0, 0)).toBeNull();
+  });
+});
+
+describe("tapUsesOnArrival (owner 2026-11-27: only the stair's button climbs)", () => {
+  it("a stair tap only walks; a door tap still opens on arrival", () => {
+    expect(tapUsesOnArrival(HOUSE_STAIR_UP_TARGET_ID)).toBe(false);
+    expect(tapUsesOnArrival(HOUSE_STAIR_DOWN_TARGET_ID)).toBe(false);
+    expect(tapUsesOnArrival(HOUSE_EXIT_TARGET_ID)).toBe(true);
   });
 });
 
