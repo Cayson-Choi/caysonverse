@@ -13,11 +13,14 @@
  *
  * Seat ids: this file adds NONE to the village's seat table (docs/designs/caysonland/DESIGN.md section 2: 400+ is reserved, rides use rideSeat).
  */
+import { parkRideSolids } from "./parkRideSolids";
 import { LOT_DOOR_REACH_M, lotDoorPoint, villageLot } from "./villageLots";
 import type { AABB, CameraBox } from "../collision";
 import { shopWindows, WINDOW_BOX } from "./parkShopWindowLayout";
 import type { Bounds, MapGeometry } from "../school/geometry";
 import { makeGeometry } from "../school/geometry";
+import { islandSolids } from "./parkIslands";
+import { parkBenchSolids } from "./parkBenches";
 import { PARK_WALL_PLAN, PARK_WALL_SOLIDS, distanceToWall } from "./parkWall";
 
 export const PARK_AREA = "park" as const;
@@ -32,7 +35,16 @@ export const PARK_BOUNDS: Bounds = Object.freeze({ minX: -170, maxX: 380, minZ: 
 
 /** The gate arch's way-out pad and the arrival spot inside (park-local). */
 export const PARK_EXIT_PAD = Object.freeze({ x: 40, z: -181, radius: 1.8 });
-export const PARK_ARRIVAL = Object.freeze({ x: 40, z: -171, yaw: Math.PI }); // facing north is yaw PI (villageLayout FACING_NORTH)
+// Arriving, one looks INTO the park: south (+z, yaw 0), the promenade and the star plaza ahead. (It was yaw PI, north: every visitor
+// arrived staring back at the arch they had just come through - owner 2026-11-21 "반대방향을 보도록".)
+export const PARK_ARRIVAL = Object.freeze({ x: 40, z: -171, yaw: 0 });
+
+/**
+ * The gate is ONE gate with two sides: the village's gatehouse (lot_gate, world metres, its line z 94 on the avenue x -24) stands in the
+ * park's north wall at x 40, z -186.5. A village point + this offset is the same point of the gate in the park's frame (the client draws
+ * the village's gatehouse there, and the village's picture beyond the arch by the same mapping).
+ */
+export const PARK_GATE_FROM_VILLAGE = Object.freeze({ dx: 64, dz: -280.5 });
 
 /** The star plaza and its fountain. */
 export const PARK_PLAZA = Object.freeze({ x: 40, z: -112, radius: 26, fountainHalf: 4 });
@@ -188,8 +200,7 @@ export const PARK_KIOSK = Object.freeze({ x: 55, z: -177, w: 4.2, d: 3.4 });
 export const PARK_PLANTERS: readonly { x: number; z: number; w: number; d: number }[] = Object.freeze([
   { x: 33.5, z: -137, w: 3, d: 1.6 },
   { x: 46.5, z: -137, w: 3, d: 1.6 },
-  { x: 33.5, z: -182, w: 3, d: 1.6 },
-  { x: 46.5, z: -182, w: 3, d: 1.6 },
+  // (the two that flanked the old arch at z -182 went: the gatehouse's own turnstile canopy and planters stand there now)
   // flower beds flanking the station apron (where the queue hall stood)
   { x: -8.5, z: -20, w: 3, d: 1.6 },
   { x: 12.5, z: -20, w: 3, d: 1.6 },
@@ -231,6 +242,78 @@ function buildTroughs(): ParkTrough[] {
 }
 export const PARK_TROUGHS: readonly ParkTrough[] = Object.freeze(buildTroughs());
 
+// ═══════════════ fix/veg-off-paths (owner 2026-11-21) — this block only: the park's street furniture, beds and hedge as solids ═══════════════
+// ("조명이랑 그냥 통과해버리네", "화단에 식물이 있는데 이걸 그냥 통과해버리네", "의자도 통과해버리네"). Ride structures and their railings are
+// NOT here (fix/moonboat-seats owns them). e2e/solid-audit.mjs --park renders the park from above and fails when anything drawn at
+// body height can still be walked through.
+
+/** The star fountain's basin: 9.2 m across at the rim, its stepped foot a little wider (client fountain/fountainDesigns.ts STAR_FOUNTAIN). */
+export const PARK_FOUNTAIN_RADIUS = 4.7;
+
+/**
+ * The round basin as nine boxes (the collision world is axis-aligned boxes): their corners stand 15 cm outside the rim, every 10
+ * degrees, so the steps between them cut no more than 0.3 m into it and nothing reaches out over the paving.
+ */
+export function parkFountainSolids(): AABB[] {
+  const { x, z } = PARK_PLAZA;
+  const r = PARK_FOUNTAIN_RADIUS + 0.15;
+  return [5, 15, 25, 35, 45, 55, 65, 75, 85].map((deg) => {
+    const hx = Math.round(r * Math.cos((deg * Math.PI) / 180) * 100) / 100;
+    const hz = Math.round(r * Math.sin((deg * Math.PI) / 180) * 100) / 100;
+    return box(x - hx, x + hx, z - hz, z + hz);
+  });
+}
+
+/**
+ * The clipped shrubs along the park's south edge (client land/ParkVegetation.tsx: one every 3 m at z -2.7, 1.3-2 m in radius (a phone's:
+ * every 6 m, up to 2.5 m), the last ones at x -30 and 30 either side of the station): the walk bounds end at z -2.2, INSIDE the row, so
+ * a walker stood in the hedge. Its north face is the wall now (`face`: the widest shrub's leaf tips reach z -4.7).
+ */
+export const PARK_SOUTH_HEDGE = Object.freeze({ z: -2.7, face: -4.7, gap: 27.8 });
+export function parkSouthHedgeSolids(): AABB[] {
+  const h = PARK_SOUTH_HEDGE;
+  return [box(PARK_BOUNDS.minX - 1, -h.gap, h.face, PARK_BOUNDS.maxZ + 1), box(h.gap, PARK_BOUNDS.maxX + 1, h.face, PARK_BOUNDS.maxZ + 1)];
+}
+
+/**
+ * The carousel's ticket booth (client land/CarouselWorld.tsx `ticketBooth`: 7.5 m east of the carousel's axis, 1.5 m south of its
+ * pad, on the avenue's edge): it had no collider at all. Like the snack kiosk it serves over a counter that reaches out of its front.
+ */
+export const PARK_TICKET_BOOTH = Object.freeze({ x: 117.5, z: -117.5, w: 3.4, d: 3.0 });
+
+/** A booth's serving counter (client land/ParkBooth.tsx: a plank over the sill, 0.66 m out of the +z front, 0.3 m wider than the window each side). */
+export function boothCounterSolid(b: { x: number; z: number; w: number; d: number }, snack: boolean): AABB {
+  const half = Math.min(b.w - 1.2, snack ? 2.7 : 2.0) / 2 + 0.3;
+  return box(b.x - half, b.x + half, b.z + b.d / 2, b.z + b.d / 2 + 0.66);
+}
+
+/** A booth's chalk menu on its easel, beside the counter (ParkBooth.tsx: 0.55 m wide, turned 20 degrees). */
+export function boothMenuSolid(b: { x: number; z: number; w: number; d: number }): AABB {
+  const x = b.x + b.w / 2 + 0.55;
+  const z = b.z + b.d / 2 + 0.45;
+  return box(x - 0.3, x + 0.3, z - 0.15, z + 0.15);
+}
+
+/** A lamp post's box: its cast base is a 0.17 m disc (the village's lamps: streetPoles.ts LAMP_COLLIDER_HALF). */
+export const PARK_LAMP_HALF = 0.2;
+
+/** The fountain's basin, the two booths' counters (and the ticket booth itself), lamp posts, the planted islands (at the kerb), the benches and the south hedge. */
+export function parkStreetSolids(): AABB[] {
+  return [
+    ...parkFountainSolids(),
+    boothCounterSolid(PARK_KIOSK, true),
+    boothMenuSolid(PARK_KIOSK),
+    boothMenuSolid(PARK_TICKET_BOOTH),
+    box(PARK_TICKET_BOOTH.x - PARK_TICKET_BOOTH.w / 2, PARK_TICKET_BOOTH.x + PARK_TICKET_BOOTH.w / 2, PARK_TICKET_BOOTH.z - PARK_TICKET_BOOTH.d / 2, PARK_TICKET_BOOTH.z + PARK_TICKET_BOOTH.d / 2),
+    boothCounterSolid(PARK_TICKET_BOOTH, false),
+    ...PARK_LAMPS.map((l) => box(l.x - PARK_LAMP_HALF, l.x + PARK_LAMP_HALF, l.z - PARK_LAMP_HALF, l.z + PARK_LAMP_HALF)),
+    ...islandSolids(),
+    ...parkBenchSolids(),
+    ...parkSouthHedgeSolids(),
+  ];
+}
+// ═══════════════ (end of fix/veg-off-paths) ═══════════════
+
 /** Everything a player body collides with. */
 function buildSolids(): AABB[] {
   const out: AABB[] = [];
@@ -248,26 +331,19 @@ function buildSolids(): AABB[] {
   const p = PARK_PLATFORM;
   out.push(box(p.minX, p.maxX, p.minZ, p.maxZ));
   out.push(box(2 - 3.6, 2 + 3.6, p.minZ - 4.3, p.minZ)); // the station's north steps (the boarding pad is just beyond them)
-  // the fountain and its ring
-  const f = PARK_PLAZA.fountainHalf;
-  out.push(box(PARK_PLAZA.x - f, PARK_PLAZA.x + f, PARK_PLAZA.z - f, PARK_PLAZA.z + f));
-  // the gate arch's two towers
-  out.push(box(29.5, 33, -190, -183), box(47, 50.5, -190, -183));
+  // (the fountain's round basin: parkStreetSolids below)
+  // the gatehouse (the village's, seen from behind: PARK_GATE_FROM_VILLAGE): its wings and piers either side of the 6 m passage (x 37 .. 43),
+  // and the back planters under its flags
+  out.push(box(29.5, 37, -190, -185.3), box(43, 50.5, -190, -185.3));
+  out.push(box(31.9, 33.7, -184, -182.2), box(46.3, 48.1, -184, -182.2));
   out.push(box(PARK_KIOSK.x - PARK_KIOSK.w / 2, PARK_KIOSK.x + PARK_KIOSK.w / 2, PARK_KIOSK.z - PARK_KIOSK.d / 2, PARK_KIOSK.z + PARK_KIOSK.d / 2));
-  out.push(box(110 - 12.8, 110 + 12.8, -135 - 12.8, -135 + 12.8)); // the carousel's platform and its fence (the ride's own pad is outside it)
-  // the wheel: the four feet of its A-frames and the boarding platform's deck
-  for (const sx of [-1, 1]) for (const dz of [-2.75, 5.7]) out.push(box(205 + sx * 11 - 1, 205 + sx * 11 + 1, -140 + dz - 1, -140 + dz + 1));
-  out.push(box(205 - 3.5, 205 + 3.5, -140 + 4.45, -140 + 8.8)); // the platform's deck (the steps south of it are walked on)
-  // the moon boat: the swing's lane under the hull, the four feet of its A-frames and the boarding deck (the steps east of it are walked on up to the pad)
-  const M = MOON_BOAT_SITE_AT;
-  out.push(box(M.x - 2.9, M.x + 2.9, M.z - 20, M.z + 20)); // the lane under the swinging hull (it is below 4.6 m only within 26 degrees of the bottom: z within 20 m)
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) out.push(box(M.x + sx * 4.7 - 1.8, M.x + sx * 4.7 + 1.8, M.z + sz * 15 - 1.8, M.z + sz * 15 + 1.8));
-  out.push(box(M.x + 3.0, M.x + 7.9, M.z - 4.3, M.z + 4.3));
-  // the drop tower: its platform (the car's station, a 14.8 m square) is a solid; the boarding pad lies east of it
-  out.push(box(DROP_SITE_AT.x - 7.4, DROP_SITE_AT.x + 7.4, DROP_SITE_AT.z - 7.4, DROP_SITE_AT.z + 7.4));
+  // ── the rides (parkRideSolids.ts): every platform, flight of steps, railing, queue fence, post and name board of the carousel, the wheel, the 달배 and
+  // the 구름 낙하탑 (owner 2026-11-21: the fences and steps were walked through). One block of its own: a ride's barrier is added THERE, not here ──
+  out.push(...parkRideSolids());
   for (const t of PARK_TROUGHS) out.push(box(t.x0, t.x1, t.z0, t.z1));
   for (const p of PARK_PLANTERS) out.push(box(p.x - p.w / 2, p.x + p.w / 2, p.z - p.d / 2, p.z + p.d / 2));
   for (const b of PARK_BINS) out.push(box(b.x - 0.3, b.x + 0.3, b.z - 0.3, b.z + 0.3));
+  out.push(...parkStreetSolids());
   for (const t of PARK_TREES) out.push(box(t.x - 0.45, t.x + 0.45, t.z - 0.45, t.z + 0.45));
   // the castle wall round the park (parkWall.ts, owner 2026-11-20): its runs (the north ones sealed out to the bounds' edge) and towers
   out.push(...PARK_WALL_SOLIDS.obstacles);
@@ -277,7 +353,7 @@ export const PARK_SOLIDS: readonly AABB[] = Object.freeze(buildSolids());
 
 /** The star plaza's low solids the camera rises over (QA 2026-11-20): the fountain's basin (its bowl hides an avatar's lower body) and the stone troughs (0.84 m). */
 export const PARK_HURDLES: readonly CameraBox[] = Object.freeze([
-  { minX: PARK_PLAZA.x - PARK_PLAZA.fountainHalf, maxX: PARK_PLAZA.x + PARK_PLAZA.fountainHalf, minZ: PARK_PLAZA.z - PARK_PLAZA.fountainHalf, maxZ: PARK_PLAZA.z + PARK_PLAZA.fountainHalf, height: 1.1 },
+  ...parkFountainSolids().map((b) => ({ ...b, height: 1.1 })),
   ...PARK_TROUGHS.map((t) => ({ minX: t.x0, maxX: t.x1, minZ: t.z0, maxZ: t.z1, height: t.y })),
 ]);
 

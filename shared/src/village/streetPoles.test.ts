@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isBlocked } from "../collision";
 import { PLAYER_RADIUS } from "../worldMap";
-import { bannerSpots, lampSpots, oldBannerSpots, plazaRingSpots, streetPoleColliders } from "./streetPoles";
+import { LANE_LAMPS, bannerSpots, lampSpots, oldBannerSpots, plazaRingSpots, streetPoleColliders } from "./streetPoles";
 import { VILLAGE_LAYOUT as L, villageGeometry } from "./villageLayout";
 
 describe("street lamps and banner poles are solid (owner 2026-11-15)", () => {
@@ -11,7 +11,9 @@ describe("street lamps and banner poles are solid (owner 2026-11-15)", () => {
     for (const p of lamps.slice(0, 7)) expect(Math.hypot(p.x, p.z)).toBeCloseTo(29, 9);
     // the old plaza lamps' and banner poles' spots are free (nothing stands there since the rebake)
     for (const p of [...L.plaza.lamps, ...oldBannerSpots()]) expect(isBlocked(p.x, p.z, 0.05, villageGeometry.obstacles), `${p.x},${p.z}`).toBe(false);
-    const ring = lamps.slice(7);
+    // ...then the ring road's, then the two lane lamps (2026-11-21: they had no collider)
+    expect(lamps.slice(-2)).toEqual([...LANE_LAMPS]);
+    const ring = lamps.slice(7, -2);
     expect(ring.length).toBeGreaterThan(8);
     expect(ring.length).toBeLessThanOrEqual(18);
     for (const p of ring) expect(Math.hypot(p.x, p.z)).toBeCloseTo(38.4, 9);

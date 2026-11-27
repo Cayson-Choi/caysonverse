@@ -7,7 +7,7 @@
      the button stays fully on the screen at every width */
   right: 28px;
   max-width: calc(100vw - 56px);
-  bottom: calc(24px + var(--cv-pc-emoji-h, 40px) + 8px);
+  bottom: calc(var(--cv-pc-bottom, 16px) + var(--cv-pc-emoji-h, 48px) + 8px);
   z-index: 26;
   display: flex;
   align-items: center;
@@ -492,7 +492,7 @@
 .cv-lake-btnhint {
   position: fixed;
   right: 16px;
-  bottom: calc(24px + var(--cv-pc-emoji-h, 40px) + 8px + 56px + 8px);
+  bottom: calc(var(--cv-pc-bottom, 16px) + var(--cv-pc-emoji-h, 48px) + 8px + 56px + 8px);
   z-index: 26;
   max-width: min(78vw, 340px);
   padding: 5px 10px;

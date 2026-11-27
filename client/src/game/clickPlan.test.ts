@@ -30,6 +30,7 @@ import {
   surfaceKind,
   walkStart,
   walkThere,
+  nearEdgeSpot,
 } from "./clickPlan";
 import { ARRIVE_DIST, STUCK_MIN_DIST, STUCK_WINDOW_SEC, VIA_REACH } from "./clickMove";
 import { VILLAGE_FURNITURE } from "./activeMap";
@@ -108,6 +109,33 @@ describe("clickPlan — where a body can stand (rule 2)", () => {
     expect(plan.via).toBeUndefined();
     // already against it: nowhere to go
     expect(planClickMove(0, 6 + R + 0.1, ground(0, 0), [big], BOUNDS)).toEqual({ ok: false, reason: "unreachable" });
+  });
+
+  it("deep in a collider with something ELSE on the line to it (a post short of a flowerbed): the walk goes round the post to the bed's near edge (2026-11-21)", () => {
+    const bed: AABB = { minX: -6, maxX: 6, minZ: -6, maxZ: 6 };
+    const post: AABB = { minX: -0.2, maxX: 0.2, minZ: 11.8, maxZ: 12.2 };
+    // from 8 m beyond the post: the straight walk would stop at the post, 5 m short of the bed
+    const plan = planClickMove(0, 20, ground(0, 0), [bed, post], BOUNDS);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.x).toBeCloseTo(0, 1);
+    expect(plan.z).toBeGreaterThan(6 + R);
+    expect(plan.z).toBeLessThan(6 + R + 0.2); // the bed's edge on the walker's side
+    expect(plan.via?.length ?? 0).toBeGreaterThan(0); // round the post
+    const walk = simulateWalk(0, 20, plan.x, plan.z, [bed, post], BOUNDS, R, plan.via);
+    expect(walk.arrived).toBe(true);
+    const edge = nearEdgeSpot(0, 0, 0, 20, [bed, post], BOUNDS)!;
+    expect(edge.z).toBeGreaterThan(6 + R);
+    expect(edge.z).toBeLessThan(6 + R + 0.25);
+    // with a clear line nothing changes: straight to the face, "stopped" (the test above); a walker already at the edge goes nowhere
+    expect(planClickMove(0, 6 + R + 0.1, ground(0, 0), [bed, post], BOUNDS)).toEqual({ ok: false, reason: "unreachable" });
+    // the near edge walled off from the walker: it stops on the way, at the wall, as before
+    const wall: AABB = { minX: -19.9, maxX: 19.9, minZ: 9, maxZ: 9.4 };
+    const walled = planClickMove(0, 16, ground(0, 0), [bed, wall], BOUNDS);
+    expect(walled).toMatchObject({ ok: true, adjusted: "stopped" });
+    if (walled.ok) expect(walled.z).toBeCloseTo(9.4 + R, 6);
+    // nothing free on the way back to the walker: no edge
+    expect(nearEdgeSpot(0, 0, 0, 3, [bed], BOUNDS)).toBeNull();
   });
 
   it("past the bounds: toward it, up to the edge, on the line to the click (no sliding along the edge); within MAX_PUSH of the edge, pushed in", () => {

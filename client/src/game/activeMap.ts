@@ -25,6 +25,7 @@ import {
 import { GENERATED_HOUSES } from "@caysonverse/shared/village/generated/houses";
 import { houseFloorGeometry } from "@caysonverse/shared/village/housesGeometry";
 import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
+import { parkBenchSolids } from "@caysonverse/shared/village/parkBenches";
 import { MEMORIAL_SEAT_MARKERS } from "@caysonverse/shared/village/generated/memorialSeats";
 import { VILLAGE_SEAT_MARKERS } from "@caysonverse/shared/village/generated/villageSeatMarkers";
 import { fallsShoreSpot, inFallsRestArea, villagePickArea, villageWalkArea } from "@caysonverse/shared/village/fallsWalk";
@@ -231,12 +232,18 @@ function lotRoomActiveMap(area: AreaId): ActiveMap {
   return map;
 }
 
-/** 케이슨랜드 (the park area): its own geometry and frame, open sky, no seats (rides are rideSeat), the coaster's circuit fenced off at its south edge. */
+/** The park benches as colliders (a tap inside the box of one walks out beside it, as for a plaza bench). */
+const PARK_FURNITURE: readonly AABB[] = Object.freeze(parkBenchSolids());
+
+/** 케이슨랜드 (the park area): its own geometry and frame, open sky, its benches as seats (rides are rideSeat), the coaster's circuit fenced off at its south edge. */
 export const PARK_ACTIVE_MAP: ActiveMap = Object.freeze({
   geometry: parkGeometry,
   bounds: PARK_BOUNDS,
   cameraPad: VILLAGE_CAMERA_PAD,
   zoneLabel: () => "케이슨랜드",
+  seats: VILLAGE_SEATS, // the one list; only the park benches are offered here (2026-11-22)
+  seatArea: "park",
+  furniture: PARK_FURNITURE,
 });
 
 /** The village map for the area the local player is in: one of two prebuilt maps, so a re-render is never a switch. */

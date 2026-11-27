@@ -5,7 +5,7 @@ import { MessageType, type StandRejectedPayload } from "@caysonverse/shared/mess
 import { useClickHint } from "../stores/clickHintStore";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useAnimations, useKeyboardControls } from "@react-three/drei";
-import { Group, LoopOnce, Quaternion, Vector3, type AnimationAction, type AnimationClip, type Bone, type Plane } from "three";
+import { Group, LoopOnce, Quaternion, Raycaster, Vector3, type AnimationAction, type AnimationClip, type Bone, type Plane } from "three";
 import { setPreferredSeat } from "./seatPreference";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
@@ -63,6 +63,7 @@ import {
   jumpTimeScale,
   pressJump,
   publishLocalJump,
+  setJumpRoofCheck,
   resetLocalJump,
 } from "./jump";
 import { jumpHeadroom } from "@caysonverse/shared/village/overhead";
@@ -73,7 +74,7 @@ import { cameraProbe } from "./cameraProbe";
 import { clipFor, lookFromAppearance } from "./characterLook";
 import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
-import { PICK_AS_SELF } from "./clickPick";
+import { PICK_AS_SELF, pickSurface } from "./clickPick";
 import { SELF_FADE_OPACITY } from "./clickRing";
 import { createSelfFade, endSelfFade, indoorCloseHidden, registerSelfBody, selfBody, stepSelfFade } from "./selfBody";
 import { createNametag } from "./nametag";
@@ -83,6 +84,7 @@ import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
 import { stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
+import { takePoseResend } from "./sentMoves";
 import { installDebugHook } from "./debug";
 import {
   ANIM_FADE,
@@ -194,6 +196,11 @@ function clamp(value: number, min: number, max: number): number {
 
 /** A Stand the server has not answered within this long (ms) is asked again while a move key is held; also how long a held key waits after a refused Stand (StandRejected). */
 const STAND_RETRY_MS = 1200;
+/**
+ * The longest frame (s) the body is moved for (fix/net-sync). Walking 2 m/s that is 0.5 m, running 6.4 m/s 1.6 m — well inside the
+ * server's 4.8 m budget for one Move — so a hitch of any length is never one long leap the server refuses.
+ */
+const MAX_FRAME_DT = 0.25;
 
 export function LocalPlayer({
   sessionId,
@@ -684,6 +691,34 @@ export function LocalPlayer({
   // True first person (fpBody.ts): the own body stays drawn from the neck down, its head shrunk for the drawing and the eye at
   // the head's eyes. The scene's render hook does both after every frame callback; the head bone and what to keep are set here.
   const scene = useThree((s) => s.scene);
+  /** A roof this close over the head (m) is a low one: no jump under it (the bus shelter's is 1.1 m over a bare head). */
+  const ROOF_REACH_M = 1.6;
+  /** Meshes that are a tree's or a plant's, not a roof (looked past by the roof check). */
+  const FOLIAGE = /tree|leaf|leaves|foliage|blossom|canopy_tree|crown|branch|pine|cherry|veg|plant|flower|bush|hedge|shrub|ivy|vine/i;
+  // A low roof over the head: no jump (jump.ts pressJump). The known ceilings (overhead.ts: rooms, the hall, the bus shelter) and
+  // whatever is drawn just above the head (a porch roof, an awning, a gazebo): one upward ray from the top of the head.
+  useEffect(() => {
+    const ray = new Raycaster();
+    const up = new Vector3(0, 1, 0);
+    const from = new Vector3();
+    setJumpRoofCheck(() => {
+      if (jumpHeadroom(pose.x, pose.z, localArea(), avatar.topY) < ROOF_REACH_M) return true;
+      // a roof drawn over the head (a porch, an awning, a pavilion); a tree's leaves and branches are no roof: looked past
+      let y = stepLiftRef.current.v + avatar.topY + 0.02;
+      const top = y + ROOF_REACH_M;
+      for (let k = 0; k < 6 && y < top; k++) {
+        ray.set(from.set(pose.x, y, pose.z), up);
+        ray.near = 0;
+        ray.far = top - y;
+        const hit = pickSurface(ray, scene, { skipBlockers: true });
+        if (!hit) return false;
+        if (!FOLIAGE.test(hit.name)) return true;
+        y = hit.y + 0.05;
+      }
+      return false;
+    });
+    return () => setJumpRoofCheck(null);
+  }, [scene, pose, avatar]);
   useEffect(() => {
     const group = groupRef.current;
     if (!group) return;
@@ -707,7 +742,11 @@ export function LocalPlayer({
   /** Seated in a 케이슨랜드 ride's seat (selfRide): the body is drawn there, in the held seated pose. */
   const onRideRef = useRef(false);
 
-  useFrame((state, delta) => {
+  useFrame((state, frameDelta) => {
+    // One frame moves the body at most MAX_FRAME_DT worth (fix/net-sync): after a long hitch (a phone compiling shaders, a tab
+    // brought back) the avatar does not leap metres in one frame — a leap the server's speed budget refuses, and one that could
+    // carry the body past a thin collider between two frames.
+    const delta = Math.min(frameDelta, MAX_FRAME_DT);
     const group = groupRef.current;
     if (!group) return;
     // the head the render hook shrank for the last frame's drawing: back as the mixer posed it, before anything reads the body
@@ -1247,8 +1286,9 @@ export function LocalPlayer({
     fishRig.update(delta, {
       seatMode: animStateRef.current === "sitDown" ? "sitting" : animStateRef.current === "sitIdle" ? "seated" : animStateRef.current === "standUp" ? "standing" : "up",
       baseSit: action(CLIP.sitIdle) ?? null,
-      // first person keeps the own body (fpBody.ts): the rod and the catch are in its own hands, as everyone else sees them
-      fpCamera: null,
+      // first person keeps the own body (fpBody.ts) and its real rod; the catch is brought into the view (owner 2026-11-23): the rod
+      // raised in front of the eye while it comes up, then held up in the hands in front of the camera (lake/catchRig.ts)
+      fpCamera: viewState.mode === "fp" ? state.camera : null,
       fpLook: { skin: look.colors.skin, top: look.colors.top },
     });
     fishRig.afterMixer(delta); // the wrist, after the mixer (the animations are ticked before this frame hook)
@@ -1388,7 +1428,11 @@ export function LocalPlayer({
 
     // Throttled network send (idle: nothing; moving: <=1 per PATCH_RATE_MS;
     // exactly one final message on stop).
-    sender.update(performance.now(), moving || shoved !== null, { x: pose.x, z: pose.z, yaw: pose.yaw });
+    const sendNow = performance.now();
+    sender.update(sendNow, moving || shoved !== null, { x: pose.x, z: pose.z, yaw: pose.yaw });
+    // The self-correction asked for my pose once more (a small gap left by a refused Move: sentMoves.ts resolveRefusal): stamped
+    // like any Move, so the echo tells it the server took it.
+    if (takePoseResend()) sendMove({ x: pose.x, z: pose.z, yaw: pose.yaw, t: Math.max(1, Math.round(sendNow)) });
   });
 
   return (

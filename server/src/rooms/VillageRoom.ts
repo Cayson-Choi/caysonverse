@@ -11,6 +11,7 @@ import {
   SERVER_TIME_INTERVAL_MS,
   VillageMsg,
   VillageServerMsg,
+  type ActionRefusedPayload,
   type CandleStatePayload,
   type KeypadResultPayload,
   type ServerTimePayload,
@@ -31,6 +32,7 @@ import { memorial } from "../memorial/service";
 import { MemorialServerMsg } from "@caysonverse/shared/memorial/messages";
 import { CANDLES, sameLighter, type CandleBook } from "./candleBook";
 import { chooseStandSpot, validateSit } from "./seating";
+import { SEAT_REACH, seatDistance } from "@caysonverse/shared/worldMap";
 import { STAND_BLOCKED } from "@caysonverse/shared/village/standSpot";
 import { VillageFishing } from "./villageFishing";
 import {
@@ -453,8 +455,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
    * Emoji reactions work in the village AND the memorial hall (owner 2026-11-20: "추모관안에서도 이모티콘을 보낼 수 있게"); a house
    * floor, the other lot rooms and the park stay as before; the café's room (owner 2026-11-20: 카페 안에서도 이모티콘) and its salon upstairs (2026-11-21) join them. Jumping stays off in the hall (`isQuiet`).
    */
-  protected override isEmojiQuiet(player: Player): boolean {
-    return player.area !== "village" && player.area !== "hall" && player.area !== CAFE_ROOM_AREA && player.area !== CAFE_UP_AREA;
+  protected override isEmojiQuiet(_player: Player): boolean {
+    return false; // owner 2026-11-27: "이모지는 어디에서든 할 수 있게" — every house floor, lot room and the park too
   }
 
   /** Seated on a bench → Move and Jump are dropped silently: getting up is an explicit Stand. */
@@ -779,7 +781,13 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       client.sessionId,
       VILLAGE_SEATS,
     );
-    if (result === null) return "dropped"; // malformed / already seated / out of reach → silent
+    if (result === null) {
+      // malformed / already seated → silent; out of the seat's reach of where the SERVER has the player → told (fix/net-sync)
+      const index = payload !== null && typeof payload === "object" ? (payload as { seatIndex?: unknown }).seatIndex : undefined;
+      const seat = typeof index === "number" && Number.isInteger(index) ? VILLAGE_SEATS[index] : undefined;
+      if (seat && player.seatIndex < 0 && seatDistance(seat, player.x, player.z) > SEAT_REACH) this.refuseAction(client, "sit");
+      return "dropped";
+    }
     if ("reason" in result) {
       client.send(MessageType.SitRejected, { reason: result.reason }); // first come, first seated
       return "taken";
@@ -867,7 +875,12 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       : player;
     // …or a lot building's door and its room's way out (L5v2, villageLots.ts useLotDoor: the same reach and in-front rules)
     const arrival = useDoor(player.area, player.x, player.z) ?? useHouseExit(player.area, from.x, from.z, loadFailed) ?? useLotDoor(player.area, from.x, from.z) ?? useParkDoor(player.area, player.x, player.z);
-    if (arrival === null) return; // no door within reach → silent drop
+    if (arrival === null) {
+      // No door within reach of where the SERVER has the player. The client offers the button only at a door, so it believes it
+      // stands at one: it is told (the curtain lifts, a short line, its position is sent again) instead of a press doing nothing.
+      this.refuseAction(client, "door");
+      return;
+    }
 
     const now = this.now();
     if (!track.doorRate.tryAccept(now)) return; // flood → silent drop
@@ -884,6 +897,11 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     if (arrival.area === "hall") this.sendCandles(client); // the candles already burning, and who lit them
   }
 
+  /** A door / stair / bench press refused because the server has the player out of its reach: the presser is told (fix/net-sync). */
+  private refuseAction(client: Client, action: ActionRefusedPayload["action"]): void {
+    client.send(VillageServerMsg.ActionRefused, { action, reason: "far" } satisfies ActionRefusedPayload);
+  }
+
   /**
    * Stair pipeline (집 실내 G): the door's rules on a house floor's stair pad — sender must have a seat, not be sitting, the pure `useStair`
    * decides from the AUTHORITATIVE area and position (`padUsableFrom`), the 1-per-second cap (the door's: one counter for both, so a
@@ -896,7 +914,10 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     if (!player || !track) return;
     if (player.seatIndex >= 0) return; // sitting: stand up first
     const arrival = useStair(player.area, player.x, player.z) ?? useLotStair(player.area, player.x, player.z);
-    if (arrival === null) return;
+    if (arrival === null) {
+      this.refuseAction(client, "stair");
+      return;
+    }
     const now = this.now();
     if (!track.doorRate.tryAccept(now)) return;
     const at = spreadArrival(arrival.area, arrival, this.playersIn(arrival.area, client.sessionId));

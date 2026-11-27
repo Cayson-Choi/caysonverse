@@ -171,6 +171,7 @@ export function lfo(ctx: BaseAudioContext, hzRate: number, depth: number, target
   o.frequency.value = hzRate;
   const d = ctx.createGain();
   d.gain.value = depth;
+  lfoDepth.set(o, d);
   o.connect(d).connect(target);
   o.start();
   return o;
@@ -350,8 +351,36 @@ export function stopQuiet(n: { stop(when?: number): void }): void {
   }
 }
 
+/** Each LFO's depth gain (lfo): it hangs off the oscillator, so a graph's teardown finds it there. */
+const lfoDepth = new WeakMap<AudioNode, GainNode>();
+
+/** A gain left at 0 (its scheduled ramps dropped): a torn-down graph holds no level at all, even unplugged. */
+function silence(n: AudioNode): void {
+  if (typeof GainNode === "undefined" || !(n instanceof GainNode)) return;
+  try {
+    n.gain.cancelScheduledValues(0);
+    n.gain.value = 0;
+  } catch {
+    // a closed context: nothing to hold
+  }
+}
+
+/**
+ * Unplug a torn-down graph: every node disconnected, and every gain in it (an LFO's depth too) set to 0 — owner 2026-11-27,
+ * the menu check found the fountain's twelve gains still above 0 after 소리 끄기 (silent, being unplugged, but left holding a level).
+ */
 export function disconnectAll(nodes: readonly AudioNode[]): void {
   for (const n of nodes) {
+    silence(n);
+    const depth = lfoDepth.get(n);
+    if (depth) {
+      silence(depth);
+      try {
+        depth.disconnect();
+      } catch {
+        // gone already
+      }
+    }
     try {
       n.disconnect();
     } catch {

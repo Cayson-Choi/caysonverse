@@ -70,6 +70,7 @@ import { SS_FRAGMENT_PARS, SS_VERTEX_PARS, SS_VERTEX_WORLD, bindSunShadowUniform
 import { lanternPositions } from "../street/streetLayout";
 import { trimMesh } from "../street/streetTrim";
 import { addBusSky, busEnvScale } from "../villageBusPrep";
+import { clearGlassMaterial, patchWindowCards, type ClearGlass } from "../portal/clearGlass";
 import type { DayNightState } from "../dayNightBlend";
 import type { VillageTier } from "../villageModelPrep";
 
@@ -117,10 +118,11 @@ export const HOUSE_LOOK = {
   roughness: { LM_render: 0.93, LM_stone: 0.82, LM_roof: 0.9, LM_wood: 0.72, LM_metal: 0.55 } as Record<string, number>,
   /** The normal maps' strength (x, y: glTF without tangents flips y). */
   normalScale: 1,
-  /** The window glass: the bus's even sky reflection by its Fresnel, its tint by day, clearer by night (lit rooms show). */
-  glassOpacity: 0.55,
-  glassNightOpacity: 0.3,
-  glassEnv: 0.9,
+  /**
+   * The window glass (portal/clearGlass.ts): over a house whose rooms are not drawn, how much the dark reflective pane hides the lit card
+   * behind it (owner 2026-11-21: clear glass; the house nearest the camera shows its real rooms through clear panes).
+   */
+  glassDark: 0.78,
   /** The rooms behind the windows at night: LIT.window's warm colour, this bright (× the village's lit weight). */
   windowGlow: 1.35,
   /** The keypad's screen (M_lamp: X2 hand-over, only the door lock's pad): a faint glow by day, a soft one at night. */
@@ -344,8 +346,8 @@ export function houseSurfaceMaterial(source: MeshStandardMaterial, maps: HouseMa
 export interface HouseGlow {
   window: MeshStandardMaterial | null;
   lamp: MeshStandardMaterial | null;
-  glass: MeshStandardMaterial | null;
-  glassSky: { value: number };
+  /** The panes: clear over the house whose rooms are drawn (portal/HouseShowcase.tsx), dark and reflective over the others' lit cards. */
+  glass: ClearGlass | null;
 }
 
 function windowMaterial(source: MeshStandardMaterial): MeshStandardMaterial {
@@ -353,6 +355,7 @@ function windowMaterial(source: MeshStandardMaterial): MeshStandardMaterial {
   m.emissive = new Color(...LIT.window.color);
   m.emissiveIntensity = 0;
   patchHouseLight(m, "window");
+  patchWindowCards(m); // the cards step aside where the house's real rooms are drawn
   return m;
 }
 
@@ -363,18 +366,6 @@ function lampMaterial(source: MeshStandardMaterial): MeshStandardMaterial {
   return m;
 }
 
-function glassMaterial(source: MeshStandardMaterial, strength: { value: number }): MeshStandardMaterial {
-  const m = source.clone();
-  m.transparent = true;
-  m.depthWrite = false;
-  m.opacity = HOUSE_LOOK.glassOpacity;
-  m.roughness = 0.05;
-  m.metalness = 0;
-  m.vertexColors = false;
-  m.forceSinglePass = true;
-  addBusSky(m, strength, "glass");
-  return m;
-}
 
 function screenMaterial(source: MeshStandardMaterial): MeshStandardMaterial {
   const m = source.clone();
@@ -472,6 +463,19 @@ export function a8TreeShift(x: number, z: number): { dx: number; dz: number } | 
     const cx = (old.minX + old.maxX) / 2;
     const cz = (old.minZ + old.maxZ) / 2;
     if (Math.abs(cx - x) < 0.05 && Math.abs(cz - z) < 0.05) return { dx: m.to.x - cx, dz: m.to.z - cz };
+  }
+  return null;
+}
+
+/** The same for the bush the A8 houses displace (bush_15, a drawn bush found in the file's cards): its shift, or null. */
+export function a8BushShift(x: number, z: number): { dx: number; dz: number } | null {
+  if (modelHasA8Houses(VILLAGE_COLLIDERS, VILLAGE_LAYOUT.sceneryHouses)) return null;
+  for (const m of A8_TREE_MOVES) {
+    const old = A7_MODEL_HOUSE_BOXES.find((b) => b.id === m.id)?.box;
+    if (!old || !m.id.startsWith("bush_")) continue;
+    const cx = (old.minX + old.maxX) / 2;
+    const cz = (old.minZ + old.maxZ) / 2;
+    if (Math.abs(cx - x) < 0.3 && Math.abs(cz - z) < 0.6) return { dx: m.to.x - cx, dz: m.to.z - cz };
   }
   return null;
 }
@@ -669,7 +673,7 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
   scene.updateWorldMatrix(true, true);
   const own = { materials: [] as Material[], geometries: [] as BufferGeometry[] };
   const made = new Map<string, Material>();
-  const glow: HouseGlow = { window: null, lamp: null, glass: null, glassSky: { value: HOUSE_LOOK.glassEnv } };
+  const glow: HouseGlow = { window: null, lamp: null, glass: null };
   const lamps: Mesh[] = [];
   const material = (src: Material): Material => {
     const hit = made.get(src.name);
@@ -680,7 +684,7 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
     else if (src.name.startsWith("LM_")) m = houseSurfaceMaterial(s, maps[src.name] ?? null);
     else if (src.name === "M_window") m = glow.window = windowMaterial(s);
     else if (src.name === "M_lamp") m = glow.lamp = lampMaterial(s);
-    else if (src.name === "M_glass") m = glow.glass = glassMaterial(s, glow.glassSky);
+    else if (src.name === "M_glass") m = (glow.glass = clearGlassMaterial("M_glass", HOUSE_LOOK.glassDark)).material;
     else if (src.name === "M_screen") m = screenMaterial(s);
     else {
       // what a later kit adds (X2's M_leaf_flora: flower cards): the file's own material, lit, cut out
@@ -966,8 +970,6 @@ export function applyHousesDayNight(nodes: HouseNodes, s: Pick<DayNightState, "l
   const g = nodes.glow;
   if (g.window) g.window.emissiveIntensity = s.lights * HOUSE_LOOK.windowGlow;
   if (g.lamp) g.lamp.emissiveIntensity = HOUSE_LOOK.lampDay + (HOUSE_LOOK.lampNight - HOUSE_LOOK.lampDay) * s.lights;
-  if (g.glass) g.glass.opacity = HOUSE_LOOK.glassOpacity + (HOUSE_LOOK.glassNightOpacity - HOUSE_LOOK.glassOpacity) * s.lights;
-  g.glassSky.value = HOUSE_LOOK.glassEnv * busEnvScale(s);
   metalSky.value = 0.9 * busEnvScale(s);
 }
 

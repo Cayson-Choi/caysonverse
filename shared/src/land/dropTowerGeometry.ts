@@ -50,22 +50,5 @@ export function dropRidingPoints(y: number): { p: V3; name: string }[] {
   return out;
 }
 
-/**
- * The tower's outer frame (design 2026-11-19): four leaning legs at the corners of a square, joined by ring beams, arches and braces, standing OUTSIDE the car's
- * swept cylinder. `d` is the distance from the tower's axis to each face plane of the frame (the legs stand at (±d, ±d)); it tapers from dBase at the deck to dTop
- * at the crown. The car (radius floorOuter + its rim) must always clear every part of the frame: dropFrameReach(y) is the nearest any frame part comes to the axis.
- */
-export const DROP_FRAME = Object.freeze({ dBase: 6.0, dTop: 4.5, beamHalf: 0.22, rim: 0.08 });
-export function dropFrameD(y: number): number {
-  const t = Math.max(0, Math.min(1, y / DROP_CROWN_Y));
-  return DROP_FRAME.dBase + (DROP_FRAME.dTop - DROP_FRAME.dBase) * t;
-}
-/** The nearest any part of the frame comes to the tower's axis at height y (the beams' and arches' inner faces; the legs stand farther out, on the diagonals). */
-export function dropFrameReach(y: number): number {
-  return dropFrameD(y) - DROP_FRAME.beamHalf;
-}
-/** The widest the car's frame reaches from the axis (its floor's outer edge and its rim). */
-export const DROP_CAR_REACH = DROP_CAR.floorOuter + DROP_FRAME.rim;
-
-/** The ring beams' heights (a stepped arch panel stands on each); 10 m apart up the tall tower. */
+/** The heights of the column's wide indigo bands (every 10 m up the tall tower; until 2026-11-21 the ring beams of a frame round the car stood at them: it blocked every rider's view and was taken away). */
 export const DROP_BEAM_YS: readonly number[] = Object.freeze([2.2, 10, 20, 30, 40, 50, 60, 70, 80]);

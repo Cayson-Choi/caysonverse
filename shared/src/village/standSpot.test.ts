@@ -6,6 +6,7 @@ import { houseFloorBounds, parseHouseFloorArea } from "./houseAreas";
 import { BUS_SEATS, BUS_STAND_BEHIND_MAX, cabinBlocked, facingVector, seatStandUpSpot } from "./busCabin";
 import { BODY_APART, FRONT_MIN, pickStandSpot, seatAhead, standCandidates, standSide } from "./standSpot";
 import type { Bounds } from "../school/geometry";
+import { PARK_BOUNDS, parkGeometry } from "./parkArea";
 
 /**
  * Owner 2026-11-17: "식탁이나 의자가 너무 붙어서 앉고 일어날 의자 뒤로 갑자기 일어서고 이런 건 없어야 해 실제처럼 의자 앞에 가서 앉고
@@ -14,6 +15,8 @@ import type { Bounds } from "../school/geometry";
 
 const backed = (s: VillageSeat) => s.kind === "backed" || (s.lean ?? 0) > 0;
 const BACKED = VILLAGE_SEATS.filter((s) => backed(s) && !s.retired); // (release 3.1: retired seats keep their indices far away)
+/** Clear of the colliders of the seat map: the park benches stand in the park geometry. */
+const clearAt = (s: VillageSeat, x: number, z: number): boolean => (s.area === "park" ? standsClear(x, z, PARK_BOUNDS, parkGeometry) : standsClear(x, z, boundsOf(s)));
 const boundsOf = (s: VillageSeat): Bounds => {
   const h = parseHouseFloorArea(s.area);
   const room = lotRoomOf(s.area); // (a lot building's walk-in room, lots v2 L5v2)
@@ -80,12 +83,12 @@ describe("standSide / standCandidates: in front, beside, never behind the backre
 describe("the sweep: every backed seat of the game is stood up from in front of it (owner 2026-11-17)", () => {
   it(`covers them all: ${BACKED.length} backed seats — plaza, shelter, café, porches, houses, the hall, the lake`, () => {
     const areas = new Set(BACKED.map((s) => (parseHouseFloorArea(s.area) ? "house" : lotRoomOf(s.area) ? "lot" : s.area)));
-    expect([...areas].sort()).toEqual(["hall", "house", "lot", "village"]);
+    expect([...areas].sort()).toEqual(["hall", "house", "lot", "park", "village"]);
     expect(BACKED.length).toBeGreaterThan(130);
   });
 
   it("every stand point is clear of the furniture (and inside its room)", () => {
-    for (const s of BACKED) expect(standsClear(s.standX, s.standZ, boundsOf(s)), s.id).toBe(true);
+    for (const s of BACKED) expect(clearAt(s, s.standX, s.standZ), s.id).toBe(true);
   });
 
   it("in front of the seat — except the listed seats whose front the layout blocks (beside them instead), and none behind but the known few", () => {
@@ -101,19 +104,19 @@ describe("the sweep: every backed seat of the game is stood up from in front of 
   });
 
   it("standing up lands on the stand point when it is free — the same spot the server picks", () => {
-    for (const s of BACKED) expect(pickStandSpot(s, (x, z) => standsClear(x, z, boundsOf(s))), s.id).toEqual({ x: s.standX, z: s.standZ });
+    for (const s of BACKED) expect(pickStandSpot(s, (x, z) => clearAt(s, x, z)), s.id).toEqual({ x: s.standX, z: s.standZ });
   });
 
   it("someone standing on the stand point: the next free spot in front (front-left / front-right / further), clear of them — or none (stay seated)", () => {
     const stuck: string[] = [];
     for (const s of BACKED) {
       const other = { x: s.standX, z: s.standZ };
-      const spot = pickStandSpot(s, (x, z) => standsClear(x, z, boundsOf(s)) && Math.hypot(x - other.x, z - other.z) >= BODY_APART);
+      const spot = pickStandSpot(s, (x, z) => clearAt(s, x, z) && Math.hypot(x - other.x, z - other.z) >= BODY_APART);
       if (!spot) {
         stuck.push(s.id);
         continue;
       }
-      expect(standsClear(spot.x, spot.z, boundsOf(s)), s.id).toBe(true);
+      expect(clearAt(s, spot.x, spot.z), s.id).toBe(true);
       expect(Math.hypot(spot.x - other.x, spot.z - other.z), s.id).toBeGreaterThanOrEqual(BODY_APART);
       expect(standSide(s, spot.x, spot.z), s.id).not.toBe("behind");
       if (standSide(s, s.standX, s.standZ) === "front") expect(standSide(s, spot.x, spot.z), s.id).toBe("front");

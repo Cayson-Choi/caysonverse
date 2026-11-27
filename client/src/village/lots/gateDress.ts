@@ -28,6 +28,7 @@ import { GATE_FOUNTAIN } from "../fountain/fountainDesigns";
 import { drawnTris, lotSurfaceMaterial, muteLotLampsNear, patchLotLight, type LotNodes } from "./lotsPrep";
 import { tintForecourt } from "./entranceGardens";
 import { buildGateBoard, isOldGateBarrier } from "./gateBoard";
+import { GATE_WINDOW_MAPS, buildGateMaps, isOldGateMap } from "./gateMap";
 
 /**
  * 케이슨랜드's gate lot, dressed again (fix/gate-fountain-park). The owner, on the forecourt: "케이슨 랜드 입구에 이거
@@ -119,6 +120,8 @@ export function isOldGatePiece(x: number, y: number, z: number, material: string
     for (const px of [-14.9, -33.1]) if (Math.abs(x - px) < 1.5) return true;
   // the belt barrier and the "곧 문을 열어요" stand across the gateway: the park is open (gateBoard.ts)
   if (isOldGateBarrier(x, y, z, material)) return true;
+  // the generic cartoon map on the piers and in the ticket windows: the real guide map hangs there now (gateMap.ts)
+  if (isOldGateMap(x, y, z, material)) return true;
   return false;
 }
 
@@ -624,6 +627,12 @@ export function dressGateLot(nodes: LotNodes, low: boolean, mats: GateDressMater
   detail.add(board.group);
   nodes.own.geometries.push(...board.geometries);
   for (const m of board.materials) own(m);
+  // 케이슨랜드 안내도: the real guide map in a notice case on each pier's inner face and in the ticket windows, back-lit after dark
+  const maps = buildGateMaps(low, GATE_WINDOW_MAPS, patchLotLight);
+  detail.add(maps.group);
+  nodes.own.geometries.push(...maps.geometries);
+  for (const m of maps.materials) own(m);
+  nodes.glow.signs.push({ m: maps.print, base: 0.5 });
   // thin ironwork casts no live sun shadow: the shadow map cannot hold a 2 cm bar or a flagpole, and smeared them over the piers' inner
   // faces as long streaks whenever the low sun shone through the gateway (owner 2026-11-21: "기둥에 문양이 왜 이렇게 길게 늘어서서")
   nodes.root.traverse((o) => {
@@ -710,8 +719,8 @@ export function dressGateLot(nodes: LotNodes, low: boolean, mats: GateDressMater
   // the budget sheet's numbers: what was cut, what came in (the water's draws counted as the renderer draws them)
   let added = 0;
   let draws = 0;
-  added += board.triangles;
-  draws += 2;
+  added += board.triangles + maps.triangles;
+  draws += 2 + maps.draws;
   for (const o of [fountain, lamps, bulbs, globes, ...detail.children.filter((c) => c.name.startsWith("gate_topiary"))])
     o.traverse((c) => {
       if (!isMesh(c)) return;

@@ -1078,6 +1078,60 @@ export const LOT_HURDLES: Readonly<Record<string, number>> = Object.freeze({
   lot_gate_planter_r: 0.9,
 });
 
+/**
+ * The lots' planted beds and clipped borders as solids (owner 2026-11-21: "화단에 식물이 있는데 이걸 그냥 통과해버리네"): lot-local
+ * rectangles, kept apart from the models' collider boxes (the models have none for them; client/village/lots/entranceGardens.ts draws
+ * the beds from the same numbers). The chapel's and the church's entrance borders either side of the walk, four of the chapel's five side
+ * beds (mulch beds of roses and box balls round its two gardens; the fifth would close a bench off), the school's and the library's boxwood borders and the library's
+ * two clipped crowns. No box leaves a slit under a body's width beside a neighbour, and none closes a seat off: villageSolidsReach.test.ts
+ * and the click sweep (client game/clickPlanSweep.test.ts) hold that.
+ */
+export const LOT_BED_SOLIDS: Readonly<Record<LotId, readonly LotRect[]>> = Object.freeze({
+  lot_school: Object.freeze([rect(-6.9, -3.2, 9.5, 9.8), rect(3.2, 9, 9.5, 9.8)]),
+  lot_chapel: Object.freeze([
+    rect(1.88, 4.66, 5.68, 7.05), rect(-4.66, -1.88, 5.68, 7.05),
+    // the south garden (the fountain's): the long bed beyond the gravel circle. NOT the small one at the bench's north end
+    // (1.9 x 1.1 m of mulch with three roses, lot-local 5.5..6.6 x -4.6..-2.8): its box stood 0.57 m from the basin's, corner to
+    // corner, and 0.7 m from the bench's end, so the bench between the two beds could not be walked to or round (the click
+    // sweep: every tap from that bench "unreachable"). A seat's approach comes before a bed of three roses.
+    // (...and the half metre of gravel between the basin's box and that bed: a slit no body enters, closed so a tap there is
+    // answered from the bed's edge and not refused)
+    rect(9.9, 11.6, -3.6, 1.6), rect(9.4, 9.9, -2.4, 0),
+    // the north garden (the rose arbour's): the two beds along its far side as one run (0.4 m of lawn between their boxes was a
+    // slit nobody enters), the bed by the nave up to the nave's own box. Beside the bench's two ends (lot-local z under -3.4)
+    // each bed's box stands 0.25 m back from its mulch edge: a body passes between bench and bed (1.05 m), round to its back.
+    rect(-11.7, -9.9, -3.4, 1.9), rect(-11.7, -10.15, -4.5, -3.4), rect(-6.5, -5, -3.4, -1.6), rect(-6.25, -5, -4.6, -3.4), rect(-11.6, -9.4, 1.9, 4.2),
+  ]),
+  lot_library: Object.freeze([rect(-9.85, -8.75, 3.53, 3.81), rect(-5.55, -5.02, 3.53, 3.81), rect(-0.98, -0.45, 3.53, 3.81), rect(-5.15, -4.25, 3.35, 4.25), rect(-1.75, -0.85, 3.35, 4.25)]),
+  lot_temple: Object.freeze([]),
+  lot_church: Object.freeze([rect(2.55, 4.08, 3.08, 5.13), rect(-4.08, -2.55, 3.08, 5.13)]),
+  lot_gate: Object.freeze([]),
+  lot_cafe: Object.freeze([]),
+});
+
+/**
+ * The gate's welcome board ("어서 오세요!", client lots/gateBoard.ts GATE_BOARD: two turned posts 1.75 m apart carrying an enamel
+ * panel from 0.92 m up, standing askew beside the avenue): a sign stand is solid like every other prop (2026-11-21; found by
+ * e2e/solid-audit.mjs the day the board was added). Its plan, in world metres: the panel's centre, the way it looks, half the
+ * distance between its posts. client lots/gateBoard.test checks these against the board that is drawn.
+ */
+export const GATE_BOARD_PLAN = Object.freeze({ x: -28.05, z: 91.75, look: [0.42, -0.9075] as const, halfSpan: 0.875 });
+
+/** The board as five small boxes along its line (it stands 25 degrees off the axes: one box round it would reach 0.3 m past its ends). */
+export function gateBoardSolids(): AABB[] {
+  const b = GATE_BOARD_PLAN;
+  const n = Math.hypot(b.look[0], b.look[1]);
+  // the panel's own line on the ground: across its look
+  const ax = b.look[1] / n;
+  const az = -b.look[0] / n;
+  const r2 = (v: number): number => Math.round(v * 100) / 100;
+  return [-1, -0.5, 0, 0.5, 1].map((t) => {
+    const x = b.x + ax * b.halfSpan * t;
+    const z = b.z + az * b.halfSpan * t;
+    return { minX: r2(x - 0.24), maxX: r2(x + 0.24), minZ: r2(z - 0.16), maxZ: r2(z + 0.16) };
+  });
+}
+
 /** The lots' boxes as the village geometry takes them: every collider an obstacle, the tall ones and the roof slabs camera boxes (`hurdles`: LOT_HURDLES). */
 export function lotGeometryColliders(ids: readonly LotId[] = LOTS_WITH_MODEL): { obstacles: AABB[]; cameraBoxes: CameraBox[]; hurdles: CameraBox[] } {
   const obstacles: AABB[] = [];
@@ -1091,6 +1145,8 @@ export function lotGeometryColliders(ids: readonly LotId[] = LOTS_WITH_MODEL): {
       else if (LOT_HURDLES[c.id] !== undefined) hurdles.push({ ...c.box, height: LOT_HURDLES[c.id]! });
     }
     obstacles.push(...lotSeatFurnitureBoxes(l));
+    for (const r of LOT_BED_SOLIDS[l.id]) obstacles.push(lotBox(l, r));
+    if (l.id === "lot_gate") obstacles.push(...gateBoardSolids());
     for (const s of LOT_ROOF_SLABS[l.id]) cameraBoxes.push({ ...lotBox(l, s.rect), minY: s.minY, height: s.height });
   }
   return { obstacles, cameraBoxes, hurdles };
@@ -1168,7 +1224,7 @@ export interface LotInteriorSpec {
   doorX: number;
   doorWidth: number;
   /** Fixed furniture boxes (pews, altar, 수미단, desks, stacks): interior frame rects, `col__<unit>_<name>` in the model. */
-  solids: readonly { name: string; rect: LotRect; height: number }[];
+  solids: readonly { name: string; rect: LotRect; height: number; cameraHeight?: number }[];
   seats: readonly LotInteriorSeat[];
   /** Triangles (all drawn at once inside; statues and scans at their game LOD), GPU texture MB (KTX2), draws: PC and phone. */
   budget: { pc: { triangles: number; textureMB: number; draws: number }; phone: { triangles: number; textureMB: number; draws: number } };
@@ -1189,7 +1245,8 @@ export const LOT_INTERIOR_FRONT_CLEAR = 0.6;
 
 const iseat = (id: string, x: number, z: number, faces: LotInteriorSeat["faces"], kind: LotInteriorSeat["kind"], length: number, places: number, seatTop = 0.45, frontEdge = 0.25, backDepth = 0.35): LotInteriorSeat =>
   ({ id, x, z, faces, kind, seatTop, length, frontEdge, backDepth, places });
-const solid = (name: string, x0: number, x1: number, z0: number, z1: number, height: number) => ({ name, rect: rect(x0, x1, z0, z1), height });
+const solid = (name: string, x0: number, x1: number, z0: number, z1: number, height: number, cameraHeight?: number) =>
+  cameraHeight === undefined ? { name, rect: rect(x0, x1, z0, z1), height } : { name, rect: rect(x0, x1, z0, z1), height, cameraHeight };
 
 /** 교실 + 복도: lockers along the corridor (z 0..2.4), a glazed partition, 12 pupils' desks facing the blackboard on the left wall. */
 const SCHOOL_IN: LotInteriorSpec = {
@@ -1299,7 +1356,10 @@ const TEMPLE_IN: LotInteriorSpec = {
   doorX: 5.7,
   doorWidth: 3,
   solids: [
-    solid("sumidan", 2.5, 8.9, 5.6, 7.4, 1.1), // 수미단 with the three figures
+    // 수미단 with the three figures: a 1.1 m platform to walk round, but for the camera the figures, their halos and the 닫집 over them fill it
+    // to the ceiling (2026-11-22: in the middle aisle facing the door, the follow camera sat behind the main figure, 0.25 m from its halo
+    // — every tap hit the halo, the view was a gold blur)
+    solid("sumidan", 2.5, 8.9, 5.6, 7.4, 1.1, 6),
     solid("offering", 4.2, 7.2, 4.9, 5.4, 0.85), // 공양상: candles, incense burner, flowers, fruit
     solid("bell_small", 0.3, 0.9, 5.8, 6.6, 1.2), solid("drum", 10.5, 11.1, 5.8, 6.6, 1.2),
     // B3 (2026-11-17), appended: the hall's ten 배흘림 wall columns (r 0.24, half in the walls; the bays 3.8 m as outside)
@@ -1446,11 +1506,11 @@ export function lotRoomOuter(r: LotRoom, thickness = LOT_ROOM_WALL): AABB {
 }
 
 /** One room's fixed furniture (`LOT_INTERIORS` solids, the model's `col__<unit>_<name>`) in the world. */
-export function lotRoomSolids(r: LotRoom): Array<AABB & { name: string; height: number }> {
+export function lotRoomSolids(r: LotRoom): Array<AABB & { name: string; height: number; cameraHeight: number }> {
   return r.spec.solids.map((s) => {
     const a = lotRoomPoint(r, s.rect.x0, s.rect.z0);
     const b = lotRoomPoint(r, s.rect.x1, s.rect.z1);
-    return { name: s.name, minX: a.x, maxX: b.x, minZ: a.z, maxZ: b.z, height: s.height };
+    return { name: s.name, minX: a.x, maxX: b.x, minZ: a.z, maxZ: b.z, height: s.height, cameraHeight: s.cameraHeight ?? s.height };
   });
 }
 
@@ -1470,7 +1530,8 @@ export function lotRoomColliders(): { obstacles: AABB[]; cameraBoxes: CameraBox[
       // a pew's walk box stops LOT_PEW_KNEE short of its seat's front edge (the pews face +z): a standing body's knees reach over the
       // seat's lip, so the 0.9 m between a pew and the back of the next one is the 1.0 m a body (radius 0.4) stands and walks in
       obstacles.push(s.name.startsWith("pew_") ? { ...box, maxZ: R6(box.maxZ - LOT_PEW_KNEE) } : box);
-      if (s.height >= 1.6) cameraBoxes.push({ ...box, height: s.height });
+      // (what stands on a low solid, as tall as a wall for the camera — the temple's figures on their 수미단 — counts by its own height)
+      if (s.cameraHeight >= 1.6) cameraBoxes.push({ ...box, height: s.cameraHeight });
     }
     const o = lotRoomOuter(r);
     cameraBoxes.push({ ...o, minY: R6(r.ceiling - 0.1), height: R6(r.ceiling + 0.1) });

@@ -338,6 +338,11 @@ function placeAt(step: Exclude<CoachStep, "done">, input: CoachPlaceInput): { re
   } else if (step === "look") {
     idealX = leftHanded ? minX : maxX;
     idealY = layout.topGroup.y + layout.topGroup.h + MIN_GAP_PX;
+  } else if (vh > vw && layout.emoji.y + layout.emoji.h <= layout.chat.y) {
+    // a portrait phone's 2×2 button grid (owner 11-26) stacks the emoji over the 💬: the space above it is the avatar's, so
+    // ③ goes to the top on the 💬's side, like ② (still above the bottom cluster, over the 💬's side of the screen)
+    idealX = layout.chat.x + layout.chat.w / 2 < vw / 2 ? minX : maxX;
+    idealY = layout.topGroup.y + layout.topGroup.h + MIN_GAP_PX;
   } else {
     idealX = layout.chat.x + layout.chat.w / 2 - w / 2;
     idealY = layout.chat.y - MIN_GAP_PX - h;

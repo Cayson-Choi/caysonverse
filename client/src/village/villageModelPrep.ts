@@ -1,4 +1,5 @@
 import { versionedUrl } from "./modelUrl";
+import { SETTS_MATERIALS, SETTS_RELIEF, fixSettsUv } from "./settsRelief";
 import { GRASS_MATERIALS, GROUND_SMOOTH_MATERIAL, GROUND_GRAIN_MATERIALS, GROUND_PARS, groundGrainTexture, groundMapFragment } from "./groundDetail";
 import {
   Box3,
@@ -19,6 +20,7 @@ import {
   type ShaderMaterial,
   type Texture,
 } from "three";
+import { clearGlassMaterial, memorialCardHide, patchCardHide, type ClearGlass } from "./portal/clearGlass";
 import {
   COLLIDER_PREFIX,
   LIGHTMAP_INTENSITY,
@@ -456,6 +458,8 @@ export function liftMaterial(
   // the lawns also get the anti-tiling and macro tint of grassVariation.ts (the village and the lake share one grass)
   const vary = ground && GRASS_MATERIALS.includes(material.name);
   const catmull = material.name === GROUND_SMOOTH_MATERIAL;
+  // the plaza's setts and the pavements: relief out of the stones' own picture, lit by the live sun (settsRelief.ts)
+  const setts = !own && SETTS_MATERIALS.includes(material.name);
   material.onBeforeCompile = (shader) => {
     if (ground) {
       shader.uniforms.uVillageGrain = { value: groundGrainTexture() };
@@ -476,13 +480,13 @@ export function liftMaterial(
       .replace("void main() {", foliage ? LIFT_PARS.replace("void main() {", NEAR_FADE_PARS) : LIFT_PARS)
       .replace(LIGHTMAP_TEXEL_FROM, lightmapTexelTo(vary, vary && !!own))
       .replace("void main() {", ground ? GROUND_PARS : "void main() {")
-      .replace("#include <map_fragment>", ground ? groundMapFragment(catmull, vary, vary && !own, vary && !!own) : "#include <map_fragment>")
+      .replace("#include <map_fragment>", ground ? groundMapFragment(catmull, vary, vary && !own, vary && !!own) : setts ? SETTS_RELIEF : "#include <map_fragment>")
       .replace("#include <color_fragment>", LIFT_ALBEDO)
       .replace("#include <aomap_fragment>", LIFT_LIGHT)
       .replace("void main() {", `${SS_FRAGMENT_PARS}${SS_DAY_FUNCTION}void main() {\n${SS_MAIN_TOP}`);
   };
   material.customProgramCacheKey = () =>
-    (foliage ? "village-light-foliage" : ground ? (catmull ? "village-light-ground-smooth" : vary ? "village-light-ground-grass" : "village-light-ground") : "village-light") + (own ? `-${own.key}` : "");
+    (foliage ? "village-light-foliage" : setts ? "village-light-setts" : ground ? (catmull ? "village-light-ground-smooth" : vary ? "village-light-ground-grass" : "village-light-ground") : "village-light") + (own ? `-${own.key}` : "");
   material.needsUpdate = true;
 }
 
@@ -527,6 +531,9 @@ void main() {`;
 const GLASS_NIGHT = /* glsl */ `#include <map_fragment>
 diffuseColor.rgb *= mix( 1.0, 0.1, uVillageLit );
 diffuseColor.a *= mix( 1.0, 0.55, uVillageLit );`;
+
+/** How much a village pane hides what is behind it where no room is drawn: little (the kiosk's flowers and the lanterns' flames show). */
+export const VILLAGE_GLASS_DARK = 0.3;
 
 /** Dim the shared `M_glass` (windows, doors, shop glass) with the night, in place and idempotently (house review 2026-11-13). */
 export function nightGlass(m: Material): void {
@@ -759,6 +766,11 @@ export interface VillageNodes {
    * to its pools), or null (`fountain: "old"`, or no fountain in the model).
    */
   fountain: { water: FountainWater; pool: ShaderMaterial } | null;
+  /**
+   * The village's panes (`M_glass`: the memorial's shop front, the kiosk, the lanterns): clear glass (portal/clearGlass.ts, owner
+   * 2026-11-21 — the model's milky sheet with its painted streak is gone), clear over a room drawn behind it, a faint dark sheen elsewhere.
+   */
+  glass: ClearGlass | null;
   /** Materials, textures and geometries this call made (and nothing else): dispose them with the scene. */
   own: Array<Material | Texture | BufferGeometry>;
 }
@@ -926,6 +938,15 @@ export function prepareVillage(
       return;
     }
     if (!isMesh(o)) return;
+    // the plaza's inner court of setts, relaid straight (the build's rings smear there: settsRelief.ts)
+    if (materialsOf(o).some((m) => m.name === "LM_setts")) {
+      o.updateWorldMatrix(true, false);
+      const fixed = fixSettsUv(o.geometry, o.matrixWorld);
+      if (fixed.relaid > 0) {
+        o.geometry = fixed.geometry;
+        own.push(fixed.geometry);
+      } else fixed.geometry.dispose();
+    }
     for (const m of materialsOf(o)) {
       if (!found.has(m.name)) found.set(m.name, m);
       if (m.name.startsWith(LIGHTMAP_MATERIAL_PREFIX) || (FOLIAGE_MATERIALS.includes(m.name) && !o.name.startsWith(BACKDROP_FOREST_PREFIX))) {
@@ -1002,12 +1023,19 @@ export function prepareVillage(
     const source = found.get(name);
     if (!source) continue;
     const lit = litMaterial(source, kind);
+    // the cards behind the memorial's shop front step aside while the hall itself is drawn there (portal/MemorialShowcase.tsx)
+    if (kind === "window") patchCardHide(lit, memorialCardHide.uCardHide);
     own.push(lit);
     swapMaterial(root, name, lit);
   }
 
   const glassSource = found.get(MATERIAL.glass);
-  if (glassSource) nightGlass(glassSource);
+  let glass: ClearGlass | null = null;
+  if (glassSource) {
+    glass = clearGlassMaterial(MATERIAL.glass, VILLAGE_GLASS_DARK);
+    own.push(glass.material);
+    swapMaterial(root, MATERIAL.glass, glass.material);
+  }
 
   // The plots' outlines glow.
   const glowSource = found.get(MATERIAL.glowPlot) as MeshBasicMaterial | undefined;
@@ -1079,7 +1107,7 @@ export function prepareVillage(
   }
 
   freezeStatic(root);
-  return { root, water, sky, skyMapping, hazed, graded, stars, fountain, own };
+  return { root, water, sky, skyMapping, hazed, graded, stars, fountain, glass, own };
 }
 
 /**

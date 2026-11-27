@@ -1,5 +1,5 @@
 /**
- * The own rider of the 달배: first-person camera on the cushion, facing the bow. The eye sits over the cushion and is carried by the hull: it swings
+ * The own rider of the 달배: first-person camera on the cushion, facing the middle of the boat like a real Viking (the bow half faces the stern, the stern half the bow). The eye sits over the cushion and is carried by the hull: it swings
  * along the arc and pitches with the boat (nose up while the boat climbs the bow side, down on the way back), so the horizon tips up to 82 degrees at the
  * turning points. At the top the seat barely presses (about 0.15 g): the eye floats up a little and the view hangs still for a moment. Comfort scales
  * the pitch (off: a quarter of the hull's tilt, so the bow still reads as rising; gentle: 0.6). Free look is the first-person drag. Nothing is allocated per frame.
@@ -9,7 +9,7 @@ import { MOON_MAX_ANGLE, MOON_SEAT, moonBoatAt, moonGLoad, moonSeatPose, type Mo
 import { rideMs } from "./rideClock";
 import { rideComfort, selfRide } from "./coasterRide";
 
-const P: MoonSeatPose = { x: 0, y: 0, z: 0, fy: 0, fz: 1, uy: 1, uz: 0, angle: 0, gload: 1 };
+const P: MoonSeatPose = { x: 0, y: 0, z: 0, fy: 0, fz: 1, uy: 1, uz: 0, angle: 0, gload: 1, face: 1 };
 const ST: MoonBoatState = { cycle: 0, phase: 0, status: "boarding", angle: 0, omega: 0, alpha: 0, rideT: 0, departsInMs: 0 };
 
 export const moonBoatProbe = { active: false, angle: 0, gload: 1, altitude: 0, eye: [0, 0, 0] as [number, number, number], float: 0, pitch: 0 };
@@ -31,10 +31,10 @@ export function stepMoonBoatCamera(camera: PerspectiveCamera, _dt: number, lookY
   // 0.15 m back from the cushion point, along the seat (the rider sits back in the seat, the row ahead a little farther off)
   camera.position.set(P.x - 0 * P.fy, P.y + P.uy * lift - P.fy * 0.15, P.z + P.uz * lift - P.fz * 0.15);
   // the hull's pitch: nose up while the angle is positive (the boat's +z end rises)
-  const pitch = P.angle * k;
+  const pitch = P.angle * k * P.face; // facing the stern (the bow half) the horizon tips the other way
   camera.rotation.order = "YXZ";
-  // the rider faces the bow (+z): yaw PI in three's frame (its forward is -z)
-  camera.rotation.set(-lookPitch + pitch, Math.PI + Math.max(-1.9, Math.min(1.9, lookYaw)), 0);
+  // the rider faces along the boat's length toward the middle: yaw PI toward the bow (+z; three's forward is -z), 0 toward the stern
+  camera.rotation.set(-lookPitch + pitch, (P.face > 0 ? Math.PI : 0) + Math.max(-1.9, Math.min(1.9, lookYaw)), 0);
   camera.up.set(0, 1, 0);
   if (Math.abs(camera.fov - baseFov) > 1e-3) {
     camera.fov = baseFov;

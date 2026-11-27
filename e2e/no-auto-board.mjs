@@ -305,6 +305,12 @@ async function oneRide(p, key, tag) {
     for (let i = 0; i < 500 && !off; i++) {
       if (await leave.isEnabled().catch(() => false)) {
         await (p.touch ? leave.tap() : leave.click()).catch(() => {});
+        // 비상 내리기 (the ride moving) asks once more (2026-11-22): the first press only arms it — still aboard — and a second gets off
+        if ((await leave.getAttribute("data-armed").catch(() => null)) === "1") {
+          await sleep(800);
+          run.check(`${L}: one press of 비상 내리기 only asks again (still aboard)`, (await rideState(p, key)).slot >= 0, await leave.textContent().catch(() => null));
+          await (p.touch ? leave.tap() : leave.click()).catch(() => {});
+        }
         off = await until(async () => (await rideState(p, key)).slot < 0, 4000);
       } else await sleep(500);
       if ((await rideState(p, key)).slot < 0) break;

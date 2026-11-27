@@ -1,24 +1,41 @@
-import { BufferGeometry, BufferAttribute, Group, InstancedMesh, Matrix4, Quaternion, Vector3, type Material, type Mesh, type Object3D } from "three";
-import { BARK_SURFACE, barkPhotos, barkTexture, flatNormal } from "../veg/barkGeometry";
-import { makeCrownAtlas } from "../veg/leafAtlas";
-import { treeGeo } from "../veg/treeKit";
+import { BufferGeometry, BufferAttribute, ClampToEdgeWrapping, Group, InstancedMesh, LinearFilter, LinearMipmapLinearFilter, Matrix4, NoColorSpace, Quaternion, RepeatWrapping, SRGBColorSpace, TextureLoader, Vector3, type Material, type Mesh, type Object3D, type Texture } from "three";
+import { flatNormal } from "../veg/barkGeometry";
+import { PINE_FILES, pineGeo } from "../veg/pineKit";
 import { vegMaterial } from "../veg/vegMaterial";
+import { versionedUrl } from "../modelUrl";
 
 /**
- * The temple yard's four Korean red pines (소나무; owner audit 2026-11-18: "stacked flat untextured green plates"). The art file's
- * pines were a trunk (in the `LM_temple_rock` mesh) with 1300 triangles of flat green plates each (the whole `LM_temple_green`
- * detail mesh above 3.4 m is pine foliage). `cutOldPines` drops them from the loader's geometry (a copy with a new index: the cached
- * file is not touched) and `makeTemplePines` stands real pines in their place: a twisted red-brown scaly trunk (the village's bark
- * photo, `plates`, dyed red-brown), limbs with needle clouds (alpha cards, leafAtlas.ts) on every branch tip.
+ * The temple yard's four Korean red pines (소나무). The art file's pines were a trunk (in the `LM_temple_rock` mesh) with 1300
+ * triangles of flat green plates each (the whole `LM_temple_green` detail mesh above 3.4 m is pine foliage). `cutOldPines` drops them
+ * from the loader's geometry (a copy with a new index: the cached file is not touched) and `makeTemplePines` stands real pines in their
+ * place (veg/pineKit.ts, owner 2026-11-21 "실제같은 느낌이 나도록"): leaning, bending trunks with the grey fissured foot and the orange
+ * flaky upper bark, few irregular limbs, the needles in flat layered pads, three shapes, each pine leaning toward the yard (or the pond).
  */
 
-/** Where the art file stood them (x, z; the boxes `col__lot_temple_pine_N`), their height (m) and turn. */
-export const TEMPLE_PINES: ReadonlyArray<{ x: number; z: number; H: number; yaw: number; shape: number }> = [
-  { x: -44.2, z: -27.0, H: 8.4, yaw: 0.4, shape: 0 },
-  { x: -53.2, z: -27.5, H: 7.8, yaw: 2.1, shape: 1 },
-  { x: -56.9, z: -47.0, H: 8.8, yaw: 4.0, shape: 1 },
-  { x: -41.1, z: -45.6, H: 8.0, yaw: 5.2, shape: 0 },
+/** Where the art file stood them (x, z; the boxes `col__lot_temple_pine_N`), their height (m) and shape (pineKit's variant). */
+export const TEMPLE_PINES: ReadonlyArray<{ x: number; z: number; H: number; shape: number }> = [
+  { x: -44.2, z: -27.0, H: 8.4, shape: 0 },
+  { x: -53.2, z: -27.5, H: 7.8, shape: 2 },
+  { x: -56.9, z: -47.0, H: 8.8, shape: 0 },
+  { x: -41.1, z: -45.6, H: 8.0, shape: 1 },
 ];
+/**
+ * Where each pine leans (x, z): the yard's middle, the pond's pine over its pond. A pine model leans toward its own +x; turning it by
+ * `atan2(-dz, dx)` aims it. The trunk's foot stays at the pine's place (its collision box).
+ */
+export const PINE_LEAN_TO: ReadonlyArray<readonly [number, number]> = [
+  [-49.5, -36.5],
+  [-48.5, -37.5],
+  [-49.0, -38.5],
+  [-46.0, -44.0],
+];
+/** World directions (x, z) a pine's crown keeps out of: the main hall and the bell pavilion are west of the two west pines. */
+export const PINE_AVOID: ReadonlyArray<readonly [number, number] | null> = [null, [-1, 0], [-1, 0], null];
+export function pineYaw(i: number): number {
+  const t = TEMPLE_PINES[i]!;
+  const [x, z] = PINE_LEAN_TO[i]!;
+  return Math.atan2(-(z - t.z), x - t.x);
+}
 /** The pine foliage and trunk are found within this distance (m) of a pine's place. */
 const CUT_R = 2.7;
 /** Foliage above this height (m) in the green mesh is pine (the rest of that material is the yard's low plants). */
@@ -71,57 +88,83 @@ export interface TemplePines {
   geometries: BufferGeometry[];
   /** Materials and textures made here (all with `dispose`). */
   disposables: Array<{ dispose(): void }>;
+  /** Triangles of the four pines (instances counted), draws, texture bytes once loaded. */
+  stats: { tris: number; draws: number; textureBytes: number };
+}
+
+function setupTex(t: Texture, colour: boolean, name: string): Texture {
+  t.wrapS = RepeatWrapping;
+  t.wrapT = RepeatWrapping;
+  t.colorSpace = colour ? SRGBColorSpace : NoColorSpace;
+  t.minFilter = LinearMipmapLinearFilter;
+  t.magFilter = LinearFilter;
+  t.anisotropy = 8;
+  t.name = name;
+  return t;
 }
 
 /** Four pines standing on y = `groundY` at the yard's pine places. Null where there is no DOM (tests). */
 export function makeTemplePines(groundY: number, low: boolean): TemplePines | null {
-  const crown = makeCrownAtlas();
-  if (!crown) return null;
+  if (typeof document === "undefined") return null;
   const group = new Group();
   group.name = "temple_pines";
   const geometries: BufferGeometry[] = [];
-  const disposables: Array<{ dispose(): void }> = [crown];
-  const map = barkTexture("plates");
-  const normal = flatNormal();
-  const surf = BARK_SURFACE.plates;
-  const bark: Material = vegMaterial({ name: "M_temple_pine_bark", map, normalMap: normal, normalScale: surf.normal + 0.2, gloss: surf.gloss, moss: false, wind: 0, windFar: 1, ambient: 0.55, sky: 0.2, sun: 0.45, back: 0.2 });
-  const needles: Material = vegMaterial({ name: "M_temple_pine_needles", map: crown, alphaTest: 0.5, push: true, wind: 0.035, windFar: low ? 12 : 30, ambient: 0.46, sky: 0.2, sun: 0.4, back: 0.4 });
-  disposables.push(map, normal, bark, needles);
-  barkPhotos("plates", low, (photo, photoNormal) => {
-    (bark as unknown as { map: unknown }).map = photo;
-    (bark.userData.vegUniforms as { uVegNormal: { value: unknown } }).uVegNormal.value = photoNormal;
-    bark.needsUpdate = true;
-    disposables.push(photo, photoNormal);
-  });
-  const nominal = 9;
+  const loader = new TextureLoader();
+  const stats = { tris: 0, draws: 0, textureBytes: 0 };
+  const load = (url: string, colour: boolean, name: string) =>
+    setupTex(
+      loader.load(versionedUrl(url), (t) => {
+        const img = t.image as { width?: number; height?: number };
+        stats.textureBytes += Math.round((img.width ?? 0) * (img.height ?? 0) * 4 * (4 / 3));
+      }),
+      colour,
+      name,
+    );
+  const [barkC, barkN] = PINE_FILES.bark(low);
+  const [baseC, baseN] = PINE_FILES.base(low);
+  const map = load(barkC, false, "T_pine_bark");
+  const normal = load(barkN, false, "T_pine_bark_n");
+  const baseMap = load(baseC, false, "T_pine_base");
+  const baseNormal = load(baseN, false, "T_pine_base_n");
+  const crown = load(PINE_FILES.needles(low), true, "T_pine_needles");
+  crown.wrapS = crown.wrapT = ClampToEdgeWrapping; // an atlas
+  const flat = flatNormal();
+  const bark: Material = vegMaterial({ name: "M_temple_pine_bark", map, normalMap: normal, normalScale: 1.25, gloss: 0.04, moss: false, wind: 0, windFar: 1, ambient: 0.55, sky: 0.2, sun: 0.45, back: 0.2, blend: { map: baseMap, normalMap: baseNormal } });
+  const needles: Material = vegMaterial({ name: "M_temple_pine_needles", map: crown, alphaTest: 0.42, push: true, wind: 0.05, windFar: low ? 12 : 30, ambient: 0.5, sky: 0.22, sun: 0.42, back: 0.45 });
+  const disposables: Array<{ dispose(): void }> = [map, normal, baseMap, baseNormal, crown, flat, bark, needles];
   const p = new Vector3();
   const q = new Quaternion();
   const s = new Vector3();
-  for (let shape = 0; shape < 2; shape++) {
-    const spots = TEMPLE_PINES.filter((t) => t.shape === shape);
-    if (!spots.length) continue;
-    const geo = treeGeo("pine", 11 + shape * 5, { lod: 0, low });
-    geometries.push(geo.bark, geo.leaves);
+  const up = new Vector3(0, 1, 0);
+  // every pine its own tree (its own shape, seed, crown kept off the roofs beside it): no two alike
+  TEMPLE_PINES.forEach((t, i) => {
+    const yaw = pineYaw(i);
+    const av = PINE_AVOID[i];
+    // the avoided direction in the tree's own frame (the instance turns +x to (cos yaw, -sin yaw))
+    const avoid = av ? { x: av[0] * Math.cos(yaw) - av[1] * Math.sin(yaw), z: av[0] * Math.sin(yaw) + av[1] * Math.cos(yaw), cos: 0.25 } : undefined;
+    const geo = pineGeo(t.shape, 11 + i * 7, { low, avoid });
+    geometries.push(geo.bark, geo.needles);
+    const sc = t.H / geo.H;
+    p.set(t.x, groundY, t.z);
+    q.setFromAxisAngle(up, yaw);
+    s.set(sc, sc, sc);
+    const m4 = new Matrix4().compose(p, q, s);
     for (const [g, m, name] of [
       [geo.bark, bark, "bark"],
-      [geo.leaves, needles, "needles"],
+      [geo.needles, needles, "needles"],
     ] as const) {
-      const mesh = new InstancedMesh(g, m, spots.length);
-      mesh.name = `temple_pine_${shape}_${name}`;
+      const mesh = new InstancedMesh(g, m, 1);
+      mesh.name = `temple_pine_${i}_${name}`;
       mesh.matrixAutoUpdate = false;
-      spots.forEach((t, i) => {
-        const k = t.H / nominal;
-        p.set(t.x, groundY, t.z);
-        q.setFromAxisAngle(new Vector3(0, 1, 0), t.yaw);
-        s.set(k, k, k);
-        mesh.setMatrixAt(i, new Matrix4().compose(p, q, s));
-      });
+      mesh.setMatrixAt(0, m4);
       mesh.instanceMatrix.needsUpdate = true;
       mesh.computeBoundingSphere();
       group.add(mesh);
+      stats.draws += 1;
+      stats.tris += (g.index?.count ?? 0) / 3;
     }
-  }
-  return { group, geometries, disposables };
+  });
+  return { group, geometries, disposables, stats };
 }
 
 /** Where the old pines' trunks touched the ground: the lowest vertices of `LM_temple_rock` near a pine place (else `fallback`). */

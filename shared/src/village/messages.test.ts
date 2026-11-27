@@ -40,6 +40,7 @@ describe("VillageMsg", () => {
       FishingBoard: "FishingBoard",
       KeypadResult: "KeypadResult",
       RideNotice: "RideNotice",
+      ActionRefused: "ActionRefused",
     });
     const others = new Set<string>([
       ...Object.values(MessageType),

@@ -56,38 +56,133 @@ export function selfDiverged(
   return exceedsSnapDistance(current.x, current.z, server.x, server.z, refused ? REFUSED_SNAP_DISTANCE : SNAP_DISTANCE);
 }
 
-/** How the server is echoing my clock (`noteEcho`): whether it ever did, and since when it echoes 0. */
+/**
+ * How the server is echoing my clock (`noteEcho`) and refusing my moves (`noteRefusal`): whether it ever echoed one, since
+ * when it refuses, which echo was current then (`staleStamp`: a patch that still carries it is no news), and whether my pose
+ * was sent once more to heal a small gap (`resent`).
+ */
 export interface EchoWatch {
-  /** The server has echoed a stamp of mine: an echoed 0 from then on means it refused a Move. */
+  /** The server has echoed a stamp of mine (or refused a Move): an echoed 0 from then on means it refused a Move. */
   sawClock: boolean;
-  /** Local time (ms) the echo went to 0 after a stamp of mine; NaN while the server takes my moves. */
+  /** Local time (ms) the refusal began (the echo went to 0, or a `MoveRefused` notice came); NaN while the server takes my moves. */
   refusedAt: number;
+  /** The echo that was current when the refusal began: only a DIFFERENT (newer) stamp says the server took a Move since. */
+  staleStamp: number;
+  /** My pose has been sent once more for this refusal (`resolveRefusal`'s "resend"). */
+  resent: boolean;
 }
 
 export function createEchoWatch(): EchoWatch {
-  return { sawClock: false, refusedAt: Number.NaN };
+  return { sawClock: false, refusedAt: Number.NaN, staleStamp: 0, resent: false };
+}
+
+/** The refusal is over (a newer stamp came, or I was put where the server has me). */
+function clearRefusal(w: EchoWatch): void {
+  w.refusedAt = Number.NaN;
+  w.staleStamp = 0;
+  w.resent = false;
+}
+
+/**
+ * The server said it refused a Move (`MoveRefused`) or a door / stair / bench press for distance (`ActionRefused`). Unlike an
+ * echo that went to 0 this comes even when no synced field changed — the first Move after a join or a door was refused while
+ * the echo was 0 already — which left the client walking on, out of the server's reach for good (fix/net-sync). `echoedT` is
+ * my synced `moveT` now: until it changes, the server has taken nothing since.
+ */
+export function noteRefusal(w: EchoWatch, echoedT: number, nowMs: number): void {
+  w.sawClock = true;
+  if (Number.isNaN(w.refusedAt)) {
+    w.refusedAt = nowMs;
+    w.staleStamp = echoedT;
+  }
 }
 
 /**
  * What the self-correction should make of my echoed `moveT` at local time `nowMs`:
- *  - "ok": a stamp of mine (or a server that never echoes one) — judge the divergence as usual (`selfDiverged`);
+ *  - "ok": a NEW stamp of mine (or a server that never echoes one) — judge the divergence as usual (`selfDiverged`);
  *  - "healing": the server refused a Move less than REFUSAL_HEAL_MS ago and has taken none since. Its budget is
  *    still filling and it may well take the next ones (a short uplink stall): leave my pose alone and look again
  *    at the deadline (`healDeadline`);
- *  - "refused": it has refused for REFUSAL_HEAL_MS — it will not catch up by itself: judge with `refused` true.
+ *  - "refused": it has refused for REFUSAL_HEAL_MS — it will not catch up by itself: `resolveRefusal`.
  */
 export function noteEcho(w: EchoWatch, echoedT: number, nowMs: number): "ok" | "healing" | "refused" {
-  if (echoedT > 0) {
+  if (echoedT > 0 && (Number.isNaN(w.refusedAt) || echoedT !== w.staleStamp)) {
     w.sawClock = true;
-    w.refusedAt = Number.NaN;
+    clearRefusal(w);
     return "ok";
   }
   if (!w.sawClock) return "ok";
-  if (Number.isNaN(w.refusedAt)) w.refusedAt = nowMs;
+  if (Number.isNaN(w.refusedAt)) {
+    w.refusedAt = nowMs;
+    w.staleStamp = echoedT;
+  }
   return nowMs - w.refusedAt >= REFUSAL_HEAL_MS ? "refused" : "healing";
 }
 
 /** When (local ms) a refusal still "healing" counts as one that will not heal. */
 export function healDeadline(w: EchoWatch): number {
   return w.refusedAt + REFUSAL_HEAL_MS;
+}
+
+/** A gap (m) between my pose and the server's this small is no divergence (a rounding, a collider's skin): nothing to heal. */
+export const RESYNC_EPS = 0.25;
+
+/**
+ * A refusal that did not heal by itself (`noteEcho` said "refused"): what to do about where I stand (`current`) and where the
+ * server has me (`server`), at local time `nowMs`.
+ *  - "none": no real gap — the refusal is over;
+ *  - "resend": a small gap (up to REFUSED_SNAP_DISTANCE: typically the last Move of a walk refused in a bunch): send my pose
+ *    once more — the server's budget has refilled by now and takes it, so nothing is seen — and look again a heal window later;
+ *  - "snap": a large gap, or the resent pose was refused too: I am put where the server has me (the caller shows a short line).
+ * Never a permanent silent divergence: every refusal ends in one of these within two heal windows.
+ */
+export function resolveRefusal(
+  w: EchoWatch,
+  current: { x: number; z: number },
+  server: { x: number; z: number },
+  nowMs: number,
+): "none" | "resend" | "snap" {
+  const gap = Math.hypot(current.x - server.x, current.z - server.z);
+  if (gap <= RESYNC_EPS) {
+    clearRefusal(w);
+    return "none";
+  }
+  if (gap > REFUSED_SNAP_DISTANCE || w.resent) {
+    clearRefusal(w);
+    return "snap";
+  }
+  w.resent = true;
+  w.refusedAt = nowMs; // a fresh heal window for the resent pose
+  return "resend";
+}
+
+// ─────────────── the server's refusal notices → the self-correction; its "send my pose again" → LocalPlayer ───────────────
+
+let refusalListener: (() => void) | null = null;
+
+/** The self-correction (remoteSync.ts) listens for the server's refusal notices; returns the detach. */
+export function onServerRefusal(listener: () => void): () => void {
+  refusalListener = listener;
+  return () => {
+    if (refusalListener === listener) refusalListener = null;
+  };
+}
+
+/** The server refused a Move or a press for distance (net/serverRefusals.ts). */
+export function serverRefused(): void {
+  refusalListener?.();
+}
+
+let resendWanted = false;
+
+/** Ask LocalPlayer to send my current pose once more (on its next frame, stamped like any Move). */
+export function requestPoseResend(): void {
+  resendWanted = true;
+}
+
+/** LocalPlayer, each frame: was a resend asked for? (Clears the request.) */
+export function takePoseResend(): boolean {
+  const wanted = resendWanted;
+  resendWanted = false;
+  return wanted;
 }

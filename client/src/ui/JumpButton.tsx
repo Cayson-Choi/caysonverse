@@ -6,7 +6,7 @@ import { rectStyle, useTouchHudLayout } from "./useTouchHudLayout";
 import "./action.css";
 
 /**
- * The touch jump button: a 72 px round thumb target at the bottom-right edge (the
+ * The touch jump button: a small (52 px), quiet round button at the bottom-right edge (the
  * action button sits right above it). Mounted on touch devices only; on a desktop Space
  * jumps (LocalPlayer's hotkey). Its rectangle comes from game/hud.ts `touchHudLayout`
  * (the same numbers hud.test.ts keeps 8 px from every other button; mirrored when
@@ -45,7 +45,6 @@ export function JumpButton({ sessionId }: { sessionId: string }) {
       <svg className="cv-jump-icon" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M6 11l6-6 6 6M6 19l6-6 6 6" />
       </svg>
-      <span className="cv-jump-text">점프</span>
     </button>
   );
 }

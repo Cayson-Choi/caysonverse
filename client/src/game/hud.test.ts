@@ -216,20 +216,20 @@ describe("touch HUD layout (375×812, buttonSize large — the tightest phone ca
   it("stacks the bottom-right cluster in two rows: jump below, action + emoji above, chat left of the jump", () => {
     const l = layout();
     expect(l.narrow).toBe(true);
-    // Sizes: jump 90, action 75, emoji 70, chat 70, top buttons 60 (72/60/56/56/48 × 1.25).
-    expect([l.jump.w, l.action.w, l.emoji.w, l.chat.w, l.topButtons[0].w]).toEqual([90, 75, 70, 70, 60]);
+    // Sizes: jump, action, emoji and chat all 70 (56 × 1.25 — one size, owner 11-26), top buttons 60.
+    expect([l.jump.w, l.jumpSlot.w, l.action.w, l.emoji.w, l.chat.w, l.topButtons[0].w]).toEqual([70, 70, 70, 70, 70, 60]);
     // Jump hugs the bottom-right edge (16 px).
-    expect(l.jump.x + l.jump.w).toBe(375 - 16);
-    expect(l.jump.y + l.jump.h).toBe(812 - 16);
+    expect(l.jumpSlot.x + l.jumpSlot.w).toBe(375 - 16);
+    expect(l.jumpSlot.y + l.jumpSlot.h).toBe(812 - 16);
     // Action is centred right above the jump, 12 px apart.
-    expect(l.action.y + l.action.h).toBe(l.jump.y - 12);
-    expect(l.action.x + l.action.w / 2).toBeCloseTo(l.jump.x + l.jump.w / 2, 9);
-    // Emoji sits on the action's row, to its left.
-    expect(l.emoji.y + l.emoji.h).toBe(l.action.y + l.action.h);
-    expect(l.emoji.x + l.emoji.w + MIN_GAP_PX).toBe(l.action.x);
-    // Chat is on the jump's row, directly left of it, in the right half (the stick owns the left half).
-    expect(l.chat.y + l.chat.h).toBe(l.jump.y + l.jump.h);
-    expect(l.chat.x + l.chat.w + MIN_GAP_PX).toBe(l.jump.x);
+    expect(l.action.y + l.action.h).toBe(l.jumpSlot.y - 12);
+    expect(l.action.x + l.action.w / 2).toBeCloseTo(l.jumpSlot.x + l.jumpSlot.w / 2, 9);
+    // A 2×2 grid, 12 px apart both ways: emoji on the action's row, chat on the jump's, one column to the left.
+    expect(l.emoji.y).toBe(l.action.y);
+    expect(l.emoji.x + l.emoji.w + 12).toBe(l.action.x);
+    expect(l.chat.y).toBe(l.jumpSlot.y);
+    expect(l.chat.x).toBe(l.emoji.x);
+    expect(l.chat.x + l.chat.w + 12).toBe(l.jumpSlot.x);
     expect(l.chat.x).toBeGreaterThanOrEqual(375 / 2);
   });
 
@@ -309,7 +309,7 @@ describe("touch HUD layout (375×812, buttonSize large — the tightest phone ca
     expect(left.compass).toEqual(mirror(right.compass));
     // Strict mirror: button i keeps its meaning, so the menu button ends up in the top-left corner.
     expect(left.topButtons).toEqual(right.topButtons.map(mirror));
-    expect(left.jump.x).toBe(16);
+    expect(left.jumpSlot.x).toBe(16);
     expect(left.topButtons[2].x).toBe(12);
     expect(crowded(restRects(left))).toEqual([]);
     expect(crowded(fanOpenRects(left))).toEqual([]);
@@ -346,24 +346,24 @@ describe("touch HUD layout across sizes, hands and phone screens", () => {
     const wide = touchHudLayout({ vw: 480, vh: 900, safe: NO_INSETS, size: "large", leftHanded: false });
     expect(narrow.narrow).toBe(true);
     expect(wide.narrow).toBe(false);
-    expect(wide.emoji.y + wide.emoji.h).toBe(wide.jump.y + wide.jump.h);
-    expect(wide.emoji.x + wide.emoji.w + MIN_GAP_PX).toBe(wide.jump.x);
+    expect(wide.emoji.y + wide.emoji.h / 2).toBe(wide.jumpSlot.y + wide.jumpSlot.h / 2);
+    expect(wide.emoji.x + wide.emoji.w + 12).toBe(wide.jumpSlot.x);
     expect(wide.chat.x + wide.chat.w / 2).toBeCloseTo(480 / 2, 9);
-    expect(wide.action.y + wide.action.h).toBe(wide.jump.y - 12);
+    expect(wide.action.y + wide.action.h).toBe(wide.jumpSlot.y - 12);
   });
 
   it("safe-area insets move the HUD in from the notch and the home bar", () => {
     const safe: SafeInsets = { top: 47, right: 0, bottom: 34, left: 0 };
     const a = touchHudLayout({ vw: 375, vh: 812, safe: NO_INSETS, size: "medium", leftHanded: false });
     const b = touchHudLayout({ vw: 375, vh: 812, safe, size: "medium", leftHanded: false });
-    expect(b.jump.y).toBe(a.jump.y - 34);
+    expect(b.jumpSlot.y).toBe(a.jumpSlot.y - 34);
     expect(b.topButtons[0].y).toBe(a.topButtons[0].y + 47);
     expect(b.roster.y).toBe(a.roster.y + 47);
     expect(crowded(restRects(b))).toEqual([]);
 
     const side: SafeInsets = { top: 0, right: 47, bottom: 21, left: 47 };
     const landscape = touchHudLayout({ vw: 812, vh: 375, safe: side, size: "large", leftHanded: false });
-    expect(landscape.jump.x + landscape.jump.w).toBe(812 - 47 - 16);
+    expect(landscape.jumpSlot.x + landscape.jumpSlot.w).toBe(812 - 47 - 16);
     expect(landscape.topButtons[2].x + landscape.topButtons[2].w).toBe(812 - 47 - 12);
     expect(landscape.roster.x).toBe(47 + 12);
     expect(crowded(restRects(landscape))).toEqual([]);
@@ -401,9 +401,9 @@ describe("touch HUD layout across sizes, hands and phone screens", () => {
   it("375×812 large: the column may use most of the height above the cluster; a landscape phone has the whole left side", () => {
     const SAFE: SafeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
     const portrait = touchHudLayout({ vw: 375, vh: 812, safe: SAFE, size: "large", leftHanded: false });
-    // The cluster's top is the action button (y = 619; the emoji row is at 624): 619 - 8 - 12 = 599 px.
+    // The cluster's top is the action / emoji row (y = 644): 644 - 8 - 12 = 624 px.
     expect(portrait.column.maxHeight).toBe(Math.min(portrait.emoji.y, portrait.action.y) - MIN_GAP_PX - portrait.column.top);
-    expect(portrait.column.maxHeight).toBe(599);
+    expect(portrait.column.maxHeight).toBe(624);
     const landscape = touchHudLayout({ vw: 812, vh: 375, safe: SAFE, size: "large", leftHanded: false });
     expect(landscape.column.maxHeight).toBe(375 - MIN_GAP_PX - landscape.column.top);
     const withInsets = touchHudLayout({ vw: 812, vh: 375, safe: { top: 0, right: 47, bottom: 21, left: 47 }, size: "large", leftHanded: false });

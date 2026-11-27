@@ -59,8 +59,8 @@ describe("park layout", () => {
       expect(p.z).toBeLessThan(PARK_BOUNDS.maxZ);
       expect(inSolid(p.x, p.z)).toBe(false);
     }
-    // the fountain is the plaza's only solid
-    expect(inSolid(PARK_PLAZA.x + PARK_PLAZA.radius - 3, PARK_PLAZA.z)).toBe(false);
+    // the plaza between its flower troughs (ring 17.5) and its lamp posts (ring 23.5, solid since 2026-11-21) is open
+    expect(inSolid(PARK_PLAZA.x + PARK_PLAZA.radius - 5, PARK_PLAZA.z)).toBe(false);
   });
   it("a spread arrival finds a free spot even with the arrival occupied", () => {
     const at = spreadArrival("park", { x: PARK_ARRIVAL.x, z: PARK_ARRIVAL.z, yaw: PARK_ARRIVAL.yaw }, [{ x: PARK_ARRIVAL.x, z: PARK_ARRIVAL.z }]);

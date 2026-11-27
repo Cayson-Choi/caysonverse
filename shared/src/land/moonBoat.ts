@@ -5,7 +5,7 @@
  * Park-local frame (parkArea.ts). A crescent-moon boat (cream hull, a sleeping moon-rabbit on its bow horn) hangs from a horizontal axle on a tall
  * A-frame and swings like a pendulum along its own length, in the y-z plane (z south). The axle runs east-west (along x) at PIVOT_Y above MOON_BOAT_SITE.
  * Boat frame: origin at the axle, y up, z toward the bow (south at rest), x across. The hull's two horns rise out of the keel; 32 seats stand on
- * eight flat terraces in the hull's bowl (seat = row * 4 + column, row 0 at the bow), all facing the bow.
+ * eight flat terraces in the hull's bowl (seat = row * 4 + column, row 0 at the bow). Like a real Viking / pirate ship (HUSS, Intamin: owner 2026-11-21) the two halves face each other: the bow half (rows 0-3) faces the stern, the stern half (rows 4-7) faces the bow, benches across the width, the back behind and the lap bar in front.
  *
  * Ride: 5 s unloading, 29 s boarding, 6 s gate, then 110 s of swinging: the amplitude builds to 82 degrees over 70 s, holds, and is braked in the last
  * 25 s; the swing has a fixed period (a real pendulum's), so angle(t) = amplitude(t) * sin(2 pi t / period). One cycle is 150 s. The axle stands 30 m up on a steel A-frame (arm 28.4 m), the period is 11 s.
@@ -21,8 +21,8 @@ export const MOON_PIVOT_Y = 30;
 export const MOON_ARM_L = 28.4;
 /** The hull: half length to the horn tips (z), half width (x), the keel's thickness at the middle and the horns' height over the keel. */
 export const MOON_HULL = Object.freeze({ halfZ: 7.2, halfX: 2.2, keelT: 0.55, horn: 2.2 });
-/** The seats: column spacing (x), row spacing (z), the front row's z, the cushion's height over the terrace. */
-export const MOON_SEAT = Object.freeze({ dx: 0.85, dz: 1.0, z0: 3.6, cushion: 0.5, eye: 0.9 });
+/** The seats: column spacing (x), row spacing (z), the bow row's z, the extra gap in the middle between the two halves (they face each other: legs need room), the cushion's height over the terrace. */
+export const MOON_SEAT = Object.freeze({ dx: 0.85, dz: 1.0, z0: 4.1, mid: 1.2, cushion: 0.5, eye: 0.9 });
 /** The frame's feet and legs. */
 export const MOON_FRAME = Object.freeze({ legX: 4.7, footZ: 15, armX: 2.45, chord: 0.55, chordR: 0.2 });
 
@@ -123,6 +123,11 @@ export function moonKeelY(z: number): number {
  */
 export const MOON_ROW_ORDER: readonly number[] = Object.freeze([3, 4, 2, 5, 1, 6, 0, 7]);
 
+/** The z (boat frame) of a bench row (row 0 at the bow): the two halves are 1.2 m further apart than the bench spacing, the two middle benches face each other. */
+export function moonRowZ(row: number): number {
+  return MOON_SEAT.z0 - row * MOON_SEAT.dz - (row >= MOON_BOAT_ROWS / 2 ? MOON_SEAT.mid : 0);
+}
+
 /** The seat number of `row` (0 = bow) and `col`. */
 export function moonSeatOf(row: number, col: number): number {
   return MOON_ROW_ORDER.indexOf(row) * MOON_BOAT_COLS + col;
@@ -157,10 +162,15 @@ export function moonSeatCell(seat: number): { row: number; col: number } {
   return { row: MOON_ROW_ORDER[Math.floor(s / MOON_BOAT_COLS)]!, col: s % MOON_BOAT_COLS };
 }
 
+/** Which way a seat faces along the boat's length: +1 toward the bow (the stern half, rows 4-7), -1 toward the stern (the bow half, rows 0-3): both halves face the middle. */
+export function moonSeatFace(seat: number): 1 | -1 {
+  return moonSeatCell(seat).row < MOON_BOAT_ROWS / 2 ? -1 : 1;
+}
+
 /** A seat's cushion point in the boat frame (x across, y up, z toward the bow). */
 export function moonSeatLocal(seat: number, out: [number, number, number] = [0, 0, 0]): [number, number, number] {
   const { row, col } = moonSeatCell(seat);
-  const z = MOON_SEAT.z0 - row * MOON_SEAT.dz;
+  const z = moonRowZ(row);
   out[0] = (col - (MOON_BOAT_COLS - 1) / 2) * MOON_SEAT.dx;
   out[1] = moonFloorY(z) + MOON_SEAT.cushion;
   out[2] = z;
@@ -190,13 +200,15 @@ export interface MoonSeatPose {
   x: number;
   y: number;
   z: number;
-  /** the facing (the bow direction, swung) and the seat's up, unit vectors */
+  /** the facing (along the boat's length, toward the middle: the seat's own direction, swung) and the seat's up, unit vectors */
   fy: number;
   fz: number;
   uy: number;
   uz: number;
   angle: number;
   gload: number;
+  /** +1 when the seat faces the bow, -1 when it faces the stern */
+  face: number;
 }
 
 const SCRATCH: MoonBoatState = fresh();
@@ -204,7 +216,7 @@ const LOC: [number, number, number] = [0, 0, 0];
 const WP = { x: 0, y: 0, z: 0 };
 
 /** The seat's pose at wall-clock `nowMs`. */
-export function moonSeatPose(seat: number, nowMs: number, out: MoonSeatPose = { x: 0, y: 0, z: 0, fy: 0, fz: 1, uy: 1, uz: 0, angle: 0, gload: 1 }): MoonSeatPose {
+export function moonSeatPose(seat: number, nowMs: number, out: MoonSeatPose = { x: 0, y: 0, z: 0, fy: 0, fz: 1, uy: 1, uz: 0, angle: 0, gload: 1, face: 1 }): MoonSeatPose {
   const st = moonBoatAt(nowMs, SCRATCH);
   moonSeatLocal(seat, LOC);
   moonToWorld(LOC[0], LOC[1], LOC[2], st.angle, WP);
@@ -213,9 +225,11 @@ export function moonSeatPose(seat: number, nowMs: number, out: MoonSeatPose = { 
   out.x = WP.x;
   out.y = WP.y;
   out.z = WP.z;
-  // the bow direction (0,0,1) and the up (0,1,0) of the boat frame, swung
-  out.fy = s;
-  out.fz = c;
+  // the seat's facing (0,0,face) and the up (0,1,0) of the boat frame, swung
+  const f = moonSeatFace(seat);
+  out.face = f;
+  out.fy = s * f;
+  out.fz = c * f;
   out.uy = c;
   out.uz = -s;
   out.angle = st.angle;
