@@ -65,6 +65,8 @@ import { VILLAGE_COLLIDERS } from "@caysonverse/shared/village/generated/village
 import { deckHouseSurface, splitDeckTriangles } from "./deckPlanks";
 import { ridgeCaps, ridgeLines, tintRidgeMortar } from "./roofRidge";
 import { builderGeometry, closedShutterParts, houseShutterParts, onOpenLeafOfClosed } from "./houseShutters";
+import { cardGeometry, houseSideBoxParts, setHouseSideBeds, type BoxBed } from "./houseSideBoxes";
+import { kitFlowerBoxBeds } from "./houseFlowerBoxes";
 import { versionedUrl } from "../modelUrl";
 import { LIT, litUniform } from "../villageModelPrep";
 import { SS_FRAGMENT_PARS, SS_VERTEX_PARS, SS_VERTEX_WORLD, bindSunShadowUniforms } from "../sunShadows";
@@ -124,6 +126,11 @@ export const HOUSE_LOOK = {
    * behind it (owner 2026-11-21: clear glass; the house nearest the camera shows its real rooms through clear panes).
    */
   glassDark: 0.78,
+  /**
+   * At night, over the house whose real rooms are drawn: how much of the room is seen through the warm haze of its lamplight
+   * (clearGlass.ts `warmVeil`; 2026-11-27, the lit windows read warm and inviting from the street again, as the lit cards did).
+   */
+  glassNightVeil: 0.2,
   /** The rooms behind the windows at night: LIT.window's warm colour, this bright (× the village's lit weight). */
   windowGlow: 1.35,
   /** The keypad's screen (M_lamp: X2 hand-over, only the door lock's pad): a faint glow by day, a soft one at night. */
@@ -585,7 +592,7 @@ export interface HouseNodes {
   glow: HouseGlow;
   /** Materials and geometries this call made: freed by `disposeHouses`. */
   own: { materials: Material[]; geometries: BufferGeometry[] };
-  stats: { shellTriangles: number; detailTriangles: Record<string, number>; shellDraws: number; detailDraws: Record<string, number>; lamps: number; ridges: number; shutterWindows: number; closedWindows: number };
+  stats: { shellTriangles: number; detailTriangles: Record<string, number>; shellDraws: number; detailDraws: Record<string, number>; lamps: number; ridges: number; shutterWindows: number; closedWindows: number; sideBoxes: number };
 }
 
 const isMeshObj = (o: Object3D): o is Mesh => (o as Mesh).isMesh === true;
@@ -691,7 +698,7 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
     else if (src.name.startsWith("LM_")) m = houseSurfaceMaterial(s, maps[src.name] ?? null);
     else if (src.name === "M_window") m = glow.window = windowMaterial(s);
     else if (src.name === "M_lamp") m = glow.lamp = lampMaterial(s);
-    else if (src.name === "M_glass") m = (glow.glass = clearGlassMaterial("M_glass", HOUSE_LOOK.glassDark)).material;
+    else if (src.name === "M_glass") m = (glow.glass = clearGlassMaterial("M_glass", HOUSE_LOOK.glassDark, HOUSE_LOOK.glassNightVeil)).material;
     else if (src.name === "M_screen") m = screenMaterial(s);
     else {
       // what a later kit adds (X2's M_leaf_flora: flower cards): the file's own material, lit, cut out
@@ -810,6 +817,9 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
   // metal meshes (no extra draw); measured before the shells merge (the glass parts are disposed with them)
   let shutterWindows = 0;
   let closedWindows = 0;
+  let sideBoxes = 0;
+  const kitBeds = kitFlowerBoxBeds();
+  const sideBeds: BoxBed[] = [];
   for (const h of a8Houses) {
     const group = details.get(h.id);
     if (!group) continue;
@@ -821,10 +831,31 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
     // the model's own open leaves beside them leave the detail
     const closed = closedShutterParts(glass, h);
     closedWindows += closed.windows.length;
+    // window boxes under the side and back windows (houseSideBoxes.ts): the troughs and brackets join the same wood and metal
+    // meshes, the planting cards the detail's M_leaf_flora (the vegetation grows them into 3D plants), the beds the flower mass
+    const boxes = houseSideBoxParts(sideBoxesOn() ? glass : [], h, kitBeds);
+    sideBoxes += boxes.windows;
+    sideBeds.push(...boxes.beds);
+    const flora = group.children.find((c): c is Mesh => isMeshObj(c) && matsOf(c)[0]!.name === "M_leaf_flora");
+    const cards = flora ? cardGeometry(boxes.cards, h, flora.geometry) : null;
+    if (flora && cards) {
+      cards.applyMatrix4(tmp.copy(flora.matrix).invert());
+      const merged = mergeGeometries([flora.geometry, cards], false);
+      cards.dispose();
+      if (merged) {
+        if (own.geometries.includes(flora.geometry)) {
+          own.geometries.splice(own.geometries.indexOf(flora.geometry), 1);
+          flora.geometry.dispose();
+        }
+        detailTriangles[h.id] = (detailTriangles[h.id] ?? 0) + tris(merged) - tris(flora.geometry);
+        own.geometries.push(merged);
+        flora.geometry = merged;
+      }
+    }
     const woodParts = shellParts.get("LM_wood");
     const closedGeo = woodParts?.length ? builderGeometry(closed.wood, woodParts[0]!) : null;
     if (closedGeo) woodParts!.push(closedGeo);
-    for (const [mat, b] of [["LM_wood", parts.wood], ["LM_metal", parts.metal]] as const) {
+    for (const [mat, b] of [["LM_wood", joinBuilders(parts.wood, boxes.wood)], ["LM_metal", joinBuilders(parts.metal, boxes.metal)]] as const) {
       const mesh = group.children.find((c): c is Mesh => isMeshObj(c) && matsOf(c)[0]!.name === mat);
       if (!mesh) continue;
       if (closed.windows.length) {
@@ -856,6 +887,8 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
       detailTriangles[h.id] = (detailTriangles[h.id] ?? 0) + added;
     }
   }
+
+  setHouseSideBeds(sideBeds);
 
   const shells: Mesh[] = [];
   let shellTriangles = 0;
@@ -916,7 +949,7 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
     porches,
     glow,
     own,
-    stats: { shellTriangles, detailTriangles, shellDraws: shells.length, detailDraws, lamps: points.length, ridges: ridges.length, shutterWindows, closedWindows },
+    stats: { shellTriangles, detailTriangles, shellDraws: shells.length, detailDraws, lamps: points.length, ridges: ridges.length, shutterWindows, closedWindows, sideBoxes },
   };
 }
 
@@ -1051,6 +1084,17 @@ export function freshenColours(geo: BufferGeometry): BufferGeometry | null {
   out.boundingBox = geo.boundingBox?.clone() ?? null;
   out.boundingSphere = geo.boundingSphere?.clone() ?? null;
   return out;
+}
+
+/** DEV `?sideboxes=off`: no side window boxes (the before / after measurements). Production: on. */
+function sideBoxesOn(): boolean {
+  if (!import.meta.env.DEV || typeof location === "undefined") return true;
+  return new URLSearchParams(location.search).get("sideboxes") !== "off";
+}
+
+/** Two builders' parts as one (the shutters' and the side boxes' wood, or their iron). */
+function joinBuilders<B extends { pos: number[]; nor: number[]; uv: number[]; col: number[] }>(a: B, b: B): B {
+  return { ...a, pos: [...a.pos, ...b.pos], nor: [...a.nor, ...b.nor], uv: [...a.uv, ...b.uv], col: [...a.col, ...b.col] };
 }
 
 /** Per frame (number writes only): the night's windows, lamps and glass. */
