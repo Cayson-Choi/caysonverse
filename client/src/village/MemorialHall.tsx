@@ -214,6 +214,7 @@ function MemorialHall() {
   // The zone signs (구역 A–D in walking order) and the lounge's painting (hallDressing.ts, owner 2026-11-20).
   const dressing = useMemo(() => dressHall(nodes.root, tier), [nodes, tier]);
   useEffect(() => () => dressing.dispose(), [dressing]);
+  useEffect(() => dressing.startPainting(), [dressing]);
   // The props' glass (2026-11-17): the candle's votive holder and the frame's glass are clear — a faint white film, so the ivory wax
   // and the photo read true through them (the file's tinted glass made the wax grey-blue).
   useMemo(() => {
