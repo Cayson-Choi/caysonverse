@@ -101,3 +101,9 @@ Poly Haven CC0 1.0 자산으로 만든 것입니다(2026-11-16 Poly Haven API로
 | dark_wood | https://polyhaven.com/a/dark_wood | 참나무 보·기둥·베란다 판자 `house_wood_*` |
 | mossy_sandstone | https://polyhaven.com/a/mossy_sandstone | 사암 `house_sandstone_*` (이끼 얼룩은 지우고 한 덩이의 결만 씀) |
 | clay_roof_tiles_03 | https://polyhaven.com/a/clay_roof_tiles_03 | 기와 `house_tile_*`, 케이슨랜드 정문 첨탑 |
+
+## 집 외관 3차 (2026-11-27)
+
+`houses/house_render_*`, `house_sandstone_*`, `house_tile_*`는 이제 `tools/house-ext/make_house_fresh_textures.py`가 직접 만든
+절차적 질감입니다(남의 사진·스캔 픽셀 없음). 위 표의 mossy_sandstone·clay_roof_tiles_03(2차)과 ambientCG Plaster001(1차)은
+더 이상 이 파일들에 들어 있지 않습니다.

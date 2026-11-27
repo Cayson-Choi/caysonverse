@@ -110,7 +110,7 @@ function BoardingGates({ cx, z, y }: { cx: number; z: number; y: number }) {
 }
 
 /** The station: a timber platform on the train's LEFT (-z, the steps' side), a canopy, posts, the name board and the boarding gates. */
-function Station({ concrete, paving, pine }: { concrete: ReturnType<typeof pickSet>; paving: ReturnType<typeof pickSet>; pine: Texture }) {
+function Station({ concrete, paving, pine, metal }: { concrete: ReturnType<typeof pickSet>; paving: ReturnType<typeof pickSet>; pine: Texture; metal: ReturnType<typeof pickSet> }) {
   const deck = useMemo(() => {
     const t = pine.clone();
     t.wrapS = t.wrapT = RepeatWrapping;
@@ -176,7 +176,36 @@ function Station({ concrete, paving, pine }: { concrete: ReturnType<typeof pickS
   }, []);
   const stone = useMemo(() => parkMaterial(paving, 1, { vertexColors: true, color: new Color(1.7, 1.6, 1.45), normalScale: 1.0 }), [paving]);
   const post = useMemo(() => new MeshPhysicalMaterial({ color: "#eee7d8", roughness: 0.45, metalness: 0.15, clearcoat: 0.4 }), []);
-  const roof = useMemo(() => new MeshPhysicalMaterial({ color: "#5b60d4", emissive: new Color("#262a78"), emissiveIntensity: 0.4, roughness: 0.5, metalness: 0.2, clearcoat: 0.5, side: DoubleSide }), []);
+  // #13 exteriors (2026-11-27): the canopy was one flat plastic slab. Now a painted standing-seam metal roof (the seams are ribs on top,
+  // the painted-metal set's relief and gloss on the sheet) carried on white steel rafters with a fascia round its edge, seen from the steps.
+  const roof = useMemo(() => parkMaterial(metal, 1, { color: new Color("#4f55c8"), emissive: new Color("#1c206a"), emissiveIntensity: 0.35, normalScale: 0.8, metalness: 0.25, side: DoubleSide }), [metal]);
+  const steel = useMemo(() => new MeshStandardMaterial({ color: "#efeae0", roughness: 0.42, metalness: 0.2 }), []);
+  const canopyGeo = useMemo(() => {
+    const b = new GeoBuilder();
+    const X: V3 = [1, 0, 0];
+    const Y: V3 = [0, 1, 0];
+    const y = STATION_Y + 0.2 + 5.4;
+    // the sheet and its ridge cap, with metre UVs (one painted-metal repeat per 1.5 m: a unit-box UV stretched it 36 m)
+    b.box([2, y, -2.8], X, Y, 18, 0.09, 4.1, [1, 1, 1], 1.5);
+    b.box([2, y + 0.22, -2.8], X, Y, 18.2, 0.05, 0.5, [1, 1, 1], 1.5);
+    // standing seams across the roof every 0.55 m (along its 8.2 m depth), on the top of the sheet
+    for (let x = -17.7; x <= 17.7; x += 0.55) b.box([2 + x, y + 0.12, -2.8], X, Y, 0.022, 0.03, 4.08, [1, 1, 1]);
+    // the fascia: a deeper edge band all round
+    b.box([2, y - 0.08, -2.8 + 4.12], X, Y, 18.02, 0.2, 0.03, [1, 1, 1], 2);
+    b.box([2, y - 0.08, -2.8 - 4.12], X, Y, 18.02, 0.2, 0.03, [1, 1, 1], 2);
+    for (const sx of [-1, 1]) b.box([2 + sx * 18.02, y - 0.08, -2.8], X, Y, 0.03, 0.2, 4.15, [1, 1, 1], 2);
+    return b.build();
+  }, []);
+  const rafterGeo = useMemo(() => {
+    const b = new GeoBuilder();
+    const X: V3 = [1, 0, 0];
+    const Y: V3 = [0, 1, 0];
+    const y = STATION_Y + 0.2 + 5.4;
+    // rafters over each pair of posts and halfway between, and two purlins along the posts' lines
+    for (let x = -15; x <= 19; x += 3.5) b.box([2 + x, y - 0.2, -2.8], X, Y, 0.07, 0.11, 4.0, [1, 1, 1]);
+    for (const z of [-1.6, -6.4]) b.box([2, y - 0.36, z], X, Y, 17.6, 0.09, 0.08, [1, 1, 1]);
+    return b.build();
+  }, []);
   const sign = useMemo(() => signTexture(), []);
   const signMat = useMemo(() => new MeshPhysicalMaterial({ map: sign, roughness: 0.6, emissive: new Color("#ffffff"), emissiveMap: sign, emissiveIntensity: 0.18 }), [sign]);
   const cx = 2;
@@ -196,12 +225,8 @@ function Station({ concrete, paving, pine }: { concrete: ReturnType<typeof pickS
           </mesh>
         )),
       )}
-      <mesh position={[cx, deckTop + 5.4, -2.8]} material={roof} castShadow>
-        <boxGeometry args={[36, 0.18, 8.2]} />
-      </mesh>
-      <mesh position={[cx, deckTop + 5.62, -2.8]} material={roof} castShadow>
-        <boxGeometry args={[36.4, 0.1, 1.0]} />
-      </mesh>
+      <mesh geometry={canopyGeo} material={roof} castShadow />
+      <mesh geometry={rafterGeo} material={steel} />
       <mesh position={[cx - 1, deckTop + 4.6, -6.62]} rotation={[0, Math.PI, 0]} material={signMat}>
         <planeGeometry args={[9, 2.25]} />
       </mesh>
@@ -237,7 +262,7 @@ export function CoasterWorld({ all, pine, env }: { all: Texture[]; pine: Texture
       ))}
       {tunnelGeo && <mesh geometry={tunnelGeo} material={tunnelMat} castShadow receiveShadow />}
       <Train env={env} ao={ao} />
-      <Station concrete={maps.concrete} paving={maps.paving} pine={pine} />
+      <Station concrete={maps.concrete} paving={maps.paving} pine={pine} metal={maps.metal} />
     </group>
   );
 }

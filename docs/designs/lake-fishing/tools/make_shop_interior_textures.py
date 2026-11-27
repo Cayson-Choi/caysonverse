@@ -131,8 +131,8 @@ def seamless_strokes(img, n, col, alpha, wmin, wmax, lmin, lmax, seed, curve=0.6
 
 # ---------------------------------------------------------------------------------------------------- tiling surfaces
 def make_floor():
-    # 300 mm white ceramic tiles (the references' shop floors), 1024 px = 2.4 m: warm grey grime in the joints, scuffs, a
-    # light dirt cloud, each tile a slightly different white
+    # 300 mm white ceramic tiles (the references' shop floors), 1024 px = 2.4 m: clean light-grey grout, each tile a slightly
+    # different white (owner rule 2026-11-17/27: everything brand-new, no grime, scuffs or dirt)
     img = preshade("Tiles107", 1024, relief=0.5, ao_amt=1.0)
     a = to_arr(img)
     t = 1024 / 8
@@ -141,10 +141,8 @@ def make_floor():
         for j in range(8):
             tile_var[int(j * t):int((j + 1) * t), int(i * t):int((i + 1) * t)] = 0.94 + 0.08 * rng.random()
     a = a * tile_var
-    a *= np.array([0.96, 0.94, 0.9], np.float32)  # aged warm white
-    dirt = noise(1024, 1024, 160, 11)
-    a *= (1 - 0.06 * np.clip((dirt - 0.5) * 3, 0, 1))[..., None]
-    # grime in the joints: the grid lines (every 128 px), warm grey
+    a *= np.array([0.99, 0.985, 0.975], np.float32)  # fresh glazed white
+    # the grout: the grid lines (every 128 px), a clean light grey
     jm = np.zeros((1024, 1024), np.float32)
     for k in range(9):
         c = int(k * t) % 1024
@@ -152,28 +150,22 @@ def make_floor():
             jm[:, (c + dx) % 1024] = 1
             jm[(c + dx) % 1024, :] = 1
     jm = np.asarray(Image.fromarray((jm * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(1.5)), np.float32) / 255
-    jm *= 0.5 + 0.5 * noise(1024, 1024, 60, 12)
-    a = a * (1 - 0.45 * jm[..., None]) + np.array([0.36, 0.32, 0.27]) * 0.45 * jm[..., None]
+    a = a * (1 - 0.35 * jm[..., None]) + np.array([0.74, 0.73, 0.71]) * 0.35 * jm[..., None]
     img = from_arr(a)
-    img = seamless_strokes(img, 120, (60, 52, 44), 0.18, 1, 3, 20, 90, 3)  # shoe scuffs
-    img = seamless_strokes(img, 40, (40, 36, 30), 0.3, 1, 2, 6, 25, 4)  # black rubber marks
     img.save(os.path.join(A.out, "floor.png"))
 
 
 def make_wall():
-    # painted plaster, 1024 px = 2.0 m: a cream emulsion over trowelled plaster, a few faint stains and hairline cracks
+    # painted plaster, 1024 px = 2.0 m: a fresh cream emulsion over trowelled plaster (brand-new: no stains, no cracks)
     img = preshade("PaintedPlaster017", 1024, tint=hexc("#efeae0"), relief=0.5, ao_amt=0)
     a = to_arr(img)
-    st = noise(1024, 1024, 220, 21)
-    a *= (1 - 0.035 * np.clip((st - 0.5) * 4, 0, 1))[..., None]
     a *= np.array([1.0, 0.99, 0.965], np.float32)
     img = from_arr(a)
-    img = seamless_strokes(img, 4, (120, 110, 95), 0.15, 1, 1, 60, 180, 5, curve=2.0)
     img.save(os.path.join(A.out, "wall.png"))
 
 
 def make_wainscot():
-    # vertical tongue-and-groove boards (varnished pine gone honey-brown), 1024 px = 1.0 m wide: 8 boards, V-grooves
+    # vertical tongue-and-groove boards (freshly varnished honey pine), 1024 px = 1.0 m wide: 8 boards, V-grooves
     img = preshade("Wood087", 1024, relief=0.4, rot=90)
     a = to_arr(img)
     a = a * np.array([0.82, 0.62, 0.4], np.float32) * 1.05
@@ -183,38 +175,24 @@ def make_wainscot():
         x = i * bw
         for dx, f in ((-2, 0.75), (-1, 0.45), (0, 0.35), (1, 0.55), (2, 0.85), (3, 1.08)):
             a[:, (x + dx) % 1024] *= f
-    grime = np.linspace(0, 1, 1024, dtype=np.float32)[:, None, None]  # darker toward the floor (v down = image bottom)
-    a *= 1 - 0.12 * grime ** 3
     img = from_arr(a)
-    img = seamless_strokes(img, 50, (40, 26, 14), 0.25, 1, 2, 10, 60, 6)  # knocks and scratches
     img.save(os.path.join(A.out, "wainscot.png"))
 
 
 def make_ceiling():
-    # 300 mm mineral fibre ceiling tiles (석고 텍스), 512 px = 1.2 m, gone a little yellow, a water stain
+    # 300 mm mineral fibre ceiling tiles (석고 텍스), 512 px = 1.2 m, clean white (brand-new: no yellowing, no stain)
     img = preshade("OfficeCeiling001", 512, relief=0.5)
-    a = to_arr(img) * np.array([0.97, 0.95, 0.88], np.float32)
+    a = to_arr(img) * np.array([0.99, 0.985, 0.965], np.float32)
     pin = nrng.random((512, 512)) < 0.05  # the pinholes
     a[pin] *= 0.82
-    st = noise(512, 512, 140, 31)
-    a *= (1 - 0.1 * np.clip((st - 0.62) * 6, 0, 1))[..., None] * np.array([1, 0.98, 0.93])[None, None]
     from_arr(a).save(os.path.join(A.out, "ceiling.png"))
 
 
 def make_wood():
-    # the counter top and the shop's shelves: dark varnished hardwood worn pale by elbows and coins, 1024 px = 1.0 m
+    # the counter top and the shop's shelves: dark hardwood under a fresh, even varnish (brand-new: no wear, scratches or cup rings), 1024 px = 1.0 m
     img = preshade("Wood066", 1024, relief=0.45)
     a = to_arr(img) * 1.08
-    wear = noise(1024, 1024, 300, 41)
-    pale = np.clip((wear - 0.55) * 3, 0, 1)[..., None]
-    a = a * (1 - 0.3 * pale) + np.array([0.62, 0.45, 0.3]) * 0.3 * pale
     img = from_arr(a)
-    img = seamless_strokes(img, 220, (205, 175, 140), 0.22, 1, 1, 15, 120, 8, curve=0.2)  # fine scratches through the varnish
-    img = seamless_strokes(img, 30, (30, 18, 10), 0.3, 1, 2, 8, 40, 9)
-    # two cup rings
-    d = ImageDraw.Draw(img, "RGBA")
-    for (x, y, r) in ((300, 700, 46), (720, 260, 40)):
-        d.ellipse((x - r, y - r, x + r, y + r), outline=(40, 25, 14, 70), width=4)
     img.save(os.path.join(A.out, "wood.png"))
 
 

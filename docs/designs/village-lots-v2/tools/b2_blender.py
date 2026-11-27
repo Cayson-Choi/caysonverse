@@ -423,6 +423,16 @@ def run_room(unit_id, kit_mod, viewdef, prefix, tex_dir):
                 for o in bpy.data.objects:
                     if o.name.startswith(("roomlight_", "nightfill_")):
                         o.hide_render = True
+    if B.arg("--lm-reuse") and not lightmap:
+        # --lm-reuse <scale>:<size>: only the furniture / goods changed (the shell is the same, so its unwrap is the same): unwrap
+        # TEXCOORD_1 the way the bake does, bake nothing, and point the extras at this file's own existing maps (PC or phone)
+        import bake_lots
+        bake_lots._lightmap_uvs(bake_lots._targets(objs, unit_id))
+        sc, sz = B.arg("--lm-reuse").split(":")[:2]
+        fid = unit_id + ("_phone" if phone else "")
+        lightmap = {"day": "lots/%s/%s_lm_day.ktx2" % (tex_dir, fid), "night": "lots/%s/%s_lm_night.ktx2" % (tex_dir, fid),
+                    "scale": float(sc), "channel": 1, "size": int(sz),
+                    "note": "irradiance = (texel in linear) * scale on TEXCOORD_1 of the lotroom__ shell (bake_lots.py; reused: same shell, same unwrap)"}
     out = B.arg("--out", os.path.join(B.LOTS, unit_id + ("_phone" if phone else "") + ".glb"))
     if "--no-export" not in B.argv:
         manifest = os.path.join(B.LOTS, tex_dir, "%s_textures.json" % unit_id)

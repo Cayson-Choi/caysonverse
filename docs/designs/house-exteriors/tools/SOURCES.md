@@ -31,3 +31,13 @@ photos (other people's) stay in `art/village/refs/exterior_x2/` with their `SOUR
 
 The Colmar / Riquewihr / Eguisheim / Kaysersberg photos the dress was designed from (28, Wikimedia Commons, CC BY-SA, found
 in one Aside session) are listed in `art/village/refs/colmar/SOURCES.txt` and stay out of the repository.
+
+## Third pass (2026-11-27, fix/house-exterior)
+| Set | Material | Source | Licence |
+|---|---|---|---|
+| render (fine sand-float lime render) | LM_render | procedural (`tools/house-ext/make_house_fresh_textures.py`) — no third-party pixels | — |
+| sandstone (dressed, claw-tooled Vosges) | LM_stone | procedural (same script) | — |
+| clay_tile (new Biberschwanz, 11 x 14 per 2 m sheet) | LM_roof | procedural (same script) | — |
+
+The second pass's scans (ambientCG Plaster001 swirls, Poly Haven mossy_sandstone, clay_roof_tiles_03) read as old and stained in
+the game (audit tmpshots/exteriors13) and are no longer in these files. Oak (dark_wood), painted boards and metal are unchanged.

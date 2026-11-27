@@ -18,7 +18,7 @@ import {
 import { getPbrSet, createPbrMaterial, pbrSetInfo, pbrTierFor, type PbrSet } from "./pbr/pbrLibrary";
 import { patchHouseLight } from "./houses/housesPrep";
 import { litUniform, type VillageTier } from "./villageModelPrep";
-import { SURFACES, findSplits, geometryWithout, takeFaces, type FaceSplit, type SurfaceSpec } from "./exteriorFaces";
+import { SURFACES, findSplits, geometryWithout, memorialTrimBoxes, takeFaces, trimGeometry, type FaceSplit, type SurfaceSpec } from "./exteriorFaces";
 import { terraceParasol } from "./cafe/terraceParasol";
 
 /** White veined marble (canvas, 512, tiling): a warm white body with soft cloud and a few long grey veins, no joints. */
@@ -118,6 +118,21 @@ function litSurface(spec: SurfaceSpec, set: PbrSet): MeshStandardMaterial {
     params: { color: new Color().setRGB(spec.tint[0], spec.tint[1], spec.tint[2]), roughness: spec.roughness, metalness: spec.metalness, ...(spec.doubleSided ? { side: DoubleSide } : {}) },
   });
   patchHouseLight(m, `dress-${set.id}`);
+  const glow = spec.nightGlow;
+  if (glow) {
+    // the facade's own night spill (see SurfaceSpec.nightGlow): emissive radiance times how lit the village is
+    const prev = m.onBeforeCompile;
+    m.onBeforeCompile = (shader, r) => {
+      prev.call(m, shader, r);
+      shader.uniforms.uDressLit = litUniform;
+      shader.fragmentShader = shader.fragmentShader
+        .replace("void main() {", "uniform float uDressLit;\nvoid main() {")
+        .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>\ntotalEmissiveRadiance += texture2D( map, vMapUv ).rgb * vec3( ${glow.map((v) => v.toFixed(4)).join(", ")} ) * 2.0 * uDressLit;`);
+    };
+    const key = m.customProgramCacheKey.bind(m);
+    m.customProgramCacheKey = () => `${key()}|dress-glow-${glow.join(",")}`;
+    m.needsUpdate = true;
+  }
   return m;
 }
 
@@ -225,6 +240,34 @@ export function applyDress(root: Object3D, splits: FaceSplit[], sets: ReadonlyMa
   };
 }
 
+/** The memorial's stone order (exteriorFaces.ts memorialTrimBoxes): the surfaces it is made of. */
+const TRIM_SURFACES = ["trimGranite", "trimAshlar"] as const;
+
+/** Add the memorial's plinth, pilasters and cornice to the village clone (one mesh per surface); returns what takes them away. */
+export function addMemorialTrim(root: Object3D, sets: ReadonlyMap<string, PbrSet>): () => void {
+  const boxes = memorialTrimBoxes();
+  const made: Mesh[] = [];
+  for (const [key, list] of [["trimGranite", boxes.granite], ["trimAshlar", boxes.ashlar]] as const) {
+    const spec = SURFACES[key]!;
+    const set = spec.pbr ? sets.get(spec.pbr) : undefined;
+    if (!set || !spec.pbr) continue;
+    const m = new Mesh(trimGeometry(list, pbrSetInfo(spec.pbr).tileMeters), litSurface(spec, set));
+    m.name = `dress__memorial-${key}`;
+    m.matrixAutoUpdate = false;
+    m.updateMatrix();
+    m.userData.cvDress = true;
+    root.add(m);
+    made.push(m);
+  }
+  return () => {
+    for (const m of made) {
+      root.remove(m);
+      m.geometry.dispose();
+      (m.material as Material).dispose();
+    }
+  };
+}
+
 /** Swap the fountain crescent's material for polished marble (the original goes back on undo). */
 /** Off: the veined marble on the plaza crescent read as cracks (owner 2026-11-19). */
 const MARBLE_MOON = false;
@@ -260,7 +303,7 @@ export function ExteriorDress({ root, tier }: { root: Object3D; tier: VillageTie
     void (async () => {
       try {
         const splits = findSplits(root);
-        const ids = [...new Set(splits.map((s) => SURFACES[s.rule.surface]?.pbr).filter((x): x is string => !!x))];
+        const ids = [...new Set([...splits.map((s) => SURFACES[s.rule.surface]?.pbr), ...TRIM_SURFACES.map((k) => SURFACES[k]?.pbr)].filter((x): x is string => !!x))];
         const sets = new Map<string, PbrSet>();
         const loaded = await Promise.all(ids.map((id) => getPbrSet(id, pbrTierFor(tier), gl as WebGLRenderer).then((s) => [id, s] as const).catch(() => null)));
         for (const e of loaded) if (e) sets.set(e[0], e[1]);
@@ -276,6 +319,7 @@ export function ExteriorDress({ root, tier }: { root: Object3D; tier: VillageTie
         }
         // the faces are found again now: another patch (the old houses cut, the street) may have swapped a mesh geometry while the sets loaded
         const dress = applyDress(root, findSplits(root), sets, parasol);
+        const unTrim = splits.some((s) => s.rule.id === "memorial-render") ? addMemorialTrim(root, sets) : null;
         let unMoon: (() => void) | null = null;
         // the plaza crescent keeps its own smooth white (owner 2026-11-19: "하얀 초승달이 왜 이모양이 됐어?" — the marble's dark veins read as cracks)
         if (marble && MARBLE_MOON) {
@@ -284,6 +328,7 @@ export function ExteriorDress({ root, tier }: { root: Object3D; tier: VillageTie
         }
         undo = () => {
           unMoon?.();
+          unTrim?.();
           dress.undo();
         };
         if (import.meta.env.DEV) window.__cvDress = () => ({ meshes: dress.added.map((m) => m.name), triangles: dress.added.reduce((n, m) => n + m.geometry.getAttribute("position").count / 3, 0) });

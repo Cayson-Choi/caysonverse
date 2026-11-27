@@ -63,7 +63,8 @@ import { houseGardenCollider } from "@caysonverse/shared/village/houseExterior";
 import { VILLAGE_LAYOUT, type SceneryHouse } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_COLLIDERS } from "@caysonverse/shared/village/generated/villageColliders";
 import { deckHouseSurface, splitDeckTriangles } from "./deckPlanks";
-import { ridgeCaps } from "./roofRidge";
+import { ridgeCaps, ridgeLines, tintRidgeMortar } from "./roofRidge";
+import { builderGeometry, houseShutterParts } from "./houseShutters";
 import { versionedUrl } from "../modelUrl";
 import { LIT, litUniform } from "../villageModelPrep";
 import { SS_FRAGMENT_PARS, SS_VERTEX_PARS, SS_VERTEX_WORLD, bindSunShadowUniforms } from "../sunShadows";
@@ -212,13 +213,16 @@ export function patchHouseLight(m: MeshStandardMaterial, key: string): void {
  */
 export const HOUSE_SURFACE: Record<string, { mean: number; gain: number; macro: number; foot: number; eave: number; sat: number; bright: number; normal: number; repeat: number; oakMean?: number; oakGain?: number }> = {
   // eave: how much the wall just under the roof edge darkens (the soffit shades it: the ambient occlusion the lightmap-free walls lack)
-  LM_render: { mean: 0.822, gain: 4.2, macro: 0.07, foot: 0.13, eave: 0.2, sat: 1, bright: 1, normal: 2.2, repeat: 1 },
-  // the sandstone sheet is a scanned block face (Poly Haven mossy_sandstone, lichen taken out), 1 m x 1 m: real grain and relief
-  LM_stone: { mean: 0.394, gain: 1.0, macro: 0.07, foot: 0.06, eave: 0.12, sat: 0.55, bright: 1.18, normal: 1.5, repeat: 1 },
+  // third pass (2026-11-27): the render, sandstone and tile sheets are new procedural sets (tools/house-ext/
+  // make_house_fresh_textures.py) that already carry their own fine grain: `gain` 1 (no stretching: the old 4.2 turned the
+  // scan's trowel swirls into stains), the mottle down to a whisper, the roof sheet's rows back on the model's courses (repeat 1)
+  LM_render: { mean: 0.7975, gain: 1.0, macro: 0.012, foot: 0.06, eave: 0.16, sat: 1, bright: 1, normal: 1.6, repeat: 1 },
+  // dressed Vosges sandstone, procedural (fine sand, laminae, claw tooling), 1 m x 1 m; the pink / buff is the vertex colour
+  LM_stone: { mean: 0.584, gain: 1.0, macro: 0.015, foot: 0.03, eave: 0.1, sat: 0.85, bright: 1.0, normal: 1.4, repeat: 1 },
   // the oak half is Poly Haven dark_wood's grain (oiled oak beams); the painted-board half is the first pass's
   LM_wood: { mean: 0.504, gain: 1.0, macro: 0.04, foot: 0, eave: 0.1, sat: 0.62, bright: 1.05, normal: 2.6, repeat: 1, oakMean: 0.0405, oakGain: 1.9 },
-  // Poly Haven clay_roof_tiles_03 (a stamped plain-tile roof): its image spans ~1.5 m of roof, so the old 2 m tiling shrinks to 1.3
-  LM_roof: { mean: 0.168, gain: 1.1, macro: 0.05, foot: 0, eave: 0, sat: 0.86, bright: 0.96, normal: 1.7, repeat: 1.3 },
+  // new Biberschwanz tiles, procedural: 11 tiles x 14 rows per 2 m sheet, each modelled course on its rows (repeat 1)
+  LM_roof: { mean: 0.19, gain: 1.0, macro: 0.02, foot: 0, eave: 0, sat: 1, bright: 1, normal: 1.3, repeat: 1 },
 };
 
 const SURFACE_PARS = /* glsl */ `uniform vec4 uSurf;
@@ -581,7 +585,7 @@ export interface HouseNodes {
   glow: HouseGlow;
   /** Materials and geometries this call made: freed by `disposeHouses`. */
   own: { materials: Material[]; geometries: BufferGeometry[] };
-  stats: { shellTriangles: number; detailTriangles: Record<string, number>; shellDraws: number; detailDraws: Record<string, number>; lamps: number };
+  stats: { shellTriangles: number; detailTriangles: Record<string, number>; shellDraws: number; detailDraws: Record<string, number>; lamps: number; ridges: number; shutterWindows: number };
 }
 
 const isMeshObj = (o: Object3D): o is Mesh => (o as Mesh).isMesh === true;
@@ -663,6 +667,9 @@ export function lampPoints(meshes: readonly Mesh[]): Vector3[] {
   return pts;
 }
 
+/** The ridge's mortar bed under the new ridge tiles (linear; sRGB #B49A86: a warm clay-lime mortar, not a white line). */
+export const RIDGE_MORTAR: [number, number, number] = [0.456, 0.323, 0.238];
+
 const A8_HOUSES = (): SceneryHouse[] => VILLAGE_LAYOUT.sceneryHouses.filter((h) => h.kind === "house");
 
 /**
@@ -714,6 +721,8 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
   const byHouse = new Map<string, Mesh[]>();
   const unknown: Object3D[] = [];
   const tmp = new Matrix4();
+  /** Each house's window glass (world), for the side and back shutters (houseShutters.ts). */
+  const glassOf = new Map<string, BufferGeometry[]>();
 
   for (const node of [...scene.children]) {
     const part = houseNodePart(node.name);
@@ -734,6 +743,7 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
         const world = g.clone().applyMatrix4(tmp.copy(mesh.matrixWorld));
         const key = src[0]!.name;
         if (src[0]!.name === "M_lamp") lamps.push(mesh);
+        if (key === "M_glass") glassOf.set(part.id, [...(glassOf.get(part.id) ?? []), world]);
         if (key === "LM_stone") {
           // the porch slab and steps are drawn as oak planks (deckPlanks.ts), the rest stays sandstone
           const sp = splitDeckTriangles(world, a8Houses);
@@ -796,15 +806,46 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
     }
   }
 
+  // shutters on the side walls' and the back's ground-floor windows (houseShutters.ts), merged into the detail's own wood and
+  // metal meshes (no extra draw); measured before the shells merge (the glass parts are disposed with them)
+  let shutterWindows = 0;
+  for (const h of a8Houses) {
+    const group = details.get(h.id);
+    if (!group) continue;
+    const parts = houseShutterParts(glassOf.get(h.id) ?? [], h);
+    shutterWindows += parts.windows;
+    for (const [mat, b] of [["LM_wood", parts.wood], ["LM_metal", parts.metal]] as const) {
+      const mesh = group.children.find((c): c is Mesh => isMeshObj(c) && matsOf(c)[0]!.name === mat);
+      if (!mesh) continue;
+      const add = builderGeometry(b, mesh.geometry);
+      if (!add) continue;
+      add.applyMatrix4(tmp.copy(mesh.matrix).invert()); // the group sits at the origin: the mesh's own matrix is its world
+      const base = mesh.geometry;
+      const merged = mergeGeometries([base, add], false);
+      add.dispose();
+      if (!merged) continue;
+      if (own.geometries.includes(base)) {
+        own.geometries.splice(own.geometries.indexOf(base), 1);
+        base.dispose();
+      }
+      own.geometries.push(merged);
+      mesh.geometry = merged;
+      const added = tris(merged) - tris(base);
+      detailTriangles[h.id] = (detailTriangles[h.id] ?? 0) + added;
+    }
+  }
+
   const shells: Mesh[] = [];
   let shellTriangles = 0;
+  // the roofs get a row of real half-round ridge tiles on their ridge (roofRidge.ts); the model's white mortar strip is tinted
+  const ridges = ridgeLines(shellParts.get("LM_roof") ?? [], a8Houses);
   for (const [name, parts] of shellParts) {
-    // the roofs get a row of half-round ridge tiles on their top edge (roofRidge.ts)
-    if (name === "LM_roof") parts.push(...ridgeCaps(parts, a8Houses));
+    if (name === "LM_roof") parts.push(...ridgeCaps(parts, ridges));
     const merged = mergeGeometries(parts, false);
     for (const p of parts) p.dispose();
     if (!merged) continue;
     if (name === "LM_render" || name === "LM_wood") freshenWalls(merged, name === "LM_wood");
+    if (name === "LM_render") tintRidgeMortar(merged, ridges, RIDGE_MORTAR);
     merged.computeBoundingSphere();
     merged.computeBoundingBox();
     own.geometries.push(merged);
@@ -853,7 +894,7 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
     porches,
     glow,
     own,
-    stats: { shellTriangles, detailTriangles, shellDraws: shells.length, detailDraws, lamps: points.length },
+    stats: { shellTriangles, detailTriangles, shellDraws: shells.length, detailDraws, lamps: points.length, ridges: ridges.length, shutterWindows },
   };
 }
 
