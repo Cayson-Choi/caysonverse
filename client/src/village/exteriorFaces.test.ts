@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BufferGeometry, Float32BufferAttribute, Group, Mesh, MeshBasicMaterial } from "three";
-import { DRESS_RULES, SURFACES, boxUv, findSplits, geometryWithout, selectFaces, takeFaces, type FaceRule } from "./exteriorFaces";
+import { CAFE_SHELL_BOX, DRESS_RULES, MEMORIAL_SHELL, SURFACES, boxUv, findSplits, geometryWithout, memorialTrimBoxes, onShell, outward, selectFaces, takeFaces, trimGeometry, type FaceRule, type TriView } from "./exteriorFaces";
 import { terraceParasol } from "./cafe/terraceParasol";
 import { cullBeyondZ } from "./lots/lotsPrep";
 import { pbrIdsOf } from "./exteriorFacesTestUtil";
@@ -112,5 +112,44 @@ describe("exteriorFaces", () => {
     const r = cullBeyondZ(root, 104);
     expect(r.removed).toBe(1);
     expect(m.geometry.index!.count).toBe(3);
+  });
+});
+
+describe("#13 exteriors: cafe siding, memorial stone order", () => {
+  const tri = (cx: number, cy: number, cz: number, nx: number, ny: number, nz: number): TriView => ({ cx, cy, cz, nx, ny, nz, area: 1, u: 0, v: 0, color: [0.9, 0.68, 0.43] });
+  it("takes only the cafe shell's outward faces on its planes", () => {
+    expect(onShell(tri(46.6, 3, -15, -1, 0, 0), CAFE_SHELL_BOX)).toBe(true); // front wall, facing out
+    expect(onShell(tri(46.9, 3, -15, 1, 0, 0), CAFE_SHELL_BOX)).toBe(false); // its inner face
+    expect(onShell(tri(53, 3, -15, -1, 0, 0), CAFE_SHELL_BOX)).toBe(false); // a partition inside
+    expect(onShell(tri(53, 3, -22.2, 0, 0, -1), CAFE_SHELL_BOX)).toBe(true);
+    expect(onShell(tri(53, 0.5, -22.2, 0, 1, 0), CAFE_SHELL_BOX)).toBe(false); // a floor / deck
+    expect(outward(tri(51, 2, -4, 1, 0, 0), [48, 0, -6, 51, 4, -2])).toBe(true);
+    expect(outward(tri(48.2, 2, -4, 1, 0, 0), [48, 0, -6, 51, 4, -2])).toBe(false);
+  });
+  it("every new surface names a library set or a made material", () => {
+    for (const k of ["siding", "sidingDark", "trimGranite", "trimAshlar"]) expect(SURFACES[k]).toBeTruthy();
+    for (const r of DRESS_RULES) expect(SURFACES[r.surface]).toBeTruthy();
+  });
+  it("the memorial's pilasters, plinth and cornice stand on its three blank walls, not in front of the entrance", () => {
+    const { granite, ashlar } = memorialTrimBoxes();
+    const { x0, x1, zb, zf } = MEMORIAL_SHELL;
+    for (const b of [...granite, ...ashlar]) {
+      expect(b[0]).toBeLessThan(b[3]);
+      expect(b[1]).toBeLessThan(b[4]);
+      expect(b[2]).toBeLessThan(b[5]);
+      // within 0.2 m of the shell's outside and never past the entrance front
+      expect(b[0]).toBeGreaterThanOrEqual(x0 - 0.2);
+      expect(b[3]).toBeLessThanOrEqual(x1 + 0.2);
+      expect(b[2]).toBeGreaterThanOrEqual(zb - 0.2);
+      expect(b[5]).toBeLessThanOrEqual(zf + 1e-9);
+      // touching a wall: its box reaches the wall's plane
+      const onWall = b[0] <= x0 || b[3] >= x1 || b[2] <= zb;
+      expect(onWall).toBe(true);
+    }
+    expect(ashlar.length).toBeGreaterThanOrEqual(3 + 4 + 6 + 4);
+    const g = trimGeometry(ashlar, 3);
+    // five faces of two triangles a box: a few hundred triangles in all (one draw call per surface)
+    expect(g.getAttribute("position").count / 3).toBe(ashlar.length * 10);
+    expect(g.getAttribute("position").count / 3).toBeLessThan(400);
   });
 });

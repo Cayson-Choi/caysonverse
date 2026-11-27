@@ -218,7 +218,8 @@ export function buildBooth(s: BoothSpec) {
 export function Booth({ all, spec }: { all: Texture[]; spec: BoothSpec }) {
   const built = useMemo(() => buildBooth(spec), [spec]);
   const stoneMat = useMemo(() => parkMaterial(pickSet(all, "Concrete034"), 1, { vertexColors: true, color: new Color("#efe6d6"), normalScale: 0.6 }), [all]);
-  const plasterMat = useMemo(() => parkMaterial(pickSet(all, "Plaster003"), 0.7, { vertexColors: true, color: new Color(spec.plaster), normalScale: 1.0 }), [all, spec.plaster]);
+  // #13 exteriors: the plaster set's mottled colour map read as grime on a new booth; its colour is the booth's own, the set gives the relief
+  const plasterMat = useMemo(() => parkMaterial(pickSet(all, "Plaster003"), 0.7, { useColor: false, vertexColors: true, color: new Color(spec.plaster), normalScale: 0.5 }), [all, spec.plaster]);
   const roofMat = useMemo(() => parkMaterial(pickSet(all, "RoofingTiles013A"), 1, { color: new Color(spec.tile), normalScale: 1.1, side: DoubleSide }), [all, spec.tile]);
   const woodMat = useMemo(() => parkMaterial(pickSet(all, "WoodFloor051"), 1, { vertexColors: true, normalScale: 0.8 }), [all]);
   const clothMat = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: DoubleSide }), []);

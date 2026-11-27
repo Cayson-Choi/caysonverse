@@ -41,23 +41,37 @@ function shopSignTexture(name: string, wall: V3): CanvasTexture {
 
 
 /**
+ * #13 exteriors (2026-11-27): the half-timbering was boxes of the plaster material (the plaster's swirl stretched over each beam, flat
+ * brown): it is real oak now, its own mesh, the grain along every member (posts upright, rails and braces along their length), one
+ * texture repeat per TIMBER_M metres.
+ */
+const TIMBER_M = 2.4;
+/** The shops' beam colours were picked for a flat swatch: × the oak set's own mid-brown albedo they need lifting to read as stained oak. */
+const timberTint = (b: V3): V3 => [Math.min(1, b[0] * 1.9), Math.min(1, b[1] * 1.9), Math.min(1, b[2] * 1.9)];
+/** An upright member (half depth `d` along F, half width `w` along the wall, half height `h`) with its grain vertical. */
+function post(timber: GeoBuilder, c: V3, F: V3, lat: V3, d: number, w: number, h: number, color: V3): void {
+  // box(ax = F, ay = along the wall): its third axis F x lat is vertical, so the faces' u (and the oak's grain) runs up the post
+  timber.box(c, F, lat, d, w, h, color, TIMBER_M);
+}
+
+/**
  * The unseen faces of a shop (the back and the two gable ends): the riders and the walkers behind the row see them, so they get the same
  * half-timbering, windows with shutters and flower boxes (and a service door on the back), only plainer than the street front.
  */
-function addPlainFace(wall: GeoBuilder, wood: GeoBuilder, s: ParkShop, F: V3, dist: number, latHalf: number, door: boolean): void {
+function addPlainFace(wall: GeoBuilder, wood: GeoBuilder, timber: GeoBuilder, s: ParkShop, F: V3, dist: number, latHalf: number, door: boolean): void {
   const wallH = 4.4;
-  const beam = s.beam;
+  const beam = timberTint(s.beam);
   // lateral axis: horizontal, perpendicular to F (boxes are symmetric, so its sign does not matter)
   const L: V3 = [-F[2], 0, F[0]];
   const at = (f: number, y: number, l: number): V3 => [s.x + F[0] * (dist + f) + L[0] * l, y, s.z + F[2] * (dist + f) + L[2] * l];
   // posts, rails, braces
-  for (const l of [-latHalf + 0.25, 0, latHalf - 0.25]) wall.box(at(0.06, wallH / 2 + 0.5, l), F, Y, 0.1, wallH / 2 - 0.5, 0.15, beam);
-  for (const y of [1.2, 2.75, wallH - 0.12]) wall.box(at(0.07, y, 0), F, Y, 0.11, 0.14, latHalf + 0.05, beam);
+  for (const l of [-latHalf + 0.25, 0, latHalf - 0.25]) post(timber, at(0.06, wallH / 2 + 0.5, l), F, L, 0.1, 0.15, wallH / 2 - 0.5, beam);
+  for (const y of [1.2, 2.75, wallH - 0.12]) timber.box(at(0.07, y, 0), F, Y, 0.11, 0.14, latHalf + 0.05, beam, TIMBER_M);
   if (door) {
     wall.box(at(0.04, 1.3, 0), F, Y, 0.17, 1.3, 0.75, [0.14, 0.09, 0.06]);
     addDoorLeaf(wood, F, at, 0.20, 2.48);
-    for (const e of [-1, 1]) wall.box(at(0.15, 1.3, e * 0.72), F, Y, 0.12, 1.35, 0.09, beam);
-    wall.box(at(0.16, 2.7, 0), F, Y, 0.13, 0.11, 0.9, beam);
+    for (const e of [-1, 1]) post(timber, at(0.15, 1.3, e * 0.72), F, L, 0.12, 0.09, 1.35, beam);
+    timber.box(at(0.16, 2.7, 0), F, Y, 0.13, 0.11, 0.9, beam, TIMBER_M);
     wall.box(at(0.4, 0.1, 0), F, Y, 0.4, 0.1, 0.9, [0.62, 0.6, 0.56]);
     wall.box(at(0.2, 2.35, 1.0), F, Y, 0.09, 0.15, 0.09, [0.98, 0.86, 0.5]);
   }
@@ -78,27 +92,29 @@ function addDoorLeaf(wood: GeoBuilder, face: V3, at: (d: number, y: number, l: n
   wood.cylinder(at(0.332, grip + 0.032, 0.44), at(0.332, grip + 0.032, 0.314), 0.018, 0.015, 8, brass, true);
 }
 
-function addShop(wall: GeoBuilder, wood: GeoBuilder, roof: GeoBuilder, cloth: GeoBuilder, glass: GeoBuilder, s: ParkShop, shut: V3): void {
+function addShop(wall: GeoBuilder, wood: GeoBuilder, timber: GeoBuilder, roof: GeoBuilder, cloth: GeoBuilder, glass: GeoBuilder, s: ParkShop, shut: V3): void {
   const F: V3 = [s.faces, 0, 0];
   const wallH = 4.4;
   const half = s.d / 2;
   const c = (f: number, y: number, side: number): V3 => [s.x + s.faces * f, y, s.z + side];
-  const beam = s.beam;
+  const beam = timberTint(s.beam);
+  const LAT: V3 = [0, 0, 1];
   // the body, a stone plinth with a cap course, and corner quoins
   wall.box(c(0, wallH / 2, 0), F, Y, half, wallH / 2, s.w / 2, s.wall, 3);
   wall.box(c(0, 0.45, 0), F, Y, half + 0.12, 0.45, s.w / 2 + 0.12, [0.58, 0.56, 0.52], 2);
   wall.box(c(0, 0.95, 0), F, Y, half + 0.18, 0.05, s.w / 2 + 0.18, [0.7, 0.68, 0.64], 2);
   for (const e of [-1, 1]) for (let k = 0; k < 6; k++) wall.box(c(half + 0.03, 1.3 + k * 0.62, e * (s.w / 2 - 0.2)), F, Y, 0.1, 0.3, 0.24 + (k % 2) * 0.1, [0.9, 0.86, 0.78]);
   // the half-timbering: posts, rails and braces, standing proud of the plaster
-  for (let k = -s.w / 2 + 0.7; k <= s.w / 2 - 0.5; k += s.w / 6) wall.box(c(half + 0.07, wallH / 2 + 0.5, k), F, Y, 0.12, wallH / 2 - 0.5, 0.16, beam);
-  for (const y of [1.2, 2.75, wallH - 0.12]) wall.box(c(half + 0.08, y, 0), F, Y, 0.13, 0.15, s.w / 2 + 0.08, beam);
-  for (let k = -s.w / 2 + 0.7; k < s.w / 2 - 0.9; k += s.w / 3) wall.box(c(half + 0.09, 3.5, k + s.w / 6), F, [0, 0.7071, 0.7071], 0.09, 0.95, 0.12, beam);
+  for (let k = -s.w / 2 + 0.7; k <= s.w / 2 - 0.5; k += s.w / 6) post(timber, c(half + 0.07, wallH / 2 + 0.5, k), F, LAT, 0.12, 0.16, wallH / 2 - 0.5, beam);
+  for (const y of [1.2, 2.75, wallH - 0.12]) timber.box(c(half + 0.08, y, 0), F, Y, 0.13, 0.15, s.w / 2 + 0.08, beam, TIMBER_M);
+  // the braces: the grain runs along each (its length on the box's third axis)
+  for (let k = -s.w / 2 + 0.7; k < s.w / 2 - 0.9; k += s.w / 3) timber.box(c(half + 0.09, 3.5, k + s.w / 6), F, [0, 0.7071, -0.7071], 0.09, 0.12, 0.95, beam, TIMBER_M);
   // door: a recessed dark opening in a thick frame, a transom, a step and a lantern
   const dz = -s.w / 4;
   wall.box(c(half + 0.04, 1.4, dz), F, Y, 0.18, 1.45, 0.85, [0.14, 0.09, 0.06]);
   addDoorLeaf(wood, F, (d, y, l) => c(half + d, y, dz + l), 0.20, 2.79);
-  for (const e of [-1, 1]) wall.box(c(half + 0.16, 1.4, dz + e * 0.82), F, Y, 0.13, 1.5, 0.1, beam);
-  wall.box(c(half + 0.18, 2.95, dz), F, Y, 0.15, 0.12, 1.0, beam);
+  for (const e of [-1, 1]) post(timber, c(half + 0.16, 1.4, dz + e * 0.82), F, LAT, 0.13, 0.1, 1.5, beam);
+  timber.box(c(half + 0.18, 2.95, dz), F, Y, 0.15, 0.12, 1.0, beam, TIMBER_M);
   wall.box(c(half + 0.33, 0.10, dz), F, Y, 0.38, 0.10, 0.95, [0.62, 0.6, 0.56]);
   wall.box(c(half + 0.35, 2.4, dz + 1.1), F, Y, 0.1, 0.16, 0.1, [0.98, 0.86, 0.5]);
   for (const opening of shopWindows(s)) addShopWindow(opening, s.id, wood, cloth, glass, shut);
@@ -131,23 +147,24 @@ function addShop(wall: GeoBuilder, wood: GeoBuilder, roof: GeoBuilder, cloth: Ge
   wall.box([chim[0], chim[1] + 1.25, chim[2]], X, Y, 0.38, 0.14, 0.38, [0.4, 0.3, 0.28]);
   wall.cylinder([chim[0], chim[1] + 1.4, chim[2]], [chim[0], chim[1] + 1.9, chim[2]], 0.22, 0.2, 8, [0.7, 0.4, 0.3]);
   // the back (service door, windows) and the two gable ends
-  addPlainFace(wall, wood, s, [-s.faces, 0, 0], half, s.w / 2, true);
-  addPlainFace(wall, wood, s, [0, 0, 1], s.w / 2, half, false);
-  addPlainFace(wall, wood, s, [0, 0, -1], s.w / 2, half, false);
+  addPlainFace(wall, wood, timber, s, [-s.faces, 0, 0], half, s.w / 2, true);
+  addPlainFace(wall, wood, timber, s, [0, 0, 1], s.w / 2, half, false);
+  addPlainFace(wall, wood, timber, s, [0, 0, -1], s.w / 2, half, false);
   // the iron bracket of the hanging signboard, beside the door
   wall.box(c(half + 0.9, 3.75, dz + 1.7), F, Y, 0.9, 0.04, 0.05, [0.12, 0.12, 0.14]);
 }
 
 /** The promenade's six storybook shop fronts: real plaster PBR, half-timbering, deep reveals, shutters, flower boxes, awnings, signs. */
 export function Shops({ all }: { all: Texture[] }) {
-  const { wallGeo, woodGeo, roofGeo, clothGeo, glassGeos } = useMemo(() => {
+  const { wallGeo, woodGeo, timberGeo, roofGeo, clothGeo, glassGeos } = useMemo(() => {
     const w = new GeoBuilder();
     const wood = new GeoBuilder();
+    const timber = new GeoBuilder();
     const r = new GeoBuilder();
     const cl = new GeoBuilder();
     const gl = PARK_SHOPS.map(() => new GeoBuilder());
-    PARK_SHOPS.forEach((s, i) => addShop(w, wood, r, cl, gl[i]!, s, SHUTTERS[i % SHUTTERS.length]!));
-    return { wallGeo: w.build(), woodGeo: wood.build(), roofGeo: r.build(), clothGeo: cl.build(), glassGeos: gl.map((g) => g.build()) };
+    PARK_SHOPS.forEach((s, i) => addShop(w, wood, timber, r, cl, gl[i]!, s, SHUTTERS[i % SHUTTERS.length]!));
+    return { wallGeo: w.build(), woodGeo: wood.build(), timberGeo: timber.build(), roofGeo: r.build(), clothGeo: cl.build(), glassGeos: gl.map((g) => g.build()) };
   }, []);
   // the shop windows light up with the night, each a little different (a warm lamp, a dimmer one, one shop with its light out)
   const glassMats = useMemo(() => SHOP_GLOW.map((k, i) => ({ k, mat: new MeshStandardMaterial({ color: "#c7dee4", transparent: true, opacity: 0.21, depthWrite: false, roughness: 0.14, emissive: new Color(SHOP_WARM[i % SHOP_WARM.length]!), emissiveIntensity: 0 }) })), []);
@@ -155,7 +172,10 @@ export function Shops({ all }: { all: Texture[] }) {
     const l = dayNight.applied.lights;
     for (const g of glassMats) g.mat.emissiveIntensity = l * g.k;
   });
-  const wallMat = useMemo(() => parkMaterial(pickSet(all, "Plaster003"), 0.7, { vertexColors: true, normalScale: 1.0, color: new Color("#ffffff") }), [all]);
+  // the plaster's mottled colour map read as grime on a new shop: the fresh limewash is the shop's own colour (vertex colours), the set
+  // gives only its trowelled relief and sheen
+  const wallMat = useMemo(() => parkMaterial(pickSet(all, "Plaster003"), 0.7, { useColor: false, vertexColors: true, normalScale: 0.5, color: new Color("#ffffff") }), [all]);
+  const timberMat = useMemo(() => parkMaterial(pickSet(all, "WoodFloor051"), 1, { vertexColors: true, normalScale: 0.6 }), [all]);
   const woodMat = useMemo(() => parkMaterial(pickSet(all, "WoodFloor051"), 1, { vertexColors: true, normalScale: 0.5 }), [all]);
   const roofMat = useMemo(() => parkMaterial(pickSet(all, "RoofingTiles013A"), 1, { color: new Color("#e29a7c"), normalScale: 1.0 }), [all]);
   const clothMat = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: DoubleSide }), []);
@@ -171,6 +191,7 @@ export function Shops({ all }: { all: Texture[] }) {
     <group>
       <mesh geometry={wallGeo} material={wallMat} castShadow receiveShadow />
       <mesh geometry={woodGeo} material={woodMat} castShadow receiveShadow />
+      <mesh geometry={timberGeo} material={timberMat} castShadow receiveShadow />
       {glassGeos.map((g, i) => (
         <mesh key={i} geometry={g} material={glassMats[i % glassMats.length]!.mat} />
       ))}

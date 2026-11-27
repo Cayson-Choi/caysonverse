@@ -62,6 +62,29 @@ export const SWATCH_BLACK = { u: 0.352, v: 0.508 } as const;
 /** The memorial's footprint on the village plan (x, z) with its roof's height: the faces of the building and its roof deck. */
 export const MEMORIAL_BOX: DressBox = [-14, -0.2, -70, 14, 12, -44];
 
+/** The cafe's shell (village.glb: the walls' outer planes x 46.6 / 60.2, z -22.2 / -8.0, gables to 10 m). */
+export const CAFE_SHELL_BOX: DressBox = [46.4, 0, -22.4, 60.4, 10.6, -7.8];
+/** The flower kiosk by the bus stop. */
+export const KIOSK_BOX: DressBox = [47.9, 0, -5.7, 51.1, 4.0, -1.9];
+
+/** A vertex colour within 0.03 of (r, g, b): the baked swatch's tint picks one building's wood out of the shared LM_wood. */
+const isWarm = (t: TriView, r: number, g: number, b: number): boolean => !!t.color && near(t.color[0], r, 0.03) && near(t.color[1], g, 0.03) && near(t.color[2], b, 0.03);
+
+/** A vertical face lying on one of the box's four side planes (within 0.3 m) and facing out of it. */
+export function onShell(t: TriView, box: DressBox): boolean {
+  const [x0, , z0, x1, , z1] = box;
+  if (Math.abs(t.ny) > 0.3) return false;
+  const e = 0.3 + 0.2; // the box's own 0.2 m margin + the tolerance
+  return (t.nx < -0.9 && t.cx < x0 + e) || (t.nx > 0.9 && t.cx > x1 - e) || (t.nz < -0.9 && t.cz < z0 + e) || (t.nz > 0.9 && t.cz > z1 - e);
+}
+
+/** A face whose normal points away from the box's centre (an outside face of a small building). */
+export function outward(t: TriView, box: DressBox): boolean {
+  const mx = (box[0] + box[3]) / 2;
+  const mz = (box[2] + box[5]) / 2;
+  return (t.cx - mx) * t.nx + (t.cz - mz) * t.nz > 0;
+}
+
 /** The faces to re-skin, by place. Each is selected from the village clone's own meshes; the rest of each mesh is untouched. */
 export const DRESS_RULES: readonly FaceRule[] = Object.freeze([
   // the memorial's roof deck: two huge triangles of flat grey -> real ballast gravel
@@ -76,6 +99,11 @@ export const DRESS_RULES: readonly FaceRule[] = Object.freeze([
   { id: "cafe-parasols", material: "LM_atlas", mesh: /^village_lm_/, box: [36, 2.4, -24, 46, 4.6, -6], test: (t) => near(t.v, 0.363) && (near(t.u, 0.794) || near(t.u, 0.856)), surface: "parasol" },
   // the Korean pavilion's black roof (vertex colour 0.1): the hanok's dark grey tiles
   { id: "pavilion-roof", material: "LM_roof", box: [-24, 2, 54, -10, 6.4, 67], surface: "giwa" },
+  // the cafe's outer walls (#13 exteriors 2026-11-27): a baked, unlit honey-wood swatch with no relief -> real lap siding, lit, with its
+  // normal map (the boards' shadow lines). Only the shell's outward faces on its four planes (the inner faces stay for the showcase).
+  { id: "cafe-siding", material: "LM_wood", mesh: /^village_lm_/, box: CAFE_SHELL_BOX, test: (t) => isWarm(t, 0.9, 0.68, 0.43) && onShell(t, CAFE_SHELL_BOX), surface: "siding" },
+  // the flower kiosk by the bus stop: the same flat swatch in a darker brown -> the same siding, stained darker
+  { id: "kiosk-siding", material: "LM_wood", mesh: /^village_lm_/, box: KIOSK_BOX, test: (t) => isWarm(t, 0.62, 0.36, 0.19) && Math.abs(t.ny) < 0.3 && outward(t, KIOSK_BOX), surface: "sidingDark" },
   // the plaza trees' seats: saturated brown plastic -> natural oak boards
   { id: "plaza-tree-seats", material: "LM_wood", box: [-40, -0.1, -40, 40, 1.0, 40], test: (t) => !!t.color && t.color[0] > 0.42 && t.color[0] < 0.68 && t.color[1] > 0.22 && t.color[1] < 0.38 && t.color[2] < 0.26, surface: "oak" },
 ]);
@@ -84,10 +112,16 @@ export const SURFACES: Readonly<Record<string, SurfaceSpec>> = Object.freeze({
   ballast: { pbr: "gravel", uv: { mode: "box" }, tint: [1.7, 1.68, 1.62], normalStrength: 1, roughness: 1, metalness: 0 },
   seam: { pbr: "metal_roof_seam", uv: { mode: "box" }, tint: [3.4, 3.6, 3.9], normalStrength: 1, roughness: 1, metalness: 0.3 },
   granite: { pbr: "granite_flamed", uv: { mode: "box" }, tint: [0.3, 0.31, 0.34], normalStrength: 1, roughness: 1, metalness: 0 },
-  render: { pbr: "stucco_white", uv: { mode: "keep", unit: 1 }, tint: [1.02, 0.98, 0.92], normalStrength: 1.2, roughness: 1, metalness: 0 },
+  render: { pbr: "stucco_white", uv: { mode: "keep", unit: 1 }, tint: [1.14, 1.05, 0.9], normalStrength: 1.2, roughness: 1, metalness: 0 },
   parasol: { pbr: null, uv: { mode: "box" }, tint: [0.88, 0.88, 0.88], normalStrength: 1, roughness: 0.9, metalness: 0, doubleSided: true },
   giwa: { pbr: "roof_giwa", uv: { mode: "keep", unit: 2 }, tint: [4.6, 4.6, 4.8], normalStrength: 1.2, roughness: 1, metalness: 0, doubleSided: true },
   oak: { pbr: "wood_oak", uv: { mode: "box" }, tint: [1.05, 0.9, 0.7], normalStrength: 1, roughness: 1, metalness: 0 },
+  // the cafe's warm honey boards and the kiosk's darker stain (the set's mean albedo is a mid grey-brown)
+  siding: { pbr: "wood_siding", uv: { mode: "box" }, tint: [1.5, 1.08, 0.72], normalStrength: 1.4, roughness: 0.95, metalness: 0 },
+  // the memorial's stone order (memorialTrimBoxes): a mid-grey flamed granite plinth, warm light ashlar pilasters and cornice
+  trimGranite: { pbr: "granite_flamed", uv: { mode: "box" }, tint: [0.62, 0.6, 0.58], normalStrength: 1, roughness: 1, metalness: 0 },
+  trimAshlar: { pbr: "stone_ashlar", uv: { mode: "box" }, tint: [2.0, 1.92, 1.74], normalStrength: 1.2, roughness: 1, metalness: 0 },
+  sidingDark: { pbr: "wood_siding", uv: { mode: "box" }, tint: [1.0, 0.62, 0.4], normalStrength: 1.4, roughness: 0.95, metalness: 0 },
 });
 
 const _a = new Vector3();
@@ -243,4 +277,81 @@ export function findSplits(root: Object3D, rules: readonly FaceRule[] = DRESS_RU
     }
   });
   return out;
+}
+
+// ─────────────────────────────── the memorial's blank walls: pilasters, plinth, cornice ───────────────────────────────
+
+/** An axis-aligned box (minX, minY, minZ, maxX, maxY, maxZ), world metres. */
+export type TrimBox = readonly [number, number, number, number, number, number];
+
+/** The memorial's shell (village.glb): outer walls x -10 / 10, back z -68, front z -52 (the entrance: left as it is), 0.15 .. 6.2 m. */
+export const MEMORIAL_SHELL = { x0: -10, x1: 10, zb: -68, zf: -52, y0: 0.15, y1: 6.2 } as const;
+
+/**
+ * #13 exteriors (2026-11-27): the memorial's sides and back were 6 m of blank render over 16 and 20 m (a flat box from the plaza's
+ * paths). They get a stone order of their own, like a civic hall's: a flamed-granite plinth all round the three walls, light ashlar
+ * pilasters at every corner and every 4 m between, and a projecting ashlar cornice over the parapet. Boxes only (the walls keep their
+ * own faces): `granite` the plinth, `ashlar` the pilasters and the cornice.
+ */
+export function memorialTrimBoxes(): { granite: TrimBox[]; ashlar: TrimBox[] } {
+  const { x0, x1, zb, zf, y0, y1 } = MEMORIAL_SHELL;
+  const P = 0.12; // pilasters' projection
+  const W = 0.7; // pilasters' width
+  const plinthTop = 0.75;
+  const corniceBot = 5.62;
+  const granite: TrimBox[] = [
+    [x0 - 0.08, y0 - 0.1, zb - 0.08, x0, plinthTop, zf], // west
+    [x1, y0 - 0.1, zb - 0.08, x1 + 0.08, plinthTop, zf], // east
+    [x0, y0 - 0.1, zb - 0.08, x1, plinthTop, zb], // back (the side bands turn its corners)
+  ];
+  const ashlar: TrimBox[] = [
+    // the cornice: one band over each of the three walls (the side bands turn the back corners)
+    [x0 - 0.16, corniceBot, zb - 0.16, x0, y1 + 0.12, zf],
+    [x1, corniceBot, zb - 0.16, x1 + 0.16, y1 + 0.12, zf],
+    [x0, corniceBot, zb - 0.16, x1, y1 + 0.12, zb],
+  ];
+  // the back corners: one pilaster wrapping each
+  for (const sx of [-1, 1]) {
+    const xa = sx < 0 ? x0 - P : x1 - W + P;
+    ashlar.push([xa, plinthTop, zb - P, xa + W, corniceBot, zb - P + W]);
+  }
+  // the front corners of the side walls (the entrance front keeps its own)
+  ashlar.push([x0 - P, plinthTop, zf - W, x0, corniceBot, zf]);
+  ashlar.push([x1, plinthTop, zf - W, x1 + P, corniceBot, zf]);
+  // between: every 4 m on the sides (z -64, -60, -56) and on the back (x -6, -2, 2, 6)
+  for (const z of [-64, -60, -56]) {
+    ashlar.push([x0 - P, plinthTop, z - W / 2, x0, corniceBot, z + W / 2]);
+    ashlar.push([x1, plinthTop, z - W / 2, x1 + P, corniceBot, z + W / 2]);
+  }
+  for (const x of [-6, -2, 2, 6]) ashlar.push([x - W / 2, plinthTop, zb - P, x + W / 2, corniceBot, zb]);
+  return { granite, ashlar };
+}
+
+/** Boxes as one lit-surface geometry (no bottoms; planar UVs in metres / tile, as `boxUv`). */
+export function trimGeometry(boxes: readonly TrimBox[], tile: number): BufferGeometry {
+  const P: number[] = [];
+  const N: number[] = [];
+  const U: number[] = [];
+  const quad = (a: number[], b: number[], c: number[], d: number[], n: [number, number, number]) => {
+    for (const p of [a, b, c, a, c, d]) {
+      P.push(p[0]!, p[1]!, p[2]!);
+      N.push(n[0], n[1], n[2]);
+      const [u, v] = boxUv(p[0]!, p[1]!, p[2]!, n[0], n[1], n[2], tile);
+      U.push(u, v);
+    }
+  };
+  for (const [x0, y0, z0, x1, y1, z1] of boxes) {
+    quad([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1]);
+    quad([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [0, 0, -1]);
+    quad([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [1, 0, 0]);
+    quad([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [-1, 0, 0]);
+    quad([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], [0, 1, 0]);
+  }
+  const g = new BufferGeometry();
+  g.setAttribute("position", new Float32BufferAttribute(P, 3));
+  g.setAttribute("normal", new Float32BufferAttribute(N, 3));
+  g.setAttribute("uv", new Float32BufferAttribute(U, 2));
+  g.computeBoundingSphere();
+  g.computeBoundingBox();
+  return g;
 }
