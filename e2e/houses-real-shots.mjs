@@ -94,6 +94,29 @@ async function gotoOnce(x, z, tol) {
   }
   return { ...(await pos(p)), planned: true };
 }
+async function hideSelf(hide) {
+  await page.evaluate((hide) => {
+    const t = window.__cvThree?.();
+    if (!t) return;
+    if (!hide) {
+      for (const o of window.__cvHidden ?? []) o.visible = true;
+      window.__cvHidden = [];
+      return;
+    }
+    const me = window.__cv.getPos();
+    const hidden = [];
+    t.scene.traverse((o) => {
+      if (!o.isSkinnedMesh || !o.visible) return;
+      const w = o.getWorldPosition(new o.position.constructor());
+      if (Math.hypot(w.x - me.x, w.z - me.z) < 1.5) {
+        o.visible = false;
+        hidden.push(o);
+      }
+    });
+    window.__cvHidden = hidden;
+  }, hide);
+  await sleep(150);
+}
 await page.goto(URL, { waitUntil: "domcontentloaded" });
 await entryReady(p);
 await page.locator("input.cv-input").first().fill("불멍");
@@ -117,11 +140,12 @@ for (const n of houses) {
   // the light maps and the full-size albedos come in after the cover lifts: wait until the loading pill is gone
   await page.waitForFunction(() => !document.body.innerText.includes("불러오는 중"), null, { timeout: 30000 }).catch(() => {});
   await sleep(1500);
-  for (const v of VIEWS) {
-    if ((v.floor ?? 1) === 2) continue; // second floor views: walk up first (not used by this script)
+  const shoot = async (v) => {
     const [x, y, z, tx, ty, tz] = v.cam;
     await page.evaluate((s) => { window.__cvShot = s; }, { x, y, z, tx, ty, tz, fov: v.fov ?? 55 });
     await sleep(2200);
+    // round 2 of the interiors: the player's own avatar out of the photo (it stands in front of the sofa in some houses)
+    if (process.argv.includes("--hide-self")) await hideSelf(true);
     const base = `${TAG}_h${n}_${v.name}${phone ? "_phone" : "_pc"}${night ? "_night" : "_day"}`;
     if (v.frames) {
       for (let i = 0; i < v.frames; i++) {
@@ -131,7 +155,23 @@ for (const n of houses) {
     } else {
       await page.screenshot({ path: join(run.evidence, `${base}.png`) });
     }
+    if (process.argv.includes("--hide-self")) await hideSelf(false);
     console.log("shot", base);
+  };
+  for (const v of VIEWS) if ((v.floor ?? 1) === 1) await shoot(v);
+  // round 2 of the interiors: second floor views walk up the stair first (the game's own stair pad + E)
+  if (VIEWS.some((v) => v.floor === 2)) {
+    const P = places[n];
+    await page.evaluate(() => { window.__cvShot = null; });
+    await goto(P.upPad.x, P.upPad.z, 0.4);
+    await act();
+    const up = await waitArea(`house:house_${n}:2`, 15000);
+    console.log("house", n, "floor 2", up);
+    await coverGone();
+    await sleep(2500);
+    await page.waitForFunction(() => !document.body.innerText.includes("불러오는 중"), null, { timeout: 30000 }).catch(() => {});
+    await sleep(1000);
+    for (const v of VIEWS) if (v.floor === 2) await shoot(v);
   }
   const perf = await page.evaluate(() => { const r = window.__cvThree?.().gl?.info?.render; return r ? { calls: r.calls, tris: r.triangles } : null; }).catch(() => null);
   console.log("PERF", JSON.stringify(perf));

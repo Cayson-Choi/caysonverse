@@ -17,7 +17,7 @@ def _duvet(F, x0, x1, z0, z1, y0, tn, drape=0.16):
 
 
 def bed(F, w=1.6, l=2.05, tn=None, wood="natural", headboard="panel", pillows=2, mark=True, leg_h=0.2, frame_tn=None, head_h=1.05,
-        sheet_tn=None):
+        sheet_tn=None, head_tn=None, head_m="H_fabric"):
     """침대: frame + 4 legs + headboard (-z end), mattress with piped edge, duvet (draped), pillows. Seats: both long edges, near the foot."""
     tn = tn or PAL["cream"]
     wt = frame_tn or WOOD[wood]
@@ -32,7 +32,7 @@ def bed(F, w=1.6, l=2.05, tn=None, wood="natural", headboard="panel", pillows=2,
             x = -hw + k * w / 6
             rbox(F, x - 0.004, x + 0.004, -hl, -hl + 0.004, 0.45, head_h - 0.08, "H_wood_oak", r=0.0, seg=1, tn=tuple(c * 0.7 for c in wt[:3]) + (1,))
     elif headboard == "padded":
-        rbox(F, -hw - 0.03, hw + 0.03, -hl - 0.1, -hl, 0.2, head_h, "H_fabric", r=0.05, seg=3, tile=0.5, tn=PAL["sofa_grey"], puff=0.02, cuts=5, smooth=True)
+        rbox(F, -hw - 0.03, hw + 0.03, -hl - 0.1, -hl, 0.2, head_h, head_m, r=0.05, seg=3, tile=0.5, tn=head_tn or PAL["sofa_grey"], puff=0.02, cuts=5, smooth=True)
         for k in range(1, 4):
             x = -hw + k * w / 4
             rbox(F, x - 0.004, x + 0.004, -hl - 0.004, -hl + 0.0, 0.5, head_h - 0.08, "H_fabric", r=0.0, seg=1, tn=(0.55, 0.55, 0.55, 1))
@@ -41,13 +41,20 @@ def bed(F, w=1.6, l=2.05, tn=None, wood="natural", headboard="panel", pillows=2,
     # mattress
     rbox(F, -hw + 0.02, hw - 0.02, -hl + 0.02, hl - 0.04, 0.30, 0.50, "H_fabric", r=0.04, seg=3, tile=0.6, tn=sheet_tn or (0.95, 0.95, 0.92, 1), puff=0.01,
          cuts=4, smooth=True)
-    _duvet(F, -hw + 0.03, hw - 0.03, -hl + 0.55, hl - 0.02, 0.50, tn)
+    # cottage pass: layered white linen with a quilt (the house colour, damask) over the foot
+    _duvet(F, -hw + 0.03, hw - 0.03, -hl + 0.55, hl - 0.02, 0.50, (0.95, 0.94, 0.9, 1))
+    rbox(F, -hw - 0.04, hw + 0.04, hl - 0.75, hl - 0.02, 0.52, 0.6, "H_floral", r=0.03, seg=2, tile=0.76, tn=tn, puff=0.01)
     np_ = pillows
     pw = (w - 0.2) / max(np_, 1)
     for i in range(np_):
         x = -hw + 0.1 + pw * (i + 0.5)
         rbox(F, x - pw / 2 + 0.03, x + pw / 2 - 0.03, -hl + 0.1, -hl + 0.56, 0.50, 0.64, "H_fabric", r=0.07, seg=3, tile=0.5,
              tn=PAL["white"], puff=0.04, cuts=5, smooth=True)
+        ctn = S.pillow_tns[i % len(S.pillow_tns)] if S.pillow_tns else tn
+        cm = (S.pillow_m[i % len(S.pillow_m)] if isinstance(S.pillow_m, (list, tuple)) else S.pillow_m) if S.pillow_m else "H_floral"
+        rbox(F, x - 0.2, x + 0.2, -hl + 0.5, -hl + 0.62, 0.55, 0.92, cm, r=0.05, seg=2, tile=0.76, tn=ctn, puff=0.02, tilt=0.35)
+    if S.pillow_tns and w > 1.2:        # layered pass: a small bolster in front of the shams, the second accent
+        rbox(F, -0.26, 0.26, -hl + 0.66, -hl + 0.8, 0.55, 0.8, "H_check", r=0.05, seg=2, tile=0.5, tn=S.pillow_tns[-1], puff=0.02, tilt=0.3)
     if mark:
         for sgn, name in ((-1, "L"), (1, "R")):
             seat(F, 0 if sgn < 0 else 1, SEAT_KIND_BACKLESS, sgn * (hw - 0.14), hl - 0.55, 0.50, sgn * math.pi / 2, edge=0.14, back=0.0, width=0.6,

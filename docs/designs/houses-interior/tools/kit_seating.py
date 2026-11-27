@@ -316,16 +316,33 @@ def rocking_chair(F, tn=None):
     col(F, -0.34, 0.34, -0.5, 0.5, 1.0, name="rocker")
 
 
+def _smooth_prof(pts, steps=2):
+    """Catmull-Rom through a lathe profile (r, y): the end points stay (the axis points), each span gets `steps` points"""
+    out = []
+    n = len(pts)
+    for i in range(n - 1):
+        p0, p1, p2, p3 = pts[max(i - 1, 0)], pts[i], pts[i + 1], pts[min(i + 2, n - 1)]
+        for k in range(steps):
+            t = k / steps
+            t2, t3 = t * t, t * t * t
+            out.append(tuple(0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2
+                                    + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3) for j in (0, 1)))
+    out.append(pts[-1])
+    return [(max(0.0, a), b) for a, b in out]
+
+
 def bean_bag(F, tn=None, d=0.9):
     """빈백: puffy lathe with a sag on top and a pinched seam, back leaning against the wall side (-z)."""
     tn = tn or PAL["sofa_rust"]
     r = d / 2
-    prof = [(0.0, 0.0), (r * 0.7, 0.01), (r * 0.95, 0.07), (r, 0.18), (r * 0.9, 0.32), (r * 0.62, 0.40), (r * 0.3, 0.38), (0.0, 0.34)]
-    lathe(F, 0, 0, 0.0, prof, "H_fabric", 28, tn=tn, tile=0.5)
+    # houses-real pass 2 (owner 2026-11-22, the bean bag read as a faceted rock): round silhouettes - the profiles are smoothed
+    # (Catmull-Rom, 2 steps a span) and turned in 40 / 36 segments; the seam piping follows the same 40 steps
+    prof = _smooth_prof([(0.0, 0.0), (r * 0.7, 0.01), (r * 0.95, 0.07), (r, 0.18), (r * 0.9, 0.32), (r * 0.62, 0.40), (r * 0.3, 0.38), (0.0, 0.34)])
+    lathe(F, 0, 0, 0.0, prof, "H_fabric", 40, tn=tn, tile=0.5)
     # back bulge
-    prof2 = [(0.0, 0.1), (r * 0.5, 0.1), (r * 0.62, 0.35), (r * 0.5, 0.62), (r * 0.25, 0.72), (0.0, 0.7)]
-    lathe(F.sub(0, -0.25, 0, 0), 0, 0, 0.0, prof2, "H_fabric", 24, tn=tn, tile=0.5)
-    welt(F, [(r * 0.99 * math.cos(a), r * 0.99 * math.sin(a), 0.18) for a in [i * 2 * math.pi / 28 for i in range(29)]], tn, 0.007)
+    prof2 = _smooth_prof([(0.0, 0.1), (r * 0.5, 0.1), (r * 0.62, 0.35), (r * 0.5, 0.62), (r * 0.25, 0.72), (0.0, 0.7)])
+    lathe(F.sub(0, -0.25, 0, 0), 0, 0, 0.0, prof2, "H_fabric", 36, tn=tn, tile=0.5)
+    welt(F, [(r * 0.995 * math.cos(a), r * 0.995 * math.sin(a), 0.18) for a in [i * 2 * math.pi / 40 for i in range(41)]], tn, 0.007)
     seat(F, 0, SEAT_KIND_BACKED, 0, 0.05, 0.36, 0.0, edge=0.35, back=0.3, width=0.6)
     col(F, -r, r, -r - 0.2, r, 0.7, name="beanbag")
 

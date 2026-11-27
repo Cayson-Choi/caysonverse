@@ -107,7 +107,7 @@ def P(floor, name, prop, x, z, y, yaw=0.0, **kw):
 pass  # (cottage pass) removed: H.piece(1, "aircon", KR.aircon_stand, 1.15, 7.6, 0, PI)   # 
 pass  # (cottage pass) removed: H.piece(1, "settop", KR.settop, 1.75, 7.55, 0.45, PI, cols=F
 H.piece(1, "soundbar", KR.soundbar, 2.4, 7.5, 0.45, PI, cols=False, w=0.95)
-H.piece(1, "throw", KR.throw_draped, 3.82, 3.0, 0.62, PI / 2, cols=False, w=0.5, top_d=0.16, drop_front=0.36, drop_back=0.12, tn=(0.85, 0.8, 0.7, 1))
+pass  # (houses-real 2: a flat board over the new rolled arm) removed: H.piece(1, "throw", KR.throw_draped, 3.82, 3.0, 0.62, PI / 2, cols=False, w=0.5, top_d=0.16, drop_front=0.36, drop_back=0.12, tn=(0.85, 0.8, 0.7, 1))
 H.piece(1, "sideboard", TA.tv_stand, 2.68, 0.25, 0, 0.0, w=1.5, d=0.4, h=0.62, tn=(0.86, 0.84, 0.8, 1))
 H.piece(1, "sblamp", DE.table_lamp, 2.15, 0.25, 0.62, 0.0, cols=False)
 P(1, "sbframe", "frame_small", 2.95, 0.22, 0.62, 0.0)

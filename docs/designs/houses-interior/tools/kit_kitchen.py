@@ -10,7 +10,19 @@ from kit_storage import bowl, mug, dish
 STEEL = (0.82, 0.83, 0.84, 1)
 
 
+BRASS = (0.78, 0.6, 0.32, 1)
+
+
 def _handle_bar(F, x, z, y, length=0.16, vertical=False):
+    """cottage pass: short brass bar pulls (shaker hardware)"""
+    length = min(length, 0.11)
+    if vertical:
+        rbox(F, x - 0.007, x + 0.007, z, z + 0.022, y - length / 2, y + length / 2, "H_metal", r=0.004, seg=1, tn=BRASS)
+    else:
+        rbox(F, x - length / 2, x + length / 2, z, z + 0.022, y - 0.007, y + 0.007, "H_metal", r=0.004, seg=1, tn=BRASS)
+
+
+def _handle_bar_old(F, x, z, y, length=0.16, vertical=False):
     if vertical:
         rbox(F, x - 0.006, x + 0.006, z, z + 0.02, y - length / 2, y + length / 2, "H_metal", r=0.003, seg=1, tn=STEEL)
     else:
@@ -37,6 +49,11 @@ def counter_base(F, length=2.4, d=0.6, top="oak", door_tn=None, sink=False, cook
             rbox(F, x0, x1, d / 2 - 0.02, d / 2, ph - 0.04 - 0.16, ph - 0.045, "H_paint", r=0.004, seg=1, tn=door_tn)
             _handle_bar(F, (x0 + x1) / 2, d / 2, ph - 0.04 - 0.09, 0.14)
         rbox(F, x0, x1, d / 2 - 0.02, d / 2, plinth + 0.004, ph - 0.04 - 0.17 if drawers else ph - 0.045, "H_paint", r=0.004, seg=1, tn=door_tn)
+        # cottage pass: shaker door, a recessed centre panel framed by 6 cm stiles and rails
+        dy1 = ph - 0.04 - 0.17 if drawers else ph - 0.045
+        for (a_, b_, c_, e_) in ((x0, x0 + 0.06, plinth + 0.004, dy1), (x1 - 0.06, x1, plinth + 0.004, dy1),
+                                 (x0 + 0.06, x1 - 0.06, plinth + 0.004, plinth + 0.064), (x0 + 0.06, x1 - 0.06, dy1 - 0.06, dy1)):
+            rbox(F, a_, b_, d / 2, d / 2 + 0.012, c_, e_, "H_paint", r=0.0, seg=1, tn=door_tn, skip=("-z", "-y"))
         _handle_bar(F, x0 + 0.05 if i % 2 == 0 else x1 - 0.05, d / 2, ph - 0.28, 0.2, vertical=True)
     # worktop
     if sink:
@@ -46,13 +63,14 @@ def counter_base(F, length=2.4, d=0.6, top="oak", door_tn=None, sink=False, cook
         rbox(F, -sw / 2, sw / 2, -d / 2, -0.17, ph - 0.04, ph, top_m, r=0.006, seg=1, tn=top_tn, grain=(1, 0, 0), tile=0.9)
         rbox(F, -sw / 2, sw / 2, 0.17, d / 2 + 0.02, ph - 0.04, ph, top_m, r=0.006, seg=1, tn=top_tn, grain=(1, 0, 0), tile=0.9)
         # basin: a steel box below the opening
-        rbox(F, -sw / 2 + 0.0, sw / 2, -0.17, 0.17, ph - 0.2, ph - 0.04, "H_metal", r=0.02, seg=2, tn=STEEL, bottom=True, skip=("+y",))
-        rbox(F, -sw / 2, sw / 2, -0.172, 0.172, ph - 0.012, ph + 0.004, "H_metal", r=0.003, seg=1, tn=STEEL)
+        # cottage pass: a white fireclay apron (butler) sink, its front standing proud of the doors
+        rbox(F, -sw / 2 + 0.0, sw / 2, -0.17, 0.17, ph - 0.2, ph - 0.04, "H_ceramic", r=0.02, seg=2, tn=(0.97, 0.97, 0.95, 1), bottom=True, skip=("+y",))
+        rbox(F, -sw / 2 + 0.03, sw / 2 - 0.03, d / 2 - 0.03, d / 2 + 0.035, ph - 0.25, ph + 0.004, "H_ceramic", r=0.02, seg=2, tn=(0.97, 0.97, 0.95, 1))
         # drain + faucet
         lathe(F, -0.18, 0.0, ph - 0.2, [(0, 0.0), (0.03, 0.0), (0.03, 0.004), (0, 0.004)], "H_metal", 10, tn=BLK)
         fx, fz = 0.0, -d / 2 + 0.07
-        cyl(F, fx, fz, ph, ph + 0.05, 0.022, "H_metal", 12, tn=STEEL)
-        tube(F, [(fx, fz, ph + 0.05), (fx, fz, ph + 0.28), (fx, fz + 0.04, ph + 0.4), (fx, fz + 0.17, ph + 0.38), (fx, fz + 0.2, ph + 0.31)], 0.013, "H_metal", 10, tn=STEEL)
+        cyl(F, fx, fz, ph, ph + 0.05, 0.022, "H_metal", 12, tn=BRASS)
+        tube(F, [(fx, fz, ph + 0.05), (fx, fz, ph + 0.28), (fx, fz + 0.04, ph + 0.4), (fx, fz + 0.17, ph + 0.38), (fx, fz + 0.2, ph + 0.31)], 0.013, "H_metal", 10, tn=BRASS)
         tube(F, [(fx + 0.03, fz, ph + 0.04), (fx + 0.09, fz, ph + 0.16)], 0.008, "H_metal", 8, tn=STEEL)
     else:
         rbox(F, -hl, hl, -d / 2, d / 2 + 0.02, ph - 0.04, ph, top_m, r=0.006, seg=1, tn=top_tn, grain=(1, 0, 0), tile=0.9)
@@ -64,7 +82,28 @@ def counter_base(F, length=2.4, d=0.6, top="oak", door_tn=None, sink=False, cook
         cooktop_induction(F.sub(0, 0, ph, 0))
     if cook == "gas":
         gas_range(F.sub(0, 0, ph, 0))
+    if cook:
+        range_front(F, d, ph, plinth)
     col(F, -hl, hl, -d / 2, d / 2 + 0.02, ph, name="counter")
+
+
+RANGE_TN = [(0.86, 0.84, 0.78, 1)]     # cottage pass: the range cooker's enamel (a house sets its own: KI.RANGE_TN[0] = ...)
+
+
+def range_front(F, d, ph, plinth, w=0.7):
+    """cottage pass: the 0.7 m under the hob is a range cooker — an enamel front with two oven doors (glass windows), a brass towel
+    rail, a row of knobs under the hob"""
+    tn = RANGE_TN[0]
+    hw = w / 2
+    rbox(F, -hw, hw, d / 2 - 0.02, d / 2 + 0.03, plinth, ph - 0.03, "H_ceramic", r=0.01, seg=1, tn=tn)
+    rbox(F, -hw - 0.01, hw + 0.01, -d / 2, d / 2 + 0.04, ph - 0.035, ph + 0.004, "H_ceramic", r=0.008, seg=1, tn=tn)
+    for (x0, x1) in ((-hw + 0.03, -0.015), (0.015, hw - 0.03)):
+        rbox(F, x0, x1, d / 2 + 0.03, d / 2 + 0.045, plinth + 0.08, ph - 0.2, "H_ceramic", r=0.008, seg=1, tn=tn)
+        rbox(F, x0 + 0.05, x1 - 0.05, d / 2 + 0.045, d / 2 + 0.048, plinth + 0.2, ph - 0.3, "H_screen", r=0.0, seg=1)
+    bar(F, (-hw + 0.04, d / 2 + 0.09, ph - 0.16), (hw - 0.04, d / 2 + 0.09, ph - 0.16), 0.016, 0.016, "H_metal", tn=BRASS)
+    for k in range(5):
+        x = -hw + 0.08 + k * (w - 0.16) / 4
+        rbox(F, x - 0.018, x + 0.018, d / 2 + 0.03, d / 2 + 0.06, ph - 0.11, ph - 0.075, "H_metal", r=0.008, seg=1, tn=BRASS)
 
 
 def cooktop_induction(F, w=0.6, d=0.5):

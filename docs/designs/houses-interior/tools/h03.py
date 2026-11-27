@@ -143,7 +143,7 @@ H.piece(2, "rug2", DE.rug_rect, 4.85, 2.6, 0, 0.0, w=2.0, d=1.4, cols=False, tn=
 H.piece(2, "coffee", TA.table_coffee_rect, 4.85, 2.75, 0, 0.0, w=1.0, d=0.5)
 P(2, "cmag", "magazine", 4.6, 2.7, 0.4, 0.3)
 P(2, "cfruit", "fruit_bowl", 5.05, 2.75, 0.4)
-H.piece(2, "throw", KR.throw_draped, 4.05, 0.55, 0.62, -PI / 2, cols=False, w=0.45, top_d=0.16, drop_front=0.34, drop_back=0.12, tn=(0.72, 0.5, 0.35, 1))
+pass  # (houses-real 2: a flat board over the new rolled arm) removed: H.piece(2, "throw", KR.throw_draped, 4.05, 0.55, 0.62, -PI / 2, cols=False, w=0.45, top_d=0.16, drop_front=0.34, drop_back=0.12, tn=(0.72, 0.5, 0.35, 1))
 H.piece(2, "drawers", KR.chest_drawers, 7.6, 0.3, 0, 0.0, w=1.0, tn=(0.7, 0.52, 0.36, 1))
 P(2, "drframe", "frame_small", 7.4, 0.3, 0.875, 0.0)
 P(2, "drbooks", "books3", 7.85, 0.3, 0.875, 0.3)
