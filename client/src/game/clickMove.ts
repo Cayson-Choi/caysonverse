@@ -142,6 +142,8 @@ interface ClickMoveState {
   anchored: boolean;
   /** Seconds accumulated in the current displacement window. */
   windowSec: number;
+  /** How many times the server's self-correction moved the body during this walk (reanchorClickMove). */
+  corrections: number;
 }
 
 const state: ClickMoveState = {
@@ -155,6 +157,7 @@ const state: ClickMoveState = {
   anchorZ: 0,
   anchored: false,
   windowSec: 0,
+  corrections: 0,
 };
 
 declare global {
@@ -219,6 +222,7 @@ export function setClickTarget(x: number, z: number, y = 0, via?: readonly Groun
   state.pending = null;
   state.anchored = false;
   state.windowSec = 0;
+  state.corrections = 0;
 }
 
 /** See ClickMoveState.generation: read at a held-back tap and again when its wait ends. */
@@ -286,11 +290,19 @@ export function endWalk(): void {
 export function reanchorClickMove(): void {
   state.anchored = false;
   state.windowSec = 0;
-  if (state.target) {
-    state.legX = Number.NaN;
-    state.legZ = Number.NaN;
+  if (!state.target) return;
+  // ...but a walk the server keeps putting back (it refuses where the walk goes) ends at the second correction: never a walk that
+  // runs, is put back and runs again for ever
+  if (++state.corrections >= MAX_WALK_CORRECTIONS) {
+    endWalk();
+    return;
   }
+  state.legX = Number.NaN;
+  state.legZ = Number.NaN;
 }
+
+/** The self-correction that ends a walk (reanchorClickMove): the first is walked on from, this one ends it. */
+export const MAX_WALK_CORRECTIONS = 2;
 
 /** Drop the target and any pending tap ring (manual-input yield / sit-confirm / Esc — design 29 (b)/(e)). */
 export function clearClickTarget(): void {

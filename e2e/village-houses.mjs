@@ -150,7 +150,13 @@ const toScreen = (x, y, z) =>
     window.__cvLastProject = { x: +v.x.toFixed(3), y: +v.y.toFixed(3), z: +v.z.toFixed(3), cam: [+cam.position.x.toFixed(2), +cam.position.y.toFixed(2), +cam.position.z.toFixed(2)] };
     if (v.z > 1 || Math.abs(v.x) > 0.92 || Math.abs(v.y) > 0.85) return null;
     const r = t.gl.domElement.getBoundingClientRect();
-    return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+    const s = { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+    // only a point where the game itself is under the finger: the chat bar, the buttons and the HUD lie over the canvas (a tap on a
+    // floor-2 cushion near the bottom of the screen went into the chat field, and every walk after it was frozen while it held the
+    // keyboard — the sweep "hung" after h8_2_0)
+    const under = document.elementFromPoint(s.x, s.y);
+    if (under !== t.gl.domElement) return null;
+    return s;
   }, [x, y, z]);
 const tapAt = async (s) => (phone ? page.touchscreen.tap(s.x, s.y) : page.mouse.click(s.x, s.y));
 const me = () => page.evaluate(() => window.__cv.getPos());
@@ -204,6 +210,8 @@ await page.evaluate(async () => {
   window.__actionRefused = [];
   const r = (await window.__imp("/src/net/connection.ts")).getRoom();
   r?.onMessage("ActionRefused", (m) => window.__actionRefused.push({ ...m, at: window.__cv.getPos() }));
+  window.__moveRefused = 0;
+  r?.onMessage("move_refused", () => window.__moveRefused++);
 });
 const refusedPresses = () => page.evaluate(() => window.__actionRefused.splice(0));
 const keypads = await page.evaluate(async () => (await window.__imp("/shared/src/village/buildingAccess.ts").catch(() => null))?.keypadEntries?.() ?? null);
@@ -446,10 +454,10 @@ for (const n of houses) {
           }
         }
         // the cushion's middle (the marker; the seat point of a chair at a table is under the table). Looked at from a little above
-        // first, then flatter: a step or two from it with a wall behind, the camera pulled in close looks over it (h7_2_2:back, the
-        // stool by the north wall, was "off screen" from every spot on its own side at the one steep tilt)
+        // first, then flatter, then steeper: a step or two from it with a wall behind, the camera pulled in close looks over or past it
+        // (h7_2_2:back, the stool by the front wall, was "off screen" from every spot on its own side at the one tilt tried)
         let sc = null;
-        for (const pitch of [0.55, 0.35, 0.18]) {
+        for (const pitch of [0.55, 0.35, 0.18, 0.8, 1.05]) {
           await orbit(yawToward(at, seat.mx, seat.mz), pitch);
           sc = await toScreen(seat.mx, seat.seatY + 0.04, seat.mz);
           if (sc) break;
@@ -462,7 +470,7 @@ for (const n of houses) {
         await sleep(400);
         const pk = await page.evaluate(() => {
           const k = window.__cvClickPick?.();
-          return k && { pick: k.pick && { name: k.pick.name, x: +k.pick.x.toFixed(2), y: +k.pick.y.toFixed(2), z: +k.pick.z.toFixed(2) }, plan: k.plan && { ok: k.plan.ok, reason: k.plan.reason, x: k.plan.x, z: k.plan.z }, sitOn: k.sitOn };
+          return k && { pick: k.pick && { name: k.pick.name, x: +k.pick.x.toFixed(2), y: +k.pick.y.toFixed(2), z: +k.pick.z.toFixed(2) }, plan: k.plan && { ok: k.plan.ok, reason: k.plan.reason, x: k.plan.x, z: k.plan.z, via: k.plan.via?.length ?? 0 }, sitOn: k.sitOn };
         });
         // no auto-sit (owner 2026-11-17, release 3): the tap walks to the seat and stops facing it; "앉기" / E sits on that very seat
         // (the walk starts after the tap's double-tap wait: first see it move, then see it stop — up to 3 s for a seat a step away)
@@ -483,7 +491,12 @@ for (const n of houses) {
         if (offersSit) await act();
         sat = await page.waitForFunction(() => window.__cv.getPos().seatIndex >= 0, null, { timeout: 8000 }).then(() => true, () => false);
         const st = await me();
-        tries.push({ vantage, at: [Math.round(at.x * 100) / 100, Math.round(at.z * 100) / 100], click: pk, end: { i: st.seatIndex, x: Math.round(st.x * 100) / 100, z: Math.round(st.z * 100) / 100 } });
+        const sv = await page.evaluate(async () => {
+          const r = (await window.__imp("/src/net/connection.ts")).getRoom();
+          const me = r?.state?.players?.get(r.sessionId);
+          return me ? { x: +me.x.toFixed(2), z: +me.z.toFixed(2), seat: me.seatIndex, moveRefused: window.__moveRefused } : null;
+        });
+        tries.push({ vantage, at: [Math.round(at.x * 100) / 100, Math.round(at.z * 100) / 100], click: pk, end: { i: st.seatIndex, x: Math.round(st.x * 100) / 100, z: Math.round(st.z * 100) / 100 }, server: sv });
         // (layered pass 2) the marker was hidden behind ANOTHER seat from here (a sofa seat seen past its neighbour's backrest from
         // the sofa's end): the tap rightly took the seat it hit. Get up and look again from nearer — only when the click itself named
         // that other seat (what was under the finger), never when it named this one.

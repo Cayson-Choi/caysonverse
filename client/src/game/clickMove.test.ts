@@ -392,3 +392,38 @@ describe("clickMove — round 5 review: a corner passed in one long step", () =>
     clearClickTarget();
   });
 });
+
+describe("reanchorClickMove: the server's self-correction moved the body mid-walk (fix/house-walk-sync)", () => {
+  afterEach(() => resetClickMove());
+
+  it("the walk goes on from where it was put, its no-progress window measured afresh (not dropped as 'no progress')", async () => {
+    const { reanchorClickMove } = await import("./clickMove");
+    setClickTarget(10, 0);
+    // walking toward +x for most of a window, then put back 1.4 m: across the jump the window would read no progress
+    let x = 0;
+    for (let k = 0; k < 40; k++) {
+      expect(stepClickMove(x, 0, 1 / 60)).not.toBeNull();
+      x += 2 / 60;
+    }
+    x -= 1.4;
+    reanchorClickMove();
+    for (let k = 0; k < 60; k++) {
+      expect(stepClickMove(x, 0, 1 / 60)).not.toBeNull();
+      x += 2 / 60;
+    }
+    expect(getClickTarget()).not.toBeNull();
+  });
+
+  it("put back a second time in one walk: the walk ends (no endless walk-and-snap)", async () => {
+    const { reanchorClickMove, MAX_WALK_CORRECTIONS } = await import("./clickMove");
+    setClickTarget(10, 0);
+    for (let k = 1; k < MAX_WALK_CORRECTIONS; k++) reanchorClickMove();
+    expect(getClickTarget()).not.toBeNull();
+    reanchorClickMove();
+    expect(getClickTarget()).toBeNull();
+    // a new walk starts counting again
+    setClickTarget(5, 0);
+    reanchorClickMove();
+    expect(getClickTarget()).not.toBeNull();
+  });
+});
