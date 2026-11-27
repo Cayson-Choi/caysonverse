@@ -1,4 +1,5 @@
 import { useSoundStore } from "../../stores/soundStore";
+import { useMusicStore } from "../../stores/musicStore";
 import { resumeVillageAudio, villageAudioContext } from "../villageAudio";
 import { fallsNear, soundLevelAt } from "./fallsConfig";
 
@@ -160,7 +161,7 @@ export function createFallsAudio(): FallsAudio {
       const dt = Math.min(1, Math.max(0, (now - last) / 1000));
       last = now;
       const hidden = typeof document !== "undefined" && document.visibilityState === "hidden";
-      target = fallsGain(distanceM, useSoundStore.getState().muted, hidden);
+      target = fallsGain(distanceM, useSoundStore.getState().muted, hidden) * useMusicStore.getState().volume; // the menu's 소리 크기 (owner 11-27)
       const ctx = villageAudioContext();
       if (!ctx) return;
       if (target > 0) {

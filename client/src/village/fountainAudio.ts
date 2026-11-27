@@ -2,6 +2,7 @@ import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { villageLoad } from "../ui/villageLoad";
 import { PARK_PLAZA } from "@caysonverse/shared/village/parkArea";
 import { useSoundStore } from "../stores/soundStore";
+import { useMusicStore } from "../stores/musicStore";
 import { resumeVillageAudio, villageAudioContext } from "./villageAudio";
 import { FOUNTAIN } from "./fountainLayout";
 import {
@@ -245,7 +246,8 @@ export function createFountainAudio(site: FountainSite): FountainAudio {
       // silent under the "케이슨 마을로 가는 중" screen (owner 11-27: the water was heard for a moment while entering)
       const allowed = soundAllowed(useSoundStore.getState().muted, false, hidden) && !villageLoad.get().open;
       const level = allowed ? fountainLevel(distanceM, site.rim) : 0;
-      target = FOUNTAIN_PEAK * level;
+      // the menu's 소리 크기 slider scales it too (owner 2026-11-27: "메뉴 소리 크기 조절에 분수 소리도 따르게")
+      target = FOUNTAIN_PEAK * level * useMusicStore.getState().volume;
       const ctx = villageAudioContext();
       if (!ctx) return;
       if (level > 0) {
