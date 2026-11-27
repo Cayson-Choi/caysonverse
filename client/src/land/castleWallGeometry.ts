@@ -3,7 +3,8 @@
  * plan's runs and at its towers, so the whole ring (600 m in the village, 1.6 km in the park) is a handful of draw calls.
  *
  *   module   6 m of curtain wall: a buried footing, the body, arrow slits, a corbel table under an overhanging outer parapet with
- *            merlons (crenellations), the wall-walk, a low inner parapet and a pilaster on the inner face (stone)
+ *            merlons (crenellations), the wall-walk, a low inner parapet with its own merlons, and on the inner face a stepped
+ *            buttress, a string course and a corbel table (stone)
  *   tower    a round tower: footing, shaft, a corbelled flare, a crenellated parapet ring, slit windows, a stone bracket for the lamp (stone)
  *   roof     the tower's bell-kicked cone (tiles)
  *   trim     the gilt eave band, the finial and its spike, the banner's rod (gold)
@@ -206,12 +207,71 @@ export function wallModuleGeometry(tier: WallTier): BufferGeometry {
     k.box(x - 0.6, x + 0.6, 10.07, WALL.top - 0.15, H - 0.32, H + P, 0.97);
     k.box(x - 0.68, x + 0.68, WALL.top - 0.15, WALL.top, H - 0.4, H + P + 0.08, 0.92);
   }
-  // the low inner parapet under its coping, and a pilaster on the inner face
+  // the low inner parapet under its coping
   k.box(-L, L, 8.85, 9.65, -H - 0.12, -H + 0.3, 0.95, ["-y", "-x", "+x"]);
   k.box(-L, L, 9.65, 9.77, -H - 0.18, -H + 0.36, 0.9, ["-x", "+x"]);
-  k.box(-0.45, 0.45, 0.9, 6.2, -H - 0.5, -H, 0.93);
-  k.box(-0.5, 0.5, 6.2, 6.45, -H - 0.6, -H, 0.88);
+  innerFace(k, tier);
   return k.build();
+}
+
+/** The inner face's buttress (m): half widths, depths off the face, the set-off's foot and the upper stage's top. */
+export const INNER_BUTTRESS = Object.freeze({ lowerHalf: 0.55, lowerDepth: 0.5, upperHalf: 0.55, upperDepth: 0.32, setOff: 3.4, top: 6.6 });
+
+/**
+ * The curtain wall's INNER face (#13 exteriors round 2, owner 2026-11-27 "성벽 뒷면"): it was 7.7 m of plain ashlar with a thin pilaster
+ * every 6 m, the merlons hidden behind the walk. Now, as a real curtain wall's back: a weathered offset over the plinth, a stepped
+ * BUTTRESS at each module's middle (a deep lower stage, a sloped set-off, a shallower upper stage, a sloped weathering into the wall: no
+ * deeper than the old pilaster, so the wall's solids stay as they are), a projecting STRING COURSE at 4.4 m, a corbel table under the
+ * walk's slab (PC tier), and two MERLONS with cap stones on the inner parapet, so the battlements read from inside the park too.
+ */
+function innerFace(k: Kit, tier: WallTier): void {
+  const H = WALL.halfThickness;
+  const L = WALL.module / 2;
+  const z = (d: number) => -H - d; // a depth off the inner face
+  // the weathered offset where the body meets the plinth (the outer face has its own)
+  k.box(-L, L, 0.9, 1.12, z(0.13), -H, 0.9, ["-y", "-x", "+x", "+z"]);
+  // the string course (the buttress passes through it)
+  k.box(-L, L, 4.4, 4.6, z(0.12), -H, 0.9, ["-x", "+x", "+z"]);
+  // the buttress: lower stage, set-off, upper stage, weathering
+  const B = INNER_BUTTRESS;
+  k.box(-B.lowerHalf, B.lowerHalf, 0.9, B.setOff, z(B.lowerDepth), -H, 0.94, ["-y", "+z", "+y"]);
+  slope(k, -B.lowerHalf, B.lowerHalf, B.setOff, z(B.lowerDepth), B.setOff + 0.3, z(B.upperDepth), 0.86);
+  k.box(-B.upperHalf, B.upperHalf, B.setOff + 0.3, B.top, z(B.upperDepth), -H, 0.95, ["-y", "+z", "+y"]);
+  slope(k, -B.upperHalf, B.upperHalf, B.top, z(B.upperDepth), B.top + 0.55, -H, 0.86);
+  // the corbel table under the walk's projecting slab (the outer face's twin)
+  if (tier === "high") for (const x of [-2.1, -1.05, 1.05, 2.1]) k.box(x - 0.15, x + 0.15, 8.1, 8.6, z(0.12), -H, 0.9, ["+z", "+y"]);
+  // the inner parapet's merlons, offset from the outer ones (-2, 0, 2) so the battlements read in two ranks from below
+  for (const x of [-1, 1]) {
+    k.box(x - 0.48, x + 0.48, 9.77, 10.45, -H - 0.12, -H + 0.3, 0.97, ["-y"]);
+    k.box(x - 0.55, x + 0.55, 10.45, 10.57, -H - 0.18, -H + 0.36, 0.9);
+  }
+}
+
+/**
+ * A sloped weathering across x0..x1 on the inner face: from (y0, z0) up to (y1, z1) (z1 nearer the wall), with its two side faces. The
+ * faces are wound to their normals (the module's test).
+ */
+function slope(k: Kit, x0: number, x1: number, y0: number, z0: number, y1: number, z1: number, c: number): void {
+  const H = WALL.halfThickness;
+  const dy = y1 - y0;
+  const dz = z1 - z0;
+  const l = Math.hypot(dy, dz) || 1;
+  const n: V3 = [0, dz / l, -dy / l];
+  face(k, [[x0, y0, z0], [x1, y0, z0], [x1, y1, z1], [x0, y1, z1]], n, c);
+  for (const [x, s] of [[x0, -1], [x1, 1]] as const) {
+    const pts: V3[] = z1 < -H - 1e-6 ? [[x, y0, z0], [x, y1, z1], [x, y1, -H], [x, y0, -H]] : [[x, y0, z0], [x, y1, z1], [x, y0, -H]];
+    face(k, pts, [s, 0, 0], c);
+  }
+}
+
+/** A flat polygon (3 or 4 corners) with normal n, wound so its winding agrees with n; metre uvs on the plane most facing it. */
+function face(k: Kit, pts: V3[], n: V3, c: number): void {
+  const [a, b, d] = [pts[0]!, pts[1]!, pts[2]!];
+  const cr: V3 = [(b[1] - a[1]) * (d[2] - a[2]) - (b[2] - a[2]) * (d[1] - a[1]), (b[2] - a[2]) * (d[0] - a[0]) - (b[0] - a[0]) * (d[2] - a[2]), (b[0] - a[0]) * (d[1] - a[1]) - (b[1] - a[1]) * (d[0] - a[0])];
+  const ordered = cr[0] * n[0] + cr[1] * n[1] + cr[2] * n[2] >= 0 ? pts : [...pts].reverse();
+  const ids = ordered.map((p) => k.v(p, n, Math.abs(n[0]) > 0.5 ? p[2] : p[0], Math.abs(n[1]) > 0.7 ? p[2] : -p[1], c));
+  if (ids.length === 4) k.quad(ids[0]!, ids[1]!, ids[2]!, ids[3]!);
+  else k.idx.push(ids[0]!, ids[1]!, ids[2]!);
 }
 
 /**
@@ -359,6 +419,33 @@ export function bannerGeometry(): BufferGeometry {
   return k.build();
 }
 
+/**
+ * A banner hung on the curtain wall's inner face (#13 round 2): a swallow-tailed cloth under a gilt rod on two brackets, between the
+ * buttresses, under the corbel table. Local frame: the face at z 0, hanging out along +z (group 0: the cloth, both faces; group 1: the
+ * rod). The cloth samples the towers' banner texture (u 0..1 across, v 0 at the top).
+ */
+export const WALL_BANNER = Object.freeze({ top: 7.85, bottom: 5.0, notch: 5.55, half: 0.62, off: 0.09 });
+export function wallBannerGeometry(): BufferGeometry {
+  const k = new Kit();
+  const B = WALL_BANNER;
+  k.startGroup(0);
+  for (const s of [1, -1]) {
+    const n: V3 = [0, 0, s];
+    const z = B.off + 0.004 * s;
+    const a = k.v([-B.half, B.top, z], n, 0, 0, 1);
+    const b = k.v([B.half, B.top, z], n, 1, 0, 1);
+    const c = k.v([B.half, B.bottom, z], n, 1, 1, 1);
+    const d = k.v([0, B.notch, z], n, 0.5, (B.top - B.notch) / (B.top - B.bottom), 1);
+    const e = k.v([-B.half, B.bottom, z], n, 0, 1, 1);
+    if (s > 0) k.idx.push(a, e, d, a, d, b, b, d, c);
+    else k.idx.push(a, d, e, a, b, d, b, c, d);
+  }
+  k.startGroup(1);
+  k.box(-B.half - 0.1, B.half + 0.1, B.top, B.top + 0.07, B.off - 0.035, B.off + 0.035, 1, []);
+  for (const x of [-B.half - 0.04, B.half + 0.04]) k.box(x - 0.025, x + 0.025, B.top - 0.02, B.top + 0.09, 0, B.off + 0.04, 1, ["-z"]);
+  return k.build();
+}
+
 /** An iron lantern on a bracket (group 0: iron, group 1: the glass). Its back is at z 0, it hangs out along +z. */
 export function lanternGeometry(): BufferGeometry {
   const k = new Kit();
@@ -383,11 +470,15 @@ export interface WallInstances {
   /** Wall lanterns (on the viewer's face) and tower lanterns, as matrices; their glow centres for the halos. */
   lanterns: Matrix4[];
   glows: V3[];
+  /** Banners on the inner face (wallBannerGeometry): every `lampEvery` modules, between the lanterns. */
+  banners: Matrix4[];
   /** Triangles drawn (all instances). */
   triangles: number;
 }
 
 const up = new Vector3(0, 1, 0);
+/** How far the wall banners' back stands off the inner face (clear of the string course's 12 cm). */
+const WALL_BANNER_STANDOFF = 0.13;
 
 function placed(x: number, y: number, z: number, yaw: number, sx = 1): Matrix4 {
   return new Matrix4().compose(new Vector3(x, y, z), new Quaternion().setFromAxisAngle(up, yaw), new Vector3(sx, 1, 1));
@@ -404,6 +495,7 @@ export function wallInstances(plan: WallPlan, heightAt: (x: number, z: number) =
   const towers: Matrix4[] = [];
   const lanterns: Matrix4[] = [];
   const glows: V3[] = [];
+  const banners: Matrix4[] = [];
   const H = WALL.halfThickness;
   for (const r of plan.runs) {
     const dx = r.bx - r.ax;
@@ -431,6 +523,12 @@ export function wallInstances(plan: WallPlan, heightAt: (x: number, z: number) =
       for (const [a, b] of [[-half, -H], [half, -H], [-half, H], [half, H], [0, 0]] as const) g = Math.min(g, heightAt(cx + ux * a + r.out[0] * b, cz + uz * a + r.out[1] * b));
       const y = (Number.isFinite(g) ? g : 0) - 0.08;
       modules.push(placed(cx, y, cz, yawOut, sx));
+      // a banner on the inner face, the other side of the buttress from where an inner lantern hangs, half way between them
+      if (i % lampEvery === 0 && i > 0 && i < n - 1) {
+        const fx = cx - r.out[0] * (H + WALL_BANNER_STANDOFF);
+        const fz = cz - r.out[1] * (H + WALL_BANNER_STANDOFF);
+        banners.push(placed(fx - ux * 1.6, y, fz - uz * 1.6, Math.atan2(-r.out[0], -r.out[1])));
+      }
       const lampHere = lampsOn === "inner" || facesViewer;
       if (lampHere && i % lampEvery === Math.floor(lampEvery / 2) && i > 0 && i < n - 1) {
         // on the inner face: the lantern hangs inward (-out); on the outer face: outward
@@ -468,7 +566,7 @@ export function wallInstances(plan: WallPlan, heightAt: (x: number, z: number) =
       glows.push([lx + ox + Math.sin(yaw) * 0.05, y + 5.0, lz + oz + Math.cos(yaw) * 0.05]);
     }
   }
-  return { modules, ends, towers, lanterns, glows, triangles: 0 };
+  return { modules, ends, towers, lanterns, glows, banners, triangles: 0 };
 }
 
 /** Triangles of a geometry (indexed). */
