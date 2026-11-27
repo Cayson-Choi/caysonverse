@@ -453,14 +453,18 @@ for (const n of houses) {
             if (ok) break;
           }
         }
-        // the cushion's middle (the marker; the seat point of a chair at a table is under the table). Looked at from a little above
-        // first, then flatter, then steeper: a step or two from it with a wall behind, the camera pulled in close looks over or past it
-        // (h7_2_2:back, the stool by the front wall, was "off screen" from every spot on its own side at the one tilt tried)
+        // the cushion's middle (the marker; the seat point of a chair at a table is under the table), looked at from behind the avatar
+        // as a player turns the camera: straight at it first, at a few tilts, then with it off to one side of the screen. A step or two
+        // from it with a wall behind, the camera pinned at the wall looks out level over it (h7_2_2:back, the stool by the front wall,
+        // was "off screen" from every spot on its own side when looked at straight): turned aside, the camera runs along the wall and
+        // the stool shows beside the avatar.
         let sc = null;
-        for (const pitch of [0.55, 0.35, 0.18, 0.8, 1.05]) {
-          await orbit(yawToward(at, seat.mx, seat.mz), pitch);
-          sc = await toScreen(seat.mx, seat.seatY + 0.04, seat.mz);
-          if (sc) break;
+        look: for (const turn of [0, 0.6, -0.6, 1.1, -1.1]) {
+          for (const pitch of [0.55, 0.3, 0.9]) {
+            await orbit(yawToward(at, seat.mx, seat.mz) + turn, pitch);
+            sc = await toScreen(seat.mx, seat.seatY + 0.04, seat.mz);
+            if (sc) break look;
+          }
         }
         if (!sc) {
           tries.push({ vantage, at: [at.x, at.z], screen: null });
