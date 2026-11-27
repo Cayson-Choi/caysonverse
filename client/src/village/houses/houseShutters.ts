@@ -42,10 +42,10 @@ export const HOUSE_SHUTTER_PAINT: Readonly<Record<string, string>> = Object.free
 const IRON = "#2A2A2C";
 
 /** The kit's numbers (m): the leaves' depth out from the wall, the wall top (gable windows above it get none). */
-const D0 = 0.085;
+export const D0 = 0.085;
 const D1 = 0.055;
-const WALL_TOP = 8.3;
-const FIRST_FLOOR = 4.3;
+export const WALL_TOP = 8.3;
+export const FIRST_FLOOR = 4.3;
 /** A leaf's outer edge stays this far from a wall's end (corner posts, quoins, the downpipes 0.30 in). */
 const END_CLEAR = 0.45;
 
@@ -73,7 +73,7 @@ function wallSpan(wall: AnyWall): [number, number] {
 }
 
 /** A point on a wall (u along, y up, d out from the outer face) as a local (lx, y, lz). */
-function wallPoint(wall: AnyWall, u: number, y: number, d: number): [number, number, number] {
+export function wallPoint(wall: AnyWall, u: number, y: number, d: number): [number, number, number] {
   if (wall === "front") return [u, y, HOUSE_BODY_FRONT + d];
   if (wall === "back") return [u, y, HOUSE_BODY_BACK - d];
   if (wall === "right") return [HOUSE_BODY_HALF + d, y, u];
@@ -188,21 +188,21 @@ export function shutterWidth(w: WallWindow, all: readonly WallWindow[], h: Pick<
   return sw;
 }
 
-const lin = (hex: string): [number, number, number] => {
+export const lin = (hex: string): [number, number, number] => {
   const c = new Color(hex);
   return [c.r, c.g, c.b];
 };
 
-interface Builder {
+export interface Builder {
   pos: number[];
   nor: number[];
   uv: number[];
   col: number[];
 }
-const builder = (): Builder => ({ pos: [], nor: [], uv: [], col: [] });
+export const builder = (): Builder => ({ pos: [], nor: [], uv: [], col: [] });
 
 /** A polygon (local points, a quad or a triangle) facing `n` (local; wound to face it), with its UVs and colour, into world. */
-function poly(b: Builder, h: House, pts: Array<[number, number, number]>, n: [number, number, number], uvs: Array<[number, number]>, c: [number, number, number]): void {
+export function poly(b: Builder, h: House, pts: Array<[number, number, number]>, n: [number, number, number], uvs: Array<[number, number]>, c: [number, number, number]): void {
   const [p0, p1, p2] = pts as [[number, number, number], [number, number, number], [number, number, number]];
   const e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
   const e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
@@ -221,7 +221,7 @@ function poly(b: Builder, h: House, pts: Array<[number, number, number]>, n: [nu
 }
 
 /** houseLocalToWorld without its centimetre rounding (that rounding is the colliders'). */
-function houseLocalToWorldExact(h: House, lx: number, lz: number): { x: number; z: number } {
+export function houseLocalToWorldExact(h: House, lx: number, lz: number): { x: number; z: number } {
   const { x: cx, z: cz } = h.centre;
   switch (h.doorSide) {
     case "s": return { x: cx + lx, z: cz + lz };
@@ -231,17 +231,17 @@ function houseLocalToWorldExact(h: House, lx: number, lz: number): { x: number; 
   }
 }
 
-function houseDirToWorld(h: House, n: [number, number, number]): [number, number, number] {
+export function houseDirToWorld(h: House, n: [number, number, number]): [number, number, number] {
   const o = houseLocalToWorldExact(h, 0, 0);
   const p = houseLocalToWorldExact(h, n[0], n[2]);
   return [p.x - o.x, n[1], p.z - o.z];
 }
 
 /** A wall's outward normal and its along axis (local). */
-function wallOut(wall: AnyWall): [number, number, number] {
+export function wallOut(wall: AnyWall): [number, number, number] {
   return wall === "front" ? [0, 0, 1] : wall === "back" ? [0, 0, -1] : wall === "right" ? [1, 0, 0] : [-1, 0, 0];
 }
-function wallAlong(wall: AnyWall): [number, number, number] {
+export function wallAlong(wall: AnyWall): [number, number, number] {
   return wall === "back" || wall === "front" ? [1, 0, 0] : [0, 0, 1];
 }
 
