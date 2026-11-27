@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import config from "@colyseus/tools";
 import { VILLAGE_ROOM } from "@caysonverse/shared/constants";
@@ -13,11 +13,15 @@ import { deviceKey, tempDir, testConfig } from "../memorial/testUtil";
 import { CANDLES } from "./candleBook";
 import { rooms, type VillageRoom } from "./index";
 
+// A real server and real sockets/HTTP: each step takes well under a second alone, but a loaded machine (the whole suite in parallel,
+// other worktrees) has pushed a boot past the 10 s hook default and a round trip past the 5 s test default. A hang still fails.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 /**
  * VillageRoom × memorial stage B: the device key at join (hashed, kept through a reconnect), ClaimUpdated to every hall, and a
- * candle on a family's cubby. Own port (2577) like every integration file.
+ * candle on a family's cubby. Own port (2578; 2577 is the houses' file) like every integration file.
  */
-const PORT = 2577;
+const PORT = 2578;
 const HALL = VILLAGE_LAYOUT.memorial.interior.spawn;
 const SLOT = "M1-A-r3-c10";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

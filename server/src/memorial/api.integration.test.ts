@@ -1,8 +1,12 @@
 import sharp from "sharp";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { NEW_OWNERS_PER_IP_PER_DAY, SIGNED_URL_TTL_MS } from "@caysonverse/shared/memorial/constants";
 import type { ClaimCreateResponse, ClaimMine, HallResponse, MeResponse } from "@caysonverse/shared/memorial/types";
 import { deviceKey, jpegWithGps, startApi, tempDir, type ApiHarness } from "./testUtil";
+
+// A real server and real sockets/HTTP: each step takes well under a second alone, but a loaded machine (the whole suite in parallel,
+// other worktrees) has pushed a boot past the 10 s hook default and a round trip past the 5 s test default. A hang still fails.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 const ADMIN = "test-admin-key-not-a-secret";
 const running: ApiHarness[] = [];

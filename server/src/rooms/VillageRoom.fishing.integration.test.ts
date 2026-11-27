@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import config from "@colyseus/tools";
 import { VILLAGE_ROOM } from "@caysonverse/shared/constants";
@@ -17,6 +17,10 @@ import { LAKE_RENTAL_PAD } from "@caysonverse/shared/village/lakeLayout";
 import { LAKE_SEAT_BASE, VILLAGE_SEATS, fishingSeatIndex } from "@caysonverse/shared/village/benchSeats";
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
 import { rooms, type VillageRoom } from "./index";
+
+// A real server and real sockets/HTTP: each step takes well under a second alone, but a loaded machine (the whole suite in parallel,
+// other worktrees) has pushed a boot past the 10 s hook default and a round trip past the 5 s test default. A hang still fails.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 /**
  * 낚시터 (A10, D2) on a real VillageRoom with real clients: the lists of design 12.3 (rent / return), 12.4 (the server's side

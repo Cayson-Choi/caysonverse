@@ -23,6 +23,13 @@ import { ARRIVE_DIST, clearClickTarget, getClickTarget, setClickTarget, stepClic
 import { villageWalkArea } from "@caysonverse/shared/village/fallsWalk";
 import { VILLAGE_ACTIVE_MAP, VILLAGE_FURNITURE, setActiveMap } from "./activeMap";
 
+/**
+ * These sweeps walk thousands of taps over the whole village's colliders: alone on the 9700F the seat sweep takes about 27 s and the
+ * others 3-28 s, and on a loaded machine (the whole client suite, other worktrees) about twice that, far past vitest's 5 s default.
+ * The verdict is the assertions (every tap walked, nothing refused); this limit only stops a hang. It is about 4x the slowest solo time,
+ * so a sweep several times slower than today still fails here.
+ */
+const SWEEP_MS = 120_000;
 const R = PLAYER_RADIUS;
 const obstacles = villageGeometry.obstacles;
 const village = VILLAGE_LAYOUT.areas.village;
@@ -124,7 +131,7 @@ describe("clickPlan sweep — seated, every tap on the open ground round a seat 
     expect(points).toBeGreaterThan(11000);
     expect(refused).toEqual([]);
     expect(pushedFar).toBeGreaterThan(0); // the turned benches' boxes: rings moved out to the nearest place to stand
-  });
+  }, SWEEP_MS);
 
   it("the review's taps from seat 8: behind the backrest (moved out to where the body stands) and past the bench's end (round it)", () => {
     const s = VILLAGE_SEATS[8];
@@ -188,7 +195,7 @@ describe("clickPlan sweep — ways round never stick on a corner (round 5 review
         if (!plan.ok) continue;
         expect(simulateWalk(from.x, from.z, plan.x, plan.z, obstacles, village, R, plan.via).arrived).toBe(true);
       }
-    });
+    }, SWEEP_MS);
   }
 });
 
@@ -238,7 +245,7 @@ describe("clickPlan sweep — the game's walk follows the ways round at any fram
     }
     expect(ways).toBeGreaterThan(100);
     expect(failed).toEqual([]);
-  });
+  }, SWEEP_MS);
 
   it("seated taps that go round a bench: the game's walk from the dismount point arrives too", () => {
     const failed: string[] = [];
@@ -265,7 +272,7 @@ describe("clickPlan sweep — the game's walk follows the ways round at any fram
     }
     expect(ways).toBeGreaterThan(50);
     expect(failed).toEqual([]);
-  });
+  }, SWEEP_MS);
 });
 
 describe("clickPlan sweep — round 6 review: every walking plan, straight ones too, arrives at 20, 30, 60 and 144 fps", () => {
@@ -299,7 +306,7 @@ describe("clickPlan sweep — round 6 review: every walking plan, straight ones 
       }
       expect(plans).toBeGreaterThan(500);
       expect(failed).toEqual([]);
-    });
+    }, SWEEP_MS);
   }
 
   it("the review's walks: straight crawls along a face go round now, and arrive at every frame rate", () => {
@@ -359,7 +366,7 @@ describe("clickPlan sweep — round 6 review: the paving between plaza_4's back 
       }
     }
     expect(bad).toEqual([]);
-  });
+  }, SWEEP_MS);
 
   it("seated at the forecourt's bench, the strip behind it on a 0.1 m grid: every point walked to (two were refused)", () => {
     const s = VILLAGE_SEATS[17];

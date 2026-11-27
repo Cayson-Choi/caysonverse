@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { houseIsReady } from "@caysonverse/shared/village/housesGeometry";
 import { houseNumberOf } from "@caysonverse/shared/village/houseAreas";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
@@ -16,10 +16,14 @@ import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
 import type { Player } from "@caysonverse/shared/schema";
 import { rooms, type VillageRoom } from "./index";
 
+// A real server and real sockets/HTTP: each step takes well under a second alone, but a loaded machine (the whole suite in parallel,
+// other worktrees) has pushed a boot past the 10 s hook default and a round trip past the 5 s test default. A hang still fails.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 /**
  * VillageRoom's houses (집 실내 G): the keypad's way in (code, lock-out, not-ready houses, the 8-player limit, sitting / bus), the stair
  * between the two floors, the way out, and chat that is heard on both floors of one house only. Its own boot on its own port (2572
- * PlayerRoom, 2575 the village, 2576 fishing, 2577 this file).
+ * PlayerRoom, 2575 the village, 2576 fishing, 2577 this file, 2578 the memorial).
  */
 const PORT = 2577;
 const JOIN = (n: number) => ({ nickname: `손님${n}`, appearance: DEFAULT_APPEARANCE });

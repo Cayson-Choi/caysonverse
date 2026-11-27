@@ -68,7 +68,7 @@ describe("a tap on a chair walks to that chair's own spot", () => {
     }
     expect(plans).toBeGreaterThan(5000);
     expect(failures).toEqual([]);
-  });
+  }, 90_000); // ~10 s alone (every start on a 0.5 m grid walked to the chair), ~30 s under the full suite
 
   it("a seated player tapping another chair gets up and walks to it", () => {
     let plans = 0;
@@ -99,23 +99,31 @@ describe("the goals are worked out ahead, one seat at a time (review 2026-11-15:
 
   it("warmSeatApproachGoals fills every marked seat's goal, one per tick; each seat's search stays short", async () => {
     const { warmSeatApproachGoals, seatApproachGoalReady, markedSeatIndices } = await import("./seatTap");
-    const seats = VILLAGE_SEATS.slice(); // a fresh list: a cold cache
-    const ticks: (() => void)[] = [];
-    warmSeatApproachGoals(seats, obstacles, village, (run) => ticks.push(run));
-    const marked = markedSeatIndices(seats);
-    // the art's 15 marked seats, the lake's 30 fishing chairs (E2), the zelkova deck's 6, lots v2's 32 outdoor places (L5v2)
-    expect(marked).toHaveLength(15 + 30 + 6 + 32);
-    let worst = 0;
-    let n = 0;
-    while (ticks.length > 0) {
-      const t0 = performance.now();
-      ticks.shift()!();
-      worst = Math.max(worst, performance.now() - t0);
-      n++;
+    // The budget is per seat (one tick must not hitch a frame). A single wall-clock sample is at the mercy of the machine (a GC,
+    // another process: 16.7 and 33 ms were seen on a loaded box for a search that takes a few ms), so the warm-up runs on a cold
+    // cache ROUNDS times and each seat keeps its fastest run: a search that really got slow is slow every time.
+    const ROUNDS = 3;
+    const best = new Map<number, number>();
+    for (let round = 0; round < ROUNDS; round++) {
+      const seats = VILLAGE_SEATS.slice(); // a fresh list: a cold cache
+      const ticks: (() => void)[] = [];
+      warmSeatApproachGoals(seats, obstacles, village, (run) => ticks.push(run));
+      const marked = markedSeatIndices(seats);
+      // the art's 15 marked seats, the lake's 30 fishing chairs (E2), the zelkova deck's 6, lots v2's 32 outdoor places (L5v2)
+      expect(marked).toHaveLength(15 + 30 + 6 + 32);
+      let n = 0;
+      while (ticks.length > 0) {
+        const t0 = performance.now();
+        ticks.shift()!();
+        const ms = performance.now() - t0;
+        best.set(n, Math.min(best.get(n) ?? Infinity, ms));
+        n++;
+      }
+      expect(n).toBe(15 + 30 + 6 + 32);
+      expect(marked.every((i) => seatApproachGoalReady(seats, i, obstacles, village))).toBe(true);
     }
-    expect(n).toBe(15 + 30 + 6 + 32);
-    expect(marked.every((i) => seatApproachGoalReady(seats, i, obstacles, village))).toBe(true);
-    console.log(`seatApproachGoal: worst seat ${worst.toFixed(2)} ms`);
-    expect(worst).toBeLessThan(15); // was up to 20 ms; a loaded CI box gets slack
-  });
+    const worst = Math.max(...best.values());
+    console.log(`seatApproachGoal: worst seat ${worst.toFixed(2)} ms (fastest of ${ROUNDS} cold runs)`);
+    expect(worst).toBeLessThan(15); // was up to 20 ms before the goals were worked out ahead
+  }, 60_000);
 });
