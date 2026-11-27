@@ -148,7 +148,19 @@ export const VillageServerMsg = {
   KeypadResult: "KeypadResult",
   /** Why a RideBoard was refused: { reason: "closed" | "full" | "busy" }. */
   RideNotice: "RideNotice",
+  /**
+   * A door / stair / bench press the server refused because it has the player out of reach (`ActionRefusedPayload`): the client
+   * lifts the door's curtain at once, says so in a short line and re-sends its position (fix/net-sync: these were dropped
+   * without a word, and the button seemed to do nothing).
+   */
+  ActionRefused: "ActionRefused",
 } as const;
+
+/** Server -> the presser only: which press was refused, and why ("far": the server has the player out of its reach). */
+export interface ActionRefusedPayload {
+  action: "door" | "stair" | "sit";
+  reason: "far";
+}
 
 export type VillageServerMsg = (typeof VillageServerMsg)[keyof typeof VillageServerMsg];
 

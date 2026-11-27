@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { InstancedMesh, Matrix4, RepeatWrapping, SRGBColorSpace, type Texture } from "three";
+import { PARK_BENCHES } from "@caysonverse/shared/village/parkBenches";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 
 /** A length of milled pine with eased edges. The grain runs along the two-metre board. */
@@ -53,9 +54,7 @@ function buildBench() {
   return { timber: timber.build(), iron: frame.build() };
 }
 
-const benches: Array<[number, number, number]> = [];
-for (let z = -170; z <= -140; z += 10) benches.push([34, z, Math.PI], [46, z, 0]);
-for (let x = 90; x <= 330; x += 30) benches.push([x, -108.2, 0]);
+const benches = PARK_BENCHES;
 
 export function ParkBenches({ pine }: { pine: Texture }) {
   const geo = useMemo(buildBench, []);

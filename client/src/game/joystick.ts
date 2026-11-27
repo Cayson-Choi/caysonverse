@@ -148,6 +148,29 @@ export function stickDown(
 }
 
 /**
+ * A fixed stick (owner 2026-11-27: "이동은 조이스틱있는데서만 가능하도록"): a press only takes the stick when it lands
+ * within `hitPx` of the stick's centre (cx, cy), and the stick reads from that centre, not from the press point —
+ * a press beside the knob already pushes that way. Any other press: false (it is not the stick's).
+ */
+export function stickDownAt(
+  s: StickState,
+  id: number,
+  x: number,
+  y: number,
+  cx: number,
+  cy: number,
+  hitPx: number,
+): boolean {
+  if (s.pointerId !== null) return false;
+  if (Math.hypot(x - cx, y - cy) > hitPx) return false;
+  s.pointerId = id;
+  s.ox = cx;
+  s.oy = cy;
+  s.running = false;
+  return true;
+}
+
+/**
  * The owning pointer moved to (x, y): the movement input it asks for (direction
  * from the press point, run from the gait bands), or null for any other pointer.
  */

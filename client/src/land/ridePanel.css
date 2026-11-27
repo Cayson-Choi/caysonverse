@@ -301,3 +301,9 @@
     display: none;
   }
 }
+
+/* 비상 내리기 pressed once: the second press gets off (CoasterHud LEAVE_CONFIRM_MS) */
+.cv-ride-primary.is-danger.is-armed {
+  color: #fff;
+  background: #d2453a;
+}

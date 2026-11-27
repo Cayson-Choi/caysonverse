@@ -4,7 +4,7 @@ import {
   MOVE_ELAPSED_FLOOR_MS,
   PLAYER_RADIUS,
 } from "@caysonverse/shared/constants";
-import { isBlocked } from "@caysonverse/shared/collision";
+import { obstacleIndex } from "@caysonverse/shared/collision";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
 import type { MovePayload } from "@caysonverse/shared/messages";
 
@@ -70,7 +70,8 @@ export function validateMove(
 
   // 5. obstacle overlap → drop (a small epsilon in isBlocked tolerates the
   //    floating-point rounding of a legitimately wall-hugging client).
-  if (isBlocked(x, z, PLAYER_RADIUS, geo.obstacles)) return null;
+  //    The map's own (static) list is asked through its grid: one cell's boxes, not all 1,400 (collision.ts obstacleIndex).
+  if (obstacleIndex(geo.obstacles).isBlocked(x, z, PLAYER_RADIUS)) return null;
 
   // 6. normalize yaw. 7. the sender's clock, if it is a usable one.
   const yaw = normalizeAngle(p.yaw);

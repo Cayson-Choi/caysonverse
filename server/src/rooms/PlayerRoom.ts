@@ -1,10 +1,11 @@
 import { Room, type Client } from "colyseus";
 import type { MapSchema } from "@colyseus/schema";
 import type { Player } from "@caysonverse/shared/schema";
-import { MessageType } from "@caysonverse/shared/messages";
+import { MessageType, type MoveRefusedPayload } from "@caysonverse/shared/messages";
 import {
   MOVE_MAX_MSGS_PER_SEC,
   MOVE_ELAPSED_CEIL_MS,
+  MOVE_REFUSED_NOTICE_MS,
   CHAT_RATE,
   CHAT_TOO_FAST,
   EMOJI_RATE,
@@ -42,6 +43,8 @@ export interface Tracking {
    * dropped; a server-placed pose (teleport, seat, reconnect) sets it to now (empty budget).
    */
   lastAcceptedAt: number;
+  /** When (ms) the last `MoveRefused` notice went to this client; -Infinity before the first (fix/net-sync). */
+  refusedNoticeAt: number;
   /** Sliding-window rate cap for move messages. */
   rate: RateWindow;
   /** Sliding-window rate cap for chat messages (3 per 5s). */
@@ -63,6 +66,7 @@ export interface Tracking {
 export function baseTracking(now: number): Tracking {
   return {
     lastAcceptedAt: now,
+    refusedNoticeAt: Number.NEGATIVE_INFINITY,
     rate: new RateWindow(MOVE_MAX_MSGS_PER_SEC),
     chatRate: new RateWindow(CHAT_RATE.count, CHAT_RATE.windowMs),
     emojiRate: new RateWindow(EMOJI_RATE.count, EMOJI_RATE.windowMs),
@@ -310,6 +314,14 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
       // sender's last move, so its client judges the divergence against where it stands now (it may have
       // run on past what the server will take) instead of trusting the stamp.
       player.moveT = 0;
+      // …and the mover is told, with where the server has it (fix/net-sync). A refusal may change no synced field at all (the
+      // echo was already 0: the first Move after a join or a door), and then the client never learnt that the server had stopped
+      // following it: it walked on, every later Move farther out of reach, and every door / keypad / ride press it made was
+      // refused for distance. Throttled, so a client refused Move after Move costs one small message per MOVE_REFUSED_NOTICE_MS.
+      if (now - track.refusedNoticeAt >= MOVE_REFUSED_NOTICE_MS) {
+        track.refusedNoticeAt = now;
+        client.send(MessageType.MoveRefused, { x: player.x, z: player.z } satisfies MoveRefusedPayload);
+      }
       return;
     }
 

@@ -61,6 +61,12 @@ export const MOVE_ELAPSED_FLOOR_MS = 10;
  */
 export const MOVE_ELAPSED_CEIL_MS = 500;
 
+/**
+ * The fewest ms between two `MoveRefused` notices to one client (fix/net-sync). A client whose Moves are refused one after
+ * another (it ran on during a stall) hears it at once and then at most this often: one tiny message, never one per Move.
+ */
+export const MOVE_REFUSED_NOTICE_MS = 250;
+
 /** Nickname length bounds, counted after trimming. 발주자(2026-11-10): 이름은 5글자까지만. */
 export const NICKNAME_MIN = 2;
 export const NICKNAME_MAX = 5;

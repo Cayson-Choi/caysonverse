@@ -38,6 +38,7 @@ import {
   tweenYaw,
 } from "./builderOptions";
 import { ThumbStudio, drawThumbFrame, thumbStore } from "./builderThumbs";
+import { registerFigureSnap } from "./entryFigure";
 import { FIGURE_TOP } from "./stageLayout";
 import { BuilderIcon } from "./BuilderIcons";
 
@@ -148,6 +149,22 @@ interface YawTween {
 }
 
 /** 카메라를 yaw 궤도 위에 두고 인형 가운데 높이를 본다. 회전 중이면 각도를 진행시키고, yaw가 바뀐 프레임에만 옮긴다. */
+/** Lets 입장하기 take one picture of the figure (entryFigure.ts): drawn and read in the same task, so the buffer still holds it. */
+function FigureSnap({ shown }: { shown: boolean }) {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  useEffect(() => {
+    if (!shown) return;
+    registerFigureSnap(() => {
+      gl.render(scene, camera);
+      return gl.domElement.toDataURL("image/png");
+    });
+    return () => registerFigureSnap(null);
+  }, [gl, scene, camera, shown]);
+  return null;
+}
+
 function PreviewCamera({
   yawRef,
   tweenRef,
@@ -454,6 +471,7 @@ export function BuilderPreview({
               <directionalLight key={i} color={light.color} intensity={light.intensity} position={light.position} />
             ))}
             <PreviewCamera yawRef={yawRef} tweenRef={tweenRef} cameraRef={cameraRef} />
+            <FigureSnap shown={shown} />
             <Suspense fallback={null}>
               <PreviewFigure key={key} look={look} base={base} onShown={onShown} />
             </Suspense>

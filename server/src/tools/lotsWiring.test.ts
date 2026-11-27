@@ -138,7 +138,8 @@ describe("the five walk-in rooms (contract 11)", () => {
   });
 
   it("the doors (server rule): the village pad → the room's arrival; the way out → the door's arrival; nothing from too far or the side", () => {
-    for (const r of LOT_ROOMS) {
+    // (the café's salon upstairs has no door of its own: its stair is the way, cafeRoom.test.ts)
+    for (const r of LOT_ROOMS.filter((q) => !q.spec.noExit)) {
       const pad = lotDoorPoint(r.lot, r.door).pad;
       const inside = useLotDoor("village", pad.x, pad.z);
       expect(inside).toEqual({ area: r.area, ...lotRoomDoor(r).arrival });
@@ -163,8 +164,7 @@ describe("the five walk-in rooms (contract 11)", () => {
   });
 
   it("the models' own col__ boxes are the contract's solids, in the room frame (the three moved rooms by their shift)", () => {
-    // (the café's room has no GLB: it is built at run time from cafeRoom.ts, the same numbers)
-    for (const r of LOT_ROOMS.filter((q) => q.unit.id !== "lot_cafe_room")) {
+    for (const r of LOT_ROOMS) {
       const { colliders } = extractColliders(glb(r.unit.id).gltf);
       for (const s of lotRoomSolids(r)) {
         const node = colliders.find((m) => m.name === `col__${r.unit.id}_${s.name}`);
@@ -176,24 +176,28 @@ describe("the five walk-in rooms (contract 11)", () => {
   });
 });
 
-describe("seats: outside 12, inside 66, after every seat main has", () => {
+describe("seats: outside 12, inside 81, after every seat main has", () => {
   it("the lot seats come after main's last seat, in LOT_SEAT_ORDER then LOT_INTERIOR_SEAT_ORDER, never renumbering earlier ones", () => {
     const first = VILLAGE_SEATS.findIndex((s) => isLotSeat(s));
     // main's last seat: release 4's added house seats (houses-real, ADDED_HOUSE_SEATS) end at index 269 — the lots' start at 270
     expect(first).toBe(270);
     expect(VILLAGE_SEATS.findIndex((s) => s.id.startsWith("lotin:"))).toBe(302);
-    const lot = VILLAGE_SEATS.slice(first);
+    // (케이슨랜드 benches follow the lot seats, 2026-11-22)
+    const lot = VILLAGE_SEATS.slice(first).filter((s) => s.area !== "park");
+    expect(VILLAGE_SEATS.slice(first + lot.length).every((s) => s.area === "park")).toBe(true);
     expect(lot.every((s) => isLotSeat(s))).toBe(true);
     const outside = lot.filter((s) => s.area === "village");
     const inside = lot.filter((s) => s.area !== "village");
     expect(lot.indexOf(inside[0]!)).toBe(outside.length); // every outside seat first
     expect([...new Set(outside.map((s) => s.bench.slice("lot:".length)))]).toEqual([...LOT_SEAT_ORDER]);
     expect([...new Set(inside.map((s) => s.bench.slice("lotin:".length)))]).toEqual([...LOT_INTERIOR_SEAT_ORDER]);
-    expect(LOT_INTERIOR_SEAT_ORDER.length).toBe(66);
+    expect(LOT_INTERIOR_SEAT_ORDER.length).toBe(81);
     // one seat per place: school 12, library 8 + 2×2, chapel 10×3, church 8×3, temple 12, café 10 chairs + 3 stools (the room side: the counter blocks the other) + 3 banquette places
     const by = (u: string) => inside.filter((s) => s.area === `lot:${u}`).length;
-    expect([by("lot_school_class"), by("lot_library_reading"), by("lot_chapel_nave"), by("lot_church_nave"), by("lot_temple_hall"), by("lot_cafe_room")]).toEqual([12, 12, 30, 24, 12, 16]);
-    expect(VILLAGE_SEATS.length).toBe(first + 32 + 90 + 16);
+    // the café's salon upstairs (2026-11-21): 12 chairs, the sofa's 3 places, 2 wing chairs
+    expect([by("lot_school_class"), by("lot_library_reading"), by("lot_chapel_nave"), by("lot_church_nave"), by("lot_temple_hall"), by("lot_cafe_room"), by("lot_cafe_upstairs")]).toEqual([12, 12, 30, 24, 12, 16, 17]);
+    // (케이슨랜드 benches come after every lot seat: 17 benches, two places each)
+    expect(VILLAGE_SEATS.length).toBe(first + 32 + 90 + 16 + 17 + 34);
   });
 
   it("every room seat: in its room, stood up from a free spot in it, a backed one in FRONT of the seat (never behind its back)", () => {

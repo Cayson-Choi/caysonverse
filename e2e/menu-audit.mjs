@@ -176,7 +176,7 @@ await run.step("panel layout", async () => {
   await page.locator(".cv-menu").evaluate((el) => (el.scrollTop = 0));
   const rows = await page.evaluate(() => [...document.querySelectorAll(".cv-menu-label")].map((e) => e.textContent.trim()));
   console.log("   rows:", rows.join(" | "));
-  const need = PHONE_DEV ? ["소리 켜기", "배경음악", "음악 크기", "버튼 크기", "왼손잡이 모드", "시점 감도", "이름표 보기", "내 이름표 보기", "1인칭으로 보기", "그래픽", "밝기"] : ["소리 켜기", "배경음악", "음악 크기", "시점 감도", "이름표 보기", "내 이름표 보기", "1인칭으로 보기 (V)", "그래픽", "밝기"];
+  const need = PHONE_DEV ? ["소리 켜기", "배경음악", "소리 크기", "버튼 크기", "왼손잡이 모드", "시점 감도", "이름표 보기", "내 이름표 보기", "1인칭으로 보기", "그래픽", "밝기"] : ["소리 켜기", "배경음악", "소리 크기", "시점 감도", "이름표 보기", "내 이름표 보기", "1인칭으로 보기 (V)", "그래픽", "밝기"];
   check("every documented row is there", need.every((r) => rows.includes(r)), rows);
   await closeMenu();
 });
@@ -202,6 +202,8 @@ await run.step("sound", async () => {
   check("소리 끄기: real output is silent", mutedRms < 0.0002, mutedRms);
   check("소리 끄기: 배경음악 switch and slider disabled", (await sw("cv-menu-music").isDisabled()) && (await page.locator("#cv-menu-music-volume").isDisabled()));
   // every other WebAudio source obeys the master (star chime, bus horn, falls, lake fight, the Caysonland rides)
+  // (the fountain's water fades to 0 at once and frees its nodes FOUNTAIN_IDLE_STOP_S = 3 s later: wait for that)
+  await page.waitForFunction(() => !(window.__cvSfx?.fountainRunning?.() ?? false), null, { timeout: 8000 }).catch(() => {});
   const gainsMuted = await page.evaluate(() => window.__aud.gains.filter((g) => g.gain.value > 0.0005).length);
   check("소리 끄기: no GainNode is left above 0 (every sound source obeys the master)", gainsMuted === 0, { gainsMuted });
   await sw("cv-menu-sound").click();
@@ -215,9 +217,14 @@ await run.step("sound", async () => {
   await sw("cv-menu-music").click();
   await sleep(600);
   s = await bgm();
+  // the plaza fountain is a sound effect, not music: it keeps playing with 배경음악 off (it follows 소리 and 소리 크기), so the
+  // silence is measured with the 소리 크기 slider at 0 (owner 2026-11-27: the fountain follows the slider)
+  await page.locator("#cv-menu-music-volume").fill("0");
+  await sleep(800);
   const offRms = await rms(1500);
   check("배경음악 끄기: music paused and silent", s && s.paused && offRms < 0.0002, { s, offRms });
-  check("배경음악 끄기: slider disabled", await page.locator("#cv-menu-music-volume").isDisabled());
+  check("배경음악 끄기: the 소리 크기 slider stays on (it also sets the fountain, falls and rides)", !(await page.locator("#cv-menu-music-volume").isDisabled()));
+  await page.locator("#cv-menu-music-volume").fill("1");
   await sw("cv-menu-music").click();
   await sleep(3000);
   s = await bgm();

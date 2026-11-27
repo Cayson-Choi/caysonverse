@@ -131,3 +131,69 @@ export function resolveCollision(
 
   return { x: nx, z: nz };
 }
+
+// ───────────────────────────── a static obstacle list, indexed (the server's drop test) ─────────────────────────────
+
+/** `isBlocked` over one fixed obstacle list, answered from a grid instead of a scan of the whole list. */
+export interface ObstacleIndex {
+  /** Exactly `isBlocked(px, pz, r, obstacles, slack)`. */
+  isBlocked(px: number, pz: number, r: number, slack?: number): boolean;
+  /** How many boxes the grid holds per cell at most, and how many are too large for it (scanned each time). */
+  readonly stats: { cells: number; maxPerCell: number; large: number };
+}
+
+/** The grid's cell (m) and the largest radius it answers (a larger one scans the list). */
+const INDEX_CELL = 4;
+const INDEX_MAX_R = 1;
+/** A box over this many cells is kept in a short list of its own (the area blockers, the banks). */
+const INDEX_LARGE_CELLS = 64;
+
+const indexes = new WeakMap<readonly AABB[], ObstacleIndex>();
+
+/**
+ * The index of a STATIC obstacle list (a map's own: `MapGeometry.obstacles`, never a list that is refilled each frame), built
+ * once on first use. The village map holds about 1,400 boxes and the server tests every move of every player against them
+ * (movement.ts): a hundred walkers at 15 moves a second were 2 million box tests a second for an answer that depends on the
+ * handful of boxes round the body. With the grid a test reads one cell (2026-11-21, when every lamp post, bench, flowerbed
+ * and bush became a box of its own).
+ */
+export function obstacleIndex(obstacles: readonly AABB[]): ObstacleIndex {
+  const known = indexes.get(obstacles);
+  if (known) return known;
+  const grid = new Map<number, AABB[]>();
+  const large: AABB[] = [];
+  const key = (ix: number, iz: number): number => (ix + 32768) * 65536 + (iz + 32768);
+  let maxPerCell = 0;
+  for (const b of obstacles) {
+    const x0 = Math.floor((b.minX - INDEX_MAX_R) / INDEX_CELL);
+    const x1 = Math.floor((b.maxX + INDEX_MAX_R) / INDEX_CELL);
+    const z0 = Math.floor((b.minZ - INDEX_MAX_R) / INDEX_CELL);
+    const z1 = Math.floor((b.maxZ + INDEX_MAX_R) / INDEX_CELL);
+    if (!Number.isFinite(x0 + x1 + z0 + z1) || (x1 - x0 + 1) * (z1 - z0 + 1) > INDEX_LARGE_CELLS) {
+      large.push(b);
+      continue;
+    }
+    for (let ix = x0; ix <= x1; ix++) {
+      for (let iz = z0; iz <= z1; iz++) {
+        const k = key(ix, iz);
+        let list = grid.get(k);
+        if (!list) grid.set(k, (list = []));
+        list.push(b);
+        if (list.length > maxPerCell) maxPerCell = list.length;
+      }
+    }
+  }
+  const index: ObstacleIndex = {
+    isBlocked(px, pz, r, slack = COLLISION_EPS) {
+      if (!(r <= INDEX_MAX_R) || !Number.isFinite(px) || !Number.isFinite(pz)) return isBlocked(px, pz, r, obstacles, slack);
+      for (let i = 0; i < large.length; i++) if (circleIntersectsAABB(px, pz, r, large[i]!, slack)) return true;
+      const list = grid.get(key(Math.floor(px / INDEX_CELL), Math.floor(pz / INDEX_CELL)));
+      if (!list) return false;
+      for (let i = 0; i < list.length; i++) if (circleIntersectsAABB(px, pz, r, list[i]!, slack)) return true;
+      return false;
+    },
+    stats: { cells: grid.size, maxPerCell, large: large.length },
+  };
+  indexes.set(obstacles, index);
+  return index;
+}

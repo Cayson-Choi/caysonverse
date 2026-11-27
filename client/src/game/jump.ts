@@ -204,7 +204,15 @@ export function localJump(sid: string, blocked: boolean, now: number, send: () =
  */
 export function pressJump(sid: string, now: number, send: () => void): boolean {
   // The memorial hall is quiet: the server drops a jump there, so none is played here (quiet.ts).
-  return localJump(sid, jumpBlocked || isQuiet(), now, send);
+  // Under a low roof (a building's ceiling, the bus shelter, a porch...) no jump at all (owner 2026-11-27: "지붕이 낮은데서는
+  // 점프하면 안된다"): asked only at the press, one upward ray (LocalPlayer's roof check).
+  return localJump(sid, jumpBlocked || isQuiet() || (roofCheck?.() ?? false), now, send);
+}
+
+/** LocalPlayer's "something is over the head within a hop's reach" (null: no avatar). */
+let roofCheck: (() => boolean) | null = null;
+export function setJumpRoofCheck(fn: (() => boolean) | null): void {
+  roofCheck = fn;
 }
 
 /** Forget the cooldown, the lift and the blocked flag — LocalPlayer calls this on mount and unmount (new world). */

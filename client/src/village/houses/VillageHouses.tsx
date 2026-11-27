@@ -11,6 +11,7 @@ import { isTouchDevice } from "../../device";
 import { dayNight } from "../dayNightDriver";
 import type { VillageTier } from "../villageModelPrep";
 import { noteHousesRequested } from "../villageRelease";
+import { HouseShowcase } from "../portal/HouseShowcase";
 import { readHouseMaps, readHouseTextureMeta, readHouses } from "./housesLoader";
 import {
   applyHousesDayNight,
@@ -219,5 +220,11 @@ export function VillageHouses({ villageRoot, tier }: { villageRoot: Object3D; ti
     }
   });
 
-  return <primitive object={nodes.root} dispose={null} />;
+  return (
+    <>
+      <primitive object={nodes.root} dispose={null} />
+      {/* the nearest house's real rooms behind its clear glass (owner 2026-11-21) */}
+      <HouseShowcase glass={nodes.glow.glass} />
+    </>
+  );
 }

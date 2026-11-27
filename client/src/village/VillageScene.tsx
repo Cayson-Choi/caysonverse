@@ -5,7 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { PlayShell } from "../game/PlayShell";
 import { villageActiveMap } from "../game/activeMap";
-import { clearClickTarget } from "../game/clickMove";
+import { clearClickTarget, peekClickTarget } from "../game/clickMove";
 import { fireTarget, setTargetHandler, setTargetSource } from "../game/interactTargets";
 import { armedHouseUse, disarmHouseUse, takeArmedHouseUse } from "./houseTap";
 import type { PlayersRoom } from "../game/remoteSync";
@@ -13,7 +13,10 @@ import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor, sendUseStair } from "../net/connection";
 import { rideStatusText, sendBusRide, sendBusSit, sendBusStand, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState } from "../net/transitSync";
 import { BUS_VIEW_YAW, busCamGoal, busSeatPreferred, busWalk, selfBusRide } from "../game/busRide";
-import { requestViewToggle } from "../game/viewState";
+import { requestViewToggle, viewState } from "../game/viewState";
+import { recenterYaw } from "../game/cameraControls";
+import { PARK_ARRIVAL } from "@caysonverse/shared/village/parkArea";
+import { PARK_ARRIVAL_PITCH, parkArrivalView } from "../land/parkArrival";
 import { useViewStore } from "../stores/viewStore";
 import { busRiderPoints, takenBusSpots } from "../game/remoteStore";
 import { TRANSIT, boardingOpensWords } from "@caysonverse/shared/village/transit";
@@ -45,6 +48,7 @@ import { clearBusCache, clearVillageCaches, holdVillageFiles, holdsVillageFiles 
 import { LoadBoundary } from "./LoadBoundary";
 import { ParkSkyline } from "./skyline/ParkSkyline";
 import { VillageParkWall } from "./skyline/VillageParkWall";
+import { VillageParkPortal } from "./skyline/VillageParkPortal";
 import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, useLocalArea } from "./villageArea";
 import {
   BUS_RIDE_TARGET_BOARD,
@@ -75,8 +79,7 @@ import { SIGNALS_MODEL_URL, TransitRoadSignals } from "./TransitRoadSignals";
 import { PublicAutoDoor } from "./PublicAutoDoor";
 import { VillageLots } from "./lots/VillageLots";
 import { LotRoomArea } from "./lots/LotRoom";
-import { CAFE_ROOM_UNIT, CafeRoomArea, CafeRoomPrefetch } from "./cafe/CafeRoom";
-import { lotDoorNotice, lotDoorPadById, lotWalkInTarget, LOT_DOOR_TARGET_PREFIX } from "./lots/lotTargets";
+import { lotDoorNotice, lotDoorPadById, LOT_DOOR_TARGET_PREFIX } from "./lots/lotTargets";
 import { openKeypad, useKeypad } from "./keypadStore";
 import { VillageKeypad } from "./VillageKeypad";
 import { HouseArea } from "./HouseInterior";
@@ -93,7 +96,7 @@ import { sendRideBoard } from "../net/connection";
 import { landPose } from "../land/coasterRide";
 import { startRideAudio } from "../land/coasterAudio";
 import { boardRide } from "../land/rideBoardWalk";
-import { takeArmedRide } from "../land/rideBoard";
+import { armRide, armedRide, takeArmedRide } from "../land/rideBoard";
 import { maybePreloadPark } from "../land/parkAssets";
 
 /**
@@ -167,9 +170,19 @@ function LandPoseProbe({ pose }: { pose: Pose }) {
 }
 
 /** 케이슨랜드 (the park area): no village model to dress, so the loading cover lifts at once; the park loads in its own Suspense. */
-function ParkArea({ tier }: { tier: VillageTier }) {
+function ParkArea({ tier, pose }: { tier: VillageTier; pose: Pose }) {
   useEffect(() => {
     uncoverVillage();
+  }, []);
+  // Through the gate, the view turns with the visitor: the camera behind them, looking into the park (owner 2026-11-21: one arrived
+  // looking back at the arch). Only on an arrival - someone who reloads deep in the park keeps the view they had.
+  useEffect(() => {
+    if (!parkArrivalView(pose.x, pose.z)) return;
+    const yaw = recenterYaw(PARK_ARRIVAL.yaw);
+    viewState.fpYaw = yaw;
+    viewState.fpPitch = 0;
+    viewState.orbitGoal = { yaw, pitch: PARK_ARRIVAL_PITCH };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arriving
   }, []);
   return (
     <LoadBoundary fallback={null} onReset={() => undefined} onFail={uncoverVillage} notice="케이슨랜드를 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
@@ -182,10 +195,10 @@ function ParkArea({ tier }: { tier: VillageTier }) {
 
 /** What the local player's area draws: the village model and its signs (no floor mark at the memorial's door), or the hall's room. */
 function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; pose: Pose }) {
-  if (area === "park") return <ParkArea tier={tier} />;
+  if (area === "park") return <ParkArea tier={tier} pose={pose} />;
   if (area === "hall") return <HallArea pose={pose} />;
   if (isHouseArea(area)) return <HouseArea area={area} pose={pose} />;
-  if (isLotArea(area)) return area === `lot:${CAFE_ROOM_UNIT}` ? <CafeRoomArea area={area} pose={pose} /> : <LotRoomArea area={area} pose={pose} />;
+  if (isLotArea(area)) return <LotRoomArea area={area} pose={pose} />;
   return (
     <>
       {/* A failed download shows a plain ground and tries again, instead of the crash screen (final review m2). */}
@@ -222,6 +235,9 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
       <AfterDressed>
         <ParkSkyline tier={tier} />
         <VillageParkWall tier={tier} />
+        <Suspense fallback={null}>
+          <VillageParkPortal />
+        </Suspense>
       </AfterDressed>
       <LoadBoundary fallback={null} onReset={() => useGLTF.clear(SIGNALS_MODEL_URL)} notice="횡단보도 신호등을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
         <TransitRoadSignals />
@@ -230,8 +246,6 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
       <PublicAutoDoor area="village" pose={pose} />
       {/* The six lot buildings (마을 부지 건물, L5): their own loader, never waited for; a failed one is just not there. */}
       <VillageLots pose={pose} tier={tier} />
-      {/* The café's walk-in room starts to build when the avatar comes near its door (cafe/CafeRoom.tsx). */}
-      <CafeRoomPrefetch pose={pose} />
     </>
   );
 }
@@ -353,29 +367,23 @@ function VillageDoors({ pose }: { pose: Pose }) {
   }, [pose, boarded, keypadOpen]);
   // A tap on a house's stair or front door armed its use (houseTap.ts): once the walk has brought us into the pad's reach, it is used.
   const lastArea = useRef<string | null>(null);
-  const walkedIn = useRef(false);
   useFrame(() => {
     const area = localArea();
     // Going in, out or up / down: a use armed by an earlier tap is stale (owner 2026-11-20: never climb without the player's own use)
     if (lastArea.current !== area) {
       lastArea.current = area;
       disarmHouseUse();
+      armRide(null); // ... and so is a board armed in the park before leaving it
     }
-    // A tap on a ride, or a press of its 타기 from afar, walked to the pad: the board is sent on arrival (rideBoard.ts)
+    // A press of a ride's 타기 from afar walked to the pad: the board is sent on arrival (rideBoard.ts). The board lives only as long as
+    // that walk: once it has ended short of the pad (blocked, given up) nothing boards later by passing the pad (owner 2026-11-21).
     if (area === "park") {
       const key = takeArmedRide(pose.x, pose.z);
       if (key) sendRideBoard(key);
+      else if (armedRide() !== null && peekClickTarget() === null) armRide(null);
       return;
     }
     if (area === "village") maybePreloadPark(pose.x, pose.z); // the park's files start loading as the gate comes near
-    // Walking into a lot door (the café's) goes in: the doorstep is the last 0.6 m of the walk to it (lotTargets.ts lotWalkInTarget); used once per arrival
-    if (area === "village") {
-      const step = lotWalkInTarget(pose.x, pose.z);
-      if (step && !walkedIn.current) {
-        walkedIn.current = true;
-        fireTarget(step, "press");
-      } else if (!step) walkedIn.current = false;
-    }
     // a house floor, a lot building's room, or the village with a lot door's use armed by a tap on it (lotDoorTap.ts)
     if (!isHouseArea(area) && !isLotArea(area) && armedHouseUse() === null) return;
     const offered = villageTargets(area, pose.x, pose.z);

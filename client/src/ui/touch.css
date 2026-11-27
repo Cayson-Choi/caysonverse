@@ -1,17 +1,15 @@
-/* Dynamic joystick (touch devices). The zone is the lower-left quarter of the
-   screen (lower-right when left-handed); the stick itself is drawn wherever the
-   thumb lands, positioned by TouchJoystick through style.transform. */
-
-/* Percentages of a fixed box are the live viewport — the same innerWidth/Height
-   that isStickZone measures (50vh would be the tall viewport on a phone whose
-   URL bar is showing). z-index sits BELOW the HUD (chat bar, emoji, action
-   buttons are all 20+), so those take their own touches first. */
+/* Fixed joystick (touch devices). The zone is a circle just around the resting
+   stick (lower-left, lower-right when left-handed): only a thumb put on the stick
+   moves (owner 11-27). TouchJoystick centres it by style.transform — its size is
+   2 × STICK_HIT_PX (TouchJoystick.tsx). z-index sits BELOW the HUD (chat bar,
+   emoji, action buttons are all 20+), so those take their own touches first. */
 .cv-stick-zone {
   position: fixed;
   left: 0;
-  bottom: 0;
-  width: 50%;
-  height: 50%;
+  top: 0;
+  width: 168px;
+  height: 168px;
+  border-radius: 50%;
   z-index: 10;
   /* Own the touch here so a stick drag never scrolls/bounces the page, and never
      leaks to the canvas as a camera rotation. */
@@ -22,11 +20,6 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.cv-stick-zone.is-left-handed {
-  left: auto;
-  right: 0;
-}
-
 /* Overview (map) mode: no stick — let the touch fall through to the canvas so a
    one-finger drag pans the map. */
 .cv-stick-zone.is-ov {
@@ -34,8 +27,8 @@
 }
 
 /* The stick art: a zero-size fixed anchor at the viewport origin; base and knob
-   are placed in viewport pixels by translate(). Shown only while a thumb is down
-   (classList, not React state). */
+   are placed in viewport pixels by translate(). Bright while a thumb is down
+   (is-active), faint at its rest point otherwise (is-rest) — classList, not React state. */
 .cv-stick {
   position: fixed;
   left: 0;
@@ -49,6 +42,21 @@
 
 .cv-stick.is-active {
   visibility: visible;
+}
+
+/* No thumb down: the stick rests in the lower-left corner, faint, so it is always there
+   to find (owner 11-26). Hidden while the chat keyboard, chat log or emoji fan covers the
+   bottom of the screen. */
+.cv-stick.is-rest {
+  visibility: visible;
+}
+.cv-stick.is-rest:not(.is-active) {
+  opacity: 0.75;
+}
+.cv-touch.cv-chat-focus .cv-stick:not(.is-active),
+.cv-touch.cv-log-open .cv-stick:not(.is-active),
+.cv-fan-open .cv-stick:not(.is-active) {
+  visibility: hidden;
 }
 
 .cv-stick-base,

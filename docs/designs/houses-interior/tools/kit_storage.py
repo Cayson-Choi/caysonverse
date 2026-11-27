@@ -239,19 +239,39 @@ def cabinet_glass(F, w=1.2, d=0.42, h=1.9, tn=None):
 
 
 def shoe_cabinet(F, w=1.6, d=0.32, h=0.9, tn=None):
-    """띄움 신발장 (현관): floating wall cabinet with flip-down shoe drawers on a recessed plinth lit by a warm LED strip (간접등)."""
-    tn = tn or PAL["paint_white"]
+    """신발장 (현관): houses-real pass (owner 2026-11-21: the walnut doors read as dark smudges) — a solid-oak cabinet on a recessed plinth
+    with a warm LED strip under it: an oak carcass with a slightly overhanging top, a face frame, 2 x 3 inset shaker doors (a frame round
+    a recessed flat panel, the grain running up the stiles and across the rails) and small round brass knobs. Clean honey oak, no
+    proud dark door slabs."""
+    tn = tn or WOOD["honey"]
+    oak = (1.0, 0.86, 0.68, 1)
     hw, hd = w / 2, d / 2
     rbox(F, -hw + 0.03, hw - 0.03, -hd, hd - 0.03, 0.0, 0.14, "H_paint", r=0.003, seg=1, tn=(0.3, 0.3, 0.3, 1))      # recessed plinth (dark)
     rbox(F, -hw + 0.02, hw - 0.02, hd - 0.03 - 0.05, hd - 0.03, 0.01, 0.02, "H_lamp", r=0.0, seg=1)                     # LED strip under the body
-    rbox(F, -hw, hw, -hd, hd, 0.15, h, "H_paint", r=0.006, seg=1, tn=tn)
+    rbox(F, -hw, hw, -hd, hd - 0.012, 0.14, h - 0.025, "H_wood_oak", r=0.003, seg=1, tn=oak, grain=(0, 0, 1))
+    rbox(F, -hw - 0.012, hw + 0.012, -hd, hd + 0.012, h - 0.025, h, "H_wood_oak", r=0.006, seg=1, tn=oak, bottom=True)   # top
     n = 3
+    fr = 0.022                    # face-frame width
+    ys = (0.14 + fr, 0.52, h - 0.025 - fr)
+    zf = hd - 0.012
+    for i in range(n + 1):        # face frame: stiles and rails, 12 mm proud of the carcass front
+        x = -hw + fr / 2 + i * (w - fr) / n
+        rbox(F, x - fr / 2, x + fr / 2, zf, zf + 0.012, 0.14, h - 0.025, "H_wood_oak", r=0.002, seg=1, tn=oak, grain=(0, 0, 1))
+    for y in (0.14 + fr / 2, 0.52, h - 0.025 - fr / 2):
+        rbox(F, -hw, hw, zf, zf + 0.012, y - fr / 2, y + fr / 2, "H_wood_oak", r=0.002, seg=1, tn=oak)
     for i in range(n):
-        x0 = -hw + i * w / n + 0.008
-        x1 = -hw + (i + 1) * w / n - 0.008
-        for (ya, yb) in ((0.17, 0.5), (0.52, h - 0.02)):
-            rbox(F, x0, x1, hd, hd + 0.018, ya, yb, "H_wood_oak", r=0.004, seg=1, tn=WOOD["walnut"], grain=(0, 0, 1))
-        rbox(F, x0 + 0.05, x1 - 0.05, hd + 0.018, hd + 0.03, 0.5, 0.515, "H_metal", r=0.003, seg=1, tn=BLK)
+        x0 = -hw + fr + i * (w - fr) / n + 0.003
+        x1 = -hw + (i + 1) * (w - fr) / n - 0.003
+        for (ya, yb) in ((ys[0] + 0.003, ys[1] - fr / 2 - 0.003), (ys[1] + fr / 2 + 0.003, ys[2] - 0.003)):
+            rail, z0 = 0.045, zf
+            for (a, b) in ((x0, x0 + rail), (x1 - rail, x1)):        # stiles (grain up)
+                rbox(F, a, b, z0, z0 + 0.01, ya, yb, "H_wood_oak", r=0.002, seg=1, tn=tn, grain=(0, 0, 1))
+            for (a, b) in ((ya, ya + rail), (yb - rail, yb)):        # rails (grain across)
+                rbox(F, x0 + rail, x1 - rail, z0, z0 + 0.01, a, b, "H_wood_oak", r=0.002, seg=1, tn=tn)
+            rbox(F, x0 + rail, x1 - rail, z0 - 0.004, z0 + 0.004, ya + rail, yb - rail, "H_wood_oak", r=0.0, seg=1, tn=tn, grain=(0, 0, 1))
+            ky = yb - 0.05 if ya < 0.5 else ya + 0.05
+            kx = x1 - 0.07 if i < n - 1 else x0 + 0.07
+            tube(F, [(kx, z0 + 0.01, ky), (kx, z0 + 0.026, ky)], 0.012, "H_metal", 8, tn=(0.78, 0.6, 0.32, 1))        # round brass knob
     light(F, "led", 0.0, 0.0, 0.05, 15.0, "#FFC890")
     col(F, -hw, hw, -hd, hd, h, name="shoe_cabinet")
 

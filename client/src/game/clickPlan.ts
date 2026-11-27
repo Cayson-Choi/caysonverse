@@ -1059,6 +1059,34 @@ export interface PendingDetour {
 /** startClickPlan's answer: the plan itself, or a way round to look for first. */
 export type PlanStart = { plan: ClickPlan; detour?: undefined } | { plan?: undefined; detour: PendingDetour };
 
+/**
+ * A walk toward a click deep in a collider that stops farther than this (m) from the clicked thing's own near edge was stopped
+ * by something else: the near edge is walked to instead (startClickPlan). Within it, the walk stopped at the thing itself.
+ */
+export const NEAR_EDGE_SHORT = 1.5;
+/** How far back from the click (m) the near edge is looked for, and in what steps. */
+const NEAR_EDGE_REACH = 14;
+const NEAR_EDGE_STEP = 0.1;
+
+/**
+ * The first spot a body stands on going from a click deep in a collider straight back toward the walker: the near edge of
+ * the thing clicked, as the walker sees it (a flowerbed's kerb on his side, the bank of the creek). Null when there is none
+ * within NEAR_EDGE_REACH or before the walker's own spot.
+ */
+export function nearEdgeSpot(x: number, z: number, fromX: number, fromZ: number, obstacles: readonly AABB[], bounds: Bounds, r = PLAYER_RADIUS): { x: number; z: number } | null {
+  const len = Math.hypot(fromX - x, fromZ - z);
+  if (len < NEAR_EDGE_STEP) return null;
+  const ux = (fromX - x) / len;
+  const uz = (fromZ - z) / len;
+  const reach = Math.min(len, NEAR_EDGE_REACH);
+  for (let d = NEAR_EDGE_STEP; d <= reach; d += NEAR_EDGE_STEP) {
+    const px = x + ux * d;
+    const pz = z + uz * d;
+    if (isFreeSpot(px, pz, obstacles, bounds, r)) return { x: px + ux * PUSH_EPS, z: pz + uz * PUSH_EPS };
+  }
+  return null;
+}
+
 /** How many of the free spots round a click a plan tries (freeSpotsNear), nearest first. */
 const PLAN_SPOTS = 6;
 
@@ -1115,7 +1143,16 @@ export function startClickPlan(
   if (spots.length === 0) {
     // Nowhere to stand there (deep in a collider, past the area's edge): toward it, up to what is in the way (rule 2).
     const toward = simulateWalk(fromX, fromZ, surface.x, surface.z, obstacles, bounds);
-    return { plan: stoppedOnTheWay(fromX, fromZ, toward, surface.y, obstacles, bounds) };
+    // ...unless what is in the way is something ELSE, well short of the thing clicked (a lamp post, a bench or a bin on the line
+    // to the middle of a flowerbed): then the spot at the clicked thing's own near edge is where the walk goes, round whatever
+    // stands between (2026-11-21, when the beds, bushes and street furniture became solid: a click on a planted island from
+    // across the promenade stopped at a litter bin 70 m short of it). If no way round is found, it stops on the way as before.
+    const stop = toward.contact ?? toward;
+    const edge = nearEdgeSpot(surface.x, surface.z, fromX, fromZ, obstacles, bounds);
+    if (!edge || Math.hypot(stop.x - edge.x, stop.z - edge.z) <= NEAR_EDGE_SHORT || Math.hypot(edge.x - fromX, edge.z - fromZ) < MIN_TRIP) {
+      return { plan: stoppedOnTheWay(fromX, fromZ, toward, surface.y, obstacles, bounds) };
+    }
+    spots = [edge];
   }
   spots = spots.slice(0, PLAN_SPOTS);
   const first = straightTo(fromX, fromZ, spots[0], surface, seated, obstacles, bounds);

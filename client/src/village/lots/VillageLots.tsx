@@ -19,6 +19,7 @@ import { installEntranceGardens } from "./entranceGardens";
 import { dressGateLot } from "./gateDress";
 import { setLotsDrawn } from "./lotsStore";
 import { doorSwingClearance } from "./lotDoorCheck";
+import { LotRoomShowcase } from "../portal/RoomShowcase";
 import { viewState } from "../../game/viewState";
 import { LOT_ROOM_PREFETCH_M, prefetchLotRoom } from "./LotRoom";
 
@@ -123,6 +124,7 @@ function dressTempleYard(nodes: LotNodes, tier: VillageTier): void {
     }
   });
   detail.add(made.group);
+  if (import.meta.env.DEV) (window as unknown as { __cvTemplePines?: () => unknown }).__cvTemplePines = () => ({ ...made.stats });
   nodes.own.geometries.push(...made.geometries);
   nodes.own.materials.push(...(made.disposables as unknown as Material[]));
 }
@@ -151,6 +153,12 @@ function lotsFor(tier: VillageTier, gl: WebGLRenderer): LotsCache {
     });
   cache = c;
   return c;
+}
+
+/** The lots' nodes once loaded and dressed (loading them if nobody has yet): the park borrows the gatehouse from them (land/ParkGateLot.tsx). */
+export function lotsNodesFor(tier: VillageTier, gl: WebGLRenderer): Promise<LotNodes | null> {
+  if (lotsMode() === "off") return Promise.resolve(null);
+  return lotsFor(tier, gl).ready.then((v) => v?.nodes ?? null);
 }
 
 /** The loaded lots, if any (the vegetation reads their trees, the e2e their stats). */
@@ -365,7 +373,13 @@ export function VillageLots({ pose, tier }: { pose: Pose; tier: VillageTier }) {
   });
 
   if (!nodes) return null;
-  return <primitive object={nodes.root} dispose={null} />;
+  return (
+    <>
+      <primitive object={nodes.root} dispose={null} />
+      {/* the real rooms behind the glass and the open doors (owner 2026-11-21/22) */}
+      {lotsMode() === "on" && <LotRoomShowcase root={nodes.root} glass={nodes.glow.glass} />}
+    </>
+  );
 }
 
 /** DEV: the undersides (m) of the porch roofs, the pergola and the temple's eaves over a few points per lot (LOT_ROOF_SLABS' floors). */

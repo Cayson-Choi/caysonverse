@@ -371,7 +371,8 @@ export function buildSoil(plants: readonly Plant[]): Soil {
     soil.push({ geo: a.b.build(), centre: [(a.x0 + a.x1) / 2, a.y, (a.z0 + a.z1) / 2], radius: Math.hypot(a.x1 - a.x0, a.z1 - a.z0) / 2 + 1 });
   }
   let copingGeo: BufferGeometry | null = null;
-  const squares = PLAZA_BEDS.filter((b): b is Extract<Bed, { kind: "square" }> => b.kind === "square");
+  // (only the square planters that are planted here: a park build has none of the village's, and drew their four copings on its lawn)
+  const squares = [...onPlaza.keys()].filter((b): b is Extract<Bed, { kind: "square" }> => b.kind === "square");
   if (squares.length) {
     const b = new GeoBuilder();
     b.surface = true;

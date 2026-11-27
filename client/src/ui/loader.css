@@ -32,8 +32,28 @@
 .cv-loader-shade {
   background: linear-gradient(to bottom, rgba(11, 11, 20, 0) 35%, rgba(11, 11, 20, 0.55) 70%, rgba(11, 11, 20, 0.85));
 }
+/* The entry screen's stage, as it stood at the press of 입장하기 (entryFigure.ts): .cv-entry's own class and variables draw
+   the same art, podium light and motes (entry.css); here it only sits under the card instead of being the page. */
+.cv-loader-entry {
+  z-index: 0;
+  pointer-events: none;
+}
+/* A wide screen's stage has the figure in the middle down to the 입장하기 row: the card goes to the lower right, where the
+   builder's right panel stood, so it never covers the figure. */
+.cv-loader.is-wide-stage {
+  place-items: end end;
+  padding: 0 32px calc(32px + env(safe-area-inset-bottom, 0px));
+}
+/* The figure's picture at the preview canvas's own box (inline left/top/width/height). */
+.cv-loader-figure {
+  position: fixed;
+  display: block;
+  object-fit: fill;
+  pointer-events: none;
+}
 .cv-loader-card {
   position: relative;
+  z-index: 1;
   width: min(420px, 100%);
   box-sizing: border-box;
   padding: 18px 20px 16px;

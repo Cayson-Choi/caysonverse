@@ -1,7 +1,7 @@
 /**
  * e2e/village-shelter.mjs — the bus stop's shelter (2026-11-13, fix/shelter-bench): (1) the stop area has no old shelter;
  * (2) its bench can be sat on, from the road side only (E on a PC, the 앉기 button on a phone); (3) a jump inside the shelter
- * keeps the head under the roof while a jump in the open is the full 1 m hop.
+ * does not happen at all (owner 2026-11-27: "지붕이 낮은데서는 점프하면 안된다") while a jump in the open is the full 1 m hop.
  *
  *   server:  PORT=2861 npx tsx src/index.ts   (in server/)
  *   client:  VITE_SERVER_URL=http://localhost:2861 npx vite --port 5461 --strictPort   (in client/)
@@ -135,7 +135,7 @@ await run.step("sit on the shelter bench", async () => {
   await sleep(1500);
 });
 
-await run.step("jump under the shelter roof and in the open", async () => {
+await run.step("no jump under the shelter roof, the full hop in the open", async () => {
   await walkAndWait(p, 40.6, -4.9, 30000, 0.3);
   await sleep(800);
   const inside = await pos(p);
@@ -149,7 +149,7 @@ await run.step("jump under the shelter roof and in the open", async () => {
   });
   const top = await avatarTop();
   const head = under.max + top;
-  run.check("in the shelter the head stays under the roof's underside (3.3 m)", under.max > 0.1 && head < 3.3, { lift: under.max, avatarTop: top, headTop: head, at: inside });
+  run.check("in the shelter there is no jump at all (a low roof)", under.max < 0.01, { lift: under.max, avatarTop: top, headTop: head, at: inside });
   await sleep(500);
   await walkAndWait(p, 24, 12, 40000, 0.8);
   await sleep(800);

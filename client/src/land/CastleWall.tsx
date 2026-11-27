@@ -36,6 +36,7 @@ import {
   trianglesOf,
   trimGeometry,
   wallInstances,
+  wallEndGeometry,
   wallModuleGeometry,
   type WallTier,
 } from "./castleWallGeometry";
@@ -118,6 +119,7 @@ function make(plan: WallPlan, heightAt: (x: number, z: number) => number, tier: 
   const inst = wallInstances(plan, heightAt, lampsOn);
   const geos = {
     module: wallModuleGeometry(tier),
+    end: wallEndGeometry(),
     tower: towerGeometry(tier),
     roof: roofGeometry(tier),
     trim: trimGeometry(tier),
@@ -143,6 +145,7 @@ function make(plan: WallPlan, heightAt: (x: number, z: number) => number, tier: 
   root.name = "castle_wall";
   const parts = [
     instanced(geos.module, stone, inst.modules, "castle_wall_modules", shadows),
+    ...(inst.ends.length ? [instanced(geos.end, stone, inst.ends, "castle_wall_ends", shadows)] : []),
     instanced(geos.tower, stone, inst.towers, "castle_wall_towers", shadows),
     instanced(geos.roof, roof, inst.towers, "castle_wall_roofs", shadows),
     instanced(geos.trim, gold, inst.towers, "castle_wall_trim", false),
@@ -152,13 +155,14 @@ function make(plan: WallPlan, heightAt: (x: number, z: number) => number, tier: 
   root.add(...parts);
   const triangles =
     trianglesOf(geos.module) * inst.modules.length +
+    trianglesOf(geos.end) * inst.ends.length +
     (trianglesOf(geos.tower) + trianglesOf(geos.roof) + trianglesOf(geos.trim) + trianglesOf(geos.banner)) * inst.towers.length +
     trianglesOf(geos.lantern) * inst.lanterns.length;
   return {
     root,
     glass,
     glows: inst.glows,
-    stats: { drawCalls: 8, triangles: Math.round(triangles), modules: inst.modules.length, towers: inst.towers.length, lanterns: inst.lanterns.length },
+    stats: { drawCalls: 8 + (inst.ends.length ? 1 : 0), triangles: Math.round(triangles), modules: inst.modules.length, towers: inst.towers.length, lanterns: inst.lanterns.length },
     dispose() {
       for (const g of Object.values(geos)) g.dispose();
       for (const m of [stone, roof, gold, banner, iron, glass]) m.dispose();

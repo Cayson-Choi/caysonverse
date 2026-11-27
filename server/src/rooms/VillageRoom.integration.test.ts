@@ -343,6 +343,33 @@ describe("VillageRoom door (integration)", () => {
     expect(player.yaw).toBe(OUTSIDE_ARRIVAL.yaw); // +z: away from the building to its north
   });
 
+  it("a door / stair / bench press out of reach of where the server has the player is answered with ActionRefused (fix/net-sync)", async () => {
+    const { client, player } = await visitor();
+    const refused: Array<{ action: string; reason: string }> = [];
+    client.onMessage(VillageServerMsg.ActionRefused, (m: { action: string; reason: string }) => refused.push(m));
+    placeAt(player, OUT_PAD.centre.x, OUT_PAD.centre.z + 5);
+    client.send(VillageMsg.UseDoor, {});
+    expect(await pollFor(() => refused.length === 1)).toBe(true);
+    expect(refused[0]).toEqual({ action: "door", reason: "far" });
+    client.send(VillageMsg.UseStair, {});
+    expect(await pollFor(() => refused.length === 2)).toBe(true);
+    expect(refused[1]).toEqual({ action: "stair", reason: "far" });
+    // a bench 20 m away: told; a malformed sit: silent, as before
+    const seat = VILLAGE_SEATS.findIndex((st) => st.area === "village");
+    placeAt(player, VILLAGE_SEATS[seat]!.x + 20, VILLAGE_SEATS[seat]!.z);
+    client.send(MessageType.Sit, { seatIndex: seat });
+    expect(await pollFor(() => refused.length === 3)).toBe(true);
+    expect(refused[2]).toEqual({ action: "sit", reason: "far" });
+    client.send(MessageType.Sit, { seatIndex: "x" });
+    await settle(client);
+    expect(refused).toHaveLength(3);
+    // at the door: no refusal, it goes in
+    placeAt(player, OUT_PAD.centre.x, OUT_PAD.centre.z);
+    client.send(VillageMsg.UseDoor, {});
+    expect(await pollFor(() => player.area === "hall")).toBe(true);
+    expect(refused).toHaveLength(3);
+  });
+
   it("refuses the door from 5 m away: nothing changes, and the refusal uses up no door slot", async () => {
     const { client, player } = await visitor();
     placeAt(player, OUT_PAD.centre.x, OUT_PAD.centre.z + 5);
