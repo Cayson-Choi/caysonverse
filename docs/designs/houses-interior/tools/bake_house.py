@@ -268,8 +268,9 @@ def bake_lightmap(scene, obs, size, samples, out_png, lift, passes=1):
         a = px.reshape(size, size, 4)[..., :3].copy()
         acc = a if acc is None else acc + a
     a = acc / passes
-    import uv_compact    # interior polish: upholstery strips under a texel wide take the light of the cushion round them
-    log("thin upholstery islands filled", uv_compact.fill_thin_lm_islands(obs, a))
+    import uph_light     # sofa seams round 2: the seating upholstery takes its light from the mesh's vertices (uph_light.py)
+    vl = uph_light.bake_vertex_light(scene, obs, select)
+    log("upholstery triangles / buried vertices", uph_light.paint(obs, a, vl))
     for s, v in saved:
         s.default_value = v
     for m, n in added:
@@ -455,6 +456,8 @@ def main():
     gpu(scene)
     lms, fxs = {}, {}
     if not night:
+        import uph_light
+        log("upholstery pieces tagged", uph_light.tag_upholstery([o for objs in lm_by_floor().values() for o in objs]))
         for f, objs in lm_by_floor().items():
             for o in objs:
                 for m in o.data.materials:
