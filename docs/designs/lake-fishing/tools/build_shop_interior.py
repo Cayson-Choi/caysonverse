@@ -896,15 +896,118 @@ def carton_open(f, w, h, d, print_key, bag_keys):
         pillow(p, 0.12, h + 0.04, 0.03, rng.choice(bag_keys), back="pl_white", nu=3, nv=4)
 
 
+def flat_face(mat, pts, key, smooth=False, u=0.03):
+    """A face on one plain spot of a swatch (u 0.03: clear of the cylinders' painted gloss stripe, which on a flat moulded face
+    read as a chrome streak down the middle of every side)."""
+    face(mat, pts, [auv(key, u, 0.5)] * len(pts), smooth)
+
+
+def flat_grid(mat, q, key, cu, cv):
+    """A quad (p0, p1, p2, p3) split into cells about cu x cv metres (the baked light lives on the vertices: a long thin wall
+    with its four corners in the posts and under the foot band would take their dark across its whole face), one swatch spot."""
+    p0, p1, p2, p3 = (Vector(v) for v in q)
+    nu = max(1, int(math.ceil((p1 - p0).length / cu)))
+    nv = max(1, int(math.ceil((p3 - p0).length / cv)))
+    for j in range(nv):
+        for i in range(nu):
+            def at(a, b):
+                return (p0 * (1 - a) + p1 * a) * (1 - b) + (p3 * (1 - a) + p2 * a) * b
+            flat_face(mat, [at(i / nu, j / nv), at((i + 1) / nu, j / nv), at((i + 1) / nu, (j + 1) / nv), at(i / nu, (j + 1) / nv)], key)
+
+
+def mbox(fr, x0, x1, y0, y1, z0, z1, key, skip="", cell=None):
+    """A box on one plain spot of a swatch (see flat_face); `cell` = (cu, cv): its faces split (flat_grid)."""
+    P = lambda x, y, z: fr.g(x, y, z)  # noqa: E731
+    faces = {
+        "F": (P(x0, y0, z1), P(x1, y0, z1), P(x1, y1, z1), P(x0, y1, z1)),
+        "B": (P(x1, y0, z0), P(x0, y0, z0), P(x0, y1, z0), P(x1, y1, z0)),
+        "L": (P(x0, y0, z0), P(x0, y0, z1), P(x0, y1, z1), P(x0, y1, z0)),
+        "R": (P(x1, y0, z1), P(x1, y0, z0), P(x1, y1, z0), P(x1, y1, z1)),
+        "U": (P(x0, y1, z1), P(x1, y1, z1), P(x1, y1, z0), P(x0, y1, z0)),
+        "D": (P(x0, y0, z0), P(x1, y0, z0), P(x1, y0, z1), P(x0, y0, z1)),
+    }
+    for k, q in faces.items():
+        if k in skip:
+            continue
+        if cell:
+            flat_grid("atlas", q, key, *cell)
+        else:
+            flat_face("atlas", q, key)
+
+
+def crate(f, w, h, d, key="pl_blue"):
+    """A moulded plastic crate (props round 3, 2026-11-27: "파란 플라스틱 상자가 그냥 상자" -- was five plain slabs): rounded
+    corner posts standing a little proud, thin side walls set in between them, vertical ribs down every outside face between a
+    foot band and a thick rolled top rim, a middle band on the tall ones, and a hand-hold cut through both short ends under the
+    rim (its reveal is the wall's own cut faces, so the crate's inside shows through). Local: x across (w), y up (h), z deep
+    (d); brand-new, no lettering."""
+    t, post, rib, band = 0.007, 0.019, 0.006, 0.022
+    WC, LC = (0.12, 0.07), (0.16, 1.0)   # the cells of the walls and of the long bands / rims (flat_grid)
+    x0, x1, z0, z1 = -w / 2, w / 2, -d / 2, d / 2
+    # the floor slab
+    mbox(f, x0 + 0.004, x1 - 0.004, 0.0, 0.012, z0 + 0.004, z1 - 0.004, key, cell=(0.16, 0.16))
+    # corner posts: octagonal, the top capped
+    for (cx, cz) in ((x0 + post * 0.6, z0 + post * 0.6), (x1 - post * 0.6, z0 + post * 0.6), (x0 + post * 0.6, z1 - post * 0.6), (x1 - post * 0.6, z1 - post * 0.6)):
+        cyl("atlas", f.g(cx, 0.0, cz), f.g(cx, h - 0.002, cz), post, post, 8, key, caps=(False, True))
+    # the long sides (z = +-d/2): thin walls between the posts
+    for zs in (-1, 1):
+        zo = z1 if zs > 0 else z0
+        zi = zo - zs * t
+        mbox(f, x0 + post * 1.45, x1 - post * 1.45, 0.0, h - 0.004, min(zo, zi), max(zo, zi), key, cell=WC)
+    # the short ends (x = +-w/2): a wall with the hand-hold cut through it near the top
+    hw_, hh, htop = min(0.13, d * 0.4) / 2, 0.034, h - 0.03
+    hold = h > 0.15
+    for xs in (-1, 1):
+        xo = x1 if xs > 0 else x0
+        xi = xo - xs * t
+        xa, xb = min(xo, xi), max(xo, xi)
+        if not hold:
+            mbox(f, xa, xb, 0.0, h - 0.004, z0 + post * 1.45, z1 - post * 1.45, key, cell=WC)
+            continue
+        pz = post * 1.45
+        for (y0_, y1_, za, zb) in ((0.0, htop - hh, z0 + pz, z1 - pz), (htop - hh, htop, z0 + pz, -hw_), (htop - hh, htop, hw_, z1 - pz),
+                                   (htop, h - 0.004, z0 + pz, z1 - pz)):
+            mbox(f, xa, xb, y0_, y1_, za, zb, key, cell=WC)
+    # the top rim: a thick lip all round, proud of the walls, and a rounded nose on the long sides (the hand rests on them)
+    yr = h - band * 0.9
+    mbox(f, x0 - 0.002, x1 + 0.002, yr, h, z0 - 0.004, z0 + t + 0.002, key, skip="D", cell=LC)
+    mbox(f, x0 - 0.002, x1 + 0.002, yr, h, z1 - t - 0.002, z1 + 0.004, key, skip="D", cell=LC)
+    mbox(f, x0 - 0.004, x0 + t + 0.002, yr, h, z0 + t + 0.002, z1 - t - 0.002, key, skip="D", cell=LC)
+    mbox(f, x1 - t - 0.002, x1 + 0.004, yr, h, z0 + t + 0.002, z1 - t - 0.002, key, skip="D", cell=LC)
+    r_ = 0.008
+    for zs in (-1, 1):
+        zz = (z1 + 0.004) if zs > 0 else (z0 - 0.004)
+        cyl("atlas", f.g(x0 + post * 0.5, h - r_, zz), f.g(x1 - post * 0.5, h - r_, zz), r_, r_, 6, key, caps=(False, False))
+    # the foot band and, on a tall crate, a middle band
+    bands = [(0.0, band * 0.8)] + ([(h * 0.48 - 0.007, h * 0.48 + 0.007)] if h > 0.24 else [])
+    for (ya, yb) in bands:
+        mbox(f, x0 + post, x1 - post, ya, yb, z0 - 0.004, z0, key, skip="F", cell=LC)
+        mbox(f, x0 + post, x1 - post, ya, yb, z1, z1 + 0.004, key, skip="B", cell=LC)
+        mbox(f, x0 - 0.004, x0, ya, yb, z0 + post, z1 - post, key, skip="R", cell=LC)
+        mbox(f, x1, x1 + 0.004, ya, yb, z0 + post, z1 - post, key, skip="L", cell=LC)
+    # vertical ribs between the bands, outside only (not across an end's hand-hold)
+    ry0, ry1 = band * 0.8, yr
+    for zs in (-1, 1):
+        n = max(2, int((w - 2 * post) / 0.065))
+        for i in range(1, n):
+            x = x0 + post + (w - 2 * post) * i / n
+            za, zb = (z1, z1 + rib) if zs > 0 else (z0 - rib, z0)
+            mbox(f, x - 0.0045, x + 0.0045, ry0, ry1, za, zb, key, skip="UD" + ("B" if zs > 0 else "F"))
+    for xs in (-1, 1):
+        n = max(2, int((d - 2 * post) / 0.065))
+        for i in range(1, n):
+            z = z0 + post + (d - 2 * post) * i / n
+            top = (htop - hh - 0.008) if (hold and abs(z) < hw_ + 0.012) else ry1
+            xa, xb = (x1, x1 + rib) if xs > 0 else (x0 - rib, x0)
+            mbox(f, xa, xb, ry0, top, z - 0.0045, z + 0.0045, key, skip="UD" + ("L" if xs > 0 else "R"))
+
+
 def bin_with_bags(f, w, h, d, keys):
-    """A blue plastic crate full of 떡밥 bags lying at angles (ref05)."""
-    box("atlas", f, -w / 2, w / 2, 0.0, 0.012, -d / 2, d / 2, key="pl_blue")
-    for (a, b_, c, e) in ((-w / 2, w / 2, d / 2 - 0.012, d / 2), (-w / 2, w / 2, -d / 2, -d / 2 + 0.012), (-w / 2, -w / 2 + 0.012, -d / 2, d / 2), (w / 2 - 0.012, w / 2, -d / 2, d / 2)):
-        box("atlas", f, a, b_, 0.0, h, c, e, key="pl_blue")
-    box("atlas", f, -w / 2 - 0.006, w / 2 + 0.006, h - 0.012, h, d / 2 - 0.004, d / 2 + 0.006, key="pl_blue")
+    """A blue plastic crate (crate()) full of 떡밥 bags lying at angles (ref05)."""
+    crate(f, w, h, d, "pl_blue")
     n = max(2, int(w / 0.12))
     for k in range(n):
-        x = -w / 2 + 0.07 + k * (w - 0.14) / max(1, n - 1)
+        x = -w / 2 + 0.1 + k * (w - 0.2) / max(1, n - 1)   # (clear of the thin moulded walls: a bag poked through an end)
         p = f.sub(x, 0.02, d * 0.1, yaw=rng.uniform(-0.25, 0.25), pitch=rng.uniform(-1.15, -0.85))
         pillow(p, 0.15, 0.22, 0.035, rng.choice(keys), back="pl_white", nu=3, nv=4)
 
@@ -1073,6 +1176,56 @@ def folding_chair(f, fabric):
         box("atlas", f, sx * 0.22 - 0.02, sx * 0.22 + 0.02, 0.5, 0.53, -0.005, 0.05, key="pl_black")
 
 
+def stacking_stool(f, key="pl_red"):
+    """A moulded plastic stacking stool (props round 3, 2026-11-27: "빨간 의자가 그냥 상자" -- was a slab on five-sided sticks):
+    a rounded-square seat, dished a little, its edge rolled down into a short skirt, a hand-hold slot through the middle; four
+    tapered legs splayed out to grey rubber feet, a square brace ring a hand above the floor. Local: y up, seat top 0.45;
+    brand-new, no lettering."""
+    def rr(a, b, rad, k, n):
+        """A rounded rectangle (half sizes a, b; the corner's roundness from rad) as a superellipse: point k of n."""
+        t = (k / n) * math.tau
+        pw = 2.0 + 10.0 * (1.0 - min(1.0, rad / min(a, b)))
+        c, s_ = math.cos(t), math.sin(t)
+        return (a * math.copysign(abs(c) ** (2 / pw), c), b * math.copysign(abs(s_) ** (2 / pw), s_))
+    N = 28
+    top = 0.45
+    # (outline, scale, y): from the slot's bottom up its wall, out over the dished top to the rolled edge, down the skirt and
+    # back in under it
+    rings = [("slot", 1.0, top - 0.012), ("slot", 1.0, top - 0.004), ("slot", 1.6, top - 0.001), ("seat", 0.62, top - 0.004),
+             ("seat", 0.9, top), ("seat", 0.985, top - 0.004), ("seat", 1.0, top - 0.014), ("seat", 0.995, top - 0.045),
+             ("seat", 0.95, top - 0.048), ("seat", 0.945, top - 0.02)]
+    vs = []
+    for kind, sc, y in rings:
+        row = []
+        for k in range(N):
+            if kind == "slot":
+                x, z = rr(0.05 * sc, 0.014 * sc, 0.014 * sc, k, N)
+            else:
+                x, z = rr(0.165 * sc, 0.165 * sc, 0.05 * sc, k, N)
+            row.append(f.g(x, y, z))
+        vs.append(row)
+    for i in range(len(vs) - 1):
+        for k in range(N):
+            k2 = (k + 1) % N
+            flat_face("atlas", [vs[i][k], vs[i][k2], vs[i + 1][k2], vs[i + 1][k]], key, smooth=True)
+    # the underside web: from the skirt's inner lip to the slot's bottom
+    for k in range(N):
+        k2 = (k + 1) % N
+        flat_face("atlas", [vs[-1][k], vs[-1][k2], vs[0][k2], vs[0][k]], key)
+    # legs: from under the seat's corners, splayed out, tapering; rubber feet
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            cyl("atlas", f.g(sx * 0.105, top - 0.03, sz * 0.105), f.g(sx * 0.15, 0.022, sz * 0.15), 0.019, 0.014, 6, key, caps=(False, False))
+            cyl("atlas", f.g(sx * 0.15, 0.022, sz * 0.15), f.g(sx * 0.152, 0.0, sz * 0.152), 0.015, 0.016, 6, "rubber", caps=(False, True))
+    # the brace ring, a hand above the floor, on the legs' line
+    yb = 0.14
+    k_ = (yb - 0.022) / (top - 0.03 - 0.022)
+    r_ = 0.15 + (0.105 - 0.15) * k_
+    corners = [f.g(sx * r_, yb, sz * r_) for (sx, sz) in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+    for a, b in zip(corners, corners[1:] + corners[:1]):
+        cyl("atlas", a, b, 0.008, 0.008, 5, key, caps=(False, False))
+
+
 def parasol(f, cloth):
     """A closed fishing parasol: pole, the furled canopy (a fluted cone), ribs' tips, the strap, a spike."""
     cyl("atlas", f.g(0, 0, 0), f.g(0, 1.85, 0), 0.012, sides=6, key="alu")
@@ -1165,12 +1318,8 @@ def build_east():
     box("atlas", Fr(ex, FY + 0.51, ez, -math.pi / 2), -0.012, 0.012, 0.0, 0.07, -0.02, 0.02, key="pl_black")
     box("atlas", Fr(ex, FY + 0.56, ez, -math.pi / 2), -0.06, 0.03, 0.0, 0.012, -0.012, 0.012, key="pl_black")
     poly_tube("atlas", [Vector((ex - 0.01, FY + 0.55, ez + 0.02)), Vector((ex - 0.05, FY + 0.45, ez + 0.08)), Vector((ex - 0.06, FY + 0.25, ez + 0.08))], 0.008, "pl_black")
-    # a plastic stool behind the counter
-    st = Fr(103.55, FY, -21.15, 0.3)
-    box("atlas", st, -0.15, 0.15, 0.4, 0.43, -0.15, 0.15, key="pl_red")
-    for sx in (-1, 1):
-        for sz in (-1, 1):
-            cyl("atlas", st.g(sx * 0.13, 0.4, sz * 0.13), st.g(sx * 0.155, 0.0, sz * 0.155), 0.016, sides=5, key="pl_red")
+    # a red stacking stool behind the counter (stacking_stool())
+    stacking_stool(Fr(103.55, FY, -21.15, 0.3), "pl_red")
 
 
 # ------------------------------------------------------------------------------------------------ the counter
