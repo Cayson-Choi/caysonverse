@@ -133,9 +133,68 @@ export function armHouseUse(id: string | null, now: number = performance.now()):
   armed = id === null ? null : { id, at: now };
 }
 
-/** Drop the armed use (entering or leaving a house, the keys / stick taking over). Same as `armHouseUse(null)`. */
+/** Drop the armed use (entering or leaving a house, the keys / stick taking over). Same as `armHouseUse(null)`; the pad walk goes too. */
 export function disarmHouseUse(): void {
   armed = null;
+  padWalk = null;
+}
+
+/**
+ * A tap on a stair or a door walks to its pad, and that walk must END on the pad (fix/house-walk-sync, owner 2026-11-27: in houses 2, 5
+ * and 7 the walk stopped 0.9-1.55 m short and no button showed). A walk can end short of its plan in the game where the plan's
+ * simulation reached it: the server's self-correction moved the body back mid-walk, a long frame slid it the other way round a chair's
+ * corner. So the pad walk is followed: when the walk is over and the body is not on the pad, it is planned again from where it stands,
+ * up to PAD_WALK_TRIES times. Set by the tap's plan (CameraRig), dropped by any other tap, the keys / stick, a door, or arriving.
+ */
+export interface PadWalk {
+  id: string;
+  x: number;
+  z: number;
+  /** The walk to the pad has started (its click target was seen): only then does its end count. */
+  started: boolean;
+  tries: number;
+  at: number;
+}
+
+/** How many times a pad walk that ended short is planned again. */
+export const PAD_WALK_TRIES = 3;
+/** A pad walk ends here (m from the pad's centre): on the pad (radius 0.5) with room to spare. */
+export const PAD_WALK_DONE_M = 0.4;
+
+let padWalk: PadWalk | null = null;
+
+/** The pad walk the tap now planned (null: that tap was no stair / door tap). */
+export function setPadWalk(target: HouseTapTarget | null, now: number = performance.now()): void {
+  padWalk = target ? { id: target.id, x: target.x, z: target.z, started: false, tries: 0, at: now } : null;
+}
+
+export function currentPadWalk(): PadWalk | null {
+  return padWalk;
+}
+
+/**
+ * Each frame (the village scene): what to do about the pad walk, given where the body is and whether a walk is under way.
+ * "none": nothing (no pad walk, still walking, or done); "replan": the walk ended short — plan it again from here (counted).
+ */
+export function stepPadWalk(x: number, z: number, walking: boolean, now: number = performance.now()): "none" | "replan" {
+  const w = padWalk;
+  if (!w) return "none";
+  if (now - w.at > HOUSE_USE_ARM_MS * 2) {
+    padWalk = null;
+    return "none";
+  }
+  if (walking) {
+    w.started = true;
+    return "none";
+  }
+  if (!w.started) return "none";
+  if (Math.hypot(x - w.x, z - w.z) <= PAD_WALK_DONE_M || w.tries >= PAD_WALK_TRIES) {
+    padWalk = null;
+    return "none";
+  }
+  w.tries++;
+  w.started = false;
+  return "replan";
 }
 
 export function armedHouseUse(): string | null {

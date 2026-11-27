@@ -29,6 +29,7 @@ import {
   selfDiverged,
 } from "./sentMoves";
 import { useClickHint } from "../stores/clickHintStore";
+import { reanchorClickMove } from "./clickMove";
 
 /** The line shown when the self-correction puts me back where the server has me (fix/net-sync: never a silent jump). */
 export const RESYNC_HINT = "연결이 잠시 느려서 서버가 아는 자리로 돌아왔어요.";
@@ -120,6 +121,7 @@ export function startRemoteSync(
         const gap = Math.hypot(selfPose.x - player.x, selfPose.z - player.z);
         selfPose.x = player.x;
         selfPose.z = player.z;
+        reanchorClickMove(); // a walk under way goes on from here, its no-progress window measured afresh
         if (gap >= RESYNC_HINT_MIN_M) useClickHint.getState().show(RESYNC_HINT);
       };
       const correct = (): void => {
@@ -146,6 +148,7 @@ export function startRemoteSync(
         if (selfDiverged(selfPose, player, echoed)) {
           selfPose.x = player.x;
           selfPose.z = player.z;
+          reanchorClickMove();
         }
       };
       const offCorrect = $(player).onChange(correct);

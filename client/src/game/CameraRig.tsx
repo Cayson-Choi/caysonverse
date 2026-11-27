@@ -97,7 +97,7 @@ import { BUS_SEATS, busPlaceOf, cabinFloorAt, seatBodyPoint } from "@caysonverse
 import { busFloorUnderRay, busSeatUnderRay } from "../village/busSeatPick";
 import { VILLAGE_LAYOUT, cubbyAtPoint, isHouseArea, isLotArea } from "@caysonverse/shared/village/villageLayout";
 import { localArea } from "../village/villageArea";
-import { armHouseUse, houseTapTarget, tapUsesOnArrival } from "../village/houseTap";
+import { armHouseUse, houseTapTarget, setPadWalk, tapUsesOnArrival } from "../village/houseTap";
 import { DOOR_TAP_USE_RANGE_M, lotDoorTapTarget } from "../village/lotDoorTap";
 import { armRide, rideForTap, rideTapSpot } from "../land/rideBoard";
 import { openCubbyAt } from "../village/cubbyCard";
@@ -494,6 +494,8 @@ export function CameraRig({ map, pose, orbit, seat, fogRange, far: baseFar = CAM
           ? houseTapTarget(localArea(), pick?.x ?? NaN, pick?.y ?? NaN, pick?.z ?? NaN, pick?.ny, tapRay, pick?.distance ?? 0)
           : lotDoorTapTarget(localArea(), pick?.x ?? NaN, pick?.y ?? NaN, pick?.z ?? NaN, tapRay, pick?.distance ?? 0, pick?.ny);
       if (houseTap) surface = { x: houseTap.x, y: 0, z: houseTap.z, ny: 1 };
+      // ...and that walk is followed to the pad's middle (houseTap.ts setPadWalk): ended short, it is planned again from there
+      setPadWalk(houseTap);
       // (a stair is only walked to: its 올라가기 / 내려가기 button climbs, never the tap — owner 2026-11-27, tapUsesOnArrival)
       armHouseUse(houseTap && tapUsesOnArrival(houseTap.id) && Math.hypot(from.x - houseTap.x, from.z - houseTap.z) <= DOOR_TAP_USE_RANGE_M ? houseTap.id : null);
       // A tap on a ride's own body (its frame, cars, seats, a raised platform) walks to its boarding pad, where its 타기 button is; it never

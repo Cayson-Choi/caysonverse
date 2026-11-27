@@ -59,12 +59,23 @@ async function coverGone() {
     .catch(() => {});
   await sleep(450);
 }
-const idle = async (ms = 25000) => {
+/**
+ * Wait for the walk to end: no click target, or (a walk grinding on the spot — pushed against a chair, the game keeps it a moment) the body
+ * still for 2.5 s, then that walk is dropped. Never longer than `ms` (the houses sweep hung twice after h8_2_0 waiting on walks).
+ */
+const idle = async (ms = 20000) => {
   const t0 = Date.now();
+  let last = null;
+  let stillSince = Date.now();
   while (Date.now() - t0 < ms) {
-    if ((await page.evaluate(() => window.__cvClickTarget())) === null) return true;
+    const s = await page.evaluate(() => ({ t: window.__cvClickTarget(), p: window.__cv.getPos() }));
+    if (s.t === null) return true;
+    if (last && Math.hypot(s.p.x - last.x, s.p.z - last.z) > 0.02) stillSince = Date.now();
+    last = s.p;
+    if (Date.now() - stillSince > 2500) break;
     await sleep(120);
   }
+  await page.evaluate(async () => (await window.__imp("/src/game/clickMove.ts")).clearClickTarget());
   return false;
 };
 /**
@@ -86,8 +97,20 @@ async function gotoOnce(x, z, tol) {
       const map = am.getActiveMap();
       const me = window.__cv.getPos();
       const b = map.bounds ?? map.geometry.bounds;
-      const via = cp.findDetour(me.x, me.z, x, z, map.geometry.obstacles, b, undefined, { ratio: 4, slack: 30, margin: 40 });
-      cm.setClickTarget(x, z, 0, via ?? undefined);
+      // (inside a house: a room's search; the village walk between houses keeps the long way round. A goal that touches furniture is
+      // moved out of it first — the test's own spots — so the search never runs over a shut goal.)
+      const obs = map.geometry.obstacles;
+      let gx = x;
+      let gz = z;
+      if (!cp.isFreeSpot(gx, gz, obs, b)) {
+        const f = cp.nearestFreeSpot(gx, gz, obs, b, 0.75);
+        if (f) {
+          gx = f.x;
+          gz = f.z;
+        }
+      }
+      const via = cp.findDetour(me.x, me.z, gx, gz, obs, b, undefined, { ratio: 4, slack: 30, margin: 40 });
+      cm.setClickTarget(gx, gz, 0, via ?? undefined);
       return via !== null;
     }, [x, z]);
     await sleep(300);
@@ -176,6 +199,13 @@ await press(p, page.locator(".cv-submit"));
 await page.waitForFunction(() => window.__cv?.getScreen?.() === "village", null, { timeout: 60000 });
 await sleep(1500);
 
+// every press the server refuses for distance (a stair, a door, a seat) is counted: the button must never show where it is refused
+await page.evaluate(async () => {
+  window.__actionRefused = [];
+  const r = (await window.__imp("/src/net/connection.ts")).getRoom();
+  r?.onMessage("ActionRefused", (m) => window.__actionRefused.push({ ...m, at: window.__cv.getPos() }));
+});
+const refusedPresses = () => page.evaluate(() => window.__actionRefused.splice(0));
 const keypads = await page.evaluate(async () => (await window.__imp("/shared/src/village/buildingAccess.ts").catch(() => null))?.keypadEntries?.() ?? null);
 const places = await page.evaluate(async () => {
   const h = await window.__imp("/shared/src/village/houseAreas.ts").catch(() => null);
@@ -362,7 +392,13 @@ for (const n of houses) {
       // piece is in front of it there, again from 1.6 m out in front of its stand spot (the tap that hit something else walked there)
       let sat = false;
       let tries = [];
+      const seatT0 = Date.now();
       for (const vantage of ["far", "near", "nearIn", "stand", "back", "ring"]) {
+        // (a seat is given at most 3 minutes of vantages: the sweep hung twice after h8_2_0 walking to spots one cannot stand on)
+        if (Date.now() - seatT0 > 180000) {
+          tries.push({ vantage, skipped: "time" });
+          break;
+        }
         // far: the arrival spot; near: 1.6 m out from the stand spot along the seat's facing; stand: the stand spot itself, 1 m back from it
         const away = Math.hypot(seat.standX - seat.x, seat.standZ - seat.z) || 1;
         const want =
@@ -392,6 +428,14 @@ for (const n of houses) {
               const a = (k * Math.PI) / 6;
               const tx = seat.standX + Math.sin(a) * r;
               const tz = seat.standZ + Math.cos(a) * r;
+              // only a spot a body can stand on (outside every grown collider, inside the room)
+              const free = await page.evaluate(async ([x, z]) => {
+                const cp = await window.__imp("/src/game/clickPlan.ts");
+                const am = await window.__imp("/src/game/activeMap.ts");
+                const map = am.getActiveMap();
+                return cp.isFreeSpot(x, z, map.geometry.obstacles, map.bounds ?? map.geometry.bounds);
+              }, [tx, tz]);
+              if (!free) continue;
               const got = await goto(tx, tz, 0.5);
               if (Math.hypot(got.x - tx, got.z - tz) <= 0.5) {
                 at = got;
@@ -401,9 +445,15 @@ for (const n of houses) {
             if (ok) break;
           }
         }
-        await orbit(yawToward(at, seat.mx, seat.mz), 0.55);
-        // the cushion's middle (the marker; the seat point of a chair at a table is under the table)
-        const sc = await toScreen(seat.mx, seat.seatY + 0.04, seat.mz);
+        // the cushion's middle (the marker; the seat point of a chair at a table is under the table). Looked at from a little above
+        // first, then flatter: a step or two from it with a wall behind, the camera pulled in close looks over it (h7_2_2:back, the
+        // stool by the north wall, was "off screen" from every spot on its own side at the one steep tilt)
+        let sc = null;
+        for (const pitch of [0.55, 0.35, 0.18]) {
+          await orbit(yawToward(at, seat.mx, seat.mz), pitch);
+          sc = await toScreen(seat.mx, seat.seatY + 0.04, seat.mz);
+          if (sc) break;
+        }
         if (!sc) {
           tries.push({ vantage, at: [at.x, at.z], screen: null });
           continue;
@@ -517,10 +567,18 @@ for (const n of houses) {
       }
     }
     // owner 2026-11-27 ("계단을 탭하면 올라가게 하지 말고 계단 버튼을 누르면 올라가도록"): the tap walks to the pad and never climbs; the button does
+    let stairTapOk = false;
     if (s) {
       await tapAt(s);
-      await page.waitForFunction(() => window.__cvClickTarget?.() === null, null, { timeout: 15000 }).catch(() => {});
-      await sleep(2500);
+      // the walk (and any re-plan of it the game makes when it ended short: houseTap.ts stepPadWalk) is over: no target for 1.5 s
+      for (let t0 = Date.now(), freeSince = null; Date.now() - t0 < 20000; ) {
+        const busy = await page.evaluate(() => window.__cvClickTarget?.() !== null);
+        if (busy) freeSince = null;
+        else if (freeSince === null) freeSince = Date.now();
+        else if (Date.now() - freeSince > 1500) break;
+        await sleep(100);
+      }
+      await sleep(600);
       run.check(`h${n}: a tap on the stair does NOT climb (still floor 1)`, (await areaOf()) === `house:house_${n}:1`, { s, at, area: await areaOf(), pick: await page.evaluate(() => window.__cvClickPick?.()?.pick?.name ?? null) });
       const tt = await targets(p);
       const tapInfo = await page.evaluate(async (nn) => {
@@ -535,14 +593,17 @@ for (const n of houses) {
         const me = r?.state?.players?.get(r.sessionId);
         return me ? { x: me.x, z: me.z } : null;
       });
-      run.check(`h${n}: the tap walked to the stair's pad: the up button is offered`, tt.some((x) => x.id === "house_stair:up"), { at: await pos(p), server: srv, t: tt.slice(0, 3), tapInfo });
+      const end = await pos(p);
+      const onPad = Math.hypot(end.x - up.x, end.z - up.z) <= up.radius && srv && Math.hypot(srv.x - up.x, srv.z - up.z) <= up.radius;
+      run.check(`h${n}: the tap's walk ends ON the stair's pad (client and server), the up button offered`, onPad && tt.some((x) => x.id === "house_stair:up"), { at: end, server: srv, pad: up, t: tt.slice(0, 3), tapInfo });
+      stairTapOk = onPad && tt.some((x) => x.id === "house_stair:up");
     } else run.check(`h${n}: the stair is on screen to tap`, false, { at });
     if ((await areaOf()) !== `house:house_${n}:1`) return;
     let upstairs = false;
     {
-      // onto the pad itself unless the tap's walk already stands on it (the button may show from up to 1.75 m in front of it)
-      const here = await pos(p);
-      if (Math.hypot(here.x - up.x, here.z - up.z) > 0.5 || !(await targets(p)).some((x) => x.id === "house_stair:up")) at = await goto(up.x, up.z, 0.3);
+      // the button where the tap left us (strict, owner rule 2026-11-27); only after a failed tap check is the pad walked to by hand,
+      // so the rest of the house is still swept
+      if (!stairTapOk) at = await goto(up.x, up.z, 0.3);
       const t = await targets(p);
       run.check(`h${n}: at the stair pad the up button is offered`, t.some((x) => x.id === "house_stair:up"), { at, t: t.slice(0, 3) });
       if (phone) {
@@ -552,6 +613,8 @@ for (const n of houses) {
       await act();
       upstairs = await waitArea(`house:house_${n}:2`, 12000);
       run.check(`h${n}: the up button takes one to floor 2`, upstairs, await areaOf());
+      const refused = await refusedPresses();
+      run.check(`h${n}: the server took the press (no "계단에서 조금 멀어요")`, refused.length === 0, refused);
       if (!upstairs) return;
     }
     await coverGone();

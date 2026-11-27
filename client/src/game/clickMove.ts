@@ -277,6 +277,21 @@ export function endWalk(): void {
   state.windowSec = 0;
 }
 
+/**
+ * The pose was moved by something other than the walk's own steps — the server's self-correction putting me back where it has me
+ * (remoteSync.ts). The walk goes on from there, and its no-progress window starts again from the new spot: measured across the jump,
+ * a correction back along the way read as "no progress" and dropped the walk short of where it was going (fix/house-walk-sync: a tap
+ * on a house's stair ended 0.9-1.55 m before its pad). The leg toward the next corner starts again there too.
+ */
+export function reanchorClickMove(): void {
+  state.anchored = false;
+  state.windowSec = 0;
+  if (state.target) {
+    state.legX = Number.NaN;
+    state.legZ = Number.NaN;
+  }
+}
+
 /** Drop the target and any pending tap ring (manual-input yield / sit-confirm / Esc — design 29 (b)/(e)). */
 export function clearClickTarget(): void {
   endWalk();

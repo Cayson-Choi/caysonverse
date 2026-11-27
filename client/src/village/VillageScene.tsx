@@ -4,10 +4,11 @@ import { Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternal
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { PlayShell } from "../game/PlayShell";
-import { villageActiveMap } from "../game/activeMap";
-import { clearClickTarget, peekClickTarget } from "../game/clickMove";
+import { activeBounds, getActiveMap, villageActiveMap } from "../game/activeMap";
+import { clearClickTarget, peekClickTarget, peekPendingClick, setClickTarget } from "../game/clickMove";
+import { planClickMove } from "../game/clickPlan";
 import { fireTarget, setTargetHandler, setTargetSource } from "../game/interactTargets";
-import { armedHouseUse, disarmHouseUse, takeArmedHouseUse } from "./houseTap";
+import { armedHouseUse, currentPadWalk, disarmHouseUse, stepPadWalk, takeArmedHouseUse } from "./houseTap";
 import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor, sendUseStair } from "../net/connection";
@@ -66,6 +67,8 @@ import {
   villageBusTarget,
   villageTargets,
 } from "./villageTargets";
+import { serverAgreedTargets } from "./serverReach";
+import { normalizeArea } from "../game/areaFilter";
 import { GuideNpcs } from "./GuideNpc";
 import { GuideDialog } from "./GuideDialog";
 import { guideDialogOpen, openGuideDialog } from "./guideDialogStore";
@@ -272,6 +275,13 @@ function busWaitNotice(departsInMs: number): string {
   return `🚌 다음 버스는 ${busCountdownWords(departsInMs).long} 뒤에 떠나요. 버스는 ${every}분마다 다니고, 출발 ${boardingOpensWords()} 전부터 탈 수 있어요.`;
 }
 
+/** Where the server has me now (my synced player), or null before the room's state has me. */
+function selfServerPose(): { x: number; z: number; area: string } | null {
+  const room = getRoom();
+  const me = room?.state?.players?.get?.(room.sessionId);
+  return me ? { x: me.x, z: me.z, area: normalizeArea(me.area) } : null;
+}
+
 function VillageDoors({ pose }: { pose: Pose }) {
   const { boarded } = useTransitState();
   const keypadOpen = useKeypad().buildingId !== null;
@@ -286,7 +296,8 @@ function VillageDoors({ pose }: { pose: Pose }) {
         const right = free && busWalk.valid ? busWalk.right : selfBusRide.right;
         return villageBusCabinTargets(selfBusRide.slot, ahead, right, takenBusSpots(), busOnRoad(), busRiderPoints(), free && busWalk.valid ? busWalk.yaw : undefined, busSeatPreferred.index);
       }
-      const base = villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null || keypadOpen);
+      // (a house's / a lot room's stair and way out only where the server has me in reach too: serverReach.ts)
+      const base = serverAgreedTargets(area, villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null || keypadOpen), selfServerPose(), villageTargets);
       const bus = villageBusTarget(area, p.x, p.z, boarded, ...busScheduleNow(), busOnRoad());
       // within the keypad's 2 m of a house door the house's model starts to come (it is usually in by the time the code is typed)
       const keypad = base.find((t) => t.id.startsWith(KEYPAD_TARGET_PREFIX));
@@ -352,7 +363,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
       const stair = target.id.startsWith(HOUSE_STAIR_TARGET_PREFIX);
       doorFade.begin(() => {
         // walked away while the curtain closed (the same thing still offered, or nothing to use)
-        if (!villageTargets(localArea(), pose.x, pose.z).some((t) => t.id === target.id)) return false;
+        if (!serverAgreedTargets(localArea(), villageTargets(localArea(), pose.x, pose.z), selfServerPose(), villageTargets).some((t) => t.id === target.id)) return false;
         if (stair) sendUseStair();
         else sendUseDoor();
         return true;
@@ -384,9 +395,17 @@ function VillageDoors({ pose }: { pose: Pose }) {
       return;
     }
     if (area === "village") maybePreloadPark(pose.x, pose.z); // the park's files start loading as the gate comes near
+    // a tap on a stair / door: its walk is followed onto the pad, planned again from here if it ended short (houseTap.ts stepPadWalk)
+    // (inside a house or a lot room only: a room's way round is a small search; a village door tapped from afar keeps its one walk)
+    if ((isHouseArea(area) || isLotArea(area)) && stepPadWalk(pose.x, pose.z, peekClickTarget() !== null || peekPendingClick() !== null) === "replan") {
+      const w = currentPadWalk();
+      const map = getActiveMap();
+      const plan = w && planClickMove(pose.x, pose.z, { x: w.x, y: 0, z: w.z, ny: 1 }, map.geometry.obstacles, activeBounds(), false, { furniture: map.geometry.obstacles });
+      if (plan && plan.ok) setClickTarget(plan.x, plan.z, plan.y, plan.via);
+    }
     // a house floor, a lot building's room, or the village with a lot door's use armed by a tap on it (lotDoorTap.ts)
     if (!isHouseArea(area) && !isLotArea(area) && armedHouseUse() === null) return;
-    const offered = villageTargets(area, pose.x, pose.z);
+    const offered = serverAgreedTargets(area, villageTargets(area, pose.x, pose.z), selfServerPose(), villageTargets);
     const id = takeArmedHouseUse(offered.map((t) => t.id));
     const target = id === null ? undefined : offered.find((t) => t.id === id);
     if (target) fireTarget(target, "press");

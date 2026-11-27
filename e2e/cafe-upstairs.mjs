@@ -170,10 +170,34 @@ try {
   if (ONLY.includes("walk")) {
     await run.step("2. walk round the salon; the stairwell and the furniture are never walked into", async () => {
       const spots = { "the front windows": [6.8, 0.9], "the sofa's front": [12.3, 3.0], "the middle": [7.6, 6.4], "the sideboard": [6.3, 11.9], "the bookcase": [0.9, 9.9], "the back corner": [1.2, 12.3], "the wing chairs": [10.8, 12.3], "the far front corner": [12.9, 1.2] };
+      // Each spot the way a tap on the floor there is walked: the game's own plan (clickPlan.planClickMove — a spot touching a piece of
+      // furniture is moved out of it, a way round included). Interiors round 1 (2026-11-27) put a plant under the front windows and a
+      // round table in the middle: a bare setClickTarget at those exact points (inside the grown boxes) had no way round and stopped 3 m
+      // short, while a real tap there walks to the floor beside them.
       for (const [name, [x, z]] of Object.entries(spots)) {
         const [wx, wz] = at(U, x, z);
-        const got = await walkAndWait(A, wx, wz, 60000, 0.7);
-        run.check(`A walks to ${name}`, Math.hypot(got.x - wx, got.z - wz) < 0.9, { want: [r2(wx), r2(wz)], got: [r2(got.x), r2(got.z)] });
+        let got = null;
+        let plan = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          plan = await A.page.evaluate(async ([x, z]) => {
+            const cp = await window.__imp("/src/game/clickPlan.ts");
+            const cm = await window.__imp("/src/game/clickMove.ts");
+            const am = await window.__imp("/src/game/activeMap.ts");
+            const me = window.__cv.getPos();
+            const obs = am.getActiveMap().geometry.obstacles;
+            const pl = cp.planClickMove(me.x, me.z, { x, y: 0, z, ny: 1 }, obs, am.activeBounds(), false, { furniture: obs });
+            if (pl.ok) cm.setClickTarget(pl.x, pl.z, 0, pl.via);
+            return pl.ok ? { ok: true, x: pl.x, z: pl.z, adjusted: pl.adjusted, via: (pl.via ?? []).length } : pl;
+          }, [wx, wz]);
+          if (!plan.ok) break;
+          await sleep(400);
+          await waitIdle(A, 60000);
+          await sleep(300);
+          got = await pos(A);
+          if (Math.hypot(got.x - plan.x, got.z - plan.z) < 0.4) break;
+        }
+        got ??= await pos(A);
+        run.check(`A walks to ${name} (a tap's walk)`, plan.ok && Math.hypot(plan.x - wx, plan.z - wz) < 1.0 && Math.hypot(got.x - plan.x, got.z - plan.z) < 0.4, { want: [r2(wx), r2(wz)], plan, got: [r2(got.x), r2(got.z)] });
       }
       let bad = 0;
       for (const s of U.solids) {
