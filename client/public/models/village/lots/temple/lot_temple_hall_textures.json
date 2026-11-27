@@ -27,6 +27,18 @@
       "normalScale": 1.0,
       "metal": false
     },
+    "LM_temple_petal": {
+      "pbr": "dancheong_wood",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 0.6,
+      "normalScale": 1.0,
+      "metal": false
+    },
     "LM_temple_pine": {
       "pbr": "wood_pine_natural",
       "repeatMeters": [

@@ -398,7 +398,7 @@ def fireplace(kit):
         Gd.lathe([(0.0, 0.0), (0.06, 0.0), (0.08, 0.1), (0.045, 0.2), (0.05, 0.24), (0.0, 0.24)], 18, S("LM_library_paint", G.hexc(c)), x, zf - 0.08, 1.72)
         # (2026-11-27: real blooms from their petals, flora.py; before, six plaster spheres) roses and a peony with leaves
         lod0, G.LOD = G.LOD, min(G.LOD, 0.6)
-        petal_s = S("LM_library_plaster", (1.0, 1.0, 1.0))
+        petal_s = S("LM_library_petal", (1.0, 1.0, 1.0))   # (own material: the `_petal` fill, props round 3 2026-11-27)
         # a full low posy over the vase's mouth (heads touching, a peony in the middle), not tall single stems
         F.stem(Gd, (x, 1.9, zf - 0.08), (x, 2.03, zf - 0.08), 0.003, LEAF_DK)
         F.peony(Gd, (x, 2.03, zf - 0.08), 0.07, petal_s, G.hexc("F7B9C8"), seed=int(x * 10))

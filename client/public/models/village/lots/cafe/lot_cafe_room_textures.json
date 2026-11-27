@@ -92,6 +92,18 @@
       "normalScale": 0.4,
       "metal": false
     },
+    "LM_cafe_petal": {
+      "pbr": "plaster_painted",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 2.0,
+      "vertexColor": true,
+      "roughnessScale": 0.6,
+      "normalScale": 1.0,
+      "metal": false
+    },
     "LM_cafe_plaster": {
       "pbr": "plaster_painted",
       "repeatMeters": [
