@@ -99,6 +99,12 @@ export interface VegMaterialOptions {
   moss?: boolean;
   /** The vertex colour's alpha cuts the surface (alpha test): the soil's soft edge. */
   edgeAlpha?: boolean;
+  /**
+   * A second surface blended in by the vertex colour's alpha (0: `map` / `normalMap`, 1: these): the red pine's grey,
+   * deeply fissured foot under its orange flaky upper bark (lots/templePines.ts). Needs `map` and `normalMap`; the
+   * vertex alpha is then the blend, not the instance-tint mask.
+   */
+  blend?: { map: Texture; normalMap: Texture };
 }
 
 const VERT_PARS = /* glsl */ `uniform float uVegTime;
@@ -215,6 +221,11 @@ const VERT_PROJECT = /* glsl */ `#ifdef USE_INSTANCING
 
 const FRAG_PARS = /* glsl */ `#define SS_ONE_TAP
 #define SS_GEO_NORMAL
+#ifdef VEG_BLEND
+uniform sampler2D uVegBlendMap;
+uniform sampler2D uVegBlendNormal;
+#endif
+float vegBlendK = 0.0;
 #ifdef VEG_NMAP
 uniform sampler2D uVegNormal;
 uniform float uVegNormalScale;
@@ -240,6 +251,16 @@ void main() {`;
 
 /** Keep cut-out foliage alpha stable without derivative instructions that trigger ANGLE warnings on mobile GPUs. */
 const FRAG_MAP = /* glsl */ `#include <map_fragment>
+#if defined( VEG_BLEND ) && defined( USE_MAP )
+	{
+		// the second bark takes over where the vertex alpha says, first on its raised plates (a ragged, not a ruled, change)
+		vec3 vegB = texture2D( uVegBlendMap, vMapUv ).rgb;
+		float vegLum = dot( vegB, vec3( 0.333 ) );
+		vegBlendK = clamp( ( vColor.a - 0.5 ) * 2.2 + ( vegLum - 0.5 ) * 1.6 + 0.5, 0.0, 1.0 );
+		vegBlendK = vColor.a <= 0.001 ? 0.0 : vColor.a >= 0.999 ? 1.0 : vegBlendK;
+		diffuseColor.rgb = mix( diffuseColor.rgb, vegB, vegBlendK );
+	}
+#endif
 #if defined( USE_MAP ) && defined( USE_ALPHATEST )
 	// A fixed lift avoids dFdx/dFdy inside the cut-out path, which ANGLE reports as a varying-gradient warning.
 	diffuseColor.a *= 1.12;
@@ -247,6 +268,8 @@ const FRAG_MAP = /* glsl */ `#include <map_fragment>
 
 const FRAG_COLOR = /* glsl */ `#ifdef VEG_EDGE
 	if ( vColor.a < 0.5 ) discard;
+	vec3 vegAlbedo = vColor.rgb;
+#elif defined( VEG_BLEND )
 	vec3 vegAlbedo = vColor.rgb;
 #else
 	vec3 vegAlbedo = vColor.rgb * mix( vec3( 1.0 ), vVegTint, vColor.a );
@@ -261,6 +284,9 @@ const FRAG_COLOR = /* glsl */ `#ifdef VEG_EDGE
 		nT = dot( nT, nT ) > 1e-8 ? normalize( nT ) : normalize( cross( nN, vec3( 0.0, 0.0, 1.0 ) ) + 1e-4 );
 		vec3 nB = cross( nN, nT );
 		vec3 tn = texture2D( uVegNormal, vMapUv ).xyz * 2.0 - 1.0;
+#ifdef VEG_BLEND
+		tn = mix( tn, texture2D( uVegBlendNormal, vMapUv ).xyz * 2.0 - 1.0, vegBlendK );
+#endif
 		tn.xy *= uVegNormalScale;
 		vec3 n = normalize( nT * tn.x + nB * tn.y + nN * tn.z );
 		float ndl = dot( n, uVegSunF );
@@ -320,6 +346,8 @@ export function vegMaterial(o: VegMaterialOptions): MeshBasicMaterial {
     uVegSunF: vegSunUniform, // the live sun once the live shadows run (as uVegSun)
     uVegShadeF: { value: [o.ambient, o.sky, o.sun, o.back] },
     uVegGloss: { value: o.gloss ?? 0 },
+    uVegBlendMap: { value: o.blend?.map ?? null },
+    uVegBlendNormal: { value: o.blend?.normalMap ?? null },
     uVegMossDir: { value: new Vector3(-SUN.x, 0, -SUN.z).normalize() },
     uVegTime: vegTimeUniform,
     uVegWind: vegWindUniform,
@@ -339,7 +367,7 @@ export function vegMaterial(o: VegMaterialOptions): MeshBasicMaterial {
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     bindSunShadowUniforms(shader.uniforms);
-    const surface = (o.normalMap ? "#define VEG_NMAP\n" : "") + (o.normalMap && o.moss ? "#define VEG_MOSS\n" : "") + (o.edgeAlpha ? "#define VEG_EDGE\n" : "");
+    const surface = (o.normalMap ? "#define VEG_NMAP\n" : "") + (o.normalMap && o.moss ? "#define VEG_MOSS\n" : "") + (o.edgeAlpha ? "#define VEG_EDGE\n" : "") + (o.blend && o.normalMap ? "#define VEG_BLEND\n" : "");
     const defines = surface + (o.sprite ? "#define VEG_SPRITE\n" : "") + (o.push && !o.sprite ? "#define VEG_PUSH\n" : "") + (o.twig && !o.sprite ? "#define VEG_TWIG\n" : "");
     shader.vertexShader = defines + shader.vertexShader
       .replace("void main() {", VERT_PARS)
@@ -350,7 +378,7 @@ export function vegMaterial(o: VegMaterialOptions): MeshBasicMaterial {
       .replace("#include <map_fragment>", FRAG_MAP)
       .replace("#include <color_fragment>", FRAG_COLOR);
   };
-  m.customProgramCacheKey = () => `village-veg-${o.sprite ? "sprite" : "mesh"}-${o.cherry ? "cherry" : "foliage"}-${o.push ? "push" : "fixed"}-${o.twig ? "twig" : "solid"}-${o.normalMap ? "nmap" : ""}${o.moss ? "moss" : ""}${o.edgeAlpha ? "edge" : ""}`;
+  m.customProgramCacheKey = () => `village-veg-${o.sprite ? "sprite" : "mesh"}-${o.cherry ? "cherry" : "foliage"}-${o.push ? "push" : "fixed"}-${o.twig ? "twig" : "solid"}-${o.normalMap ? "nmap" : ""}${o.moss ? "moss" : ""}${o.edgeAlpha ? "edge" : ""}${o.blend ? "blend" : ""}`;
   return m;
 }
 

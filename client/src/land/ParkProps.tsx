@@ -63,24 +63,17 @@ export function ParkProps({ all }: { all: Texture[] }) {
   const tex = useMemo(() => bannerTexture(), []);
   const bannerMat = useMemo(() => new MeshStandardMaterial({ map: tex, roughness: 0.85 }), [tex]);
   const bannerGeo = useMemo(() => {
-    // Both printed sides follow the same folds. The sewn top sleeve stays on the crossbar.
-    const faces = bannerPosts.flatMap((post, i) => {
+    // Hung flat and straight, both printed sides back to back (owner 2026-11-27: "케이슨랜드 깃발을 쫙 펴" — the old folds, the
+    // bottom pushed sideways and the pleats, read as a crooked banner). The sewn top sleeve stays on the crossbar.
+    const faces = bannerPosts.flatMap((post) => {
       const x = post.x + (post.x < 40 ? 0.9 : -0.9);
-      // Leave clearance above the neighbouring rain hood even at the lowest fold.
+      // Leave clearance above the neighbouring rain hood.
       const height = 2.15;
       const sleeveY = 3.47;
       return [0, Math.PI].map((yaw) => {
-        const face = new PlaneGeometry(0.8, height, 10, 8).rotateY(yaw);
-        const p = face.getAttribute("position");
-        for (let k = 0; k < p.count; k++) {
-          const u = p.getX(k) / 0.8 + 0.5;
-          const drop = 0.5 - p.getY(k) / height;
-          const pleat = Math.sin(u * 10.5 + 1.2 * drop + i * 1.7);
-          const billow = 0.10 * Math.sin(Math.PI * drop) + drop * (0.08 + 0.12 * pleat);
-          p.setXYZ(k, x + p.getX(k) + 0.055 * drop * drop, sleeveY - height * drop + 0.035 * drop * pleat, post.z + billow);
-        }
-        face.computeVertexNormals();
-        return face;
+        // each side 2 mm off the middle toward its own viewer: the two never fight for the same pixels
+        const side = yaw === 0 ? 0.002 : -0.002;
+        return new PlaneGeometry(0.8, height).rotateY(yaw).translate(x, sleeveY - height / 2, post.z + side);
       });
     });
     const cloth = mergeGeometries(faces);

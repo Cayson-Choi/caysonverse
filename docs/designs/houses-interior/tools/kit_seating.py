@@ -34,26 +34,38 @@ def welt(F, pts, tn, r=0.006, m="H_fabric"):
     tube(F, pts, r, m, 6, tn=tn, caps=False)
 
 
-def cushion_seat(F, x0, x1, z0, z1, y0, y1, m, tn, puff=0.012, sag=0.012, r=0.04):
-    rbox(F, x0, x1, z0, z1, y0, y1, m, r=r, seg=3, tile=0.5, tn=tn, puff=puff, sag=sag, cuts=6, smooth=True, bottom=False)
-    # top welt seam along the front edge
-    welt(F, [(x0 + r, z1 - 0.004, y1 - r * 0.6), (x1 - r, z1 - 0.004, y1 - r * 0.6)], tn)
+def cushion_seat(F, x0, x1, z0, z1, y0, y1, m, tn, puff=0.012, sag=0.012, r=0.05):
+    """a loose seat cushion. houses-real pass (owner 2026-11-21, "is this really a new house?"): brand-new cushions — a gently crowned top,
+    no sat-in dip (sag is ignored) and no separate welt tube (it cut through the crowned top, the light bake turned those cuts into dark
+    scallops along every seat front and the thin tube into a hard dark line)."""
+    rbox(F, x0, x1, z0, z1, y0, y1, m, r=r, seg=3, tile=0.5, tn=tn, puff=min(puff, 0.012), sag=0.0, cuts=4, smooth=True, bottom=False)
 
 
 def back_cushion(F, x0, x1, z, y0, y1, thick, m, tn, tilt=0.2, puff=0.025):
-    rbox(F, x0, x1, z - thick, z, y0, y1, m, r=0.05, seg=3, tile=0.5, tn=tn, puff=puff, cuts=5, smooth=True, tilt=tilt)
+    rbox(F, x0, x1, z - thick, z, y0, y1, m, r=0.05, seg=3, tile=0.5, tn=tn, puff=puff, cuts=3, smooth=True, tilt=tilt)
+
+
+_PILLOW_K = [0]
 
 
 def pillow(F, cx, cz, y0, w, h, th, m, tn, tilt=0.25, yaw=0.0):
+    """scatter cushion. layered pass: a house palette (S.pillow_m / S.pillow_tns) gives patterned cushions in its accent colours"""
+    if S.pillow_m:
+        m = S.pillow_m[_PILLOW_K[0] % len(S.pillow_m)] if isinstance(S.pillow_m, (list, tuple)) else S.pillow_m
+    if S.pillow_tns:
+        tn = S.pillow_tns[_PILLOW_K[0] % len(S.pillow_tns)]
+    _PILLOW_K[0] += 1
     G = F.sub(cx, cz, 0, yaw)
-    rbox(G, -w / 2, w / 2, -th / 2, th / 2, y0, y0 + h, m, r=th * 0.35, seg=3, tile=0.4, tn=tn, puff=0.03, cuts=5, smooth=True, tilt=tilt,
+    rbox(G, -w / 2, w / 2, -th / 2, th / 2, y0, y0 + h, m, r=th * 0.35, seg=3, tile=0.4, tn=tn, puff=0.03, cuts=3, smooth=True, tilt=tilt,
          taper=0.0)
 
 
 # ====================================================================================================== sofas =====
-def sofa_fabric(F, w=2.4, d=0.95, seats=3, tn=None, wood_tn=None, pillow_tn=None, m="H_fabric", leg_h=0.13, arm_w=0.16,
+def sofa_fabric(F, w=2.4, d=0.86, seats=3, tn=None, wood_tn=None, pillow_tn=None, m="H_fabric", leg_h=0.13, arm_w=0.16,
                 back_h=0.84, mark=True, mark_id=0, low=False):
-    """Low 3-seat fabric sofa (photo 02): slim wood legs, plinth frame, loose seat cushions with sag + welt seams, tilted back
+    """(layered pass 2: 0.86 m deep, was 0.95 — the game's seat click volume reaches 0.67 m behind the seat and 0.25 m round it, so a tap on
+    a deeper sofa's backrest from behind fell outside every seat and went to the neighbouring seat: release 4, h7_1_1 -> h7_1_2)
+    Low 3-seat fabric sofa (photo 02): slim wood legs, plinth frame, loose seat cushions with sag + welt seams, tilted back
     cushions, rounded arms, two scatter pillows."""
     tn = tn or PAL["sofa_grey"]
     wt = wood_tn or WOOD["walnut"]
@@ -79,8 +91,10 @@ def sofa_fabric(F, w=2.4, d=0.95, seats=3, tn=None, wood_tn=None, pillow_tn=None
             seat(F, mark_id * 10 + i, SEAT_KIND_BACKED, (a + b) / 2, (sz0 + 0.07 + hd) / 2, ty, 0.0, edge=(hd - sz0 - 0.07) / 2,
                  back=(hd - sz0 - 0.07) / 2 - 0.0, width=sw - 0.1, approach=APPROACH_FRONT)
     pt = pillow_tn or PAL["sofa_sage"]
-    pillow(F, inner0 + 0.30, sz0 + 0.3, ty, 0.42, 0.40, 0.14, m, pt, tilt=0.35, yaw=0.15)
-    pillow(F, inner1 - 0.28, sz0 + 0.3, ty, 0.42, 0.40, 0.14, m, PAL["mustard"], tilt=0.35, yaw=-0.2)
+    # layered pass 2 (release 4 seat bug): the scatter cushions sit tucked into the arms, small and leaning back, so a tap on the seat
+    # beside an end seat is not caught by a cushion standing over the end seat's cushion (h2_1_6 -> h2_1_5, h7_1_1 -> h7_1_2)
+    pillow(F, inner0 + 0.16, sz0 + 0.2, ty, 0.3, 0.3, 0.11, m, pt, tilt=0.5, yaw=0.25)
+    pillow(F, inner1 - 0.16, sz0 + 0.2, ty, 0.3, 0.3, 0.11, m, PAL["mustard"], tilt=0.5, yaw=-0.25)
     col(F, -hw, hw, -hd, hd, 0.9, name="sofa")
 
 
@@ -109,7 +123,7 @@ def sofa_L(F, w=2.6, d=0.95, chaise=1.6, tn=None, **kw):
     col(F, x0, hw, z0, z1, 0.62, name="sofa_chaise")
 
 
-def sofa_leather(F, w=2.1, d=0.95, seats=3, tn=None):
+def sofa_leather(F, w=2.1, d=0.86, seats=3, tn=None):   # layered pass 2: 0.86 m deep (see sofa_fabric: the seat click volume)
     """leather sofa (10 번 집, 6번 집): rolled arms, tufting buttons on the back, brown/tan leather, dark wood feet."""
     tn = tn or PAL["leather_brown"]
     m = "H_leather"

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import {
   CanvasTexture,
-  CircleGeometry,
   Color,
   DoubleSide,
   Euler,
@@ -28,8 +27,10 @@ import { BulbHalos } from "./nightGlow";
 import { parkMaterial, pickSet } from "./pbr";
 import { Parts, type V3 } from "./artParts";
 import { rideMs } from "./rideClock";
+import { selfRide } from "./coasterRide";
+import { RIDE } from "@caysonverse/shared/land/rides";
 import { DROP_CAR, DROP_DECK_Y, DROP_PLATFORM_INNER, DROP_PLATFORM_R, DROP_SEATS_PER_FACE, DROP_SITE, DROP_STATION_Y, DROP_TOWER_H, dropAt, type DropState } from "@caysonverse/shared/land/dropTower";
-import { DROP_BEAM_YS, DROP_CROWN_Y, DROP_FRAME, dropFrameD } from "@caysonverse/shared/land/dropTowerGeometry";
+import { DROP_BEAM_YS, DROP_CROWN_Y } from "@caysonverse/shared/land/dropTowerGeometry";
 
 type K = "plaster" | "concrete" | "deck" | "indigo" | "violet" | "gold" | "cloud" | "glass" | "leather" | "pad" | "white" | "ink" | "steel" | "panel" | "moon";
 
@@ -83,19 +84,11 @@ function starGeometry(r: number, depth: number, bevelSegments = 2) {
   return g;
 }
 
-/** A crescent moon, extruded (the finial's moon). */
-function crescentGeometry(r: number, depth: number, curveSegments = 24) {
-  const s = new Shape();
-  s.absarc(0, 0, r, Math.PI * 0.2, Math.PI * 1.8, false);
-  s.absarc(r * 0.42, 0, r * 0.8, Math.PI * 1.72, Math.PI * 0.28, true);
-  const g = new ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelSize: 0.05, bevelThickness: 0.05, bevelSegments: 3, curveSegments });
-  g.translate(0, 0, -depth / 2);
-  return g;
-}
-
 interface Build {
   tower: Mesh[];
   car: Mesh[];
+  /** the harnesses' shoulder arms (in the car's frame): hidden from the own rider's first-person view */
+  harness: Mesh[];
   towerBulbs: V3[];
   carBulbs: V3[];
 }
@@ -103,12 +96,15 @@ interface Build {
 function build(mats: Record<K, Material>): Build {
   const t = new Parts<K>();
   const c = new Parts<K>();
+  const h = new Parts<K>();
   const towerBulbs: V3[] = [];
   const carBulbs: V3[] = [];
   const th = DROP_CAR.towerHalf;
 
-  // ── the tower: a white plaster column on a concrete plinth with sculpted indigo-and-gold bands, lit arched windows and moon medallions; round it a taper-legged frame
-  // (four leaning legs with indigo knuckles, ring beams, glowing arched panels and braces) that stays outside the car's swept cylinder (dropFrameReach, unit-tested) ──
+  // ── the tower: a white plaster column on a concrete plinth with sculpted indigo-and-gold bands, lit arched windows and moon medallions, like a real drop tower
+  // (Intamin Gyro Drop, S&S): ONE column, the ring car round it, nothing outside the car. Until 2026-11-21 a frame stood round it (four leaning legs, ring beams,
+  // glowing arched panels, braces) 2-3 m in front of every rider's eyes: a beam and a panel filled the view at the station and one passed every 10 m of the lift
+  // (owner: "구름탑에 시야를 가리는 걸 다 없애"). It is gone: a rider looks out over the park with nothing between ──
   const CY = DROP_CROWN_Y;
   const BEAMS = DROP_BEAM_YS;
   t.soft("concrete", 3.6, 1.0, 3.6, 0, 0.5, 0, 0.08);
@@ -164,93 +160,15 @@ function build(mats: Record<K, Material>): Build {
     towerBulbs.push([Math.cos(a) * 3.2, CY - 0.1, Math.sin(a) * 3.2]);
   }
 
-  // the frame: four leaning legs (taper, indigo knuckles with gold rings) at the beams' levels
-  const frameD = dropFrameD;
-  const legR = (y: number): number => 0.8 - 0.42 * (y / CY);
-  const knuckles = [DROP_DECK_Y, ...BEAMS.slice(1), CY + 0.4];
-  for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as [number, number][]) {
-    for (let i = 0; i + 1 < knuckles.length; i++) {
-      const y0 = knuckles[i]!;
-      const y1 = knuckles[i + 1]!;
-      t.rod("plaster", [sx * frameD(y0), y0, sz * frameD(y0)], [sx * frameD(y1), y1, sz * frameD(y1)], legR(y0), legR(y1), 14);
-    }
-    for (const y of knuckles.slice(1, -1)) {
-      const x = sx * frameD(y);
-      const z = sz * frameD(y);
-      const r = legR(y) * 1.32;
-      t.rod("indigo", [x, y - 0.5, z], [x, y + 0.5, z], r, r, 14);
-      t.rod("gold", [x, y - 0.56, z], [x, y - 0.46, z], r * 1.1, r * 1.1, 14);
-      t.rod("gold", [x, y + 0.46, z], [x, y + 0.56, z], r * 1.1, r * 1.1, 14);
-      t.ball("white", 0.2, x + sx * r * 0.95, y, z + sz * r * 0.95, 1, 1.15, 1, 12);
-      towerBulbs.push([x + sx * r * 0.95, y, z + sz * r * 0.95]);
-    }
-    // the foot: a stepped pedestal on the deck
-    const fx = sx * frameD(DROP_DECK_Y);
-    const fz = sz * frameD(DROP_DECK_Y);
-    t.soft("concrete", 1.9, 0.9, 1.9, fx, DROP_DECK_Y + 0.45, fz, 0.06);
-    t.box("gold", 2.0, 0.07, 2.0, fx, DROP_DECK_Y + 0.92, fz);
-    t.soft("indigo", 1.5, 0.5, 1.5, fx, DROP_DECK_Y + 1.2, fz, 0.05);
-    t.box("gold", 1.58, 0.06, 1.58, fx, DROP_DECK_Y + 1.48, fz);
-  }
-  // beams, arches with glowing panels, braces: on every face
-  const starG = starGeometry(0.24, 0.05, 1);
-  const moonG = crescentGeometry(0.62, 0.06, 8);
-  const bayTop = [...BEAMS.slice(1), CY - 0.3];
-  for (let f = 0; f < 4; f++) {
-    const a = (f * Math.PI) / 2;
-    const nx = Math.cos(a);
-    const nz = Math.sin(a);
-    const ry = -a;
-    // a frame whose z is the face's outward normal and whose x runs along the face (right-handed), at distance d from the axis and height y
-    const basis = (d: number, y: number): Matrix4 => new Matrix4().makeBasis(new Vector3(nz, 0, -nx), new Vector3(0, 1, 0), new Vector3(nx, 0, nz)).setPosition(nx * d, y, nz * d);
-    for (let b = 0; b < BEAMS.length + 1; b++) {
-      const y = b < BEAMS.length ? BEAMS[b]! : CY - 0.3;
-      const d = frameD(y);
-      const len = 2 * d - 0.5;
-      t.box("indigo", DROP_FRAME.beamHalf * 2, 0.5, len, nx * d, y, nz * d, 0, ry, 0);
-      t.box("gold", DROP_FRAME.beamHalf * 2 + 0.06, 0.06, len + 0.06, nx * d, y + 0.28, nz * d, 0, ry, 0);
-      t.box("gold", DROP_FRAME.beamHalf * 2 + 0.06, 0.06, len + 0.06, nx * d, y - 0.28, nz * d, 0, ry, 0);
-      for (let k = -1; k <= 1; k++) if (b % 2 === 0 || k !== 0) towerBulbs.push([nx * (d + 0.3) - nz * k * (len / 3), y + 0.2, nz * (d + 0.3) + nx * k * (len / 3)]);
-    }
-    for (let b = 0; b < BEAMS.length; b++) {
-      const y = BEAMS[b]!;
-      const d = frameD(y);
-      const rho = d - 0.8;
-      const cy = y + 0.3;
-      // the glowing panel (a half disc just inside the arch), a gold arch and a white inner moulding
-      t.add("panel", new CircleGeometry(rho - 0.05, 32, 0, Math.PI), basis(d - 0.06, cy));
-      t.add("gold", new TorusGeometry(rho, 0.11, 6, 28, Math.PI), basis(d, cy));
-      t.add("white", new TorusGeometry(rho - 0.3, 0.05, 5, 24, Math.PI), basis(d - 0.03, cy));
-      // a crescent and stars on the panel
-      t.add("moon", moonG, new Matrix4().multiplyMatrices(basis(d - 0.02, cy + rho * 0.38), new Matrix4().makeRotationZ(0.35)));
-      for (const [u, v] of [[-0.55, 0.3], [0.55, 0.3], [-0.3, 0.72], [0.38, 0.66]] as [number, number][]) t.add("moon", starG, new Matrix4().multiplyMatrices(basis(d - 0.02, cy + rho * v), new Matrix4().makeTranslation(u * rho, 0, 0)));
-      // bulbs along the arch
-      for (let k = 0; k <= 6; k++) {
-        const ang = (k / 6) * Math.PI;
-        towerBulbs.push([nx * (d + 0.2) - nz * Math.cos(ang) * (rho + 0.05), cy + Math.sin(ang) * (rho + 0.05), nz * (d + 0.2) + nx * Math.cos(ang) * (rho + 0.05)]);
-      }
-      // braces over the arch up to the next beam
-      const yA = cy + rho + 0.5;
-      const yB = bayTop[b]! - 0.35;
-      if (yB - yA > 1.6 && y < 79) {  // the top bay stays open: the riders at the 85 m hold look out over it
-        const w = d - 0.7;
-        const p = (u: number, yy: number): V3 => [nx * d - nz * u, yy, nz * d + nx * u];
-        t.rod("gold", p(-w, yA), p(w, yA), 0.045, 0.045, 6);
-        t.rod("gold", p(-w, yA), p(w, yB), 0.065, 0.065, 6);
-        t.rod("gold", p(w, yA), p(-w, yB), 0.065, 0.065, 6);
-        t.ball("gold", 0.13, nx * d, (yA + yB) / 2, nz * d, 1, 1, 1, 10);
-      }
-    }
-  }
 
-  // ── the cloud crown: a wide cloud bank over the frame's heads (a flat lens with sculpted puffs round it, tiers rising to the centre), the gold moon and a wheel of stars on its finial; scaled 1.3 for the tall tower ──
+  // ── the cloud crown: a wide cloud bank over the column's capital (a flat lens with sculpted puffs round it, tiers rising to the centre), the gold moon and a wheel of stars on its finial; scaled 1.3 for the tall tower ──
   const S = 1.3;
   const cloud = (r: number, x: number, dy: number, z: number, seed: number, squash: number, detail: number): void => t.puff("cloud", r * S, x * S, CY + dy * S, z * S, seed, squash, detail);
   cloud(6.2, 0, 0.7, 0, 2.2, 0.26, 4);
   for (let i = 0; i < 4; i++) {
     const sx = i < 2 ? 1 : -1;
     const sz = i % 2 === 0 ? 1 : -1;
-    const dd = frameD(CY);
+    const dd = 4.5; // four big puffs on the diagonals, well above the car's top stop
     t.puff("cloud", 2.6, sx * dd, CY + 1.3, sz * dd, 4 + i * 1.7, 0.78, 4);
     cloud(1.5, sx * (dd + 0.9) / S, 0.3, sz * (dd - 0.8) / S, 9 + i, 0.8, 3);
   }
@@ -337,14 +255,8 @@ function build(mats: Record<K, Material>): Build {
   side(e, -e, e, -1.6);
   side(e, 1.6, e, e);
   for (const [x, z] of [[-e, -e], [e, -e], [-e, e], [e, e], [e, -1.6], [e, 1.6], [0, -e], [0, e], [-e, 0]] as [number, number][]) post(x, z);
-  // the gate: two posts and a crescent arch across the opening, lanterns on top
-  for (const z of [-1.6, 1.6]) {
-    t.rod("indigo", [R, DROP_DECK_Y, z], [R, DROP_DECK_Y + 2.5, z], 0.1, 0.1, 12);
-    t.ball("gold", 0.16, R, DROP_DECK_Y + 2.62, z, 1, 1, 1, 14);
-    t.ball("white", 0.2, R, DROP_DECK_Y + 2.95, z, 1, 1.15, 1, 14);
-    towerBulbs.push([R, DROP_DECK_Y + 2.95, z]);
-  }
-  t.add("gold", new TorusGeometry(1.6, 0.07, 10, 36, Math.PI), new Matrix4().compose(new Vector3(R, DROP_DECK_Y + 2.5, 0), new Quaternion().setFromEuler(new Euler(0, Math.PI / 2, 0)), new Vector3(1, 1, 1)));
+  // the gate: the opening in the east rail, between two posts no taller than the rail's own (until 2026-11-21 two 2.5 m posts with lanterns and a crescent arch
+  // stood here, 4.5 m in front of the east face's seats: at the station they crossed the riders' view; the deck's four corner lamps light the station)
   // steps down to the lawn (east), the queue fence along both sides of the path to the pad
   const nSteps = 5;
   const run = 0.42;
@@ -352,7 +264,7 @@ function build(mats: Record<K, Material>): Build {
     const h = DROP_DECK_Y * ((nSteps - i) / (nSteps + 1)) + 0.05;
     const x = R + run * (i + 0.5);
     t.box("concrete", run, h, 3.2, x, h / 2, 0);
-    t.box("deck", 0.06, 0.05, 3.3, x + run / 2 - 0.03, h, 0);
+    t.box("deck", 0.06, 0.05, 3.3, x + run / 2 - 0.02, h, 0); // nosing: stands 1 cm proud of the riser (flush it z-fought the step's face)
   }
   const stepEnd = R + run * nSteps;
   for (const z of [-1.9, 1.9]) {
@@ -448,25 +360,28 @@ function build(mats: Record<K, Material>): Build {
       c.soft("leather", 0.14, 0.92, 0.68, bk[0], bk[1], bk[2], 0.07, 0, ry, -0.0);
       const hd = P(hip - 0.36, 1.12, z);
       c.soft("leather", 0.13, 0.3, 0.4, hd[0], hd[1], hd[2], 0.05, 0, ry, 0);
-      // the over-the-shoulder harness: two padded arms from the back top, over the shoulders, down the chest to the lap, a gold hinge up top and a buckle
+      // the over-the-shoulder harness (a real drop tower's restraint): two padded arms from the back top, over the shoulders, down the chest to the lap, a gold
+      // hinge up top and a buckle. Its SHOULDER part (everything above the lap) is built as its own meshes (`h`): the own rider's view hides it (it stood beside
+      // the eyes: looking left or right it crossed the view), everyone else sees the whole harness; the lap part (the buckle bar and the two short stems) stays
       for (const s of [-1, 1]) {
         const zz = z + s * 0.3;
-        const path = [P(hip - 0.3, 1.2, zz), P(hip - 0.18, 1.4, zz), P(hip + 0.1, 1.42, zz), P(hip + 0.3, 1.12, zz), P(hip + 0.38, 0.62, zz), P(hip + 0.4, 0.22, zz)];
-        c.tube("indigo", path.map((p) => new Vector3(...p)), 0.042, 10);
-        const h = P(hip - 0.3, 1.2, zz);
-        c.ball("gold", 0.07, h[0], h[1], h[2], 1, 1, 1, 10);
+        const upper = [P(hip - 0.3, 1.2, zz), P(hip - 0.18, 1.4, zz), P(hip + 0.1, 1.42, zz), P(hip + 0.3, 1.12, zz), P(hip + 0.38, 0.62, zz), P(hip + 0.395, 0.44, zz)];
+        h.tube("indigo", upper.map((p) => new Vector3(...p)), 0.042, 10);
+        const hinge = P(hip - 0.3, 1.2, zz);
+        h.ball("gold", 0.07, hinge[0], hinge[1], hinge[2], 1, 1, 1, 10);
+        c.rod("indigo", P(hip + 0.395, 0.46, zz), P(hip + 0.4, 0.22, zz), 0.042, 0.042, 10);
         const q = P(hip + 0.4, 0.5, zz);
         c.ball("pad", 0.07, q[0], q[1], q[2], 0.8, 1.5, 0.8, 12);
       }
       const buckle = P(hip + 0.4, 0.22, z);
-      c.rod("gold", P(hip + 0.4, 0.22, z - 0.2), P(hip + 0.4, 0.22, z + 0.2), 0.03, 0.03, 8);
+      c.rod("gold", P(hip + 0.4, 0.22, z - 0.3), P(hip + 0.4, 0.22, z + 0.3), 0.03, 0.03, 8);
       c.ball("gold", 0.045, buckle[0], buckle[1], buckle[2], 1, 1, 1, 10);
       // a gold stud line on the back and a small star badge
       const sp = P(hip - 0.4, 0.42, z);
       c.ball("gold", 0.04, sp[0], sp[1], sp[2], 1, 1, 1, 8);
     }
   }
-  return { tower: t.meshes(mats, TILES), car: c.meshes(mats, TILES), towerBulbs, carBulbs };
+  return { tower: t.meshes(mats, TILES), car: c.meshes(mats, TILES), harness: h.meshes(mats, TILES), towerBulbs, carBulbs };
 }
 
 const ST: DropState = { cycle: 0, phase: 0, status: "boarding", stage: "idle", y: DROP_STATION_Y, v: 0, a: 0, rideT: 0, departsInMs: 0 };
@@ -477,6 +392,7 @@ export function DropTowerWorld({ all }: { all: Texture[] }) {
   const cam = useThree((s) => s.camera);
   const root = useRef<Group>(null);
   const carRef = useRef<Group>(null);
+  const harnessRef = useRef<Group>(null);
   const mats = useMemo<Record<K, Material>>(() => {
     const paint = (color: string, extra: Partial<MeshStandardMaterial> = {}): MeshStandardMaterial => Object.assign(new MeshStandardMaterial({ color, roughness: 0.34, metalness: 0.15 }), extra);
     const flat = (color: string, extra: Partial<MeshStandardMaterial> = {}): MeshStandardMaterial => Object.assign(new MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.05 }), extra);
@@ -538,6 +454,8 @@ export function DropTowerWorld({ all }: { all: Texture[] }) {
   useFrame(() => {
     const st = dropAt(rideMs(), ST);
     if (carRef.current) carRef.current.position.y = st.y;
+    // my own view from the seat: no shoulder arms beside the eyes (the photo camera and everyone not riding see them)
+    if (harnessRef.current) harnessRef.current.visible = !(selfRide.slot >= 0 && selfRide.ride === RIDE.droptower) || !!(window as unknown as { __cvShot?: unknown }).__cvShot;
   });
 
   return (
@@ -552,15 +470,21 @@ export function DropTowerWorld({ all }: { all: Texture[] }) {
           {built.car.map((m, i) => (
             <primitive key={i} object={m} />
           ))}
+          <group ref={harnessRef} name="ride-droptower-harness">
+            {built.harness.map((m, i) => (
+              <primitive key={i} object={m} />
+            ))}
+          </group>
           <instancedMesh ref={carBulbRef} args={[bulbGeo, bulbMat, built.carBulbs.length]} frustumCulled={false} dispose={null} />
           <BulbHalos places={built.carBulbs} size={0.4} strength={0.5} />
         </group>
-        <mesh position={[DROP_PLATFORM_R + 3.6, 2.1, -4.2]} rotation={[0, Math.PI / 2, 0]} material={signMat}>
-          <planeGeometry args={[4.2, 1.575]} />
+        {/* the name board: LOW (top at 1.5 m, under a seated rider's eye line at the station: until 2026-11-21 it hung at 2.1 m, at eye height 8 m in front of the east seats) */}
+        <mesh position={[DROP_PLATFORM_R + 3.6, 0.9, -4.2]} rotation={[0, Math.PI / 2, 0]} material={signMat}>
+          <planeGeometry args={[3.2, 1.2]} />
         </mesh>
         {[-1, 1].map((s) => (
-          <mesh key={s} position={[DROP_PLATFORM_R + 3.56, 1.05, -4.2 + s * 1.95]} material={goldMat}>
-            <cylinderGeometry args={[0.07, 0.07, 2.1, 10]} />
+          <mesh key={s} position={[DROP_PLATFORM_R + 3.56, 0.8, -4.2 + s * 1.5]} material={goldMat}>
+            <cylinderGeometry args={[0.07, 0.07, 1.6, 10]} />
           </mesh>
         ))}
       </group>

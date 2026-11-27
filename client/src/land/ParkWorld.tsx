@@ -42,13 +42,10 @@ import { ParkBenches } from "./ParkBenches";
 import { ParkVegetation } from "./ParkVegetation";
 import type { VillageTier } from "../village/villageModelPrep";
 import { GeoBuilder, type V3 } from "./geoBuilder";
-import { gateSignTexture } from "./canvasTextures";
 import { GRASS_VARIATION_PARS } from "../village/grassVariation";
 import { buildParkTerrain } from "./parkTerrain";
 import { parkSkyTexture } from "./parkSkyTexture";
 import { ALL_PARK_URLS, featherTexture, parkMaterial, pickSet } from "./pbr";
-import { addBellRoof, addHedge, addLathe } from "./parkShapes";
-import { boxwoodTextures } from "./boxwoodTexture";
 import { parkBorders, parkTroughStone } from "./parkBorders";
 import { grassTuft } from "../village/veg/vegGeometry";
 import { soilTextures } from "../village/veg/vegSoil";
@@ -59,7 +56,8 @@ import { buildFountainStone, createStoneFountainWater } from "../village/fountai
 import { STAR_FOUNTAIN, STAR_SPOUTS } from "../village/fountain/fountainDesigns";
 import { LAMP_GLOBE, flagstoneRing, victorianLampGeometry } from "../village/lots/gateDress";
 import { getPbrSet, pbrTextures } from "../village/pbr/pbrLibrary";
-import { addGateArch, addGateStar } from "./parkGateStone";
+import { ParkVillageView } from "./ParkVillageView";
+import { ParkGateLot } from "./ParkGateLot";
 import { BulbHalos, LampPools } from "./nightGlow";
 import { CastleWall, PARK_WALL_LOOK } from "./CastleWall";
 import { PARK_WALL_PLAN } from "@caysonverse/shared/village/parkWall";
@@ -267,171 +265,7 @@ function Ground({ all }: { all: Texture[] }) {
 
 // ───────────────────────────────────────── the gate arch, the fountain ─────────────────────────────────────────
 
-/** The gate's tiles come from the houses' scanned set (Poly Haven clay_roof_tiles_03; see models/village/LICENSE.md); its stone is the library's granite. */
-const GATE_TEX_DIR = "/models/village/houses/";
-const GATE_TEX_URLS = [
-  `${GATE_TEX_DIR}house_tile_albedo.webp`,
-  `${GATE_TEX_DIR}house_tile_normal${isTouchDevice ? "_512" : ""}.webp`,
-  `${GATE_TEX_DIR}house_tile_rough.webp`,
-];
-
-/** The tile sheet as an indigo glaze: its luminance (the tile edges, the stamped diamonds) tinted, never a flat colour. */
-const GLAZE_FRAGMENT = /* glsl */ `#ifdef USE_MAP
-	vec4 sampledDiffuseColor = texture2D( map, vMapUv );
-	float glazeL = dot( sampledDiffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
-	diffuseColor.rgb *= mix( sampledDiffuseColor.rgb, vec3( glazeL ) * vec3( 0.95, 1.2, 2.7 ), 0.9 );
-#endif`;
-
-/** The gate: two sandstone towers with tiled spires and gold finials, a segmental arch of voussoirs between them (a keystone, imposts), an attic with the carved name board, a dentilled cornice, a gold star. */
-/** Built once per page: the park's Suspense retries render the gate again and again, and every try must be free. */
-const gateCache = new Map<string, unknown>();
-function once<T>(key: string, make: () => T): T {
-  if (!gateCache.has(key)) gateCache.set(key, make());
-  return gateCache.get(key) as T;
-}
-
-function GateArch({ all }: { all: Texture[] }) {
-  void all;
-  // plain loads (no Suspense): the sets stream in beside the park's own, the materials pick them up when they arrive
-  const tex = once("tex", () => GATE_TEX_URLS.map((u) => new TextureLoader().load(u)));
-  const sign = once("sign", () => gateSignTexture());
-  const signMat = once("signMat", () => new MeshStandardMaterial({ map: sign, roughness: 0.5, emissive: new Color("#ffffff"), emissiveMap: sign, emissiveIntensity: 0.15 }));
-  // fix/gate-fountain-park: the mossy sandstone scan smeared dark olive under the arch and stretched along the voussoirs (the
-  // owner wants everything brand-new, no weathering): the library's flamed granite, warmed to a clean sandstone, at cut-stone grain
-  const gl = useThree((st) => st.gl);
-  const stone = once("stone", () => {
-    const m = new MeshStandardMaterial({ name: "gate_stone", vertexColors: true, color: new Color("#f6e2c6"), roughness: 0.9, metalness: 0, emissive: new Color("#3b2d1e"), emissiveIntensity: 0.4 }); // (the emissive: sky bounce under the arch, which the lawn's green hemisphere light turned olive)
-    getPbrSet("granite_flamed", isTouchDevice ? "1k" : "2k", gl).then((set) => {
-      const t = pbrTextures(set, { repeat: [3, 3] });
-      m.map = t.map;
-      m.normalMap = t.normalMap;
-      m.normalScale.set(0.8, -0.8);
-      m.roughnessMap = t.orm;
-      m.needsUpdate = true;
-    });
-    return m;
-  });
-  const roof = once("roof", () => {
-    const m = parkMaterial({ c: tex[0]!, n: tex[1]!, r: tex[2]! }, 1, { ownedMaps: true, normalScale: 1.4 });
-    m.onBeforeCompile = (shader) => {
-      shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>", GLAZE_FRAGMENT);
-    };
-    m.customProgramCacheKey = () => "gate-glaze";
-    m.name = "gate_tiles";
-    return m;
-  });
-  const starGeo = once("starGeo", () => {
-    const sh = new Shape();
-    for (let i = 0; i < 10; i++) {
-      const r = i % 2 === 0 ? 1.7 : 0.72;
-      const a = -Math.PI / 2 + (i * Math.PI) / 5;
-      if (i === 0) sh.moveTo(Math.cos(a) * r, -Math.sin(a) * r);
-      else sh.lineTo(Math.cos(a) * r, -Math.sin(a) * r);
-    }
-    return new ExtrudeGeometry(sh, { depth: 0.4, bevelEnabled: true, bevelSize: 0.08, bevelThickness: 0.08, bevelSegments: 2 });
-  });
-  const gold = once("gold", () => new MeshStandardMaterial({ color: "#f2c14e", emissive: new Color("#6b4a08"), emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.6 }));
-  const CZ = -186.5;
-  const geoStone = once("geoStone", () => {
-    const b = new GeoBuilder();
-    const sand: V3 = [1, 0.96, 0.92];
-    const TOWERS = [31.25, 48.75];
-    for (const tx of TOWERS) {
-      b.box([tx, 5, CZ], X, Y, 1.75, 5, 3.5, [1, 1, 1], 1.4);
-      b.box([tx, 10.3, CZ], X, Y, 2.1, 0.3, 3.8, [0.88, 0.85, 0.8], 1.4);
-      b.box([tx, 0.25, CZ], X, Y, 2.0, 0.25, 3.75, [0.72, 0.7, 0.66], 1.4);
-      // string courses: two projecting bands round the shaft, and a plinth moulding
-      for (const y of [3.3, 6.4]) b.box([tx, y, CZ], X, Y, 1.9, 0.12, 3.65, [0.92, 0.9, 0.86], 1.4);
-      b.box([tx, 0.62, CZ], X, Y, 1.86, 0.1, 3.6, [0.9, 0.88, 0.84], 1.4);
-      // quoins up the four corners: alternating long and short blocks
-      for (let k = 0; k < 16; k++) {
-        const y = 0.9 + k * 0.58;
-        const long = k % 2 === 0;
-        for (const sx of [-1, 1]) {
-          for (const sz of [-1, 1]) {
-            b.box([tx + sx * (1.75 - (long ? 0.3 : 0.18)), y, CZ + sz * 3.5], X, Y, long ? 0.3 : 0.18, 0.27, 0.04, [0.97, 0.93, 0.88], 1.4);
-            b.box([tx + sx * 1.75, y, CZ + sz * (3.5 - (long ? 0.3 : 0.18))], [0, 0, 1], Y, long ? 0.3 : 0.18, 0.27, 0.04, [0.97, 0.93, 0.88], 1.4);
-          }
-        }
-      }
-      // corbel table under the top slab, on all four faces
-      for (let i = 0; i < 9; i++) {
-        const x = tx - 1.6 + i * 0.4;
-        for (const sz of [-1, 1]) b.box([x, 9.72, CZ + sz * 3.62], X, Y, 0.13, 0.2, 0.13, sand, 1.4);
-      }
-      for (let i = 0; i < 16; i++) {
-        const z = CZ - 3.3 + i * 0.44;
-        for (const sx of [-1, 1]) b.box([tx + sx * 1.62, 9.72, z], X, Y, 0.13, 0.2, 0.13, sand, 1.4);
-      }
-      // a pointed-arch window slit on each long face (the dark glass and a deep reveal)
-      for (const sz of [-1, 1]) {
-        b.box([tx, 7.9, CZ + sz * 3.52], X, Y, 0.34, 0.95, 0.06, [0.1, 0.09, 0.14]);
-        b.box([tx, 8.95, CZ + sz * 3.52], [0.7071, 0.7071, 0], [-0.7071, 0.7071, 0], 0.24, 0.24, 0.06, [0.1, 0.09, 0.14]);
-        b.box([tx, 6.95, CZ + sz * 3.56], X, Y, 0.5, 0.07, 0.12, sand, 1.4);
-        for (const sx of [-1, 1]) b.box([tx + sx * 0.46, 7.9, CZ + sz * 3.54], X, Y, 0.07, 1.0, 0.08, sand, 1.4);
-      }
-    }
-    addGateArch(b, CZ);
-    // Impost blocks at the springing points.
-    for (const sx of [-1, 1]) b.box([40 + sx * 6.85, 5.1, CZ], X, Y, 0.34, 0.13, 1.8, [0.9, 0.88, 0.84], 1.4);
-    b.box([40, 9.1, CZ], X, Y, 7.0, 0.9, 1.6, [1, 0.97, 0.93], 1.4); // the attic that carries the name board
-    // the carved board's frame: a raised stone border round the name board, on both faces
-    for (const sz of [-1, 1]) {
-      const z = CZ + sz * 1.64;
-      b.box([40, 10.0 - 0.1, z], X, Y, 4.0, 0.1, 0.1, sand, 1.4);
-      b.box([40, 8.2 + 0.1, z], X, Y, 4.0, 0.1, 0.1, sand, 1.4);
-      for (const sx of [-1, 1]) b.box([40 + sx * 3.95, 9.1, z], X, Y, 0.1, 0.9, 0.1, sand, 1.4);
-    }
-    // the cornice over the attic with a dentil row under it
-    b.box([40, 10.3, CZ], X, Y, 8.0, 0.3, 1.95, [0.9, 0.87, 0.83], 1.4);
-    b.box([40, 9.95, CZ], X, Y, 7.4, 0.05, 1.75, [0.88, 0.85, 0.8], 1.4);
-    for (let x = 33.3; x <= 46.8; x += 0.4) for (const sz of [-1, 1]) b.box([x, 9.84, CZ + sz * 1.84], X, Y, 0.1, 0.1, 0.09, sand, 1.4);
-    return b.build();
-  });
-  const roofGeo = once("roofGeo", () => {
-    const b = new GeoBuilder();
-    // a bell-shaped tiled spire on each tower (swept concave sides, an eave kick, the plan rounding into a cone), taller than before
-    for (const tx of [31.25, 48.75]) addBellRoof(b, tx, 10.6, CZ, 2.15, 3.7, 7.0, [1, 1, 1], 2.0);
-    return b.build();
-  });
-  const trimGeo = once("trimGeo", () => {
-    const b = new GeoBuilder();
-    // a gilt collar under each spire's tip and a gilt ball finial with a weather-vane rod, turned on the lathe
-    for (const tx of [31.25, 48.75]) {
-      addLathe(b, tx, CZ, [[0.01, 0], [0.12, 0.02], [0.34, 0.12], [0.4, 0.3], [0.3, 0.46], [0.12, 0.56], [0.09, 0.7], [0.2, 0.86], [0.26, 1.04], [0.2, 1.24], [0.06, 1.4], [0.01, 1.46], [0.01, 1.9]], [1, 1, 1], 1, 20, 17.5);
-    }
-    // gilt bosses on the name board's frame, both faces
-    for (const sz of [-1, 1]) {
-      const z = CZ + sz * 1.74;
-      for (const sx of [-1, 1]) for (const yy of [8.35, 9.85]) b.cylinder([40 + sx * 3.95, yy, z], [40 + sx * 3.95, yy, z + sz * 0.1], 0.13, 0.1, 10, [1, 1, 1], true);
-      // The enamel face sits on a brass tray, with a projecting lip and two folded star reliefs.
-      b.box([40, 9.1, CZ + sz * 1.67], X, Y, 2.85, 0.745, 0.077, [1, 1, 1]);
-      for (const edge of [-1, 1]) {
-        b.box([40, 9.1 + edge * 0.724, CZ + sz * 1.760], X, Y, 2.85, 0.021, 0.032, [1, 1, 1]);
-        b.box([40 + edge * 2.829, 9.1, CZ + sz * 1.760], X, Y, 0.021, 0.702, 0.032, [1, 1, 1]);
-        addGateStar(b, 40 + edge * 2.14, 9.1, CZ + sz * 1.767, sz);
-      }
-    }
-    // gilt window sills on the towers and the arch's keystone boss
-    for (const tx of [31.25, 48.75]) for (const sz of [-1, 1]) b.box([tx, 6.9, CZ + sz * 3.7], X, Y, 0.52, 0.04, 0.1, [1, 1, 1]);
-    for (const sz of [-1, 1]) b.cylinder([40, 7.7, CZ + sz * 1.78], [40, 7.7, CZ + sz * 1.9], 0.32, 0.26, 16, [1, 1, 1], true);
-    return b.build();
-  });
-  return (
-    <group>
-      <mesh geometry={geoStone} material={stone} castShadow receiveShadow />
-      <mesh geometry={roofGeo} material={roof} castShadow />
-      <mesh geometry={trimGeo} material={gold} castShadow />
-      <mesh position={[40, 9.1, CZ + 1.765]} material={signMat}>
-        <planeGeometry args={[5.6, 1.4]} />
-      </mesh>
-      <mesh position={[40, 9.1, CZ - 1.765]} rotation={[0, Math.PI, 0]} material={signMat}>
-        <planeGeometry args={[5.6, 1.4]} />
-      </mesh>
-      <mesh geometry={starGeo} material={gold} position={[40, 12.2, CZ - 0.2]} scale={1.2} />
-    </group>
-  );
-}
+// (the gate itself is the village's gatehouse, lent to the park: ParkGateLot.tsx)
 
 /**
  * The plaza's star fountain (fix/gate-fountain-park; the owner: "여기도 너무 허접하다"): STAR_FOUNTAIN turned in pale flamed
@@ -656,31 +490,11 @@ function PathBorders({ stone }: { stone: MeshStandardMaterial }) {
 function Beds({ all }: { all: Texture[] }) {
   const troughGeo = useMemo(parkTroughStone, []);
   const troughMat = useMemo(() => parkMaterial(pickSet(all, "Concrete034"), 1, { vertexColors: true, color: new Color("#efe6d6"), normalScale: 0.6 }), [all]);
-  // hedges lining the promenade's two sides: clipped boxwood, a trimmed profile with a leafy skin (parkShapes.addHedge)
-  const hedgeGeo = useMemo(() => {
-    const b = new GeoBuilder();
-    for (const [i, hx] of [28.6, 51.4].entries()) {
-      // a run of short hedges with a hand's gap between them, so it reads as planted sections and not one long box
-      const segs: Array<[number, number]> = [];
-      for (let z = -178; z < -122; z += 7) segs.push([z + 0.15, Math.min(z + 6.85, -122)]);
-      segs.forEach(([a, c], k) =>
-        addHedge(b, hx, a, hx, c, { width: 1.25, height: 1.15, bump: 0.05, tile: 0.6, seed: 11 + i * 17 + k }, (_t, crown, lf) => {
-          const v = 0.74 + lf * 0.35 + crown * 0.22;
-          return [v * 0.9, v, v * 0.88];
-        }),
-      );
-    }
-    return b.build();
-  }, []);
-  const hedgeMat = useMemo(() => {
-    const tx = boxwoodTextures();
-    return new MeshStandardMaterial({ map: tx.map, bumpMap: tx.bump, bumpScale: 2.2, vertexColors: true, roughness: 0.72, side: DoubleSide });
-  }, []);
+  // (the long low boxwood strips that lined the promenade were taken out, owner 2026-11-21: they only got in the walkers' way; plain lawn)
   return (
     <group>
       <PathBorders stone={troughMat} />
       <mesh geometry={troughGeo} material={troughMat} castShadow receiveShadow />
-      <mesh geometry={hedgeGeo} material={hedgeMat} castShadow receiveShadow />
     </group>
   );
 }
@@ -758,7 +572,7 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       <ParkHighClouds />
       <Ground all={all} />
       <Shops all={all} />
-      <GateArch all={all} />
+      <ParkGateLot tier={tier} />
       {wallMode() === "on" && <CastleWall id="park" plan={PARK_WALL_PLAN} heightAt={parkGroundHeight} tier={tier === "high" ? "high" : "low"} look={PARK_WALL_LOOK} lampsOn="inner" shadows={!isTouchDevice} />}
       <Fountain env={env} tier={tier} />
       <ParkVegetation />
@@ -769,6 +583,9 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
       <ParkScenery all={all} />
       <Suspense fallback={null}>
         <ParkMountains tier={tier === "high" ? "high" : "low"} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <ParkVillageView />
       </Suspense>
       <CoasterWorld all={all} pine={pine} env={env} />
       <CarouselWorld env={env} all={all} />

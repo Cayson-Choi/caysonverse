@@ -1,0 +1,165 @@
+{
+  "lot": "lot_cafe_upstairs",
+  "format": "ktx2",
+  "note": "Every LM_ material is a shared PBR library set (client/src/village/pbr/pbrLibrary.ts getPbrSet(id, tier, gl) -> createPbrMaterial(set, { repeatMeters: [1, 1] })): the model's UVs are metres, COLOR_0 multiplies the albedo (the tint of the neutral sets), roughness = the ORM's G times roughnessScale. The lot has no maps of its own (letters, clock and numerals are geometry). M_glass is the game's glass; lotnight__ nodes take the game's glow.",
+  "materials": {
+    "LM_cafe_fabric": {
+      "pbr": "fabric_upholstery",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 0.5,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false,
+      "albedoGain": [
+        2.6,
+        2.6,
+        2.6
+      ]
+    },
+    "LM_cafe_floor": {
+      "pbr": "floor_wood",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.7,
+      "vertexColor": true,
+      "roughnessScale": 0.75,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_cafe_iron": {
+      "pbr": "cast_iron",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 0.55,
+      "normalScale": 1.0,
+      "metal": true
+    },
+    "LM_cafe_leaf": {
+      "pbr": "grass",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.4,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 0.5,
+      "metal": false
+    },
+    "LM_cafe_metal": {
+      "pbr": "aluminium_brushed",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 0.28,
+      "normalScale": 1.0,
+      "metal": true
+    },
+    "LM_cafe_oak": {
+      "pbr": "wood_oak",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.83,
+      "vertexColor": true,
+      "roughnessScale": 0.6,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_cafe_paint": {
+      "pbr": "wood_painted",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.8,
+      "vertexColor": true,
+      "roughnessScale": 0.7,
+      "normalScale": 0.4,
+      "metal": false
+    },
+    "LM_cafe_paper": {
+      "pbr": "wallpaper",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.0,
+      "vertexColor": true,
+      "roughnessScale": 0.9,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_cafe_plaster": {
+      "pbr": "plaster_painted",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 2.0,
+      "vertexColor": true,
+      "roughnessScale": 1.0,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "LM_cafe_tile": {
+      "pbr": "tile_white",
+      "repeatMeters": [
+        1,
+        1
+      ],
+      "tileMeters": 1.27,
+      "vertexColor": true,
+      "roughnessScale": 0.5,
+      "normalScale": 1.0,
+      "metal": false
+    },
+    "M_cafe_art": {
+      "kind": "own",
+      "maps": {
+        "albedo": "lot_cafe_room_art.ktx2",
+        "normal": "lot_cafe_room_art_normal.ktx2",
+        "orm": "lot_cafe_room_art_orm.ktx2"
+      },
+      "uv": "atlas (TEXCOORD_0 0..1, no repeat)",
+      "colorSpace": "srgb",
+      "note": "procedural (cafe_art.mjs): marble, chalk menus, the sign's enamel, gauge, latte, pastries, beans, labels, spines, clock, prints; COLOR_0 tints the glaze / matte cells (cups, macarons, jars). Albedo 2048 UASTC sRGB, normal + ORM 1024 UASTC linear",
+      "vertexColor": true
+    },
+    "M_garden": {
+      "kind": "garden",
+      "maps": {
+        "albedo": "../windowview/lot_cafe_room_day.ktx2"
+      }
+    },
+    "M_glass": {
+      "kind": "glass"
+    }
+  },
+  "pbrSets": [
+    "aluminium_brushed",
+    "cast_iron",
+    "fabric_upholstery",
+    "floor_wood",
+    "grass",
+    "plaster_painted",
+    "tile_white",
+    "wallpaper",
+    "wood_oak",
+    "wood_painted"
+  ]
+}

@@ -1,4 +1,7 @@
+import { pathPlantShift } from "@caysonverse/shared/village/pathPlants";
+import { cardsOffPaving } from "./floraOffPaving";
 import { laneClearance } from "../ground/groundPaths";
+import { pavedClearance } from "./pavedGround";
 import {
   Box3,
   BufferAttribute,
@@ -49,7 +52,7 @@ import { removePlazaZelkova, zelkovaSkeleton } from "./zelkova";
 import { TriangleGrid, faceNormal, openEdges, type DrawnGap, type V3 } from "./drawnGap";
 import { PLAZA_BEDS, SPECIES_COUNT, linearHex, type Bed, type Plant } from "./flowerPlacement";
 import type { FloraResult } from "./floraWork";
-import { a8TreeShift, housesMode, makeHouseGrounds } from "../houses/housesPrep";
+import { a8BushShift, a8TreeShift, housesMode, makeHouseGrounds } from "../houses/housesPrep";
 import { houseFlowerBoxBeds } from "../houses/houseFlowerBoxes";
 import { keepTriangles, readCards, type AttributeLike, type Card } from "./vegCards";
 import { makeBlossomAtlas } from "./vegAtlas";
@@ -830,7 +833,9 @@ export class VillageVegetation {
     const floraCards = houseGrounds ? allCards.filter((c) => !houseGrounds((c.ax + c.bx) / 2, (c.az + c.bz) / 2)) : allCards;
     // ── the flowers' layout and the beds' soil: worked out off the page (floraWork.ts, in the crowns' worker) while the
     //    page makes the materials and asks for the crowns; dressed here when it comes back ──
-    const floraJob = grower.flora(floraCards, beds);
+    // (the cards the old flat lanes left on the redrawn paving move to the grass beside it, floraOffPaving.ts)
+    const sendCards = !options.parkBeds && !options.flowersOnly ? cardsOffPaving(floraCards, beds).cards : floraCards;
+    const floraJob = grower.flora(sendCards, beds);
     let placed: { plants: Plant[]; replaced: Card[] } = { plants: [], replaced: [] };
     // the textures drawn in code, made in the first worker meanwhile (null: no worker, made here)
     const texMade = await texturesJob;
@@ -941,7 +946,8 @@ export class VillageVegetation {
     const villageFile = (options.parkTrees ?? VILLAGE_TREE_SPECS).map(treeSkeleton);
     const village = villageFile.map((sk, i) => {
       const spec = (options.parkTrees ?? VILLAGE_TREE_SPECS)[i]!;
-      const shift = !parkOnly && housesMode() === "new" ? a8TreeShift(spec.x, spec.z) : null;
+      // (the trees that stood on a path move off it, shared/village/pathPlants.ts; the A8 houses' moves first)
+      const shift = parkOnly ? null : (housesMode() === "new" ? a8TreeShift(spec.x, spec.z) : null) ?? pathPlantShift(spec.x, spec.z, "tree");
       return shift ? shiftSkeleton(sk, shift.dx, shift.dz) : sk;
     });
     // (the lot buildings' trees with them: the schoolyard's, from the lot models' extras, L5v2)
@@ -962,11 +968,21 @@ export class VillageVegetation {
       barkStreetCherry: findInstanced(root, "inst__street_cherry_0"),
       barkOrchard: findInstanced(root, "inst__orchard_0"),
     };
+    // the instances that stood on a path move off it (shared/village/pathPlants.ts)
+    const offPath = (list: Matrix4[], kind: "tree" | "shrub"): Matrix4[] => {
+      if (parkOnly) return list;
+      return list.map((m) => {
+        // (the A8 houses' moves first, as for the single trees: the bush by house 9's garden is an instance)
+        const a8 = housesMode() !== "new" ? null : kind === "tree" ? a8TreeShift(m.elements[12]!, m.elements[14]!) : a8BushShift(m.elements[12]!, m.elements[14]!);
+        const s = a8 ?? pathPlantShift(m.elements[12]!, m.elements[14]!, kind);
+        return s ? m.clone().premultiply(new Matrix4().makeTranslation(s.dx, 0, s.dz)) : m;
+      });
+    };
     const xfs = {
-      street_green: inst.street_green ? varyBoundaryRow(instanceMatrices(inst.street_green)) : [],
-      street_cherry: inst.street_cherry ? instanceMatrices(inst.street_cherry) : [],
+      street_green: inst.street_green ? offPath(varyBoundaryRow(instanceMatrices(inst.street_green)), "tree") : [],
+      street_cherry: inst.street_cherry ? offPath(instanceMatrices(inst.street_cherry), "tree") : [],
       orchard: inst.orchard ? varyBoundaryRow(typeof location !== "undefined" && floraOld(location.search, import.meta.env.DEV) ? instanceMatrices(inst.orchard) : varyOrchard(instanceMatrices(inst.orchard))) : [],
-      shrub: inst.shrub ? varyBoundaryRow(instanceMatrices(inst.shrub)) : [],
+      shrub: inst.shrub ? offPath(varyBoundaryRow(instanceMatrices(inst.shrub)), "shrub") : [],
     };
     if (await step("skeletons")) return v.abandon();
 
@@ -1333,8 +1349,20 @@ export class VillageVegetation {
     const claimedGreen = greenCards.map((cards) => claimCards(cards, greenRefs));
     const rest: Array<{ card: Card; mesh: number }> = [];
     greenCards.forEach((cards, mi) => cards.forEach((c) => !claimedGreen[mi]!.has(c) && rest.push({ card: c, mesh: mi })));
-    const found = findBushes(rest.map(({ card }) => ({ x: card.x, y: card.y, z: card.z, s: Math.hypot(card.bx - card.ax, card.bz - card.az) })));
-    for (const b of found) for (const i of b.cards) claimedGreen[rest[i]!.mesh]!.add(rest[i]!.card);
+    const foundAll = findBushes(rest.map(({ card }) => ({ x: card.x, y: card.y, z: card.z, s: Math.hypot(card.bx - card.ax, card.bz - card.az) })));
+    for (const b of foundAll) for (const i of b.cards) claimedGreen[rest[i]!.mesh]!.add(rest[i]!.card);
+    // No bush on the ground the houses take (houseGrounds: the OLD houses' porch-corner shrubs are cut out of the file with the old
+    // houses, housesPrep.ts). Whether that cut had run before these cards were read was a race: about one load in four drew twenty
+    // old porch shrubs 0.3 m up in front of the new porches, walked through (2026-11-21). The cards stay claimed (hidden) either way.
+    const found = houseGrounds ? foundAll.filter((b) => !houseGrounds(b.x, b.z)) : foundAll;
+    // (the bush the A8 houses displace is drawn where its collider now stands, houses/housesPrep.ts a8BushShift)
+    if (!parkOnly && housesMode() === "new") for (const b of found) {
+      const sh = a8BushShift(b.x, b.z);
+      if (sh) {
+        b.x += sh.dx;
+        b.z += sh.dz;
+      }
+    }
     const variantBush = bushSize(SHRUB_VARIANT.H, SHRUB_VARIANT.R);
     const bushes: Bush[] = [
       ...found,
@@ -1343,7 +1371,7 @@ export class VillageVegetation {
         const s = new Vector3().setFromMatrixScale(m).x;
         return { x: m.elements[12]!, y: m.elements[13]!, z: m.elements[14]!, h: variantBush.h * s, r: variantBush.r * s, seed: (Math.abs(Math.sin(m.elements[12]! * 3.1 + m.elements[14]! * 1.7)) * 1e4) % 1, cards: [] };
       }),
-    ].filter((b) => options.parkBushes?.includes(b) || laneClearance(b.x, b.z) > b.r * 0.5); // none left standing on a lane the ground paths redrew (ground/groundPaths.ts)
+    ].filter((b) => options.parkBushes?.includes(b) || (parkOnly ? laneClearance : pavedClearance)(b.x, b.z) > b.r * 0.5); // none left standing on a lane the ground paths redrew (ground/groundPaths.ts), the road or a doorstep
     // which bush each one is: the plaza planters' and the memorial roof's clipped boxwood balls; elsewhere (the
     // houses' porch corners, the lanes and plots) about half are azalea mounds (some in flower under the April cherries)
     const speciesOfBush = (b: Bush): BushSpecies => (b.y > 2 || bushInPlanter(b) || b.seed < 0.5 ? "boxwood" : "azalea");
@@ -1371,6 +1399,8 @@ export class VillageVegetation {
     }
     stats.bushSpecies = BUSH_SPECIES.map((_, i) => v.bushes.filter((d) => d.species === i).length);
     stats.bushes = bushes.length;
+    // DEV/E2E: the bushes as drawn (scripts export them to the collider table, shared/village/generated/villageBushColliders.ts)
+    if (import.meta.env.DEV) ((globalThis as { __cvBushList?: Record<string, unknown[]> }).__cvBushList ??= {})[parkOnly ? "park" : options.flowersOnly ? "houses" : "village"] = bushes.map((b) => ({ x: b.x, y: b.y, z: b.z, h: b.h, r: b.r }));
     if (await step("bushes")) return v.abandon();
 
     // ── the bark: every tree's trunk, limbs and side branches drawn here, in its twigs' bark (barkGeometry.ts) ──
@@ -1459,11 +1489,42 @@ export class VillageVegetation {
             parts.push(...seg, Math.max(br.radii[i - 1]!, br.radii[i]!) * k);
           }
       };
-      for (const sk of single) addBark(drawnSk.get(sk) ?? sk, null);
+      // DEV/E2E: every trunk as drawn, where it passes a walker's waist (e2e/veg-colliders.mjs writes the collider table from them)
+      const trunks: Array<{ x: number; z: number; r: number; kind: string }> = [];
+      const addTrunk = (sk: TreeSkeleton, xf: Matrix4 | null, kind: string) => {
+        if (!import.meta.env.DEV) return;
+        const t = drawnBark(sk).trunk;
+        const k = xf ? new Vector3().setFromMatrixScale(xf).x : 1;
+        // the trunk's line at 0.9 m above its foot (a leaning trunk is not over its base there)
+        const at = (i: number) => (xf ? pv.set(t.pts[i]![0], t.pts[i]![1], t.pts[i]![2]).applyMatrix4(xf).clone() : new Vector3(t.pts[i]![0], t.pts[i]![1], t.pts[i]![2]));
+        const foot = at(0);
+        let hit = foot;
+        let rad = t.radii[0]! * k;
+        for (let i = 1; i < t.pts.length; i++) {
+          const a = at(i - 1);
+          const b = at(i);
+          const y = foot.y + 1.05; // (the tube starts 0.15 m under the ground)
+          if (a.y <= y && b.y >= y) {
+            const f = (y - a.y) / Math.max(1e-6, b.y - a.y);
+            hit = a.lerp(b, f);
+            rad = (t.radii[i - 1]! + (t.radii[i]! - t.radii[i - 1]!) * f) * k;
+            break;
+          }
+        }
+        if (foot.y < 0.6) trunks.push({ x: Math.round(hit.x * 1000) / 1000, z: Math.round(hit.z * 1000) / 1000, r: Math.round(Math.max(rad, t.radii[0]! * k) * 1000) / 1000, kind });
+      };
+      for (const sk of single) {
+        addBark(drawnSk.get(sk) ?? sk, null);
+        addTrunk(drawnSk.get(sk) ?? sk, null, sk.kind);
+      }
       for (const key of ["street_green", "street_cherry", "orchard"] as const) {
         const own = new Map(ownBark[key].map((o) => [o.i, o.sk]));
-        xfs[key].forEach((xf, i) => addBark(own.get(i) ?? taperedVariant[key], xf));
+        xfs[key].forEach((xf, i) => {
+          addBark(own.get(i) ?? taperedVariant[key], xf);
+          addTrunk(own.get(i) ?? taperedVariant[key], xf, key);
+        });
       }
+      if (import.meta.env.DEV) ((globalThis as { __cvTrunkList?: Record<string, unknown[]> }).__cvTrunkList ??= {})[parkOnly ? "park" : options.flowersOnly ? "houses" : "village"] = trunks;
       stats.cameraKeepOut = parts.length / 7;
       v.keepOut = cameraKeepOut(parts);
     }
@@ -2030,11 +2091,13 @@ export function createVegetation(root: Object3D, tier: VillageTier, mode: VegMod
 export const vegetationPark = createVegPark<VillageVegetation>();
 
 /**
- * A tree moved on the ground by (dx, dz) (game metres): its trunk, limbs, side branches and crown (Blender space: x, -z, up).
+ * A tree moved on the ground by (dx, dz) (game metres): its trunk, limbs, side branches and crown.
  * Its `cards` and `petals` stay where the file has them: they are what the old flat crown drew, found and hidden by place.
  */
 export function shiftSkeleton(sk: TreeSkeleton, dx: number, dz: number): TreeSkeleton {
-  const mv = (p: Vec3): Vec3 => [p[0] + dx, p[1] - dz, p[2]];
+  // (a skeleton is in GAME space, x / up / z: treeSkeleton.ts turns every point with g(). Until 2026-11-21 this added -dz to the
+  // HEIGHT, so a moved tree stayed at its old z and sank or floated by dz: the A8 houses' six trees, four of them up to 2.3 m into the lawn.)
+  const mv = (p: Vec3): Vec3 => [p[0] + dx, p[1], p[2] + dz];
   const br = (b: Branch): Branch => ({ pts: b.pts.map(mv), radii: b.radii });
   return { ...sk, base: mv(sk.base), fork: mv(sk.fork), crownC: mv(sk.crownC), trunk: br(sk.trunk), limbs: sk.limbs.map(br), sides: sk.sides.map(br) };
 }

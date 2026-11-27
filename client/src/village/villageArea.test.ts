@@ -36,13 +36,13 @@ describe("villageArea — which area the local player is in", () => {
     expect(seen).toEqual(["hall", "village"]);
   });
 
-  it("the hall is quiet (jump off; emoji ON since 2026-11-20), the village is not; a house floor is quiet for both; a reset leaves it off", () => {
+  it("the hall is quiet (jump off; emoji ON since 2026-11-20), the village is not; a house floor is quiet for jumps only (emoji everywhere since 11-27); a reset leaves it off", () => {
     setLocalArea("hall");
     expect(isQuiet()).toBe(true);
     expect(isEmojiQuiet()).toBe(false);
     setLocalArea("house:house_3:1");
     expect(isQuiet()).toBe(true);
-    expect(isEmojiQuiet()).toBe(true);
+    expect(isEmojiQuiet()).toBe(false); // emoji everywhere since 2026-11-27
     setLocalArea("village");
     expect(isQuiet()).toBe(false);
     setLocalArea("hall");

@@ -84,6 +84,8 @@ export interface OrbitGoal {
   yaw?: number;
   pitch?: number;
   distance?: number;
+  /** A gentler swing than the default yawRate (the fishing camera's turn to show the catch: owner 2026-11-23, it whipped round). */
+  yawRate?: number;
 }
 
 /**
@@ -110,7 +112,7 @@ export function stepOrbitToward(orbit: Orbit, goal: OrbitGoal, dt: number): bool
   if (goal.yaw !== undefined) {
     let gap = normalizeAngle(goal.yaw - orbit.yaw);
     if (Math.abs(gap) > eps) {
-      orbit.yaw = normalizeAngle(orbit.yaw + easeStep(gap, ORBIT_EASE.yawRate, dt));
+      orbit.yaw = normalizeAngle(orbit.yaw + easeStep(gap, goal.yawRate ?? ORBIT_EASE.yawRate, dt));
       gap = normalizeAngle(goal.yaw - orbit.yaw);
     }
     if (Math.abs(gap) <= eps) orbit.yaw = normalizeAngle(goal.yaw);

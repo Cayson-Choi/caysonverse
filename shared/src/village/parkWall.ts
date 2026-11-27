@@ -43,6 +43,9 @@ export interface WallRun {
   bz: number;
   /** The horizontal unit normal pointing OUT of the enclosure. */
   out: readonly [number, number];
+  /** The run's end at a / b is seen (it stops in the open, not inside a tower): the client closes the wall's section there with stone. */
+  capA?: boolean;
+  capB?: boolean;
 }
 export interface WallTower {
   x: number;
@@ -120,8 +123,9 @@ function villagePlan(): WallPlan {
   const G = VILLAGE_GATE_PASSAGE;
   const runs: WallRun[] = [
     // the north side: from the corners into the gatehouse, ending flush with the main towers' inner faces (the gate passage)
-    { ax: R.minX, az: R.minZ, bx: G.minX, bz: R.minZ, out: [0, -1] },
-    { ax: G.maxX, az: R.minZ, bx: R.maxX, bz: R.minZ, out: [0, -1] },
+    // (their ends there are seen from the gateway, behind the open leaves: closed with stone)
+    { ax: R.minX, az: R.minZ, bx: G.minX, bz: R.minZ, out: [0, -1], capB: true },
+    { ax: G.maxX, az: R.minZ, bx: R.maxX, bz: R.minZ, out: [0, -1], capA: true },
     { ax: R.maxX, az: R.minZ, bx: R.maxX, bz: R.maxZ, out: [1, 0] },
     { ax: R.maxX, az: R.maxZ, bx: R.minX, bz: R.maxZ, out: [0, 1] },
     { ax: R.minX, az: R.maxZ, bx: R.minX, bz: R.minZ, out: [-1, 0] },

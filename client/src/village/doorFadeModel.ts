@@ -49,6 +49,11 @@ export interface DoorFadeModel {
   closed(): void;
   /** The local player's area changed (the server moved us): uncover as soon as the cover has closed. */
   arrived(): void;
+  /**
+   * The server refused the request (it has us out of the door's reach: `ActionRefused`, fix/net-sync): uncover at once instead of
+   * after FAIL_SAFE_MS, and forget the cool-down — the server counts only a door it used, so the next press may go out at once.
+   */
+  refused(): void;
   /** Drop everything (the scene is going away). */
   reset(): void;
   subscribe(listener: () => void): () => void;
@@ -124,6 +129,10 @@ export function createDoorFade(clock: FadeClock = REAL_CLOCK): DoorFadeModel {
       clear();
       const wait = Math.max(0, coveredAt + FADE_IN_MS - clock.now());
       timer = clock.setTimer(uncover, wait);
+    },
+    refused() {
+      lastSentAt = Number.NEGATIVE_INFINITY;
+      uncover();
     },
     reset() {
       clear();

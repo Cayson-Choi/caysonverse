@@ -308,7 +308,7 @@ export function MenuPanel({ graphics = false, onToggleView, onShowGuide }: MenuP
 
               <div className="cv-menu-row">
                 <label htmlFor="cv-menu-music-volume" className="cv-menu-label">
-                  음악 크기
+                  소리 크기
                 </label>
                 <div className="cv-menu-slider">
                   <input
@@ -318,7 +318,7 @@ export function MenuPanel({ graphics = false, onToggleView, onShowGuide }: MenuP
                     max={MUSIC_VOLUME.max}
                     step={MUSIC_VOLUME.step}
                     value={musicVolume}
-                    disabled={muted || !musicOn}
+                    disabled={muted}
                     aria-valuetext={formatMusicVolume(musicVolume)}
                     onChange={(e) => setMusicVolume(Number(e.target.value))}
                   />

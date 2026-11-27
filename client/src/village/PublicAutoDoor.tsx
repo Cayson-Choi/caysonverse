@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { BoxGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial } from "three";
+import { BoxGeometry, Group, Mesh, MeshStandardMaterial, type ShaderMaterial } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { CLOSED_AUTO_DOOR, PUBLIC_AUTO_DOOR, stepAutoDoor, type AutoDoorState } from "@caysonverse/shared/village/autoDoor";
 import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
@@ -9,7 +9,8 @@ import { forEachRemotePosition } from "../game/remoteStore";
 import { doorObservation, stepShownOpening } from "./publicAutoDoorModel";
 import { hallDoor } from "./hallDoor";
 import { HALL_LEAF_MOUNT_Z, HALL_LEAF_SLIDE_M, entranceRig, hallDoorRig, type Box, type DoorRig } from "./autoDoorParts";
-import { litUniform } from "./villageModelPrep";
+import { applyClearGlassDayNight, clearGlassMaterial } from "./portal/clearGlass";
+import { dayNight } from "./dayNightDriver";
 
 export { HALL_LEAF_SLIDE_M };
 
@@ -50,6 +51,7 @@ export function PublicAutoDoor({ area, pose }: { area: AreaId; pose: Pose }) {
   }, [hall, rig]);
 
   useFrame(({ clock }) => {
+    applyClearGlassDayNight(dayNight.outdoor);
     const nowMs = clock.elapsedTime * 1000;
     const others: { x: number; z: number }[] = [];
     forEachRemotePosition((x, z, connected) => {
@@ -155,7 +157,7 @@ function MergedBoxes({ boxes, mats }: { boxes: KeyedBox[]; mats: DoorMats }) {
   );
 }
 
-function BoxMesh({ b, material, name }: { b: Box; material: MeshStandardMaterial | MeshBasicMaterial; name?: string }) {
+function BoxMesh({ b, material, name }: { b: Box; material: MeshStandardMaterial | ShaderMaterial; name?: string }) {
   const size: [number, number, number] = [b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]];
   const at: [number, number, number] = [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2];
   return (
@@ -204,44 +206,12 @@ function useDoorMaterials(hall: boolean) {
     const cap = new MeshStandardMaterial({ color: hall ? "#d3d6d5" : "#2c3035", metalness: 0.7, roughness: 0.3 });
     const seal = new MeshStandardMaterial({ color: "#16181b", metalness: 0.1, roughness: 0.75 });
     const lens = new MeshStandardMaterial({ color: "#0b0d10", metalness: 0.4, roughness: 0.12 });
-    const band = new MeshStandardMaterial({ color: "#eef2f2", roughness: 0.85, transparent: true, opacity: 0.55, depthWrite: false });
-    return { alu, cap, seal, lens, band, glass: doorGlass() };
+    const band = new MeshStandardMaterial({ color: "#eef2f2", roughness: 0.85, transparent: true, opacity: 0.4, depthWrite: false });
+    // clear glass (owner 2026-11-21: "모든 유리창을 투명하게"; the old pane's sliding diagonal sheen read as a whitish streaked sheet in
+    // front of the hall): the village's clear glass, always clear (the hall is drawn behind it, portal/MemorialShowcase.tsx)
+    const clear = clearGlassMaterial("M_door_glass");
+    clear.setShown([[-1e5, -1e5, 1e5, 1e5]]);
+    return { alu, cap, seal, lens, band, glass: clear.material };
   }, [hall]);
 }
 
-/**
- * Clear glass that reads as glass (as hallGlass.ts does for the hall): nearly clear head-on, a Schlick Fresnel sheen toward a
- * grazing view and a soft broad sheen in the reflected direction that moves with the camera; dimmer at night (`litUniform`,
- * the village's night weight).
- */
-function doorGlass(): MeshBasicMaterial {
-  const m = new MeshBasicMaterial({ color: "#dcebec", transparent: true, depthWrite: false, side: DoubleSide });
-  m.onBeforeCompile = (shader) => {
-    shader.uniforms.uVillageLit = litUniform;
-    shader.vertexShader = shader.vertexShader
-      .replace("void main() {", "varying vec3 vDoorGlassWorld;\nvoid main() {")
-      .replace("#include <project_vertex>", "#include <project_vertex>\n\tvDoorGlassWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
-    shader.fragmentShader = shader.fragmentShader
-      .replace("void main() {", "varying vec3 vDoorGlassWorld;\nuniform float uVillageLit;\nvoid main() {")
-      .replace(
-        "#include <opaque_fragment>",
-        /* glsl */ `#include <opaque_fragment>
-	{
-		vec3 V = normalize( cameraPosition - vDoorGlassWorld );
-		vec3 N = normalize( cross( dFdx( vDoorGlassWorld ), dFdy( vDoorGlassWorld ) ) );
-		if ( dot( N, V ) < 0.0 ) N = -N;
-		float ndv = clamp( dot( N, V ), 0.0, 1.0 );
-		float fres = 0.04 + 0.96 * pow( 1.0 - ndv, 5.0 );
-		vec3 R = reflect( -V, N );
-		float d = ( vDoorGlassWorld.y + 0.8 * ( vDoorGlassWorld.x + vDoorGlassWorld.z ) ) * 0.9 + R.y * 1.6 + R.x * 1.1;
-		float sheen = smoothstep( 0.35, 1.0, sin( d * 3.1416 ) );
-		float lit = 1.0 - 0.6 * uVillageLit;
-		float a = 0.1 + 0.75 * fres + 0.16 * sheen * lit;
-		vec3 col = mix( diffuseColor.rgb * mix( 1.0, 0.35, uVillageLit ), vec3( 1.0 ), clamp( sheen * 0.7 * lit, 0.0, 1.0 ) );
-		gl_FragColor = vec4( col, clamp( a, 0.0, 0.85 ) );
-	}`,
-      );
-  };
-  m.customProgramCacheKey = () => "public-door-glass";
-  return m;
-}

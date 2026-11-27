@@ -45,7 +45,7 @@ def export_name(name):
     base = name.split("_", 1)[1]
     return ("M_" if name in UNLIT else "LM_") + base
 DAY = dict(sun=(4.8, math.radians(52), math.radians(-30)), sky=1.8, lamp_scale=0.10)   # layered pass: a little less sky fill, a little more sun = contrast
-NIGHT = dict(sky=(0.02, 0.03, 0.07), lamp_scale=0.45)
+NIGHT = dict(sky=(0.02, 0.03, 0.07), lamp_scale=0.12)   # houses-real night mood (owner 2026-11-22): was 0.45, the night room read as bright as day (p50 0.36 vs 0.39)
 
 
 def arg(name, default=None, cast=str):
@@ -150,12 +150,14 @@ def lightmap_uv(objs, margin=0.0014):
                              scale_to_bounds=False)
     bpy.ops.uv.select_all(action="SELECT")
     bpy.ops.uv.average_islands_scale()
+    import uv_compact    # houses-real pass: furniture islands get twice the light-map density of walls and floors
+    log("lm islands boosted", uv_compact.boost_small_lm_islands(objs))
     bpy.ops.uv.pack_islands(rotate=True, margin_method="FRACTION", margin=margin, shape_method="CONCAVE")
     bpy.ops.object.mode_set(mode="OBJECT")
 
 
-KIND_DAY = {"downlight": 0.5, "lamp": 3.0, "sconce": 3.0, "pendant": 1.6, "fire": 2.5, "led": 1.5}
-KIND_NIGHT = {"downlight": 0.55, "lamp": 1.5, "sconce": 1.5, "pendant": 1.2, "fire": 1.4}
+KIND_DAY = {"downlight": 0.5, "lamp": 3.0, "sconce": 3.0, "pendant": 1.6, "fire": 1.2, "led": 1.5}
+KIND_NIGHT = {"downlight": 0.05, "lamp": 1.8, "sconce": 1.5, "pendant": 1.0, "fire": 0.45}   # houses-real night mood (owner 2026-11-22: the night room was as bright as day): ceiling downlights low, lamps / sconces / pendants and the fire make warm pools, corners fall dark (was downlight 0.55, pendant 1.2, fire 1.4)   # houses-real: the fire a warm local pool, not a wash (was 1.4)
 
 
 def setup_lights(scene, night):
@@ -478,7 +480,7 @@ def main():
     if not arg("--nobake"):
         stats = bake_lightmap(scene, lm_list, size, samples, lm_png, LM_LIFT_NIGHT if night else LM_LIFT_DAY, arg("--passes", 1, int))
         log("light map", "night" if night else "day", stats)
-    if night:
+    if night and not arg("--reexport"):     # --reexport (houses-real pass): the lmprep's meshes and UVs exported again, no bake
         return
     for o in hidden:
         o.hide_render = False
@@ -490,6 +492,8 @@ def main():
             o.data.uv_layers.remove(o.data.uv_layers["UV_LM"])
         if "Col" in o.data.color_attributes:
             o.data.color_attributes.active_color = o.data.color_attributes["Col"]
+    import uv_compact    # houses-real pass: albedo UV islands next to the origin, so Draco's 14-bit texcoords don't smear them
+    log("uv0 islands moved", uv_compact.compact_uv0(lm_list))
     for o in bpy.data.objects:
         if o.name.startswith(K.COL_PREFIX):
             o.hide_render = False

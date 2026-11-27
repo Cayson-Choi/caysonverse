@@ -47,6 +47,8 @@ import { fallsWalkable, villageWalkArea } from "./fallsWalk";
 import { VILLAGE_SEAT_MARKERS as MODEL_SEAT_MARKERS } from "./generated/villageSeatMarkers";
 import { stageA8SeatMarkers } from "./a8Staging";
 import { lakeSeats, type LakeSeatKind } from "./lakeLayout";
+import { PARK_BOUNDS, parkGeometry } from "./parkArea";
+import { PARK_BENCHES, PARK_BENCH_MODEL, parkBenchFacing } from "./parkBenches";
 import { LOTS_WITH_MODEL, LOT_ROOMS, VILLAGE_LOTS, lotLocalToWorld, lotRoomPoint, lotSeatMarkers, type LotInteriorSeat } from "./villageLots";
 
 
@@ -881,7 +883,47 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   seats.push(...lotVillageSeats());
   // the lot buildings' walk-in rooms (L5v2, contract 11): every chair, pew, nook and 방석 inside, after every seat above (never renumber)
   seats.push(...lotInteriorSeats());
+  // 케이슨랜드 benches (2026-11-22), after every seat above (never renumber)
+  seats.push(...parkBenchSeats());
   return seats;
+}
+
+/** How far from the middle of a park bench its two sitters are (m): 1.12 m apart, so their hands do not meet. */
+export const PARK_BENCH_SEAT_OFFSET = 0.56;
+
+/**
+ * 케이슨랜드: the 17 slatted benches (parkBenches.ts `PARK_BENCHES`; owner 2026-11-13: every seat can be sat on, a backed one from its
+ * front only): two places a bench, area `park`, the stand spot the first one ahead that is clear of the PARK colliders (the bench
+ * box itself, the lamps, the planted islands). Ids `park_bench_<n>:<along>`.
+ */
+function parkBenchSeats(): VillageSeat[] {
+  const out: VillageSeat[] = [];
+  const m = PARK_BENCH_MODEL;
+  PARK_BENCHES.forEach(([x, z, benchYaw], i) => {
+    const yaw = wrapYaw(parkBenchFacing(benchYaw));
+    for (const along of [-PARK_BENCH_SEAT_OFFSET, PARK_BENCH_SEAT_OFFSET]) {
+      const p = offset(x, z, yaw, along, m.frontEdge + SIT_ROOT_AHEAD);
+      const root = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
+      const id = `park_bench_${i + 1}:${along}`;
+      const stand = dismountAhead(root, yaw, PARK_BOUNDS, id, parkGeometry);
+      out.push({
+        id,
+        x: root.x,
+        z: root.z,
+        yaw,
+        standX: stand.x,
+        standZ: stand.z,
+        seatY: m.seatTop,
+        frontEdge: SIT_ROOT_AHEAD,
+        bench: `park_bench_${i + 1}`,
+        area: "park",
+        kind: "backed",
+        backrest: Math.round((SIT_ROOT_AHEAD + m.frontEdge + m.backFace) * 1000) / 1000,
+        lean: 0,
+      });
+    }
+  });
+  return out;
 }
 
 /**

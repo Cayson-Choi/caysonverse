@@ -160,7 +160,7 @@ function tick(): void {
   for (const site of SITES) {
     const riding = ridingId === site.id;
     const d = sfxListener.valid ? Math.hypot(sfxListener.x - site.x, sfxListener.z - site.z) : Infinity;
-    const level = rideLevel(riding, d, site.near, site.far, allowed, site.trim);
+    const level = rideLevel(riding, d, site.near, site.far, allowed, site.trim) * mus.volume; // the menu's 소리 크기 (owner 11-27)
     let slot = slots.find((s) => s.site === site);
     if (level <= 0.002) {
       if (slot && !riding) {

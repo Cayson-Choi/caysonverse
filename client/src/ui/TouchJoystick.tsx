@@ -2,13 +2,11 @@ import { useEffect, useRef } from "react";
 import {
   STICK_RADIUS_PX,
   createStickState,
-  isStickTap,
-  stickDown,
+  stickDownAt,
   stickMove,
   stickUp,
 } from "../game/joystick";
 import type { MoveInput } from "../game/input";
-import { pressTravel } from "../game/clickMove";
 import { useViewStore } from "../stores/viewStore";
 import { useUiStore } from "../stores/uiStore";
 import "./touch.css";
@@ -31,40 +29,36 @@ interface TouchJoystickProps {
 /** Half of the knob's CSS size (48px) — centres it on the thumb. */
 const KNOB_HALF_PX = 24;
 
+/**
+ * Where the stick rests while no thumb is on it: always drawn there, faint, so a first-time
+ * player sees at once that the lower-left corner moves the avatar (owner 11-26: "조이스틱이
+ * 왼쪽 하단에 항상 표시"). Mirrored for left-handers. Inside the stick zone on any screen.
+ */
+export function stickRestPoint(vw: number, vh: number, leftHanded: boolean): { x: number; y: number } {
+  const x = STICK_REST_SIDE_PX + STICK_RADIUS_PX;
+  const y = vh - STICK_REST_BOTTOM_PX - STICK_RADIUS_PX;
+  return { x: leftHanded ? vw - x : x, y: Math.max(y, vh / 2 + STICK_RADIUS_PX) };
+}
+/** Rest stick: base's distance from the side edge (clear of the OS back-gesture strip). */
+const STICK_REST_SIDE_PX = 40;
+/** Rest stick: base's distance from the bottom edge (clear of a phone's home bar). */
+const STICK_REST_BOTTOM_PX = 44;
+
+/** How far from the stick's centre a thumb may land and still take it (px): the base's rim plus a thumb's slack. */
+export const STICK_HIT_PX = STICK_RADIUS_PX + 28;
+
 /** Centre `el` (a fixed div at the viewport origin) on viewport point (cx, cy). */
 function place(el: HTMLElement, cx: number, cy: number, halfPx: number): void {
   el.style.transform = `translate(${cx - halfPx}px, ${cy - halfPx}px)`;
 }
 
 /**
- * Hand a quick tap to the 3D canvas as a normal press-and-release, so a tap in
- * the stick zone still becomes a click-move (CameraRig turns a short, still press
- * on the canvas into the ground target). The zone sits above the canvas, so the
- * real tap never reached it; the replay carries the real pointer's position.
- */
-function passTapToGround(e: PointerEvent): void {
-  const canvas = document.querySelector(".cv-canvas canvas");
-  if (!canvas) return;
-  const init: PointerEventInit = {
-    pointerId: e.pointerId,
-    pointerType: e.pointerType,
-    isPrimary: true,
-    button: 0,
-    clientX: e.clientX,
-    clientY: e.clientY,
-    bubbles: true,
-    cancelable: true,
-  };
-  canvas.dispatchEvent(new PointerEvent("pointerdown", { ...init, buttons: 1 }));
-  canvas.dispatchEvent(new PointerEvent("pointerup", init));
-}
-
-/**
- * Dynamic joystick (touch devices only): put a thumb anywhere in the lower-left
- * quarter of the screen and a stick appears right there; push lightly to walk, to
- * the rim to run; lift to hide it. The zone element swallows its own pointers, so
- * a stick drag never reaches the canvas and never rotates the camera — except a
- * quick tap, which is passed on as a click-move tap (see passTapToGround).
+ * Fixed joystick (touch devices only): a faint stick always rests in the lower-left corner
+ * (stickRestPoint). Only a thumb put ON it moves the avatar (owner 2026-11-27: "이동은 조이스틱있는데서만
+ * 가능하도록"): push lightly to walk, to the rim to run; lift and the knob goes back to the centre. The zone is a
+ * circle just around the stick and swallows its own pointers, so a stick drag never rotates the camera; a touch
+ * anywhere else on the screen is the camera's (drag to turn, pinch) — and a tap there still walks to that spot (owner 11-27:
+ * "특정 지점을 찍으면 이동하는건 동작해야해"; CameraRig).
  *
  * In the overview map the stick is off: the zone turns click-through (`is-ov`) so a
  * one-finger drag pans the map as before. Turning the map on mid-drag re-runs the
@@ -92,48 +86,50 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
     if (!zone || !stick || !base || !knob) return;
 
     const state = createStickState();
-    let downX = 0;
-    let downY = 0;
-    let downAt = 0;
-    // The farthest the press has gone from where it went down (px): a push that came back to its start is still a
-    // stick push, not a tap (round 4 review — it walked on the stick and then to the ground under the thumb as well).
-    let travel = 0;
-    // The event's own time (ms, performance.now()'s clock): a busy page handles a lift late, not a long press.
-    const eventTime = (e: PointerEvent) => (e.timeStamp > 0 ? e.timeStamp : performance.now());
 
     const clearInput = () => {
       moveInput.forward = 0;
       moveInput.right = 0;
       moveInput.run = false;
     };
+    // No thumb down: the stick sits at its rest point, faint (is-rest).
+    const rest = () => {
+      const p = stickRestPoint(window.innerWidth, window.innerHeight, leftHanded);
+      place(base, p.x, p.y, STICK_RADIUS_PX);
+      place(knob, p.x, p.y, KNOB_HALF_PX);
+      place(zone, p.x, p.y, STICK_HIT_PX);
+    };
     const hide = () => {
       stick.classList.remove("is-active");
       knob.classList.remove("is-run");
+      rest();
     };
     // Overview: the zone is click-through, so there is nothing to listen for. The menu
     // covers the zone while it is open, so no new stick can start; this also lets go
-    // of one that was already down.
-    if (isOv || menuOpen) return;
+    // of one that was already down. No rest stick either (nothing to move).
+    if (isOv || menuOpen) {
+      stick.classList.remove("is-rest");
+      return;
+    }
+    rest();
+    stick.classList.add("is-rest");
+    const onResize = () => {
+      if (state.pointerId === null) rest();
+    };
 
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
-      const { innerWidth: vw, innerHeight: vh } = window;
-      if (!stickDown(state, e.pointerId, e.clientX, e.clientY, vw, vh, leftHanded)) {
-        return; // second finger, or the edge strip: swallowed, nothing happens
+      const p = stickRestPoint(window.innerWidth, window.innerHeight, leftHanded);
+      if (!stickDownAt(state, e.pointerId, e.clientX, e.clientY, p.x, p.y, STICK_HIT_PX)) {
+        return; // a second finger, or the zone's corner outside the circle: swallowed, nothing happens
       }
-      downX = e.clientX;
-      downY = e.clientY;
-      downAt = eventTime(e);
-      travel = 0;
-      place(base, state.ox, state.oy, STICK_RADIUS_PX);
-      place(knob, state.ox, state.oy, KNOB_HALF_PX);
       stick.classList.add("is-active");
+      onMove(e); // a press beside the centre already pushes that way
     };
 
     const onMove = (e: PointerEvent) => {
       const input = stickMove(state, e.pointerId, e.clientX, e.clientY);
       if (!input) return;
-      travel = pressTravel(travel, e.clientX - downX, e.clientY - downY);
       moveInput.forward = input.forward;
       moveInput.right = input.right;
       moveInput.run = input.run;
@@ -150,12 +146,6 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
       if (!stickUp(state, e.pointerId)) return;
       hide();
       clearInput();
-      if (
-        e.type === "pointerup" &&
-        isStickTap(pressTravel(travel, e.clientX - downX, e.clientY - downY), 0, eventTime(e) - downAt)
-      ) {
-        passTapToGround(e);
-      }
     };
 
     // The window losing focus mid-drag can swallow the lift: never keep walking.
@@ -174,7 +164,9 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
     window.addEventListener("pointerup", onEnd);
     window.addEventListener("pointercancel", onEnd);
     window.addEventListener("blur", onBlur);
+    window.addEventListener("resize", onResize);
     return () => {
+      window.removeEventListener("resize", onResize);
       zone.removeEventListener("pointerdown", onDown);
       zone.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("pointermove", onMove);
@@ -185,6 +177,7 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
       // flip or the map turning on mid-drag — the avatar would keep walking.
       hide();
       clearInput();
+      stick.classList.remove("is-rest");
     };
   }, [moveInput, leftHanded, isOv, menuOpen]);
 
@@ -192,7 +185,7 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
     <>
       <div
         ref={zoneRef}
-        className={"cv-stick-zone" + (leftHanded ? " is-left-handed" : "") + (isOv ? " is-ov" : "")}
+        className={"cv-stick-zone" + (isOv || menuOpen ? " is-ov" : "")}
         aria-hidden="true"
       />
       <div ref={stickRef} className="cv-stick" aria-hidden="true">

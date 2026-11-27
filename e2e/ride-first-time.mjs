@@ -5,7 +5,7 @@
  * point, uses ONLY what the UI shows: it walks by tapping the ground, looks for the 타기 prompt (the action button / E) and the ride itself, and for
  * each ride records what a person would see:
  *   - the distance from the boarding pad at which the 타기 prompt first appears,
- *   - whether TAPPING THE RIDE (the carousel's canopy, the wheel's frame, the coaster's station) walks to the pad and boards,
+ *   - that TAPPING THE RIDE (the coaster's station) walks to the pad and does NOT board (owner 2026-11-21: only the 타기 button boards),
  *   - whether PRESSING 타기 from afar walks there and boards,
  *   - what happens while the boarding window is closed (the seat is reserved, a countdown shows, the player is seated at the next load).
  * It leaves each ride again with the on-screen leave button, so the three rides are done back to back.
@@ -235,6 +235,20 @@ async function tryRide(key, how, route, tapPoint, pre) {
       run.check(`${key}: tap skipped (${rec.skipped})`, true);
       return;
     }
+    // owner 2026-11-21 ("타기 버튼을 눌러야만 타도록"): a tap on the ride walks to its boarding pad and NEVER boards; the 타기 prompt is there
+    await sleep(1500);
+    await until(async () => (await A.page.evaluate(() => window.__cvClickTarget?.() ?? null)) === null, 120_000, 300);
+    await sleep(6000);
+    const st = await rideState();
+    const reserved = await A.page.evaluate(async () => (await window.__imp("/src/land/coasterRide.ts")).rideReserved.key);
+    const me = await pos(A);
+    rec.tapWalkedTo = { x: Math.round(me.x), z: Math.round(me.z), dist: Math.round(Math.hypot(me.x - pad.x, me.z - pad.z) * 10) / 10 };
+    rec.promptAfterTap = await prompt(NAMES[key]);
+    report.push(rec);
+    console.log(JSON.stringify(rec));
+    run.check(`${key}: a tap on the ride does NOT board and keeps no seat (only the 타기 button does)`, st.slot < 0 && reserved === null, { st, reserved });
+    run.check(`${key}: the tap walked to the boarding pad, where the 타기 prompt is`, rec.tapWalkedTo.dist <= 7 && !!rec.promptAfterTap, rec);
+    return;
   } else if (how === "pill") {
     const go = A.page.locator(`[data-testid=ride-go-${key}]`);
     // on a phone the other rides sit behind "다른 놀이기구 ▼"

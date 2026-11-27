@@ -93,7 +93,7 @@ html:not(.cv-touch) .cv-coach {
    (--cv-pc-emoji-h) + 8 + the 40 px pill + 8. */
 @media (max-width: 743px) {
   html:not(.cv-touch) .cv-coach {
-    bottom: calc(var(--cv-pc-emoji-h, 88px) + 24px + 8px + 40px + 8px);
+    bottom: calc(var(--cv-pc-emoji-h, 104px) + var(--cv-pc-bottom, 16px) + 8px + 40px + 8px);
   }
 }
 

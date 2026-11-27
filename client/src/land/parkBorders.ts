@@ -1,21 +1,14 @@
 import { Matrix4, Object3D } from "three";
+import { PARK_ISLANDS } from "@caysonverse/shared/village/parkIslands";
 import { PARK_PLANTERS, PARK_TROUGHS } from "@caysonverse/shared/village/parkArea";
 import type { Bed } from "../village/veg/flowerPlacement";
 import type { Bush } from "../village/veg/shrubs";
 import { mulberry32 } from "../village/veg/vegRandom";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 
-// Islands beside the two paved approaches and the outer curve of the fountain plaza.
+// Islands beside the two paved approaches and the outer curve of the fountain plaza (shared/village/parkIslands.ts: also their collision).
 // The long axis follows the path. A bowed centreline opens the islands towards the lawn.
-// x, z, angle in degrees, half length, half width, bow in metres
-const islands: ReadonlyArray<readonly [number, number, number, number, number, number]> = [
-  [11.7, -89, 90, 5.5, 1.55, -0.6], [-7.7, -82, 90, 4.4, 1.25, 0.5],
-  [11.7, -66, 90, 4.8, 1.45, -0.75], [-7.7, -59, 90, 5.2, 1.4, 0.65],
-  [11.7, -41, 90, 4.5, 1.3, -0.5], [-7.7, -37, 90, 4.2, 1.3, 0.45],
-  [25, -85, 29, 6.8, 1.7, 0.8], [55, -85, -29, 6.8, 1.7, 0.8],
-  [81, -102.5, 0, 5.8, 1.4, 0.7], [103, -102.5, 0, 5.2, 1.4, 0.5],
-  [139, -102.5, 0, 6.1, 1.5, 0.7], [168, -102.5, 0, 5.4, 1.3, 0.6],
-];
+const islands = PARK_ISLANDS;
 
 const soilY = 0.085;
 
