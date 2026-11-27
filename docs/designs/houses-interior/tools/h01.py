@@ -34,27 +34,15 @@ WALL1 = (0.97, 0.89, 0.87, 1)          # cottage pass: blush limewash (the pink 
 FLOOR_TN = (0.97, 0.96, 0.95, 1)
 WALL2 = (0.98, 0.92, 0.9, 1)            # paler blush upstairs
 
-# window openings (exteriorToLocal of the outside windows; the right-back one hides behind stair A and is left out)
-# wall frames: front s = x, right s = z, back s = 10.6 - x, left s = 7.8 - z
-GW0, GW1 = 0.95, 2.40       # sill / head of the 1F windows
-W1 = dict(front=[(2.68, 1.5), (7.92, 1.5)], left=[(7.8 - 4.13, 1.5)], right=[(4.13, 1.5)], back=[(10.6 - 3.04, 1.5)])
+# window openings: the shell's windows (window alignment 2026-11-27, ha_common.spec / exterior_windows.json), minus any the stair
+# stands in front of. Wall frames: front s = x, right s = z, back s = 10.6 - x, left s = 7.8 - z
+import ha_common as HA  # noqa: E402
+W1 = HA.spec(H, 1, skip=[("back", 2.7)])   # the media wall / fireplace (chimney breast) stands where the shell's back-left window is: plain wall there
+ops_windows = HA.ops_windows
 
 
-def ops_windows(spec, y0=GW0, y1=GW1):
-    out = {}
-    for wall, lst in spec.items():
-        out[wall] = [dict(s0=c - w / 2, s1=c + w / 2, y0=y0, y1=y1) for (c, w) in lst]
-    return out
-
-
-def add_windows(spec, y0=GW0, y1=GW1, style="grid", cols=3, rows=2, curtain=()):
-    wins, curt = [], []
-    for wall, lst in spec.items():
-        for (c, w) in lst:
-            wins.append((wall, c - w / 2, c + w / 2, y0, y1, dict(style=style, cols=cols, rows=rows)))
-            if wall in curtain:
-                curt.append((wall, c - w / 2 - 0.3, c + w / 2 + 0.3, y1 + 0.3, 0.04, dict(folds=10)))
-    return wins, curt
+def add_windows(spec, curtain=()):
+    return HA.add_windows(spec, curtain=curtain)
 
 
 # ================================================================================================ floor 1 ======
@@ -88,10 +76,10 @@ H.piece(1, "art", DE.frame_art, 0.04, 6.0, 1.45, PI / 2, w=0.7, h=0.5, art=1, co
 H.piece(1, "art2", DE.frame_art, 6.65, 0.04, 1.75, 0.0, w=0.5, h=0.65, art=2, cols=False)     # (realism pass) was at x 5.3 — hanging in the glass of the entry door (x 4.4..6.2)
 
 # kitchen (right): sink under the front window, cooktop run on the right wall, fridge in the corner, dining table
-H.piece(1, "sinkrun", KI.counter_base, 8.4, 0.31, 0, 0.0, length=2.6, d=0.6, sink=True, top="stone")
-H.piece(1, "cookrun", KI.counter_base, 10.28, 2.1, 0, -PI / 2, length=2.6, d=0.6, cook="induction", top="stone")
+H.piece(1, "sinkrun", KI.counter_base, 8.4, 0.31, 0, 0.0, length=2.6, d=0.6, sink=True, top="stone", tile_back=False)  # window alignment 2026-11-27: under the shell's front-right window, no tile over the glass
+H.piece(1, "cookrun", KI.counter_base, 10.28, 3.65, 0, -PI / 2, length=2.0, d=0.6, cook="induction", top="stone", tile_back=False)  # window alignment 2026-11-27: the hob and hood between the right windows (was z 2.1, in front of the window)
 H.piece(1, "fridge", KI.fridge, 10.2, 0.4, 0, -PI / 2, w=0.7)
-H.piece(1, "hood", KI.hood, 10.35, 2.1, 0, -PI / 2)
+H.piece(1, "hood", KI.hood, 10.35, 3.65, 0, -PI / 2)
 H.piece(1, "dtable", TA.table_dining_rect, 8.14, 2.9, 0, PI / 2, w=1.4, d=0.5)   # turned: the stair foot keeps its floor (arrivals)
 for i, (x, z, yw) in enumerate(((7.4, 2.5, PI / 2), (7.4, 3.3, PI / 2), (8.88, 2.5, -PI / 2), (8.88, 3.3, -PI / 2))):
     H.piece(1, "dchair", SE.chair_dining_upholstered, x, z, 0, yw)
@@ -108,15 +96,15 @@ pass  # (cottage pass) removed: H.piece(1, "aircon", KR.aircon_stand, 1.15, 7.6,
 pass  # (cottage pass) removed: H.piece(1, "settop", KR.settop, 1.75, 7.55, 0.45, PI, cols=F
 H.piece(1, "soundbar", KR.soundbar, 2.4, 7.5, 0.45, PI, cols=False, w=0.95)
 pass  # (houses-real 2: a flat board over the new rolled arm) removed: H.piece(1, "throw", KR.throw_draped, 3.82, 3.0, 0.62, PI / 2, cols=False, w=0.5, top_d=0.16, drop_front=0.36, drop_back=0.12, tn=(0.85, 0.8, 0.7, 1))
-H.piece(1, "sideboard", TA.tv_stand, 2.68, 0.25, 0, 0.0, w=1.5, d=0.4, h=0.62, tn=(0.86, 0.84, 0.8, 1))
-H.piece(1, "sblamp", DE.table_lamp, 2.15, 0.25, 0.62, 0.0, cols=False)
+H.piece(1, "sideboard", TA.tv_stand, 2.0, 0.25, 0, 0.0, w=1.5, d=0.4, h=0.62, tn=(0.86, 0.84, 0.8, 1))
+H.piece(1, "sblamp", DE.table_lamp, 1.45, 0.25, 0.62, 0.0, cols=False)  # window alignment 2026-11-27: the sideboard centred under the shell's window (was x 2.68)
 P(1, "sbframe", "frame_small", 2.95, 0.22, 0.62, 0.0)
 P(1, "sbbooks", "books3", 3.2, 0.25, 0.62, 0.2)
 H.piece(1, "side", TA.bedside, 0.42, 5.35, 0, PI / 2)
 P(1, "sidemug", "mug_p", 0.42, 5.35, 0.55)
 pass  # (cottage pass) removed: H.piece(1, "purifier", KR.air_purifier, 0.45, 1.0)
 H.piece(1, "uppers_a", KI.upper_cabinets, 10.43, 1.25, 0, -PI / 2, cols=False, length=0.8)
-H.piece(1, "uppers_b", KI.upper_cabinets, 10.43, 2.95, 0, -PI / 2, cols=False, length=0.8)
+pass  # (window alignment: over the right window) removed: H.piece(1, "uppers_b", KI.upper_cabinets, 10.43, 2.95, 0, -PI / 2, cols=False, length=0.8)
 pass  # (cottage pass) removed: H.piece(1, "rack", KR.dish_rack, 7.45, 0.33, 0.9, 0.0, cols=
 pass  # (cottage pass) removed: H.piece(1, "purifierk", KR.water_purifier, 7.88, 0.28, 0.9, 
 pass  # (cottage pass) removed: H.piece(1, "rice", KR.rice_cooker, 9.05, 0.33, 0.9, 0.0, col
@@ -142,24 +130,24 @@ P(1, "boots", "boots_pair", 6.55, 0.55, 0.0, 0.3) if False else None
 H.piece(1, "cushion", DE.basket, 3.6, 1.0, 0.0, 0.0, r=0.22, h=0.3, cols=False) if False else None
 
 # ================================================================================================ floor 2 ======
-W2 = dict(front=[(2.68, 1.5), (7.92, 1.5)], left=[(7.8 - 4.13, 1.5)], right=[(4.13, 1.5)], back=[(10.6 - 3.04, 1.5)])
+W2 = HA.spec(H, 2)
 ops2 = ops_windows(W2)
-ops2["front"].append(dict(s0=4.2, s1=5.1, y0=0.0, y1=2.13))              # bathroom door
+ops2["front"].append(dict(s0=3.2, s1=4.1, y0=0.0, y1=2.13))              # bathroom door (window alignment: was 4.2..5.1, behind the shell's middle window)
 ops2["front"].sort(key=lambda o: o["s0"])
 wins2, curt2 = add_windows(W2, curtain=("left", "right", "back", "front"))
 H.shell(2, ops=ops2, wall_tn=WALL2, floor_tn=FLOOR_TN, windows=wins2, curtains=curt2, floor_kind="oak",
         lights=((2.4, 3.2), (8.2, 2.4), (8.2, 5.0)),
-        fixtures=[lambda fr: SH.bath_door(fr["front"][0], 4.2, 5.1, 2.1)])
+        fixtures=[lambda fr: SH.bath_door(fr["front"][0], 3.2, 4.1, 2.1)])
 H.piece(2, "rug", DE.rug_rect, 2.2, 2.3, 0, PI / 2, w=2.2, d=1.6, cols=False, tn=PAL["rug_cream"], border_tn=PAL["blush"], fringe=False)
 H.piece(2, "bed", BE.bed_queen, 1.15, 2.3, 0, PI / 2, tn=PAL["blush"])
 H.piece(2, "bedside", TA.bedside, 0.28, 0.85, 0, PI / 2)
 H.piece(2, "bedside", TA.bedside, 0.28, 3.45, 0, PI / 2)
 H.piece(2, "lamp", DE.table_lamp, 0.28, 0.85, 0.55, 0.0, cols=False)
 H.piece(2, "lamp", DE.table_lamp, 0.28, 3.45, 0.55, 0.0, cols=False)
-H.piece(2, "wardrobe", ST.wardrobe_builtin, 1.2, 7.5, 0, PI, w=2.1, bays=2)
-H.piece(2, "dressing", TA.dressing_table, 9.4, 0.3, 0, 0.0)
+H.piece(2, "wardrobe", ST.wardrobe_builtin, 1.0, 7.5, 0, PI, w=1.7, bays=2)  # window alignment 2026-11-27: was x 1.2 w 2.1 (into the back-left window)
+H.piece(2, "dressing", TA.dressing_table, 9.95, 0.3, 0, 0.0)  # window alignment 2026-11-27: was x 9.4
 H.piece(2, "stool", SE.ottoman, 9.4, 1.1, 0, PI, w=0.5, d=0.42)
-H.piece(2, "bookcase", ST.bookcase, 6.2, 0.2, 0, 0.0, w=1.0, h=1.9, shelves=4)
+H.piece(2, "bookcase", ST.bookcase, 6.8, 0.2, 0, 0.0, w=1.0, h=1.9, shelves=4)  # window alignment 2026-11-27: was x 6.2 (in front of the middle window)
 H.piece(2, "desk", TA.desk, 10.2, 4.15, 0, -PI / 2, w=1.4)
 H.piece(2, "deskchair", SE.chair_desk, 9.35, 4.15, 0, PI / 2, pull_body=0.62)
 H.piece(2, "rug2", DE.rug_round, 7.4, 3.0, 0, 0.0, d=1.8, cols=False, tn=PAL["sage"])
@@ -183,24 +171,24 @@ H.piece(2, "dlamp", DE.table_lamp, 10.3, 3.45, 0.74, 0.0, cols=False)
 
 pass  # (cottage pass) removed: H.piece(2, "aircon", KR.aircon_wall, 0.9, 0.0, 2.2, 0.0, col
 H.piece(2, "throw", KR.throw_folded, 1.85, 2.3, 0.56, PI / 2, cols=False, w=1.45, d=0.42, layers=2, tn=(0.82, 0.7, 0.62, 1))
-H.piece(2, "drawers", KR.chest_drawers, 5.19, 1.2, 0, -PI / 2, w=1.0)
+H.piece(2, "drawers", KR.chest_drawers, 5.84, 1.2, 0, -PI / 2, w=1.0)  # window alignment 2026-11-27: the partition moved from x 5.5 to 6.15 (it met the front wall inside the shell's middle upstairs window)
 P(2, "drbooks", "books3", 5.19, 0.95, 0.875, -PI / 2)
 P(2, "drvase", "vase_small", 5.19, 1.45, 0.875)
 pass  # (cottage pass) removed: H.piece(2, "purifier", KR.air_purifier, 0.45, 5.8)
-H.piece(2, "shelf", KR.wall_shelf_deco, 10.6, 2.35, 0.0, -PI / 2, cols=False, w=1.1, shelf_y=1.55, seed=3)
+H.piece(2, "shelf", KR.wall_shelf_deco, 10.6, 3.75, 0.0, -PI / 2, cols=False, w=1.0, shelf_y=1.55, seed=3)  # window alignment 2026-11-27: was z 2.35
 pass  # (cottage pass) removed: H.piece(2, "laundry", KR.laundry_basket, 3.45, 7.35)
 
 # ---- dream show-home styling (owner 2026-11-17): fresh flowers, styled tables, lamps and sconces, a console vignette --------
 H.piece(1, "flowers", KR.flower_vase, 8.15, 2.65, 0.745, 0.0, cols=False, tn=(0.92, 0.66, 0.72, 1), kind="rose", h=0.24)
 H.piece(1, "cstyle", KR.coffee_styling, 2.5, 5.25, 0.4, 0.0, cols=False, tn=(0.9, 0.7, 0.75, 1))
-H.piece(1, "vignette", KR.console_vignette, 0.0, 1.5, 0.0, PI / 2, w=1.2, accent=(0.92, 0.7, 0.76, 1))
+H.piece(1, "vignette", KR.console_vignette, 0.0, 3.5, 0.0, PI / 2, w=0.8, accent=(0.92, 0.7, 0.76, 1))
 H.piece(2, "sconce", KR.wall_sconce, 0.0, 0.85, 1.5, PI / 2, cols=False)
 H.piece(2, "sconce", KR.wall_sconce, 0.0, 3.45, 1.5, PI / 2, cols=False)
 
 H.piece(1, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=1)
 H.piece(2, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=1)
 
-H.piece(2, "part_a", FX.part_wall, 5.5, 0.0, 0, -PI / 2, length=5.0, openings=[(2.4, 4.2, 2.6)], tn=WALL2)   # (seat-front audit) ends 1.4 m short of the stairwell: a straight way to the landing
+H.piece(2, "part_a", FX.part_wall, 6.15, 0.0, 0, -PI / 2, length=5.0, openings=[(2.4, 4.2, 2.6)], tn=WALL2)   # (seat-front audit) ends 1.4 m short of the stairwell: a straight way to the landing
 H.piece(2, "bedpend", DE.pendant_globe, 3.2, 2.3, 3.7, 0.0, drop=1.5, r=0.16, cols=False)
 H.piece(1, "livepend", DE.pendant_dome, 2.5, 5.0, 3.7, 0.0, drop=1.5, r=0.22, cols=False)
 

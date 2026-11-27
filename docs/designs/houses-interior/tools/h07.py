@@ -26,7 +26,7 @@ SHEER = (0.95, 0.96, 0.92, 1)
 # ============================================================================================== floor 1: music room ===
 HB.hb_mats.use_wallpaper(7)
 WOOD_TRIM = (0.78, 0.62, 0.46, 1)
-win1 = HB.ext_windows(H, 1, w=1.5, style="grid", cols=3, rows=2, drape=("curtain", dict(folds=6, tn=SHEER, tie=0.4)))
+win1 = HB.ext_windows(H, 1, style="grid", cols=3, rows=2, drape=("curtain", dict(folds=6, tn=SHEER, tie=0.4)), skip=[("left", 2.35)])   # the fireplace's chimney breast stands where the shell's left-front window is
 HB.room(H, 1, floor_kind="oak", wall_tn=MINT_WALL, wall_m="H_wallpaper", trim_tn=WOOD_TRIM, casing_tn=WOOD_TRIM, ceil_tn=PAL["white"], windows=win1, entry=True, bath=dict(wall="back", c=9.4))
 HB.entry_hall(H)
 HB.stairs(H)
@@ -45,7 +45,7 @@ H.piece(1, "sofa", SE.sofa_fabric, 3.55, 3.05, 0, -PI / 2, w=2.2, tn=PAL["sofa_s
 H.piece(1, "armchair", SE.armchair_lounge, 2.3, 5.95, 0, PI, tn=PAL["mustard"])
 H.piece(1, "lamp", DE.floor_lamp, 3.0, 6.15)
 H.piece(1, "records", MU.record_shelf, 10.4, 0.95, 0, -PI / 2, w=1.3, d=0.36, h=0.78, seed=3)
-H.piece(1, "plant_r", HP.plant_big, 10.2, 5.25, 0, 0.0, kind="fiddle", h=1.4, leaves=30)
+H.piece(1, "plant_r", HP.plant_big, 10.2, 3.65, 0, 0.0, kind="fiddle", h=1.4, leaves=30)
 
 # --- piano corner (right wall)
 H.piece(1, "piano", TA.piano_upright, 10.3, 6.9, 0, -PI / 2)
@@ -64,7 +64,7 @@ H.piece(1, "rug2", DE.rug_round, 8.45, 2.4, 0, 0.0, cols=False, d=2.7, tn=PAL["r
 H.piece(1, "frames", DE.frame_family, 10.57, 0.95, 1.5, -PI / 2, cols=False)
 H.piece(1, "side", TA.bedside, 3.6, 1.72, 0, -PI / 2)
 H.piece(1, "sidelamp", DE.table_lamp, 3.6, 1.72, 0.55, 0.0)
-H.piece(1, "case", HP.bookwall_lite, 9.5, 0.2, 0, 0.0, w=1.2, h=1.7, d=0.3, seed=33, shelves=5)
+H.piece(1, "case", HP.bookwall_lite, 9.8, 0.2, 0, 0.0, w=0.8, h=1.7, d=0.3, seed=33, shelves=5)
 H.piece(1, "pend1", DE.pendant_globe, 3.0, 2.6, 3.7, 0.0, cols=False, drop=1.1, r=0.13)
 H.piece(1, "pend2", DE.pendant_globe, 3.0, 3.6, 3.7, 0.0, cols=False, drop=1.1, r=0.13)
 
@@ -87,9 +87,8 @@ H.piece(2, "pendant", DE.pendant_bar, 3.0, 3.6, 3.7, 0.0, cols=False, w=1.4, dro
 H.piece(2, "pendant", DE.pendant_bar, 9.1, 6.9, 3.7, 0.0, cols=False, w=1.4, drop=1.1, n=3)
 # material shelves on the right wall, potter's wheel on the left
 H.piece(2, "mat", MU.shelf_materials, 10.4, 0.95, 0, -PI / 2, w=1.2, d=0.4, h=1.9, seed=4)
-H.piece(2, "mat", MU.shelf_materials, 10.4, 2.2, 0, -PI / 2, w=1.2, d=0.4, h=1.9, seed=5)
-H.piece(2, "mat", MU.shelf_materials, 10.4, 5.55, 0, -PI / 2, w=1.2, d=0.4, h=1.9, seed=6)
-H.piece(2, "mat", MU.shelf_materials, 10.4, 6.8, 0, -PI / 2, w=1.2, d=0.4, h=1.9, seed=8)
+H.piece(2, "mat", MU.shelf_materials, 10.4, 3.75, 0, -PI / 2, w=1.2, d=0.4, h=1.9, seed=5)  # window alignment 2026-11-27: the material shelves stand between the right windows
+H.piece(2, "mat", MU.shelf_materials, 10.4, 6.6, 0, -PI / 2, w=1.2, d=0.4, h=1.9, seed=6)
 pass  # (cottage pass) removed: H.piece(2, "wheel", MU.potter_wheel, 0.9, 1.5, 0, PI / 2)
 H.piece(2, "plant", HP.plant_big, 6.6, 0.6, 0, 0.0, kind="monstera", h=1.1)
 pass  # (cottage pass) removed: H.piece(2, "lumber", MU.lumber_rack, 0.2, 5.6, 0, PI / 2, w=
@@ -100,7 +99,7 @@ H.piece(2, "frame", DE.frame_art, 0.04, 4.9, 1.6, PI / 2, cols=False, w=0.5, h=0
 
 # ---- realism pass 2026-11-17 (refs: unsplash upright-piano living rooms, pexels workshops): the room is used ---------------------------
 pass  # (cottage pass) removed: H.piece(1, "aircon", KR.aircon_stand, 1.6, 0.2, 0, 0.0)
-H.piece(1, "musicstand", KR.music_stand, 9.0, 5.75, 0, -PI / 2 - 0.5)
+H.piece(1, "musicstand", KR.music_stand, 8.94, 5.75, 0, -PI / 2 - 0.5)
 H.piece(1, "throw", KR.throw_draped, 3.98, 2.6, 0.8, -PI / 2, cols=False, w=0.5, top_d=0.14, drop_front=0.28, drop_back=0.4, tn=(0.86, 0.78, 0.62, 1))
 pass  # (cottage pass) removed: H.piece(1, "purifier", KR.air_purifier, 7.5, 7.45)
 pass  # (cottage pass) removed: H.piece(1, "slippers", KR.slippers, 6.55, 1.15, 0.0, -PI / 2

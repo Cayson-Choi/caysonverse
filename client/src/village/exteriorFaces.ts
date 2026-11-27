@@ -123,6 +123,8 @@ export const SURFACES: Readonly<Record<string, SurfaceSpec>> = Object.freeze({
   siding: { pbr: "wood_siding", uv: { mode: "box" }, tint: [1.5, 1.08, 0.72], normalStrength: 1.4, roughness: 0.95, metalness: 0, nightGlow: [0.075, 0.04, 0.017] },
   // the memorial's stone order (memorialTrimBoxes): a mid-grey flamed granite plinth, warm light ashlar pilasters and cornice
   trimGranite: { pbr: "granite_flamed", uv: { mode: "box" }, tint: [0.62, 0.6, 0.58], normalStrength: 1, roughness: 1, metalness: 0 },
+  // round 2: the blind windows' panels, a pale honed granite (calmer than the plinth's mid grey)
+  trimPanel: { pbr: "granite_flamed", uv: { mode: "box" }, tint: [1.05, 1.03, 1.0], normalStrength: 0.6, roughness: 0.9, metalness: 0 },
   trimAshlar: { pbr: "stone_ashlar", uv: { mode: "box" }, tint: [2.0, 1.92, 1.74], normalStrength: 1.2, roughness: 1, metalness: 0 },
   sidingDark: { pbr: "wood_siding", uv: { mode: "box" }, tint: [1.0, 0.62, 0.4], normalStrength: 1.4, roughness: 0.95, metalness: 0, nightGlow: [0.05, 0.025, 0.011] },
 });
@@ -296,7 +298,7 @@ export const MEMORIAL_SHELL = { x0: -10, x1: 10, zb: -68, zf: -52, y0: 0.15, y1:
  * pilasters at every corner and every 4 m between, and a projecting ashlar cornice over the parapet. Boxes only (the walls keep their
  * own faces): `granite` the plinth, `ashlar` the pilasters and the cornice.
  */
-export function memorialTrimBoxes(): { granite: TrimBox[]; ashlar: TrimBox[] } {
+export function memorialTrimBoxes(): { granite: TrimBox[]; ashlar: TrimBox[]; panel: TrimBox[] } {
   const { x0, x1, zb, zf, y0, y1 } = MEMORIAL_SHELL;
   const P = 0.12; // pilasters' projection
   const W = 0.7; // pilasters' width
@@ -327,7 +329,50 @@ export function memorialTrimBoxes(): { granite: TrimBox[]; ashlar: TrimBox[] } {
     ashlar.push([x1, plinthTop, z - W / 2, x1 + P, corniceBot, z + W / 2]);
   }
   for (const x of [-6, -2, 2, 6]) ashlar.push([x - W / 2, plinthTop, zb - P, x + W / 2, corniceBot, zb]);
-  return { granite, ashlar };
+  // round 2: a blind window in every bay (MEMORIAL_BLIND)
+  const panel: TrimBox[] = [];
+  for (const b of memorialBlindWindows()) {
+    panel.push(...b.granite);
+    ashlar.push(...b.ashlar);
+  }
+  return { granite, ashlar, panel };
+}
+
+/**
+ * #13 exteriors round 2 (owner 2026-11-27): the render between the pilasters was still blank. Every bay of the sides and the back gets a
+ * BLIND WINDOW in the stone order's calm language (no glass: the hall's rooms are behind): an ashlar surround standing off the render, a
+ * projecting sill and a head, and inside them a recessed panel of the plinth's honed grey granite, so the bay reads as a tall window
+ * opening filled with stone (`trimPanel`: pale honed granite). Sizes in m.
+ */
+export const MEMORIAL_BLIND = Object.freeze({ width: 1.4, foot: 1.62, head: 4.86, surround: 0.15, proud: 0.075, panelProud: 0.018, sill: 0.12, sillOut: 0.13, headH: 0.16, headOut: 0.1 });
+
+/** The bays' centres: along each side wall (z) and along the back (x). */
+export const MEMORIAL_BAYS = Object.freeze({ side: [-65.9, -62, -58, -54.2], back: [-7.9, -4, 0, 4, 7.9] });
+
+/** Each blind window's boxes: its granite panel, its ashlar surround, sill and head. */
+export function memorialBlindWindows(): Array<{ granite: TrimBox[]; ashlar: TrimBox[] }> {
+  const { x0, x1, zb } = MEMORIAL_SHELL;
+  const B = MEMORIAL_BLIND;
+  const out: Array<{ granite: TrimBox[]; ashlar: TrimBox[] }> = [];
+  const hw = B.width / 2;
+  const s = B.surround;
+  // one window on a wall: u along the wall, the wall's plane at w0 and its outward sign; (u, y, depth) -> a box
+  const make = (box: (u0: number, u1: number, y0: number, y1: number, d0: number, d1: number) => TrimBox, c: number) => {
+    const granite: TrimBox[] = [box(c - hw, c + hw, B.foot, B.head, 0, B.panelProud)];
+    const ashlar: TrimBox[] = [
+      box(c - hw - s, c - hw, B.foot, B.head, 0, B.proud), // jambs
+      box(c + hw, c + hw + s, B.foot, B.head, 0, B.proud),
+      box(c - hw - s - 0.08, c + hw + s + 0.08, B.foot - B.sill, B.foot, 0, B.sillOut), // the sill
+      box(c - hw - s - 0.06, c + hw + s + 0.06, B.head, B.head + B.headH, 0, B.headOut), // the head
+    ];
+    out.push({ granite, ashlar });
+  };
+  for (const z of MEMORIAL_BAYS.side) {
+    make((u0, u1, y0, y1, d0, d1) => [x0 - d1, y0, u0, x0 - d0, y1, u1], z);
+    make((u0, u1, y0, y1, d0, d1) => [x1 + d0, y0, u0, x1 + d1, y1, u1], z);
+  }
+  for (const x of MEMORIAL_BAYS.back) make((u0, u1, y0, y1, d0, d1) => [u0, y0, zb - d1, u1, y1, zb - d0], x);
+  return out;
 }
 
 /** Boxes as one lit-surface geometry (no bottoms; planar UVs in metres / tile, as `boxUv`). */

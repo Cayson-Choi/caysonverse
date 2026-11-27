@@ -36,6 +36,7 @@ import {
   trianglesOf,
   trimGeometry,
   wallInstances,
+  wallBannerGeometry,
   wallEndGeometry,
   wallModuleGeometry,
   type WallTier,
@@ -124,6 +125,7 @@ function make(plan: WallPlan, heightAt: (x: number, z: number) => number, tier: 
     roof: roofGeometry(tier),
     trim: trimGeometry(tier),
     banner: bannerGeometry(),
+    wallBanner: wallBannerGeometry(),
     lantern: lanternGeometry(),
   };
   const stone = createPbrMaterial(stoneSet, { repeatMeters: [1, 1], params: { color: new Color().setRGB(...look.stone), vertexColors: true } });
@@ -136,6 +138,9 @@ function make(plan: WallPlan, heightAt: (x: number, z: number) => number, tier: 
   const bannerTex = bannerTexture(look.banner);
   const banner = new MeshStandardMaterial({ map: bannerTex, roughness: 0.85, side: FrontSide });
   banner.name = "M_castle_banner";
+  // the wall's own banners hang in the inner face's shade and are seen from both sides of the cloth: lit both ways
+  const wallBanner = new MeshStandardMaterial({ map: bannerTex, roughness: 0.85, side: DoubleSide });
+  wallBanner.name = "M_castle_wall_banner";
   const iron = new MeshStandardMaterial({ color: "#26221f", roughness: 0.55, metalness: 0.5 });
   iron.name = "M_castle_iron";
   const glass = new MeshStandardMaterial({ color: "#f5deb0", emissive: new Color("#ffb24a"), emissiveIntensity: 0, roughness: 0.2, side: DoubleSide });
@@ -151,21 +156,23 @@ function make(plan: WallPlan, heightAt: (x: number, z: number) => number, tier: 
     instanced(geos.trim, gold, inst.towers, "castle_wall_trim", false),
     instanced(geos.banner, banner, inst.towers, "castle_wall_banners", false),
     instanced(geos.lantern, [iron, glass], inst.lanterns, "castle_wall_lanterns", false),
+    ...(inst.banners.length ? [instanced(geos.wallBanner, [wallBanner, gold], inst.banners, "castle_wall_inner_banners", false)] : []),
   ];
   root.add(...parts);
   const triangles =
     trianglesOf(geos.module) * inst.modules.length +
     trianglesOf(geos.end) * inst.ends.length +
     (trianglesOf(geos.tower) + trianglesOf(geos.roof) + trianglesOf(geos.trim) + trianglesOf(geos.banner)) * inst.towers.length +
-    trianglesOf(geos.lantern) * inst.lanterns.length;
+    trianglesOf(geos.lantern) * inst.lanterns.length +
+    trianglesOf(geos.wallBanner) * inst.banners.length;
   return {
     root,
     glass,
     glows: inst.glows,
-    stats: { drawCalls: 8 + (inst.ends.length ? 1 : 0), triangles: Math.round(triangles), modules: inst.modules.length, towers: inst.towers.length, lanterns: inst.lanterns.length },
+    stats: { drawCalls: 8 + (inst.ends.length ? 1 : 0) + (inst.banners.length ? 2 : 0), triangles: Math.round(triangles), modules: inst.modules.length, towers: inst.towers.length, lanterns: inst.lanterns.length },
     dispose() {
       for (const g of Object.values(geos)) g.dispose();
-      for (const m of [stone, roof, gold, banner, iron, glass]) m.dispose();
+      for (const m of [stone, roof, gold, banner, wallBanner, iron, glass]) m.dispose();
       bannerTex.dispose();
       for (const p of parts) p.dispose();
     },

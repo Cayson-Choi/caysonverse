@@ -9,10 +9,15 @@ import {
   trianglesOf,
   trimGeometry,
   SLIT,
+  INNER_BUTTRESS,
+  WALL_BANNER,
+  wallBannerGeometry,
   wallEndGeometry,
   wallInstances,
   wallModuleGeometry,
 } from "./castleWallGeometry";
+
+const H_OFF = WALL.halfThickness + 0.13;
 
 describe("castle wall geometry", () => {
   const parts = (tier: "high" | "low") => [wallModuleGeometry(tier), towerGeometry(tier), roofGeometry(tier), trimGeometry(tier), bannerGeometry(), lanternGeometry()];
@@ -59,11 +64,60 @@ describe("castle wall geometry", () => {
     }
   });
 
-  it("stays light: a module under 240 triangles, a tower with its roof under 1010 (its three slit windows each in a stone surround, +120), the phone tier lighter", () => {
-    expect(trianglesOf(wallModuleGeometry("high"))).toBeLessThan(240);
+  it("stays light: a module under 330 triangles (the inner face's buttress, string course, corbels and merlons, +#13 round 2), a tower with its roof under 1010 (its three slit windows each in a stone surround, +120), the phone tier lighter", () => {
+    expect(trianglesOf(wallModuleGeometry("high"))).toBeLessThan(330);
+    expect(trianglesOf(wallModuleGeometry("low"))).toBeLessThan(300);
+    expect(trianglesOf(wallBannerGeometry())).toBeLessThan(40);
     expect(trianglesOf(wallModuleGeometry("low"))).toBeLessThan(trianglesOf(wallModuleGeometry("high")));
     expect(trianglesOf(towerGeometry("high")) + trianglesOf(roofGeometry("high"))).toBeLessThan(1010);
     expect(trianglesOf(towerGeometry("low"))).toBeLessThan(trianglesOf(towerGeometry("high")));
+  });
+
+  it("gives the inner face relief no deeper than the old pilaster (the wall's solids stay), and merlons on the inner parapet", () => {
+    const g = wallModuleGeometry("high");
+    const pos = g.getAttribute("position");
+    const H = WALL.halfThickness;
+    let deepest = 0;
+    let innerMerlonTop = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const z = pos.getZ(i);
+      const y = pos.getY(i);
+      if (y > 0.9 && y < 8.0) deepest = Math.max(deepest, -H - z);
+      if (z < -H + 0.31 && y > 9.8) innerMerlonTop = Math.max(innerMerlonTop, y);
+    }
+    expect(deepest).toBeCloseTo(INNER_BUTTRESS.lowerDepth, 5);
+    expect(deepest).toBeLessThanOrEqual(0.5 + 1e-9);
+    expect(innerMerlonTop).toBeGreaterThan(10.4);
+  });
+
+  it("hangs banners on the inner face, clear of the buttresses, between the string course and the corbels", () => {
+    for (const [plan, lamps] of [[PARK_WALL_PLAN, "inner"], [VILLAGE_WALL_PLAN, "outer"]] as const) {
+      const inst = wallInstances(plan, () => 0, lamps);
+      expect(inst.banners.length).toBeGreaterThan(4);
+      const p = new Vector3();
+      for (const m of inst.banners) {
+        p.setFromMatrixPosition(m);
+        // on a run's inner side: its local +z (the cloth's front) points into the enclosure
+        const facing = new Vector3(0, 0, 1).transformDirection(m);
+        // the nearest run: the banner stands off its INNER face (signed distance along out = -(H + standoff))
+        let best = Infinity;
+        let run = plan.runs[0]!;
+        for (const r of plan.runs) {
+          const dx = r.bx - r.ax, dz = r.bz - r.az;
+          const t = Math.max(0, Math.min(1, ((p.x - r.ax) * dx + (p.z - r.az) * dz) / (dx * dx + dz * dz)));
+          const d = Math.hypot(p.x - (r.ax + dx * t), p.z - (r.az + dz * t));
+          if (d < best) {
+            best = d;
+            run = r;
+          }
+        }
+        expect(best).toBeCloseTo(H_OFF, 3);
+        expect((p.x - run.ax) * run.out[0] + (p.z - run.az) * run.out[1]).toBeCloseTo(-H_OFF, 3);
+        expect(facing.x * run.out[0] + facing.z * run.out[1]).toBeCloseTo(-1, 5);
+      }
+    }
+    expect(WALL_BANNER.bottom).toBeGreaterThan(4.6);
+    expect(WALL_BANNER.top).toBeLessThan(8.1);
   });
 
   it("the lantern has two groups (the iron, the glass)", () => {

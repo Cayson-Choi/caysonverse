@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BufferGeometry, Float32BufferAttribute, Group, Mesh, MeshBasicMaterial } from "three";
-import { CAFE_SHELL_BOX, DRESS_RULES, MEMORIAL_SHELL, SURFACES, boxUv, findSplits, geometryWithout, memorialTrimBoxes, onShell, outward, selectFaces, takeFaces, trimGeometry, type FaceRule, type TriView } from "./exteriorFaces";
+import { CAFE_SHELL_BOX, DRESS_RULES, MEMORIAL_BAYS, MEMORIAL_BLIND, MEMORIAL_SHELL, SURFACES, boxUv, findSplits, geometryWithout, memorialBlindWindows, memorialTrimBoxes, onShell, outward, selectFaces, takeFaces, trimGeometry, type FaceRule, type TriView } from "./exteriorFaces";
 import { terraceParasol } from "./cafe/terraceParasol";
 import { cullBeyondZ } from "./lots/lotsPrep";
 import { pbrIdsOf } from "./exteriorFacesTestUtil";
@@ -127,13 +127,14 @@ describe("#13 exteriors: cafe siding, memorial stone order", () => {
     expect(outward(tri(48.2, 2, -4, 1, 0, 0), [48, 0, -6, 51, 4, -2])).toBe(false);
   });
   it("every new surface names a library set or a made material", () => {
-    for (const k of ["siding", "sidingDark", "trimGranite", "trimAshlar"]) expect(SURFACES[k]).toBeTruthy();
+    for (const k of ["siding", "sidingDark", "trimGranite", "trimAshlar", "trimPanel"]) expect(SURFACES[k]).toBeTruthy();
     for (const r of DRESS_RULES) expect(SURFACES[r.surface]).toBeTruthy();
   });
   it("the memorial's pilasters, plinth and cornice stand on its three blank walls, not in front of the entrance", () => {
-    const { granite, ashlar } = memorialTrimBoxes();
+    const { granite, ashlar, panel } = memorialTrimBoxes();
     const { x0, x1, zb, zf } = MEMORIAL_SHELL;
-    for (const b of [...granite, ...ashlar]) {
+    expect(panel).toHaveLength(MEMORIAL_BAYS.side.length * 2 + MEMORIAL_BAYS.back.length);
+    for (const b of [...granite, ...ashlar, ...panel]) {
       expect(b[0]).toBeLessThan(b[3]);
       expect(b[1]).toBeLessThan(b[4]);
       expect(b[2]).toBeLessThan(b[5]);
@@ -148,8 +149,27 @@ describe("#13 exteriors: cafe siding, memorial stone order", () => {
     }
     expect(ashlar.length).toBeGreaterThanOrEqual(3 + 4 + 6 + 4);
     const g = trimGeometry(ashlar, 3);
-    // five faces of two triangles a box: a few hundred triangles in all (one draw call per surface)
+    // five faces of two triangles a box: under a thousand triangles in all (one draw call per surface)
     expect(g.getAttribute("position").count / 3).toBe(ashlar.length * 10);
-    expect(g.getAttribute("position").count / 3).toBeLessThan(400);
+    expect(g.getAttribute("position").count / 3).toBeLessThan(800);
+  });
+  it("puts a blind window in every bay, between the pilasters and between the plinth and the cornice", () => {
+    const wins = memorialBlindWindows();
+    expect(wins).toHaveLength(MEMORIAL_BAYS.side.length * 2 + MEMORIAL_BAYS.back.length);
+    const { ashlar } = memorialTrimBoxes();
+    const pilasters = ashlar.filter((b) => b[1] < 1 && b[4] > 5); // the full-height ones
+    for (const w of wins) {
+      for (const b of [...w.granite, ...w.ashlar]) {
+        expect(b[1]).toBeGreaterThan(0.75);
+        expect(b[4]).toBeLessThan(5.62);
+        // no box of a window overlaps a pilaster (in plan, on the same wall)
+        for (const p of pilasters) {
+          const overlap = b[0] < p[3] - 1e-6 && b[3] > p[0] + 1e-6 && b[2] < p[5] - 1e-6 && b[5] > p[2] + 1e-6;
+          expect(overlap).toBe(false);
+        }
+      }
+      // the panel sits inside its surround, recessed behind it
+      expect(MEMORIAL_BLIND.panelProud).toBeLessThan(MEMORIAL_BLIND.proud);
+    }
   });
 });

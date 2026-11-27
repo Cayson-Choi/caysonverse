@@ -17,6 +17,7 @@ import { floraOld } from "../veg/vegMode";
 import { cutOldPines, makeTemplePines, pineGroundY } from "./templePines";
 import { installEntranceGardens } from "./entranceGardens";
 import { dressGateLot } from "./gateDress";
+import { dressLotDoors } from "./lotDoors";
 import { setLotsDrawn } from "./lotsStore";
 import { doorSwingClearance } from "./lotDoorCheck";
 import { LotRoomShowcase } from "../portal/RoomShowcase";
@@ -142,6 +143,9 @@ function lotsFor(tier: VillageTier, gl: WebGLRenderer): LotsCache {
       const garden = installEntranceGardens(nodes, tier === "low" || isTouchDevice);
       dressTempleYard(nodes, tier);
       dressGateLot(nodes, tier === "low" || isTouchDevice, garden);
+      // the library's and the church's front doors as real joinery (#13 exteriors round 2)
+      const doors = dressLotDoors(nodes);
+      if (import.meta.env.DEV) (window as unknown as { __cvLotDoors?: () => unknown }).__cvLotDoors = () => ({ ...doors });
       for (const m of nodes.surfaces) applyLotTextures(m, bank);
       bank.takeChanged();
       c.value = { loaded, nodes, loadMs: Math.round(performance.now() - t0) };

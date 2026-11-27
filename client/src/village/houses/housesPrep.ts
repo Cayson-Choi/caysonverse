@@ -64,7 +64,7 @@ import { VILLAGE_LAYOUT, type SceneryHouse } from "@caysonverse/shared/village/v
 import { VILLAGE_COLLIDERS } from "@caysonverse/shared/village/generated/villageColliders";
 import { deckHouseSurface, splitDeckTriangles } from "./deckPlanks";
 import { ridgeCaps, ridgeLines, tintRidgeMortar } from "./roofRidge";
-import { builderGeometry, houseShutterParts } from "./houseShutters";
+import { builderGeometry, closedShutterParts, houseShutterParts, onOpenLeafOfClosed } from "./houseShutters";
 import { versionedUrl } from "../modelUrl";
 import { LIT, litUniform } from "../villageModelPrep";
 import { SS_FRAGMENT_PARS, SS_VERTEX_PARS, SS_VERTEX_WORLD, bindSunShadowUniforms } from "../sunShadows";
@@ -585,7 +585,7 @@ export interface HouseNodes {
   glow: HouseGlow;
   /** Materials and geometries this call made: freed by `disposeHouses`. */
   own: { materials: Material[]; geometries: BufferGeometry[] };
-  stats: { shellTriangles: number; detailTriangles: Record<string, number>; shellDraws: number; detailDraws: Record<string, number>; lamps: number; ridges: number; shutterWindows: number };
+  stats: { shellTriangles: number; detailTriangles: Record<string, number>; shellDraws: number; detailDraws: Record<string, number>; lamps: number; ridges: number; shutterWindows: number; closedWindows: number };
 }
 
 const isMeshObj = (o: Object3D): o is Mesh => (o as Mesh).isMesh === true;
@@ -809,14 +809,36 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
   // shutters on the side walls' and the back's ground-floor windows (houseShutters.ts), merged into the detail's own wood and
   // metal meshes (no extra draw); measured before the shells merge (the glass parts are disposed with them)
   let shutterWindows = 0;
+  let closedWindows = 0;
   for (const h of a8Houses) {
     const group = details.get(h.id);
     if (!group) continue;
-    const parts = houseShutterParts(glassOf.get(h.id) ?? [], h);
+    const glass = glassOf.get(h.id) ?? [];
+    const parts = houseShutterParts(glass, h);
     shutterWindows += parts.windows;
+    // the windows whose shutters are shut (houseShutters.ts HOUSE_CLOSED_WINDOWS: the room behind their glass showed a door or
+    // its own window's edge): the closed leaves join the shell's painted wood (always drawn, like the rooms behind the glass), and
+    // the model's own open leaves beside them leave the detail
+    const closed = closedShutterParts(glass, h);
+    closedWindows += closed.windows.length;
+    const woodParts = shellParts.get("LM_wood");
+    const closedGeo = woodParts?.length ? builderGeometry(closed.wood, woodParts[0]!) : null;
+    if (closedGeo) woodParts!.push(closedGeo);
     for (const [mat, b] of [["LM_wood", parts.wood], ["LM_metal", parts.metal]] as const) {
       const mesh = group.children.find((c): c is Mesh => isMeshObj(c) && matsOf(c)[0]!.name === mat);
       if (!mesh) continue;
+      if (closed.windows.length) {
+        const kept = dropTriangles(mesh.geometry, mesh.matrix, (x, y, z) => onOpenLeafOfClosed(h, closed.windows, x, y, z));
+        if (kept) {
+          detailTriangles[h.id] = (detailTriangles[h.id] ?? 0) + tris(kept) - tris(mesh.geometry);
+          if (own.geometries.includes(mesh.geometry)) {
+            own.geometries.splice(own.geometries.indexOf(mesh.geometry), 1);
+            mesh.geometry.dispose();
+          }
+          own.geometries.push(kept);
+          mesh.geometry = kept;
+        }
+      }
       const add = builderGeometry(b, mesh.geometry);
       if (!add) continue;
       add.applyMatrix4(tmp.copy(mesh.matrix).invert()); // the group sits at the origin: the mesh's own matrix is its world
@@ -894,7 +916,7 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
     porches,
     glow,
     own,
-    stats: { shellTriangles, detailTriangles, shellDraws: shells.length, detailDraws, lamps: points.length, ridges: ridges.length, shutterWindows },
+    stats: { shellTriangles, detailTriangles, shellDraws: shells.length, detailDraws, lamps: points.length, ridges: ridges.length, shutterWindows, closedWindows },
   };
 }
 
@@ -968,6 +990,32 @@ export function freshenWalls(geo: BufferGeometry, claddingBand: boolean): number
   }
   col.needsUpdate = true;
   return n;
+}
+
+/**
+ * A copy of a geometry without the triangles whose three corners (through `matrix`, into the world) all pass `drop`; null when none
+ * does. Indexed in, indexed out (the attributes kept whole: only the index shrinks).
+ */
+export function dropTriangles(geo: BufferGeometry, matrix: Matrix4, drop: (x: number, y: number, z: number) => boolean): BufferGeometry | null {
+  const pos = geo.getAttribute("position");
+  const n = geo.index ? geo.index.count : pos.count;
+  const at = (k: number) => (geo.index ? geo.index.getX(k) : k);
+  const v = new Vector3();
+  const keep: number[] = [];
+  let dropped = 0;
+  for (let t = 0; t + 2 < n; t += 3) {
+    let all = true;
+    for (let k = 0; k < 3 && all; k++) {
+      v.fromBufferAttribute(pos, at(t + k)).applyMatrix4(matrix);
+      all = drop(v.x, v.y, v.z);
+    }
+    if (all) dropped++;
+    else keep.push(at(t), at(t + 1), at(t + 2));
+  }
+  if (dropped === 0) return null;
+  const out = geo.clone();
+  out.setIndex(keep);
+  return out;
 }
 
 /** Vertex colours of the 2026-11-17 build that look old, and their new ones (sRGB hex): the garden beds' weathered grey timber. */
