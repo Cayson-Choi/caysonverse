@@ -88,7 +88,9 @@ def book_row(F, x0, x1, y, depth=0.24, hmax=0.3, seed=1, tns=None):
             continue
         th = rnd.uniform(0.022, 0.045)
         hh = rnd.uniform(0.62, 1.0) * hmax
-        rbox(F, x, x + th - 0.002, depth * 0.1, depth, y, y + hh, "H_paint", r=0.0, seg=1, tn=rnd.choice(tns), skip=("-z", "-y", "-x"))
+        import kit_storage as _ST     # houses-real pass 2: real spines / page tops instead of painted boxes
+        _ST.book(F, x, th - 0.002, depth * 0.1, depth, y, hh, rnd.randrange(16), sides=(False, True))
+        rnd.choice(tns)              # keeps the seed sequence of the rows after it (vases at the same places)
         x += th
 
 

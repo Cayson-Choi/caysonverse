@@ -15,6 +15,36 @@ def acell(i):
 BOOK_CELLS = [2, 3, 4, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 20, 21, 22, 26, 27, 30, 0, 1, 24, 7]
 
 
+# houses-real pass 2 (owner 2026-11-22: books read as coloured boxes; refs: real home shelves): T_h_books holds 16 spines (title and
+# author bands, head / tail bands, cloth weave) in u 0..0.875 and a page block in u 0.875..1. A book shows its spine on the front, its
+# page edges on the top, its cover colour on the sides.
+BOOK_W = 0.875 / 16
+
+
+def book_uv(k):
+    u0 = (k % 16) * BOOK_W
+    return u0 + BOOK_W * 0.06, u0 + BOOK_W * 0.94
+
+
+def book(F, x, th, z0, z1, y, h, k, top=True, sides=(True, True), lean=0.0):
+    """one book standing on y, spine at z1 (+z), x..x+th wide; lean = top shift along +x (a book leaning on its neighbour)."""
+    u0, u1 = book_uv(k)
+    uc = (u0 + (u1 - u0) * 0.12, u0 + (u1 - u0) * 0.2)
+    bl, br = (x, y), (x + th, y)
+    tl, tr = (x + lean, y + h), (x + th + lean, y + h)
+    gface(F, [(bl[0], z1, bl[1]), (br[0], z1, br[1]), (tr[0], z1, tr[1]), (tl[0], z1, tl[1])], "H_books", None, 1.0, (0, 1, 0),
+          uv=[(u0, 0.0), (u1, 0.0), (u1, 1.0), (u0, 1.0)])
+    if top:
+        gface(F, [(tl[0], z0, tl[1]), (tr[0], z0, tr[1]), (tr[0], z1, tr[1]), (tl[0], z1, tl[1])], "H_books", None, 1.0, (0, 0, 1),
+              uv=[(0.885, 0.0), (0.99, 0.0), (0.99, 1.0), (0.885, 1.0)])
+    if sides[0]:
+        gface(F, [(bl[0], z0, bl[1]), (bl[0], z1, bl[1]), (tl[0], z1, tl[1]), (tl[0], z0, tl[1])], "H_books", None, 1.0, (-1, 0, 0),
+              uv=[(uc[0], 0.3), (uc[1], 0.3), (uc[1], 0.32), (uc[0], 0.32)])
+    if sides[1]:
+        gface(F, [(br[0], z0, br[1]), (br[0], z1, br[1]), (tr[0], z1, tr[1]), (tr[0], z0, tr[1])], "H_books", None, 1.0, (1, 0, 0),
+              uv=[(uc[0], 0.3), (uc[1], 0.3), (uc[1], 0.32), (uc[0], 0.32)])
+
+
 def books(F, x0, x1, z, y, hmax=0.30, hmin=0.2, depth=0.22, seed=1, fill=0.9, lean_end=True):
     """a row of books standing on y between x0..x1 (spine out toward +z at z + depth/2): real boxes, varied height/thickness/colour."""
     rnd = random.Random(seed)
@@ -25,9 +55,11 @@ def books(F, x0, x1, z, y, hmax=0.30, hmin=0.2, depth=0.22, seed=1, fill=0.9, le
             break
         h = rnd.uniform(hmin, hmax)
         d = depth * rnd.uniform(0.8, 1.0)
-        uvc = acell(rnd.choice(BOOK_CELLS))
-        rbox(F, x, x + th, z - d / 2, z + d / 2, y, y + h, "H_atlas", r=0.0, seg=1, uvc=uvc)
-        # white page block (front edge strip)
+        k = rnd.randrange(16)
+        lean = 0.0
+        if lean_end and x + th > x1 - 0.06 and rnd.random() < 0.6:      # the row's last book leans on its neighbour
+            lean = -min(0.05, h * 0.18)
+        book(F, x, th, z - d / 2, z + d / 2, y, h, k, lean=lean)
         x += th + 0.001
         if rnd.random() > fill:
             x += rnd.uniform(0.03, 0.12)
@@ -37,8 +69,19 @@ def books_stack(F, cx, cz, y, n=4, seed=2, w=0.2, d=0.15):
     rnd = random.Random(seed)
     for i in range(n):
         th = rnd.uniform(0.02, 0.04)
-        rbox(F, cx - w / 2 + rnd.uniform(-0.01, 0.01), cx + w / 2 + rnd.uniform(-0.01, 0.01), cz - d / 2, cz + d / 2, y, y + th, "H_atlas", r=0.0, seg=1,
-             uvc=acell(rnd.choice(BOOK_CELLS)))
+        # a book lying flat: its spine (+z) as a band, pages on the other three sides, cover on top
+        k = rnd.randrange(16)
+        u0, u1 = book_uv(k)
+        a, b = cx - w / 2 + rnd.uniform(-0.01, 0.01), cx + w / 2 + rnd.uniform(-0.01, 0.01)
+        gface(F, [(a, cz + d / 2, y), (b, cz + d / 2, y), (b, cz + d / 2, y + th), (a, cz + d / 2, y + th)], "H_books", None, 1.0, (0, 1, 0),
+              uv=[(u0, 0.0), (u0, 1.0), (u1, 1.0), (u1, 0.0)])
+        for (p, hint) in (([(a, cz - d / 2, y), (a, cz + d / 2, y), (a, cz + d / 2, y + th), (a, cz - d / 2, y + th)], (-1, 0, 0)),
+                          ([(b, cz - d / 2, y), (b, cz + d / 2, y), (b, cz + d / 2, y + th), (b, cz - d / 2, y + th)], (1, 0, 0)),
+                          ([(a, cz - d / 2, y), (b, cz - d / 2, y), (b, cz - d / 2, y + th), (a, cz - d / 2, y + th)], (0, -1, 0))):
+            gface(F, p, "H_books", None, 1.0, hint, uv=[(0.885, 0.0), (0.99, 0.0), (0.99, 1.0), (0.885, 1.0)])
+        uc = u0 + (u1 - u0) * 0.15
+        gface(F, [(a, cz - d / 2, y + th), (b, cz - d / 2, y + th), (b, cz + d / 2, y + th), (a, cz + d / 2, y + th)], "H_books", None, 1.0,
+              (0, 0, 1), uv=[(uc, 0.3), (uc + 0.004, 0.3), (uc + 0.004, 0.31), (uc, 0.31)])
         y += th
 
 

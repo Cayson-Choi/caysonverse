@@ -133,7 +133,7 @@ def join(objs, name):
 
 
 # -------------------------------------------------------------------------------------------------- light map --
-def lightmap_uv(objs, margin=0.0014):
+def lightmap_uv(objs, margin=0.002):   # houses-real pass 2: 4 px gaps (were 3; ~15k islands, so not more)
     for ob in objs:
         me = ob.data
         if "UV_LM" not in me.uv_layers:
@@ -279,13 +279,13 @@ def bake_lightmap(scene, obs, size, samples, out_png, lift, passes=1, override=N
     scene.cycles.samples = samples
     scene.cycles.max_bounces = 8
     scene.cycles.diffuse_bounces = 5
-    scene.render.bake.margin = 8
-    scene.render.bake.margin_type = "EXTEND"
+    scene.render.bake.margin = 16
+    scene.render.bake.margin_type = "ADJACENT_FACES"   # houses-real pass 2: a seam texel takes the light of the faces across the seam, not of whichever island lies nearest in the atlas (dark notches and blobs on cushions)
     acc = None
     for p in range(passes):
         scene.cycles.seed = 17 + 101 * p
         log(f"bake pass {p + 1}/{passes} {size}^2 {samples} samples")
-        bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT"}, margin=8, use_clear=True, target="IMAGE_TEXTURES",
+        bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT"}, margin=16, use_clear=True, target="IMAGE_TEXTURES",
                             use_selected_to_active=False)
         px = np.empty(size * size * 4, np.float32)
         img.pixels.foreach_get(px)

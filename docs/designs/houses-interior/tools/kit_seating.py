@@ -78,7 +78,12 @@ def sofa_fabric(F, w=2.4, d=0.86, seats=3, tn=None, wood_tn=None, pillow_tn=None
     rbox(F, -hw, hw, -hd, -hd + 0.14, base_top, back_h - 0.18, m, r=0.05, seg=3, tile=0.5, tn=tn)
     for sgn in (-1, 1):
         x0, x1 = (hw - arm_w, hw) if sgn > 0 else (-hw, -hw + arm_w)
-        rbox(F, x0, x1, -hd, hd, base_top, 0.62, m, r=0.07, seg=4, tile=0.5, tn=tn, puff=0.01, cuts=3, smooth=True)
+        # houses-real pass 2 (owner 2026-11-22, refs: roll-arm sofas): a padded side panel and a soft roll along its top that scrolls
+        # out a little over the side and shows its round end at the front
+        rbox(F, x0, x1, -hd, hd - 0.02, base_top, 0.53, m, r=0.035, seg=3, tile=0.5, tn=tn, smooth=True)
+        rr = arm_w * 0.6
+        cx = (x0 + x1) / 2 + sgn * 0.012
+        tube(F, [(cx, -hd + 0.02, 0.53), (cx, hd - 0.005, 0.53)], rr, m, segs=16, tn=tn, caps=True, uv_per_m=2.0)
     inner0, inner1 = -hw + arm_w, hw - arm_w
     sw = (inner1 - inner0) / seats
     sz0 = -hd + 0.14

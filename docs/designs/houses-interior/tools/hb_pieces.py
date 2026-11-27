@@ -34,20 +34,12 @@ def books_lite(F, x0, x1, z, y, hmax=0.30, hmin=0.2, depth=0.22, seed=1, fill=0.
     zf = z + depth / 2 if front is None else front
     zb = zf - depth * rnd.uniform(0.85, 1.0)
     for i, (x, th, h, c) in enumerate(bk):
-        uvc = acell(c)
         d = (zf - zb) * (0.9 + 0.1 * ((i * 7) % 3) / 2)
         z0 = zf - d
-        K.gface(F, [(x, zf, y), (x + th, zf, y), (x + th, zf, y + h), (x, zf, y + h)], "H_atlas", None, 1.0, (0, 1, 0), uv=[uvc] * 4)
-        if y < 1.7:
-            K.gface(F, [(x, z0, y + h), (x + th, z0, y + h), (x + th, zf, y + h), (x, zf, y + h)], "H_atlas", None, 1.0, (0, 0, 1), uv=[uvc] * 4)
         hl = bk[i - 1][2] if i > 0 and abs(bk[i - 1][0] + bk[i - 1][1] + 0.001 - x) < 0.01 else 0.0
         hr = bk[i + 1][2] if i + 1 < len(bk) and abs(x + th + 0.001 - bk[i + 1][0]) < 0.01 else 0.0
-        if y > 2.4:
-            continue
-        if h > hr + 0.004:
-            K.gface(F, [(x + th, z0, y + hr), (x + th, zf, y + hr), (x + th, zf, y + h), (x + th, z0, y + h)], "H_atlas", None, 1.0, (1, 0, 0), uv=[uvc] * 4)
-        if h > hl + 0.004:
-            K.gface(F, [(x, z0, y + hl), (x, zf, y + hl), (x, zf, y + h), (x, z0, y + h)], "H_atlas", None, 1.0, (-1, 0, 0), uv=[uvc] * 4)
+        # houses-real pass 2: real spines (title bands), page-edge tops, cover-coloured sides (kit_storage.book)
+        ST.book(F, x, th, z0, zf, y, h, c % 16, top=y < 1.7, sides=(y <= 2.4 and h > hl + 0.004, y <= 2.4 and h > hr + 0.004))
 
 
 def bookcase_lite(F, w=1.0, d=0.32, h=2.0, shelves=5, tn=None, seed=3, fill=0.92, y_from=0.08, name="bookcase"):
@@ -118,7 +110,7 @@ def rbox_lite(F, x0, x1, z0, z1, y0, y1, m, r=0.01, seg=2, **kw):
     return _rbox_orig(F, x0, x1, z0, z1, y0, y1, m, r=r, seg=seg, **kw)
 
 
-def curtain_lite(W, s0, s1, y_top, y_bot, folds=8, z=0.10, amp=0.035, tn=None, m="H_fabric", rod=True, panels=2, gap=0.0):
+def curtain_lite(W, s0, s1, y_top, y_bot, folds=8, z=0.17, amp=0.035, tn=None, m="H_floral", rod=True, panels=2, gap=0.0):
     """pleated curtain, one-sided (the back never faces the room), 20 columns per panel, rod + finials + a few rings"""
     tn = tn or PAL["cream"]
     width = s1 - s0

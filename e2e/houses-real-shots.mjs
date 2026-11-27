@@ -114,6 +114,9 @@ for (const n of houses) {
   console.log("house", n, "inside", inside);
   await coverGone();
   await sleep(2500);
+  // the light maps and the full-size albedos come in after the cover lifts: wait until the loading pill is gone
+  await page.waitForFunction(() => !document.body.innerText.includes("불러오는 중"), null, { timeout: 30000 }).catch(() => {});
+  await sleep(1500);
   for (const v of VIEWS) {
     if ((v.floor ?? 1) === 2) continue; // second floor views: walk up first (not used by this script)
     const [x, y, z, tx, ty, tz] = v.cam;

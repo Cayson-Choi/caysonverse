@@ -305,7 +305,7 @@ def stone_fireplace(F, w=1.9, d=0.55, h=3.7, firebox_w=0.85, firebox_h=0.75, hea
     # mantel: a rough timber beam, a few things on it
     rbox(F, -hw - 0.08, hw + 0.08, 0.0, d + 0.12, 1.25, 1.37, "H_wood_dark", r=0.012, seg=1, tn=(0.42, 0.28, 0.18, 1), bottom=True)
     # hearth: a raised stone slab in front of the opening
-    rbox(F, -hw - 0.05, hw + 0.05, d, d + hearth_d, 0.0, hearth_y, "H_stone", r=0.012, seg=1, tn=(1.0, 0.97, 0.92, 1))   # houses-real: honed limestone (was near-black)
+    rbox(F, -hw - 0.05, hw + 0.05, d, d + hearth_d, 0.0, hearth_y, "H_hearth", r=0.012, seg=1, tn=(1.0, 1.0, 1.0, 1), tile=0.9)   # houses-real 2: honed slate tiles (refs: Welsh slate hearths)
     # a round wicker log basket on the hearth beside the opening, split logs stacked in it end-on (houses-real pass)
     bx = -(fw + 0.115 + hw) / 2
     bz = d + hearth_d * 0.5

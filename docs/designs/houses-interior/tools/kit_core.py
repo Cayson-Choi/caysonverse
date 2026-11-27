@@ -117,6 +117,8 @@ MATS = {
     "H_firebrick": dict(tex="T_h_firebrick.png", rough=0.9, tint=True),   # houses-real: new firebrick lining + red facing slips (fireplaces)
     "H_bark": dict(tex="T_h_bark.png", rough=0.95, tint=True),            # houses-real: firewood bark
     "H_endgrain": dict(tex="T_h_endgrain.png", rough=0.9, tint=True),     # houses-real: sawn log ends (disc UVs)
+    "H_books": dict(tex="T_h_books.png", rough=0.8),                      # houses-real 2: cloth / paper spines with title bands + a page block
+    "H_hearth": dict(tex="T_h_hearth.png", rough=0.85, tint=True),        # houses-real 2: honed slate tiles (CC0 granite_tile) for hearths
 }
 _M = {}
 
@@ -524,15 +526,18 @@ def tube(F, pts, r, m, segs=8, tn=None, caps=True, uv_per_m=1.0):
             q = [rings[i][k], rings[i][k2], rings[i + 1][k2], rings[i + 1][k]]
             c0 = sum((Vector(x) for x in q), Vector()) / 4
             mid = (P[i] + P[i + 1]) / 2
-            uvs = [(k / segs, acc[i] * uv_per_m), ((k + 1) / segs, acc[i] * uv_per_m),
-                   ((k + 1) / segs, acc[i + 1] * uv_per_m), (k / segs, acc[i + 1] * uv_per_m)]
+            # houses-real pass 2 (owner 2026-11-22, the bean bag's seam): the way round at true scale too (it was 0..1 whatever the
+            # radius, so a 7 mm piping stretched one texture tile round 4 cm: a 25x smear)
+            cu = 2 * math.pi * (rs[i] + rs[i + 1]) / 2 * uv_per_m
+            uvs = [(k / segs * cu, acc[i] * uv_per_m), ((k + 1) / segs * cu, acc[i] * uv_per_m),
+                   ((k + 1) / segs * cu, acc[i + 1] * uv_per_m), (k / segs * cu, acc[i + 1] * uv_per_m)]
             if S.fuv is not None:
                 uvs = [S.fuv] * 4
             S.mb.face(q, "H_atlas" if S.fuv is not None else m, uvs, tuple(c0 - mid), True, tn)
     if caps:
         for end_i, sgn in ((0, -1), (n - 1, 1)):
             t = (P[min(end_i + 1, n - 1)] - P[max(end_i - 1, 0)]).normalized() * sgn
-            S.mb.face(rings[end_i], "H_atlas" if S.fuv is not None else m, ([S.fuv] * segs if S.fuv is not None else [(0.5 + 0.5 * math.cos(2 * math.pi * k / segs), 0.5 + 0.5 * math.sin(2 * math.pi * k / segs))
+            S.mb.face(rings[end_i], "H_atlas" if S.fuv is not None else m, ([S.fuv] * segs if S.fuv is not None else [(0.5 + rs[end_i] * uv_per_m * math.cos(2 * math.pi * k / segs), 0.5 + rs[end_i] * uv_per_m * math.sin(2 * math.pi * k / segs))
                                        for k in range(segs)]), tuple(t), False, tn)
 
 

@@ -9,7 +9,7 @@ from kit_storage import bowl, mug, dish, acell, books_stack
 
 
 # ------------------------------------------------------------------------------------------------ plants ----------
-def leaf(F, base, direction, length, width, droop=0.15, m="H_leaf", tn=None, segs=5, twist=0.0, curl=0.0):
+def leaf(F, base, direction, length, width, droop=0.15, m="H_leaf", tn=None, segs=5, twist=0.0, curl=0.16):
     """a curved two-sided blade from `base` (local pt) toward the local `direction` (unit, may point up-out), outline sin-shaped."""
     bx, bz, by = base
     dx, dz, dy = direction
@@ -26,7 +26,9 @@ def leaf(F, base, direction, length, width, droop=0.15, m="H_leaf", tn=None, seg
         cx = bx + dx * length * t
         cz = bz + dz * length * t
         cy = by + dy * length * t - droop * length * t * t
-        prof.append(((cx - sx * w, cz - sz * w, cy + curl * w), (cx + sx * w, cz + sz * w, cy + curl * w), (cx, cz, cy - 0.003)))
+        # houses-real pass 2 (owner 2026-11-22: flat card leaves): the blade folds along its midrib (a V) and cups up at the margins
+        fold = 0.1 * w + 0.002
+        prof.append(((cx - sx * w, cz - sz * w, cy + curl * w), (cx + sx * w, cz + sz * w, cy + curl * w), (cx, cz, cy - fold)))
     for i in range(segs):
         a0, a1, mid0 = prof[i]
         b0, b1, mid1 = prof[i + 1]
