@@ -100,8 +100,14 @@ export const BUS_LOOK = {
    * frameless panes are lightly tinted (was 0.8 of a near-black tint), so the street is clearly seen from inside and the cabin
    * from outside; the Fresnel reflection (glassF0) keeps them reading as glass.
    */
-  glassOpacity: 0.34,
-  glassColor: "#1A2C33",
+  glassOpacity: 0.2,
+  glassColor: "#24383D",
+  /**
+   * Seen from inside (the pane's back face: a rider looking out), the tint's share (× glassOpacity): real bus glass all but disappears
+   * from a seat by day (research 2026-11-21: 80–95 % of the street readable) while from the kerb it reads dark teal with reflections
+   * (owner 2026-11-21: "버스도 투명한 유리창으로 바꾸고").
+   */
+  glassInside: 0.35,
   /**
    * The rich tier's clear coat over the paint (its mask is the ORM map's red channel). Its roughness keeps the sun's
    * glint on the rolled roof edges a small highlight instead of a bloom halo (bus review: 0.12 bloomed).
@@ -118,7 +124,7 @@ export const BUS_LOOK = {
   ledDay: 3.0,
   ledNight: 1.5,
   /** How see-through the glass is at full night: the lit cabin shows as it does in a real bus after dark. */
-  glassNightOpacity: 0.22,
+  glassNightOpacity: 0.12,
   /** The contact shadow's darkness where the baked map is white (under the floor, at the tyres' contact). */
   groundShadow: 0.85,
   /**
@@ -198,6 +204,9 @@ export interface BusNodes {
 const average = (a: readonly number[], b: readonly number[], c: readonly number[]) =>
   new Vector3((a[0]! + b[0]! + c[0]!) / 3, (a[1]! + b[1]! + c[1]!) / 3, (a[2]! + b[2]! + c[2]!) / 3);
 
+/** The inside view's share of the glass's tint, as GLSL (see BUS_LOOK.glassInside). */
+const BUS_LOOK_INSIDE = BUS_LOOK.glassInside.toFixed(3);
+
 /** The sky's colours, shared by every bus material (one write reaches all). */
 const skyUniforms = {
   uBusZenith: { value: new Vector3(...BUS_SKY.zenith) },
@@ -243,7 +252,8 @@ radiance += busSky( geometryViewDir, geometryNormal, material.roughness );
  */
 const GLASS_F0 = /* glsl */ `float busF0 = uBusGlassF0;
 `;
-const GLASS_ADD = /* glsl */ `float busF = busF0 + ( 1.0 - busF0 ) * pow( 1.0 - saturate( dot( geometryNormal, geometryViewDir ) ), 5.0 );
+const GLASS_ADD = /* glsl */ `diffuseColor.a *= gl_FrontFacing ? 1.0 : ${BUS_LOOK_INSIDE};
+float busF = busF0 + ( 1.0 - busF0 ) * pow( 1.0 - saturate( dot( geometryNormal, geometryViewDir ) ), 5.0 );
 float busA = mix( diffuseColor.a, 1.0, busF );
 outgoingLight = ( uBusSkyAverage * uBusSky * busF + outgoingLight * diffuseColor.a * ( 1.0 - busF ) ) / max( busA, 1e-3 );
 diffuseColor.a = busA;

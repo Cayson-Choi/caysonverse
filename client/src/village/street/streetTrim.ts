@@ -22,7 +22,7 @@ export interface StreetTrimStats {
 /** A footprint: does the point belong to one old post? (world x, y, z) */
 type Inside = (x: number, y: number, z: number) => boolean;
 
-interface Footprint {
+export interface Footprint {
   minX: number;
   maxX: number;
   minZ: number;
