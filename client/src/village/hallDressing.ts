@@ -368,6 +368,8 @@ export interface HallDressing {
   painting: { x: number; y: number; z: number; width: number; height: number; url: string } | null;
   /** Dim with the hall's night weight (0 day .. 1 night). */
   update(night: number): void;
+  /** Load the painting's image while the hall is shown (retrying failed fetches); returns the stop. Call it from an effect. */
+  startPainting(): () => void;
   dispose(): void;
 }
 
@@ -426,6 +428,7 @@ export function dressHall(root: Object3D, tier: "high" | "low"): HallDressing {
 
   // ── the lounge painting ──
   let painting: HallDressing["painting"] = null;
+  let startPainting: () => () => void = () => () => {};
   const slot = takePaintingSlots(root)[0];
   if (slot) {
     const r = LOUNGE_PAINTING.aspect;
@@ -466,20 +469,41 @@ export function dressHall(root: Object3D, tier: "high" | "low"): HallDressing {
     canvasMesh.position.z = CANVAS_OFF;
     frame.add(canvasMesh);
     const url = LOUNGE_PAINTING.urls[tier];
-    let disposed = false;
-    new TextureLoader().load(url, (t: Texture) => {
-      if (disposed) {
-        t.dispose();
-        return;
-      }
-      t.colorSpace = SRGBColorSpace;
-      t.anisotropy = 8;
-      cm.map = t;
-      tone(canvasLight);
-      cm.needsUpdate = true;
-      own.push(t);
-    });
-    own.push({ dispose: () => (disposed = true) });
+    // The image loads while the hall is mounted (`startPainting`, from an effect), not once at build time: the dressing is
+    // memoised, so a cleanup that ran once (React's dev double effect, a remount) used to cancel the only load and leave the
+    // bare placeholder canvas for good. A failed or dropped fetch is retried with a growing pause.
+    startPainting = () => {
+      let stopped = false;
+      let retry: ReturnType<typeof setTimeout> | null = null;
+      const load = (attempt: number) => {
+        if (cm.map) return;
+        new TextureLoader().load(
+          url,
+          (t: Texture) => {
+            if (stopped || cm.map) {
+              t.dispose();
+              return;
+            }
+            t.colorSpace = SRGBColorSpace;
+            t.anisotropy = 8;
+            cm.map = t;
+            tone(canvasLight);
+            cm.needsUpdate = true;
+            own.push(t);
+          },
+          undefined,
+          () => {
+            if (stopped) return;
+            retry = setTimeout(() => load(attempt + 1), Math.min(30_000, 1_000 * 2 ** attempt));
+          },
+        );
+      };
+      load(0);
+      return () => {
+        stopped = true;
+        if (retry !== null) clearTimeout(retry);
+      };
+    };
     // the museum label, to the right of the frame at its lower third
     const lt = labelTexture();
     const lg = new PlaneGeometry(0.2, 0.078);
@@ -510,6 +534,7 @@ export function dressHall(root: Object3D, tier: "high" | "low"): HallDressing {
     zones,
     painting,
     update,
+    startPainting: () => startPainting(),
     dispose: () => {
       for (const r of own) r.dispose();
     },
