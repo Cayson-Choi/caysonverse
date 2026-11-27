@@ -29,7 +29,7 @@ FLOOR_TN = (0.85, 0.66, 0.5, 1)
 LOG_WALL = (0.96, 0.93, 0.86, 1)    # cottage pass: warm linen limewash, oak beams (no more log walls)
 
 # ============================================================================================== floor 1: 난로 거실 ===
-win1 = HB.ext_windows(H, 1, w=1.4, style="grid", cols=2, rows=2, drape=("curtain", dict(folds=6, tn=(0.62, 0.3, 0.25, 1), tie=0.4)))
+win1 = HB.ext_windows(H, 1, style="grid", cols=2, rows=2, drape=("curtain", dict(folds=6, tn=(0.62, 0.3, 0.25, 1), tie=0.4)), skip=[("left", 5.15)])   # the stone fireplace stands where the shell's left-back window is
 # realism pass 2026-11-17 (refs: unsplash log cabins with a wood stove / a fieldstone fireplace): round-log walls (H_logwall: 9 logs per
 # 2.5 m, chinking, checks), a pine board ceiling on exposed timber beams instead of the flat orange louvre box
 def cabin_ceiling(F, hole):
@@ -62,19 +62,19 @@ pass  # (cottage pass) removed: H.piece(1, "boots", DE.boots_pair, 0.5, 0.4, 0.0
 pass  # (cottage pass) removed: H.piece(1, "block", CB.chopping_block, 7.6, 1.0, 0, 0.0)
 H.piece(1, "frame1", DE.frame_art, 7.13, 0.75, 1.55, PI / 2, cols=False, w=0.7, h=0.5, art=1)
 H.piece(1, "clock", DE.wall_clock, 8.6, 7.79, 2.15, PI, cols=False)
-H.piece(1, "snake", DE.plant_snake, 0.5, 3.0, 0, 0.0)
+H.piece(1, "snake", DE.plant_snake, 0.5, 3.65, 0, 0.0)
 H.piece(1, "lantern", DE.table_lamp, 7.9, 3.2, 0.5, 0.0, cols=False)
 H.piece(1, "trunkprops", HP.props_table, 7.9, 3.2, 0.5, 0.0, cols=False, top=0.0, seed=21, w=0.7)
 H.piece(1, "bask2", DE.basket, 4.5, 4.55, 0, 0.0, r=0.25, h=0.3)
 # --- right zone: bookcase on the back wall, chest, plants
-H.piece(1, "case", HP.bookwall_lite, 8.6, 7.63, 0, PI, w=1.0, h=2.0, d=0.3, seed=101)
+H.piece(1, "case", HP.bookwall_lite, 6.6, 7.63, 0, PI, w=1.0, h=2.0, d=0.3, seed=101)
 H.piece(1, "trunk", ST.trunk, 7.9, 3.2, 0, 0.0, w=1.0, d=0.55, h=0.5)
-H.piece(1, "plant", HP.plant_big, 5.85, 7.3, 0, 0.0, kind="fiddle", h=1.35, leaves=28)
+H.piece(1, "plant", HP.plant_big, 4.55, 7.3, 0, 0.0, kind="fiddle", h=1.35, leaves=28)
 H.piece(1, "plant2", HP.plant_big, 6.9, 5.2, 0, 0.0, kind="monstera", h=1.0)
 
 # ============================================================================================== floor 2: 다락 침실 ===
 win2 = HB.ext_windows(H, 2, w=1.4, style="grid", cols=2, rows=2, drape=("curtain", dict(folds=6, tn=(0.62, 0.3, 0.25, 1), tie=0.4)),
-                      over={("left", HB.EXT_SIDE): dict(w=1.7, y0=0.95)})
+                      over={})
 HB.room(H, 2, floor_kind="oak", floor_tn=FLOOR_TN, wall_tn=LOG_WALL, wall_m="H_wallpaper", trim_tn=WOOD_TRIM, casing_tn=WOOD_TRIM, windows=win2, bath=dict(wall="front", c=1.0),
         ceiling="custom", ceiling_fn=lambda F, hole: HB.ceiling_slope(F, hole, side="left", run=3.4, low=2.9, tn=(1.0, 0.95, 0.85, 1), lights=((6.5, 2.4), (6.5, 5.4))))
 H.piece(2, "rug", DE.rug_check, 5.3, 4.0, 0, 0.0, w=2.6, d=1.8, cols=False)
@@ -84,20 +84,20 @@ H.piece(2, "bedside", TA.bedside, 6.6, 7.57, 0, PI)
 H.piece(2, "lamp", DE.table_lamp, 4.0, 7.57, 0.55, 0.0)
 H.piece(2, "lamp", DE.table_lamp, 6.6, 7.57, 0.55, 0.0)
 H.piece(2, "trunk", ST.trunk, 5.3, 5.2, 0, 0.0, w=1.1, d=0.5, h=0.45)
-H.piece(2, "windowseat", BE.window_seat, 0.3, 4.13, 0, PI / 2, w=1.6, d=0.5)
-H.piece(2, "wardrobe", ST.wardrobe_wood, 0.3, 5.7, 0, PI / 2, w=1.2, d=0.55, h=1.9)
+H.piece(2, "windowseat", BE.window_seat, 0.3, 5.15, 0, PI / 2, w=1.6, d=0.5)  # window alignment 2026-11-27: under the shell's left window (was z 4.13)
+H.piece(2, "wardrobe", ST.wardrobe_wood, 0.3, 6.95, 0, PI / 2, w=1.2, d=0.55, h=1.9)
 H.piece(2, "plant", HP.plant_big, 3.9, 0.6, 0, 0.0, kind="monstera", h=1.15)
 H.piece(2, "pendant", DE.pendant_globe, 5.3, 4.0, 3.7, 0.0, cols=False, drop=1.0, r=0.13)
 H.piece(2, "frame", DE.frame_art, 5.3, 7.78, 1.75, PI, cols=False, w=0.8, h=0.55, art=1)
 pass  # (cottage pass) removed: H.piece(2, "boots", DE.boots_pair, 7.4, 0.5, 0.0, 0.4, cols=
 H.piece(2, "case", HP.bookwall_lite, 6.6, 0.2, 0, 0.0, w=0.95, h=1.1, d=0.3, seed=111, shelves=3)
-H.piece(2, "lamp_f", DE.floor_lamp, 0.5, 2.3)
+H.piece(2, "lamp_f", DE.floor_lamp, 0.5, 3.65)
 H.piece(2, "rug_w", DE.rug_rect, 1.9, 4.1, 0, PI / 2, w=1.8, d=1.1, cols=False, fringe=False, tn=PAL["rug_red"])
 H.piece(2, "clock", DE.wall_clock, 3.5, 7.79, 2.0, PI, cols=False)
 
 # ---- realism pass 2026-11-17: the cabin's lived-in things ------------------------------------------------------------------------
 H.piece(1, "throw", KR.throw_draped, 4.38, 5.3, 0.8, -PI / 2, cols=False, w=0.6, top_d=0.16, drop_front=0.3, drop_back=0.42, tn=(0.62, 0.3, 0.25, 1))
-H.piece(1, "lamp_f", DE.floor_lamp, 0.5, 2.55)
+H.piece(1, "lamp_f", DE.floor_lamp, 0.5, 4.6)
 pass  # (cottage pass) removed: H.piece(1, "slippers", KR.slippers, 6.55, 1.15, 0.0, -PI / 2
 H.piece(1, "cstack", KR.throw_folded, 2.9, 7.05, 0.42, 0.3, cols=False, w=0.4, d=0.3, layers=3, tn=(0.75, 0.68, 0.55, 1)) if False else None
 H.piece(2, "throw", KR.throw_folded, 5.3, 5.95, 0.56, 0.0, cols=False, w=1.4, d=0.42, layers=2, tn=(0.85, 0.8, 0.7, 1))

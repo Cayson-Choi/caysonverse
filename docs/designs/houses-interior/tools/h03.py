@@ -35,7 +35,7 @@ CREAM = (0.97, 0.94, 0.86, 1)
 WOODC = (0.72, 0.5, 0.32, 1)
 
 # ================================================================================================ floor 1 ======
-sp1 = HA.spec(skip=[("right", 4.13)])            # stair C stands against the right wall
+sp1 = HA.spec(H, 1)            # the shell's windows; the ones stair C (right wall) stands in front of are left out
 ops = HA.ops_windows(sp1)
 HA.merge(ops, dict(front=[dict(s0=4.4, s1=6.2, y0=0.0, y1=2.9), dict(s0=9.3, s1=10.2, y0=0.0, y1=2.13)]))
 wins, curt = HA.add_windows(sp1, curtain=("left",), window_kw=dict(cols=2, rows=2), curtain_kw=dict(folds=9, tn=(0.95, 0.88, 0.7, 1)))
@@ -54,12 +54,12 @@ H.piece(1, "hooks", FX.wall_hooks, 3.85, 0.01, 1.5, 0.0, n=3, spacing=0.22)
 
 # kitchen run on the back wall: fridge, sink under the window, gas range, hood, upper cabinets; dish cabinet by the second window
 H.piece(1, "fridge", KI.fridge_double, 0.52, 7.4, 0.0, PI)
-H.piece(1, "sinkrun", KI.counter_base, 3.04, 7.5, 0, PI, length=4.08, d=0.6, sink=True, top="oak", door_tn=CREAM)
+H.piece(1, "sinkrun", KI.counter_base, 3.04, 7.5, 0, PI, length=4.08, d=0.6, sink=True, top="oak", door_tn=CREAM, tile_back=False)
 H.piece(1, "gasrun", KI.counter_base, 5.7, 7.5, 0, PI, length=1.2, d=0.6, cook="gas", top="oak", door_tn=CREAM)
 H.piece(1, "hood", KI.hood, 5.7, 7.55, 0, PI)
-H.piece(1, "upper", KI.upper_cabinets, 1.65, 7.63, 0, PI, length=1.2, door_tn=CREAM)
+H.piece(1, "upper", KI.upper_cabinets, 1.4, 7.63, 0, PI, length=0.7, door_tn=CREAM)  # window alignment 2026-11-27: was x 1.65 l 1.2
 H.piece(1, "upper", KI.upper_cabinets, 4.45, 7.63, 0, PI, length=1.1, door_tn=CREAM)
-H.piece(1, "dishes", ST.cabinet_glass, 8.55, 7.58, 0, PI, w=1.2)
+H.piece(1, "dishes", ST.cabinet_glass, 0.22, 3.65, 0, PI / 2, w=1.1)  # window alignment 2026-11-27: was x 8.55 (the back-right window)
 P(1, "kettle", "kettle", 1.4, 7.55, 0.9)
 P(1, "bowl", "bowl_p", 4.35, 7.5, 0.9)
 P(1, "plates", "plates_stack", 4.7, 7.5, 0.9)
@@ -67,8 +67,8 @@ pass  # (cottage pass) removed: P(1, "pan", "pan", 5.88, 7.5, 0.9, PI)
 P(1, "pot", "kettle", 5.45, 7.5, 0.9)
 # left wall: dish cabinet in the front corner, kimchi fridge
 H.piece(1, "cabinet", ST.mungap, 0.2, 1.1, 0, PI / 2, w=0.9)
-H.piece(1, "kimchi", KI.fridge_kimchi, 0.4, 2.35, 0, PI / 2)
-P(1, "kbasket", "leaf_pot", 0.35, 2.35, 1.1)
+H.piece(1, "kimchi", KI.fridge_kimchi, 0.4, 6.45, 0, PI / 2)  # window alignment 2026-11-27: was z 2.35
+P(1, "kbasket", "leaf_pot", 0.35, 6.45, 1.1)
 # the table: six different farm chairs
 H.piece(1, "dtable", TA.table_dining_rect, 5.3, 5.05, 0, PI / 2, w=1.9, d=0.95, legs="square")
 for i, x in enumerate((4.7, 5.3, 5.9)):
@@ -97,7 +97,7 @@ pass  # (cottage pass) removed the monstera: the east chairs need the floor
 H.piece(1, "art", DE.frame_art, 9.1, 0.04, 1.6, 0.0, w=0.5, h=0.4, art=2, cols=False) if False else None
 
 # ================================================================================================ floor 2 ======
-sp2 = HA.spec(skip=[("right", 4.13)])
+sp2 = HA.spec(H, 2)
 ops2 = HA.ops_windows(sp2)
 HA.merge(ops2, dict(front=[dict(s0=6.2, s1=7.0, y0=0.0, y1=2.13)]))
 wins2, curt2 = HA.add_windows(sp2, curtain=("left", "back", "front"), curtain_kw=dict(folds=9, tn=(0.95, 0.88, 0.7, 1)))
@@ -117,10 +117,10 @@ H.piece(2, "lowshelf", ST.bookcase, 1.3, 7.6, 0, PI, w=1.2, h=1.0, shelves=2)
 P(2, "shelfvase", "vase_small", 1.0, 7.65, 1.0)
 H.piece(2, "orchid", DE.plant_orchid, 1.65, 7.65, 1.0, cols=False)
 # sitting corner (right of the guest area): two-seat sofa between the front windows
-H.piece(2, "sofa", SE.sofa_2seat, 4.85, 0.55, 0, 0.0, w=1.7, tn=(0.85, 0.7, 0.4, 1), pillow_tn=(0.55, 0.65, 0.5, 1))
+H.piece(2, "sofa", SE.sofa_2seat, 4.85, 1.35, 0, 0.0, w=1.7, tn=(0.85, 0.7, 0.4, 1), pillow_tn=(0.55, 0.65, 0.5, 1))
 H.piece(2, "plant", FX.plant_palm, 7.3, 5.4)
-H.piece(2, "lamp", DE.floor_lamp, 6.0, 0.7)
-H.piece(2, "art", DE.frame_art, 4.85, 0.04, 1.65, 0.0, w=0.7, h=0.5, art=1, cols=False)
+H.piece(2, "lamp", DE.floor_lamp, 6.75, 0.5)  # window alignment 2026-11-27: the sofa stands clear of the shell's upstairs patio door (was z 0.55, lamp x 6.0)
+H.piece(2, "art", DE.frame_art, 3.2, 0.04, 1.65, 0.0, w=0.6, h=0.45, art=1, cols=False)
 H.piece(2, "art", DE.frame_art, 0.04, 4.3, 1.8, PI / 2, w=0.5, h=0.65, art=2, cols=False) if False else None
 H.piece(2, "clock", DE.wall_clock, 0.04, 6.4, 1.9, PI / 2, cols=False)
 H.piece(2, "basket", DE.basket, 6.9, 2.6, 0.0, 0.0, r=0.25, h=0.35, tn=(0.85, 0.7, 0.45, 1))
@@ -139,8 +139,8 @@ pass  # (cottage pass) removed: H.piece(2, "aircon", KR.aircon_wall, 1.2, 7.8, 2
 H.piece(2, "tvstand", TA.tv_stand, 5.1, 7.55, 0, PI, w=1.4, tn=(0.62, 0.45, 0.3, 1))
 H.piece(2, "tv", TA.tv_wall, 5.1, 7.78, 0.95, PI, w=1.2, cols=False)
 pass  # (cottage pass) removed: H.piece(2, "settop", KR.settop, 4.6, 7.55, 0.45, PI, cols=Fa
-H.piece(2, "rug2", DE.rug_rect, 4.85, 2.6, 0, 0.0, w=2.0, d=1.4, cols=False, tn=(0.82, 0.74, 0.6, 1), border_tn=(0.55, 0.42, 0.3, 1), fringe=False)
-H.piece(2, "coffee", TA.table_coffee_rect, 4.85, 2.75, 0, 0.0, w=1.0, d=0.5)
+H.piece(2, "rug2", DE.rug_rect, 4.85, 3.3, 0, 0.0, w=2.0, d=1.4, cols=False, tn=(0.82, 0.74, 0.6, 1), border_tn=(0.55, 0.42, 0.3, 1), fringe=False)
+H.piece(2, "coffee", TA.table_coffee_rect, 4.85, 3.45, 0, 0.0, w=1.0, d=0.5)
 P(2, "cmag", "magazine", 4.6, 2.7, 0.4, 0.3)
 P(2, "cfruit", "fruit_bowl", 5.05, 2.75, 0.4)
 pass  # (houses-real 2: a flat board over the new rolled arm) removed: H.piece(2, "throw", KR.throw_draped, 4.05, 0.55, 0.62, -PI / 2, cols=False, w=0.45, top_d=0.16, drop_front=0.34, drop_back=0.12, tn=(0.72, 0.5, 0.35, 1))
@@ -151,7 +151,7 @@ pass  # (cottage pass) removed: H.piece(2, "purifier", KR.air_purifier, 8.6, 1.0
 
 # ---- dream show-home styling (owner 2026-11-17): fresh flowers, styled tables, lamps and sconces, a console vignette --------
 H.piece(1, "flowers", KR.flower_vase, 5.3, 5.55, 0.745, 0.0, cols=False, tn=(0.98, 0.84, 0.35, 1), kind="tulip", h=0.28)
-H.piece(2, "cstyle", KR.coffee_styling, 4.85, 2.75, 0.4, 0.0, cols=False, tn=(0.95, 0.82, 0.45, 1))
+H.piece(2, "cstyle", KR.coffee_styling, 4.85, 3.45, 0.4, 0.0, cols=False, tn=(0.95, 0.82, 0.45, 1))
 
 H.piece(1, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=3)
 H.piece(2, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=3)

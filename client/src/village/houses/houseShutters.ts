@@ -318,16 +318,16 @@ export type ClosedWindow = readonly [wall: AnyWall, floor: 1 | 2, at: number, wh
  * room stay open.
  */
 export const HOUSE_CLOSED_WINDOWS: Readonly<Record<string, readonly ClosedWindow[]>> = Object.freeze({
-  house_1: [["back", 1, 2.7, "jamb"], ["front", 1, 2.0, "jamb"], ["front", 1, 8.6, "jamb"], ["front", 2, 2.0, "jamb"], ["front", 2, 5.3, "door"], ["front", 2, 8.6, "jamb"], ["left", 1, 5.15, "jamb"], ["left", 2, 5.15, "jamb"], ["right", 1, 5.15, "jamb"], ["right", 2, 5.15, "jamb"]],
-  house_2: [["back", 1, 7.9, "jamb"], ["back", 2, 7.9, "jamb"], ["front", 1, 2.0, "jamb"], ["front", 1, 8.6, "jamb"], ["front", 2, 2.0, "jamb"], ["front", 2, 8.6, "jamb"], ["left", 1, 5.15, "jamb"], ["left", 2, 5.15, "jamb"], ["right", 1, 5.15, "jamb"], ["right", 2, 5.15, "jamb"]],
-  house_3: [["back", 1, 7.9, "jamb"], ["back", 2, 7.9, "jamb"], ["front", 1, 2.0, "jamb"], ["front", 1, 8.6, "jamb"], ["front", 2, 2.0, "jamb"], ["front", 2, 5.3, "door"], ["front", 2, 8.6, "jamb"], ["left", 1, 5.15, "jamb"], ["left", 2, 5.15, "jamb"]],
-  house_4: [["back", 1, 7.9, "jamb"], ["back", 2, 7.9, "jamb"], ["front", 1, 2.0, "jamb"], ["front", 1, 8.6, "jamb"], ["front", 2, 2.0, "jamb"], ["front", 2, 5.3, "door"], ["front", 2, 8.6, "jamb"], ["right", 1, 5.15, "jamb"], ["right", 2, 5.15, "jamb"]],
-  house_5: [["front", 2, 2.0, "jamb"], ["front", 2, 5.3, "door"], ["front", 2, 8.6, "jamb"], ["left", 1, 5.15, "jamb"], ["left", 2, 5.15, "jamb"], ["right", 1, 5.15, "jamb"], ["right", 2, 5.15, "jamb"]],
-  house_6: [["back", 1, 7.9, "jamb"], ["back", 2, 7.9, "jamb"], ["front", 1, 2.0, "jamb"], ["front", 1, 8.6, "jamb"], ["front", 2, 2.0, "jamb"], ["front", 2, 8.6, "jamb"], ["left", 1, 5.15, "jamb"], ["left", 2, 5.15, "jamb"]],
-  house_7: [["back", 1, 7.9, "jamb"], ["back", 2, 7.9, "jamb"], ["front", 1, 2.0, "jamb"], ["front", 1, 8.6, "jamb"], ["front", 2, 2.0, "jamb"], ["front", 2, 8.6, "jamb"], ["left", 1, 5.15, "jamb"], ["left", 2, 5.15, "jamb"], ["right", 1, 5.15, "jamb"], ["right", 2, 5.15, "jamb"]],
-  house_8: [["back", 1, 7.9, "jamb"], ["back", 2, 7.9, "jamb"], ["front", 1, 2.0, "jamb"], ["front", 1, 8.6, "jamb"], ["front", 2, 2.0, "jamb"], ["front", 2, 8.6, "jamb"], ["right", 1, 5.15, "jamb"], ["right", 2, 5.15, "jamb"]],
-  house_9: [["back", 1, 5.3, "door"], ["front", 1, 2.0, "jamb"], ["front", 1, 8.6, "jamb"], ["front", 2, 2.0, "jamb"], ["front", 2, 8.6, "jamb"], ["left", 1, 5.15, "door"], ["left", 2, 2.35, "door"], ["left", 2, 5.15, "jamb"], ["right", 1, 5.15, "jamb"], ["right", 2, 5.15, "jamb"]],
-  house_10: [["back", 1, 7.9, "jamb"], ["back", 2, 7.9, "jamb"], ["front", 1, 2.0, "jamb"], ["front", 1, 8.6, "jamb"], ["front", 2, 2.0, "jamb"], ["front", 2, 8.6, "jamb"], ["left", 1, 5.15, "jamb"], ["left", 2, 5.15, "jamb"]],
+  house_1: [],
+  house_2: [],
+  house_3: [],
+  house_4: [],
+  house_5: [],
+  house_6: [],
+  house_7: [],
+  house_8: [],
+  house_9: [],
+  house_10: [],
 });
 
 /** The interior frame (exteriorWindows.ts): x = lx + 5.3 on the front / back, z = 2.825 - lz on the sides. */

@@ -54,10 +54,8 @@ def wall_yaw(wall):
 
 
 # ------------------------------------------------------------------------------------------------- exterior windows --
-EXT_FRONT_1 = (2.68, 7.92)           # exteriorToLocal of the ground floor's front windows (+-2.55)
-EXT_FRONT_2 = (2.68, 5.3, 7.92)      # first floor: -2.55, 0, +2.55
-EXT_SIDE = 4.13                      # side windows (z -0.875)
-EXT_BACK = (3.03, 7.15)              # back windows (-2.2, 1.8)
+# window alignment (2026-11-27): the windows come from ext_openings (the shell's table); the old cottage places were front 2.68 / 7.92
+# (+ 5.3 upstairs), one side window at z 4.13, back 3.03 / 7.15
 
 
 def stair_blocks(H, wall, c, w):
@@ -73,23 +71,25 @@ def stair_blocks(H, wall, c, w):
     return False
 
 
-def ext_windows(H, floor, w=1.5, y0=0.9, y1=2.5, style="grid", cols=3, rows=2, drape=("curtain", {}), skip=(), only=None, over=None):
-    """the contract's windows of this floor as spec dicts (wall, c, w, y0, y1, style, ...), minus the ones the stair stands in front of.
-    skip = [(wall, c)] to leave out, only = [(wall, c)] to keep only these, over = {(wall, c): dict(...)} per-window overrides."""
-    cand = []
-    for c in (EXT_FRONT_1 if floor == 1 else EXT_FRONT_2):
-        cand.append(("front", c))
-    cand += [("left", EXT_SIDE), ("right", EXT_SIDE)]
-    for c in EXT_BACK:
-        cand.append(("back", c))
+def ext_windows(H, floor, w=None, y0=None, y1=None, style="grid", cols=3, rows=2, drape=("curtain", {}), skip=(), only=None, over=None):
+    """the shell's windows of this floor (window alignment 2026-11-27: exterior_windows.json, the Colmar shells; were the old cottage's
+    EXT_* places) as spec dicts (wall, c, w, y0, y1, style, ...), minus the ones the stair stands in front of. Place and size come
+    from the shell (w / y0 / y1 are ignored: the room's opening must be the shell's). skip = [(wall, c)] to leave out, only =
+    [(wall, c)] to keep only these, over = {(wall, c): dict(...)} per-window overrides (style, drape, force)."""
+    import ext_openings as EO
     out = []
-    for (wall, c) in cand:
+    for (wall, c, ww, a0, a1, kind) in EO.openings(H.n, floor):
         if (wall, c) in skip or (only is not None and (wall, c) not in only):
             continue
-        spec = dict(wall=wall, c=c, w=w, y0=y0, y1=y1, style=style, cols=cols, rows=rows, drape=drape)
+        spec = dict(wall=wall, c=c, w=ww, y0=a0, y1=a1, style=style, cols=cols, rows=rows, drape=drape)
+        if kind == "patio":
+            spec.update(style="slide", force=True)
         spec.update((over or {}).get((wall, c), {}))
+        spec.update(c=c, w=ww, y0=a0, y1=a1)
         if spec.get("force") or not stair_blocks(H, wall, spec["c"], spec["w"]):
             out.append(spec)
+        else:
+            print(f"WINDOWS house {H.n} floor {floor}: {wall} {c} left out (the stair stands there)")
     return out
 
 

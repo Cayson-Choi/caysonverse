@@ -46,14 +46,14 @@ def SOFA4(F, **kw):
 SOFA4.__name__ = "sofa_fabric"
 
 # ================================================================================================ floor 1 ======
-sp1 = HA.spec(skip=[("back", 10.6 - 3.04)])
+sp1 = HA.spec(H, 1)   # window alignment 2026-11-27: the shell's windows (any behind the stair left out)
 ops = HA.ops_windows(sp1)
-HA.merge(ops, dict(front=[dict(s0=4.4, s1=6.2, y0=0.0, y1=2.9)], right=[dict(s0=0.7, s1=1.6, y0=0.0, y1=2.13)]))
+HA.merge(ops, dict(front=[dict(s0=4.4, s1=6.2, y0=0.0, y1=2.9)], right=[dict(s0=0.45, s1=1.35, y0=0.0, y1=2.13)]))
 wins, curt = HA.add_windows(sp1, curtain=("right", "back", "left"))
 H.shell(1, ops=ops, wall_tn=WALL1, windows=wins, curtains=curt, floor_tn=(0.96, 0.95, 0.94, 1),
         lights=((2.4, 2.0), (2.6, 5.0), (5.3, 1.8), (8.2, 2.2), (8.6, 5.4)),
         fixtures=[lambda fr: SH.entry_door(fr["front"][0], 4.4, 6.2, 2.9),
-                  lambda fr: SH.bath_door(fr["right"][0], 0.7, 1.6, 2.1)])
+                  lambda fr: SH.bath_door(fr["right"][0], 0.45, 1.35, 2.1)])
 H.stairs()
 H.well_shaft()
 H.piece(1, "shaft", FX.stair_shaft, 0, 0, 0, 0, hole=H.hole(), cols=False)
@@ -63,11 +63,11 @@ H.piece(1, "mirror", DE.mirror_round, 3.9, 0.04, 1.5, 0.0, r=0.26, cols=False)
 
 # kitchen (left front): double fridge in the corner, sink run under the window, gas range run on the left wall
 H.piece(1, "fridge", KI.fridge_double, 0.56, 0.5, 0.0, 0.0)
-H.piece(1, "sinkrun", KI.counter_base, 2.75, 0.31, 0, 0.0, length=3.0, d=0.6, sink=True, top="oak", door_tn=(0.78, 0.86, 0.92, 1))
-H.piece(1, "gasrun", KI.counter_base, 0.31, 2.0, 0, PI / 2, length=2.2, d=0.6, cook="gas", top="oak", door_tn=(0.78, 0.86, 0.92, 1))
-H.piece(1, "hood", KI.hood, 0.26, 2.0, 0, PI / 2)
+H.piece(1, "sinkrun", KI.counter_base, 2.75, 0.31, 0, 0.0, length=3.0, d=0.6, sink=True, top="oak", tile_back=False, door_tn=(0.78, 0.86, 0.92, 1))
+H.piece(1, "gasrun", KI.counter_base, 0.31, 3.65, 0, PI / 2, length=1.6, d=0.6, cook="gas", top="oak", tile_back=False, door_tn=(0.78, 0.86, 0.92, 1))
+H.piece(1, "hood", KI.hood, 0.26, 3.65, 0, PI / 2)  # window alignment 2026-11-27: the range and hood between the left windows (was z 2.0)
 H.piece(1, "upper", KI.upper_cabinets, 3.78, 0.17, 0, 0.0, length=0.95, door_tn=(0.78, 0.86, 0.92, 1))
-H.piece(1, "upper", KI.upper_cabinets, 1.6, 0.17, 0, 0.0, length=0.9, door_tn=(0.78, 0.86, 0.92, 1))
+H.piece(1, "upper", KI.upper_cabinets, 0.72, 0.17, 0, 0.0, length=0.8, door_tn=(0.78, 0.86, 0.92, 1))  # window alignment 2026-11-27: was x 1.6 (over the front-left window)
 P(1, "kettle", "kettle", 1.75, 0.3, 0.9)
 P(1, "mug", "mug_p", 3.2, 0.4, 0.9)
 pass  # (cottage pass) removed: P(1, "pan", "pan", 0.3, 1.8, 0.9, PI / 2)
@@ -89,8 +89,8 @@ P(1, "plate2", "plate", 3.3, 2.55, 0.74)
 # living / play room (right): L sofa faces the TV on the back wall, play mat with toys and baskets
 H.piece(1, "sofa", SOFA4, 8.0, 3.7, 0, 0.0, w=2.9, tn=PAL["sofa_sage"], pillow_tn=PAL["mustard"])
 H.piece(1, "mat", DE.rug_check, 8.9, 6.2, 0, 0.0, w=2.2, d=1.3, cols=False, a_tn=SKY, b_tn=YEL)
-H.piece(1, "tvstand", TA.tv_stand, 9.3, 7.55, 0, PI, w=1.6)
-H.piece(1, "tv", TA.tv_wall, 9.3, 7.78, 1.0, PI, w=1.3, cols=False)
+H.piece(1, "tvstand", TA.tv_stand, 9.6, 7.55, 0, PI, w=1.6)  # window alignment 2026-11-27: was x 9.3 (its fireplace covered the back-right window)
+H.piece(1, "tv", TA.tv_wall, 9.6, 7.78, 1.0, PI, w=1.3, cols=False)
 pass  # (cottage pass) the toy chest gave its wall to the console vignette
 # (realism pass) the six primary-colour baskets read as toys on the floor: two muted fabric bins, the rest on a low white toy shelf
 for i, (x, z, tn_) in enumerate(((10.15, 1.8, (0.85, 0.8, 0.72, 1)), (10.25, 6.0, (0.7, 0.75, 0.78, 1)))):
@@ -107,7 +107,7 @@ H.piece(1, "lamp", DE.floor_lamp, 6.3, 4.55)
 H.piece(1, "sofa_pic", DE.frame_art, 10.56, 6.0, 1.5, -PI / 2, w=0.6, h=0.45, art=3, cols=False)
 
 # ================================================================================================ floor 2 ======
-sp2 = HA.spec()
+sp2 = HA.spec(H, 2)
 ops2 = HA.ops_windows(sp2)
 HA.merge(ops2, dict(front=[dict(s0=6.2, s1=7.1, y0=0.0, y1=2.13)]))
 wins2, curt2 = HA.add_windows(sp2, curtain=("left", "right", "back", "front"))
@@ -115,7 +115,7 @@ H.shell(2, ops=ops2, wall_tn=WALL2, windows=wins2, curtains=curt2, floor_tn=(0.9
         lights=((2.2, 2.2), (3.4, 4.6), (8.4, 2.0), (8.6, 5.2)),
         fixtures=[lambda fr: SH.bath_door(fr["front"][0], 6.2, 7.1, 2.1)])
 # kids' room (left)
-H.piece(2, "bunk", BE.bunk_bed, 1.2, 1.4, 0, PI / 2, tn=SKY)
+H.piece(2, "bunk", BE.bunk_bed, 1.2, 1.165, 0, PI / 2, tn=SKY)  # window alignment 2026-11-27: was z 1.4 (into the left window)
 H.piece(2, "desk", TA.kids_desk, 3.9, 0.3, 0, 0.0, w=1.0)
 H.piece(2, "desk", TA.kids_desk, 0.3, 3.67, 0, PI / 2, w=1.0)
 H.piece(2, "dchair", SE.chair_desk, 3.9, 1.0, 0, PI, pull_body=0.62)
@@ -138,8 +138,8 @@ H.piece(2, "bedside", TA.bedside, 10.3, 0.85, 0, -PI / 2)
 H.piece(2, "bedside", TA.bedside, 10.3, 3.15, 0, -PI / 2)
 H.piece(2, "tlamp", DE.table_lamp, 10.3, 0.85, 0.55, 0.0, cols=False)
 H.piece(2, "tlamp", DE.table_lamp, 10.3, 3.15, 0.55, 0.0, cols=False)
-H.piece(2, "wardrobe", ST.wardrobe_builtin, 9.25, 7.49, 0, PI, w=2.3, bays=2)
-H.piece(2, "bookcase", ST.bookcase, 9.5, 0.2, 0, 0.0, w=0.9, h=1.9, shelves=4)
+H.piece(2, "wardrobe", ST.wardrobe_builtin, 9.75, 7.49, 0, PI, w=1.6, bays=2)  # window alignment 2026-11-27: was x 9.25 w 2.3
+H.piece(2, "bookcase", ST.bookcase, 10.0, 0.2, 0, 0.0, w=0.9, h=1.9, shelves=4)  # window alignment 2026-11-27: was x 9.5
 H.piece(2, "mirror", DE.mirror_round, 7.9, 0.04, 1.45, 0.0, r=0.3, cols=False)
 H.piece(2, "art", DE.frame_art, 10.56, 2.0, 1.75, -PI / 2, w=1.0, h=0.7, art=2, cols=False)
 H.piece(2, "dresser", KR.chest_drawers, 10.35, 5.5, 0, -PI / 2, w=1.0)
@@ -162,18 +162,18 @@ pass  # (cottage pass) removed: H.piece(2, "aircon", KR.aircon_wall, 0.0, 1.0, 2
 pass  # (cottage pass) removed: H.piece(2, "aircon2", KR.aircon_wall, 9.6, 0.0, 2.25, 0.0, c
 H.piece(2, "throw", KR.throw_folded, 8.75, 2.0, 0.56, -PI / 2, cols=False, w=1.3, d=0.4, layers=2, tn=(0.9, 0.86, 0.78, 1))
 pass  # (cottage pass) removed: H.piece(2, "laundry", KR.laundry_basket, 10.3, 6.5)   # (was
-H.piece(2, "shelf", KR.wall_shelf_deco, 4.65, 0.0, 0.0, 0.0, cols=False, w=1.4, shelf_y=1.45, seed=1)
+H.piece(2, "shelf", KR.wall_shelf_deco, 3.65, 0.0, 0.0, 0.0, cols=False, w=1.3, shelf_y=1.45, seed=1)  # window alignment 2026-11-27: over the desk (was x 4.65, across the middle window)
 
 # ---- dream show-home styling (owner 2026-11-17): fresh flowers, styled tables, lamps and sconces, a console vignette --------
 H.piece(1, "flowers", KR.flower_vase, 3.3, 2.8, 0.745, 0.0, cols=False, tn=(0.6, 0.74, 0.92, 1), kind="hydrangea", h=0.26)
-H.piece(1, "vignette", KR.console_vignette, 10.6, 2.45, 0.0, -PI / 2, w=1.2, accent=(0.62, 0.76, 0.92, 1))
+H.piece(1, "vignette", KR.console_vignette, 10.6, 3.65, 0.0, -PI / 2, w=1.0, accent=(0.62, 0.76, 0.92, 1))
 H.piece(2, "sconce", KR.wall_sconce, 10.6, 0.85, 1.5, -PI / 2, cols=False)
 H.piece(2, "sconce", KR.wall_sconce, 10.6, 3.15, 1.5, -PI / 2, cols=False)
 
 H.piece(1, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=2)
 H.piece(2, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=2)
 
-H.piece(2, "part_a", FX.part_wall, 5.75, 0.0, 0, -PI / 2, length=6.2, openings=[(2.4, 4.3, 2.6)], tn=WALL2)
+H.piece(2, "part_a", FX.part_wall, 6.15, 0.0, 0, -PI / 2, length=6.2, openings=[(2.4, 4.3, 2.6)], tn=WALL2)
 H.piece(2, "kidpend", DE.pendant_dome, 2.8, 3.7, 3.7, 0.0, drop=1.5, r=0.2, cols=False)
 H.piece(2, "parpend", DE.pendant_globe, 8.4, 3.8, 3.7, 0.0, drop=1.5, r=0.16, cols=False)
 

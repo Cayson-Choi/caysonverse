@@ -8,7 +8,7 @@
  * meet the room's own window opening over 10-75 % of its width ("jamb": its edge and the dark slot beside it in the glass), must be
  * in houseShutters.ts HOUSE_CLOSED_WINDOWS, and nothing else may be: re-baking a room or moving a window shows up here.
  */
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -296,7 +296,9 @@ beforeAll(async () => {
       const at = windowAt(w);
       const half = (w.u1 - w.u0) / 2;
       const { open, door } = looks(floors.get(floor)!, w.wall, at - half, at + half, (w.v0 + w.v1) / 2 - base);
-      const why: ClosedReason | null = door > 0 ? "door" : open >= 0.1 && open <= 0.75 ? "jamb" : null;
+      // a patio door's glass reaches the floor: its knee-height looks go through the room's own patio opening, not a door
+      const low = w.v0 - base < 0.6;
+      const why: ClosedReason | null = door > 0 && !low ? "door" : open >= 0.1 && open <= 0.75 ? "jamb" : null;
       list.push({ wall: w.wall, floor, at: Math.round(at * 100) / 100, open, door, why });
     }
     seen.set(h.id, list);
@@ -320,6 +322,7 @@ describe("windows that look onto a door or a misplaced room window are shuttered
   });
 
   it("HOUSE_CLOSED_WINDOWS is exactly the windows whose view meets a door or the edge of the room's own window", () => {
+    const bad: string[] = [];
     for (const n of HOUSE_NUMBERS) {
       const id = `house_${n}`;
       const want = seen
@@ -328,8 +331,13 @@ describe("windows that look onto a door or a misplaced room window are shuttered
         .map((w) => `${w.wall} ${w.floor} ${w.at.toFixed(2)} ${w.why}`)
         .sort();
       const have = (HOUSE_CLOSED_WINDOWS[id] ?? []).map(([wall, floor, at, why]) => `${wall} ${floor} ${at.toFixed(2)} ${why}`).sort();
-      expect(have, id).toEqual(want);
+      // CV_WINDOW_REPORT=<file>: every window's looks, one line each (the before / after counts of the window alignment)
+      if (process.env.CV_WINDOW_REPORT)
+        for (const w of seen.get(id)!) appendFileSync(process.env.CV_WINDOW_REPORT, `WIN ${id} ${w.wall} ${w.floor} ${w.at.toFixed(2)} open ${w.open.toFixed(2)} door ${w.door.toFixed(2)} ${w.why ?? "ok"}
+`);
+      if (JSON.stringify(have) !== JSON.stringify(want)) bad.push(`${id}: listed ${JSON.stringify(have)} found ${JSON.stringify(want)}`);
     }
+    expect(bad, `${bad.length} houses differ`).toEqual([]);
   });
 
   it("every listed window is found in the glass, and its closed leaves cover the glass from edge to edge", () => {
