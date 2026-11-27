@@ -1,6 +1,6 @@
 /**
- * House e2e (집 실내 G, design chapter 8.2 / 8.3 / 8.4 / 8.6 on house 1): in by the keypad, up the stair and down again (the button, a tap on
- * the stair), every seat sat on and stood up from (a walk to its approach and E / the button, three of them by a tap), a few camera spots, the
+ * House e2e (집 실내 G, design chapter 8.2 / 8.3 / 8.4 / 8.6 on house 1): in by the keypad, up the stair and down again (the button; a tap on
+ * the stair only walks to it, its button climbs), every seat sat on and stood up from (a walk to its approach and E / the button, three of them by a tap), a few camera spots, the
  * way out. Screenshots of every step; the page must print no console error.
  *
  *   server:  PORT=3011 npx tsx src/index.ts            (in server/)
@@ -9,8 +9,9 @@
  */
 import { mkdirSync } from "node:fs";
 import {
-  CLIENT_URL, DESKTOP, PHONE, centreOf, createRun, entryReady, launchBrowser, openPlayer, press, sleep, targets, walkAndWait, pos, visibleButtons, layoutReport, turnCameraTo,
+  CLIENT_URL, DESKTOP, PHONE, centreOf, createRun, entryReady, launchBrowser, openPlayer, press, sleep, targets, walkAndWait, pos, visibleButtons, layoutReport, turnCameraTo, waitIdle,
 } from "./lib/common.mjs";
+import { serverPos } from "./lib/noauto.mjs";
 
 const phone = process.argv.includes("--phone");
 const night = process.argv.includes("--night");
@@ -64,6 +65,29 @@ const toScreen = (x, y, z) =>
   }, [x, y, z]);
 const tapAt = async (s) => (phone ? p.page.touchscreen.tap(s.x, s.y) : p.page.mouse.click(s.x, s.y));
 const seatState = () => p.page.evaluate(() => window.__cv.getPos());
+/**
+ * Walk to (x, z) the way a tap on the floor there does: the game's click plan (its way round the furniture) and ONE click-move along its
+ * waypoints, as the game sets it (a walk per waypoint stops each one ARRIVE_DIST short, and a short stop beside a piece's corner blocks the
+ * next straight leg). True when it ends within `tol`.
+ */
+async function walkGame(x, z, tol = 0.5) {
+  const plan = await p.page.evaluate(async ([x, z]) => {
+    const cp = await window.__imp("/src/game/clickPlan.ts");
+    const am = await window.__imp("/src/game/activeMap.ts");
+    const cm = await window.__imp("/src/game/clickMove.ts");
+    const map = am.getActiveMap();
+    const at = window.__cv.getPos();
+    const r = cp.planClickMove(at.x, at.z, { x, y: 0, z, ny: 1 }, map.geometry.obstacles, am.mapBounds(map), false, { furniture: map.furniture ?? [] });
+    if (r.ok) cm.setClickTarget(r.x, r.z, 0, r.via);
+    return r;
+  }, [x, z]);
+  if (plan.ok) {
+    await sleep(300);
+    await waitIdle(p, 30000);
+  }
+  const at = await pos(p);
+  return Math.hypot(at.x - x, at.z - z) <= tol;
+}
 
 try {
   await p.page.goto(URL, { waitUntil: "domcontentloaded" });
@@ -118,28 +142,46 @@ try {
     await sleep(1100);
   });
 
-  await run.step("a tap on the stair walks to its pad and goes up", async () => {
+  await run.step("a tap on the stair walks to its pad and does NOT climb; the up button does", async () => {
+    // owner 2026-11-27: "계단을 탭하면 올라가게 하지 말고 계단 버튼을 누르면 올라가도록 하는게 맞아" — a tap only walks to the stair's pad
     // a spot with a view of the stair (the entrance's partitions hide it from the spawn spot)
     await walkAndWait(p, 365.3, -4.9, 20000, 0.8);
     await sleep(700);
-    const s = await toScreen(367.0, 1.2, -7.0);
+    // a tread of the flight (house 1: stair A, rising 4 m along -x from its foot at x 370.5 over 5.44 m), its room-side half. (The old aim,
+    // (367, 1.2, -7), was the empty space UNDER the flight: the pick was the back wall behind it, z -7.8, y 0.96 — no stair was tapped.)
+    const sx = 367.6;
+    const s = await toScreen(sx, ((370.5 - sx) / 5.44) * 4.0 + 0.05, -6.75);
     run.check("the stair is on screen", !!s, s);
     if (s) {
       await tapAt(s);
       await sleep(300);
       const pk = await p.page.evaluate(() => window.__cvClickPick?.() ?? null);
       run.check("the tap landed on the stair (not a wall in front of it)", pk && pk.pick && !/wall/.test(pk.pick.name), pk && pk.pick && { name: pk.pick.name, plan: pk.plan });
+      await p.page.waitForFunction(() => window.__cvClickTarget?.() === null, null, { timeout: 15000 }).catch(() => {});
+      await sleep(2500); // long enough for a (wrong) use on arrival and its fade
+      run.check("tapped the stair: still on floor 1 (a tap never climbs)", (await areaOf()) === "house:house_1:1", await areaOf());
+      const t = await targets(p);
+      const tapInfo = await p.page.evaluate(async () => {
+        const k = window.__cvClickPick?.();
+        const pk = k && k.pick;
+        if (!pk) return null;
+        const ht = await window.__imp("/src/village/houseTap.ts");
+        return { pick: { name: pk.name, x: +pk.x.toFixed(2), y: +pk.y.toFixed(2), z: +pk.z.toFixed(2), ny: pk.ny }, plan: k.plan, stair: ht.houseTapTarget("house:house_1:1", pk.x, pk.y, pk.z, pk.ny, pk.ray, pk.distance) };
+      });
+      run.check("tapped the stair: walked to its pad, the up button is offered", t.some((x) => x.id === "house_stair:up"), { at: await pos(p), t, tapInfo });
+      await run.shot(p, "f1-after-stair-tap.png");
+      await act();
       await waitArea("house:house_1:2", 15000).catch(() => {});
-      run.check("tapped the stair: arrived upstairs", (await areaOf()) === "house:house_1:2", await areaOf());
+      run.check("then the up button: arrived upstairs", (await areaOf()) === "house:house_1:2", await areaOf());
       await coverGone();
-      await run.shot(p, "f2-after-tap.png");
+      await run.shot(p, "f2-after-button.png");
     }
   });
 
   // ---- seats: every seat of both floors
   const seatList = await p.page.evaluate(async () => {
     const m = await window.__imp("/src/village/benchSeats.ts");
-    return m.VILLAGE_SEATS.map((s, index) => ({ index, id: s.id, area: s.area, x: s.x, z: s.z, yaw: s.yaw, standX: s.standX, standZ: s.standZ, bench: s.bench, kind: s.kind, seatY: s.seatY, pose: s.pose, retired: s.retired })).filter((s) => s.area.startsWith("house:") && !s.retired);
+    return m.VILLAGE_SEATS.map((s, index) => ({ index, id: s.id, area: s.area, x: s.x, z: s.z, yaw: s.yaw, standX: s.standX, standZ: s.standZ, bench: s.bench, kind: s.kind, seatY: s.seatY, pose: s.pose, retired: s.retired, reachFrom: s.reachFrom })).filter((s) => s.area.startsWith("house:") && !s.retired);
   });
   run.check("house 1 has its 12 seats (13 places with both-facings)", seatList.length >= 12, seatList.length);
   /** A free spot from which the prompt offers seat `index` (the client's rule), nearest the seat first. */
@@ -170,7 +212,10 @@ try {
       if (floor === 1) {
         // downstairs: from the top landing
         const down = { x: 364.56, z: 22.95 };
-        // via the open floor beside the landing (the room's middle), then onto the pad; the position is logged for the report
+        // by the game's own click plan (its way round the furniture: the last seat, the desk chair h1_2_3, stands the player up between the
+        // chair, the desk and a plant, where walkAndWait's straight line to the landing is blocked — 2026-11-27), then onto the pad
+        await walkGame(down.x - 0.15, down.z, 0.5);
+        // (else via the open floor beside the landing, the room's middle; the position is logged for the report)
         for (let i = 0; i < 4 && !(await targets(p)).some((t) => t.id === "house_stair:down"); i++) {
           if (i > 0) await walkAndWait(p, 366.5, 24.5, 20000, 0.8);
           await walkAndWait(p, down.x - 0.15, down.z, 20000, 0.5);
@@ -201,7 +246,7 @@ try {
         const st = await seatState();
         const sat = seatList.find((s) => s.index === st.seatIndex);
         const ok = st.seatIndex === seat.index || (seat.pose !== "floor" && sat && sat.area === seat.area && Math.hypot(sat.x - seat.x, sat.z - seat.z) < 1.3); // the nearest seat of the same piece also counts (not for the floor cushion: it must be that seat)
-        run.check(`${seat.id}: E sits (seatIndex ${st.seatIndex}, wanted ${seat.index})`, ok, { tg, st });
+        run.check(`${seat.id}: E sits (seatIndex ${st.seatIndex}, wanted ${seat.index})`, ok, ok ? { tg, st } : { tg, st, server: await serverPos(p), sitOn: await p.page.evaluate(async () => (await window.__imp("/src/village/villageTargets.ts")).villageTargets?.((await window.__imp("/src/village/villageArea.ts")).localArea(), window.__cv.getPos().x, window.__cv.getPos().z)?.slice(0, 2) ?? null).catch((e) => String(e)) });
         if (st.seatIndex >= 0) {
           const d = Math.hypot(st.x - seatList.find((s) => s.index === st.seatIndex).x, st.z - seatList.find((s) => s.index === st.seatIndex).z);
           run.check(`${seat.id}: the sitter is on the seat spot`, d < 0.05, d);
@@ -238,7 +283,11 @@ try {
       await walkAndWait(p, 365.3, -4.9, 20000, 0.8);
       await turnCameraTo(p, seat.x, seat.z);
       await sleep(900);
-      const s = await toScreen(seat.x, seat.seatY + 0.2, seat.z);
+      // aim at the chair's cushion (its marker, `reachFrom`), not the sitter's spot 0.2 m over it: a house chair's sitter spot is at its
+      // front edge, and from some views the pixel over it shows the floor under the dining table beyond (h1_1_5: the pick was that floor,
+      // y 0.11, and the walk rightly went round the table — no chair was tapped)
+      const c = seat.reachFrom ?? seat;
+      const s = await toScreen(c.x, seat.seatY + 0.1, c.z);
       if (!run.check(`${seat.id}: on screen to tap`, !!s, s)) continue;
       await tapAt(s);
       await sleep(400);
@@ -297,7 +346,14 @@ try {
   });
 
   await run.step("the way out", async () => {
-    await walkAndWait(p, 365.3, -0.9, 20000, 0.5);
+    // from beside the stair (the camera stress step) the dining table stands between the player and the door: walkAndWait's straight
+    // click-move stopped against it (the failure before 2026-11-27, a test harness one). The game's own click plan goes round it.
+    const out = await walkGame(365.3, -0.9, 0.5);
+    run.check("from beside the stair the game's click plan walks round the table to the door", out, await pos(p));
+    if (!out) {
+      await walkAndWait(p, 365.3, -4.9, 20000, 0.8);
+      await walkAndWait(p, 365.3, -0.9, 20000, 0.5);
+    }
     run.check("the way-out button is offered", (await targets(p)).some((t) => t.id === "house_exit"));
     await act();
     await waitArea("village");

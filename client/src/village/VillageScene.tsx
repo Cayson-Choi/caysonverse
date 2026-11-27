@@ -365,7 +365,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
       setTargetHandler(null);
     };
   }, [pose, boarded, keypadOpen]);
-  // A tap on a house's stair or front door armed its use (houseTap.ts): once the walk has brought us into the pad's reach, it is used.
+  // A tap on a house's or a lot building's door armed its use (houseTap.ts; a stair's tap never arms: tapUsesOnArrival): once the walk has brought us into the pad's reach, it is used.
   const lastArea = useRef<string | null>(null);
   useFrame(() => {
     const area = localArea();

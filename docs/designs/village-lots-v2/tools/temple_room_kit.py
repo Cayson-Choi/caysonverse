@@ -24,6 +24,10 @@ from b1_geom import Mesh, S
 from temple_atlas import ruv
 
 DAN = S("LM_temple_dancheong")
+# the offering vases' petals: their own material (the same dancheong set, on its flat painted strip) so the game gives them a
+# flower's translucent fill (LotRoom.tsx `_petal`): lit only by the hall's lamps and its low fill they read dusty grey-pink
+# (props round 3, 2026-11-27 — the church altar flowers' fix, e9a67ec0)
+PETAL = S("LM_temple_petal")
 PINE = S("LM_temple_pine")
 PINE_DK = S("LM_temple_pine", G.hexc("B98A62"))
 FAB = S("LM_temple_fabric")
@@ -31,6 +35,7 @@ SCREEN = S("M_screen")
 
 MATS = {
     "LM_temple_dancheong": {"set": "dancheong_wood"},
+    "LM_temple_petal": {"set": "dancheong_wood", "rough": 0.6},
     "LM_temple_pine": {"set": "wood_pine_natural", "rough": 0.7},
     "LM_temple_fabric": {"set": "fabric_upholstery"},
     "M_screen": {"screen": True},
@@ -84,10 +89,10 @@ def painted(m, col, region="paint"):
 
 def paint_keep(m, start, region="paint"):
     """flora.py parts on the atlas's flat painted strip, KEEPING their vertex colours (petal gradients, the bell's dark
-    hollow): painted() would flatten them to one tint."""
+    hollow): painted() would flatten them to one tint. Petals (PETAL) keep their own material on the same strip."""
     for p in m.polys[start:]:
         p.uv = [ruv(region, 0.5 + 0.004 * (k % 2), 0.5 + 0.004 * ((k // 2) % 2)) for k in range(len(p.pts))]
-        p.mat = "LM_temple_dancheong"
+        p.mat = PETAL.mat if p.mat == PETAL.mat else "LM_temple_dancheong"
 
 
 def gild_keep(m, start):
@@ -589,13 +594,13 @@ def bouquet(m, x, y, z):
         F.stem(m, (x + dx * 0.2, y - 0.04, z + dz * 0.2), c, 0.005, green, bend=(dx * 0.3, 0.0, dz * 0.3))
         sd = int(abs(dx) * 1000 + dy * 100)
         if kind == "lotus":
-            F.lotus(m, c, 0.1, DAN, col, seed=sd, open_=0.95)
+            F.lotus(m, c, 0.1, PETAL, col, seed=sd, open_=0.95)
         elif kind == "lotus_w":
-            F.lotus(m, c, 0.09, DAN, col, col_base=(1.0, 0.99, 0.97), seed=sd, open_=0.8)
+            F.lotus(m, c, 0.09, PETAL, col, col_base=(1.0, 0.99, 0.97), seed=sd, open_=0.8)
         elif kind == "peony":
-            F.peony(m, c, 0.075, DAN, col, seed=sd)
+            F.peony(m, c, 0.075, PETAL, col, seed=sd)
         else:
-            F.lotus_bud(m, c, 0.04, DAN, col, seed=sd)
+            F.lotus_bud(m, c, 0.04, PETAL, col, seed=sd)
     # round lotus pads on their own stems, cupped and tilted out over the rim
     for k, (dx, dy, dz, r) in enumerate(((0.12, 0.05, 0.06, 0.085), (-0.12, 0.07, -0.05, 0.08), (0.02, 0.04, 0.12, 0.07))):
         c = (x + dx, y + dy, z + dz)

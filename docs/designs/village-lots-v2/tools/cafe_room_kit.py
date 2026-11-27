@@ -409,6 +409,8 @@ def matte_keep(m, n0):
     u0, u1, v0, v1 = C.cuv("matte")
     uc, vc = (u0 + u1) / 2, (v0 + v1) / 2
     for p in m.polys[n0:]:
+        if p.mat == C.PETAL.mat:
+            continue   # (petals: their own material, their flora.py UVs on the plaster set)
         p.uv = [(uc + 0.001 * (k % 2), vc + 0.001 * ((k // 2) % 2)) for k in range(len(p.pts))]
         p.mat = C.ART.mat
 
@@ -425,7 +427,7 @@ def vase(m, x, y, z, flower):
     for k, (dx, dy, dz) in enumerate(((0.0, 0.25, 0.0), (0.035, 0.21, 0.02), (-0.03, 0.2, -0.025))):
         c = (x + dx, y + dy, z + dz)
         F.stem(m, (x, y + 0.1, z), c, 0.0025, green)
-        F.rose(m, c, 0.022 if k else 0.026, C.ART, flower, open_=0.5 + 0.15 * k, seed=int(x * 37 + z * 11) + k)
+        F.rose(m, c, 0.022 if k else 0.026, C.PETAL, flower, open_=0.5 + 0.15 * k, seed=int(x * 37 + z * 11) + k)
     for k, a in enumerate((0.6, 3.6)):
         F.leaf(m, (x, y + 0.15, z), (math.cos(a), 0.3, math.sin(a)), 0.05, 0.025, green, rise=0.5, fall=0.9,
                c0=G.hexc("2E5A2A"), c1=G.hexc("4F8A3E"), seed=k)
@@ -455,15 +457,15 @@ def centre_bouquet(m, x, y, z):
         F.stem(m, (x + dx * 0.25, top - 0.05, z + dz * 0.25), c, 0.004, green, bend=(dx * 0.3, 0.0, dz * 0.3))
         sd = int(abs(dx) * 1000 + dy * 300 + abs(dz) * 70)
         if kind == "peony":
-            F.peony(m, c, 0.075, C.ART, col, seed=sd)
+            F.peony(m, c, 0.075, C.PETAL, col, seed=sd)
         elif kind == "rose":
-            F.rose(m, c, 0.045, C.ART, col, open_=0.6, seed=sd)
+            F.rose(m, c, 0.045, C.PETAL, col, open_=0.6, seed=sd)
         else:
-            F.hydrangea(m, c, 0.08, C.ART, col, seed=sd, col2=G.hexc("E3ECF6"))
+            F.hydrangea(m, c, 0.08, C.PETAL, col, seed=sd, col2=G.hexc("E3ECF6"))
     for (dx, dz, dy) in ((0.07, -0.05, 0.38), (-0.08, 0.04, 0.35)):
         b = (x + dx, top + dy, z + dz)
         F.stem(m, (x, top - 0.05, z), b, 0.004, green)
-        F.lily_bud(m, b, (dx, 1.0, dz), 0.09, C.ART, G.hexc("FFFFFF"))
+        F.lily_bud(m, b, (dx, 1.0, dz), 0.09, C.PETAL, G.hexc("FFFFFF"))
     for k in range(10):
         a = 2 * math.pi * k / 10 + rg.uniform(-0.2, 0.2)
         F.leaf(m, (x + 0.08 * math.cos(a), top + rg.uniform(-0.01, 0.06), z + 0.08 * math.sin(a)), (math.cos(a), 0, math.sin(a)),
