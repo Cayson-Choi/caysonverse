@@ -15,12 +15,11 @@ import ext_openings as EO
 def spec(H, floor, skip=(), extra=None):
     """the shell's windows of this floor as {wall: [(s_centre, width, y0, y1)]}, minus the ones the stair stands in front of and any
     skip = [(wall, at)] (`at` = interior x on front / back, z on the sides, as exterior_windows.json gives it)"""
-    import hb_common as HB
     out = {}
     for (wall, at, w, y0, y1, kind) in EO.openings(H.n, floor):
         if any(sw == wall and abs(sa - at) < 0.01 for (sw, sa) in skip):
             continue
-        if HB.stair_blocks(H, wall, at, w):
+        if stair_blocks(H, wall, at, w):
             print(f"WINDOWS house {H.n} floor {floor}: {wall} {at} left out (the stair stands there)")
             continue
         out.setdefault(wall, []).append((EO.wall_s(wall, at), w, y0, y1))
@@ -30,6 +29,20 @@ def spec(H, floor, skip=(), extra=None):
         out.setdefault(w, [])
         out[w].sort()
     return out
+
+
+def stair_blocks(H, wall, c, w):
+    """True if the stair footprint stands against that wall where the window would be (the same rule as hb_common.stair_blocks;
+    hb_common is not imported here: it patches the kit with its lighter pieces for the HB houses)"""
+    f = H.plan["footprint"]
+    a0, a1 = c - w / 2 - 0.15, c + w / 2 + 0.15
+    if wall == "back":
+        return f["maxZ"] > EO.D - 0.9 and a0 < f["maxX"] and a1 > f["minX"]
+    if wall == "right":
+        return f["maxX"] > EO.W - 0.9 and a0 < f["maxZ"] and a1 > f["minZ"]
+    if wall == "left":
+        return f["minX"] < 0.9 and a0 < f["maxZ"] and a1 > f["minZ"]
+    return False
 
 
 def ops_windows(sp):
