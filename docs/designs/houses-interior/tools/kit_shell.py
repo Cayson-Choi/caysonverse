@@ -335,6 +335,9 @@ def entry_door(W, s0, s1, h=2.9):
 
 
 # --------------------------------------------------------------------------------------------- soft furnishings --
+LINING = (0.94, 0.92, 0.87, 1)
+
+
 def curtain(W, s0, s1, y_top, y_bot, folds=8, z=0.17, amp=0.035, tn=None, m="H_drape", rod=True, panels=2, gap=0.0, tie_tn=None):
     """pleated linen drape: two panels with soft double-sine folds (real geometry, smooth normals), a hem band, rings on the rod and a
     short strap from every ring to the cloth. (realism pass 2026-11-17: z 0.10 -> 0.17 — the folds cut through the 10 cm window sill.)
@@ -376,7 +379,9 @@ def curtain(W, s0, s1, y_top, y_bot, folds=8, z=0.17, amp=0.035, tn=None, m="H_d
                 u0, u1 = i / n, (i + 1) / n
                 P = [pt(u0, yb, kb, ab), pt(u1, yb, kb, ab), pt(u1, ya, ka, aa), pt(u0, ya, ka, aa)]
                 gface(W, P, m, (1, 0, 0), 0.6, (0, 1, 0), tn=tint, smooth=True)
-                gface(W, P, m, (1, 0, 0), 0.6, (0, -1, 0), tn=tint, smooth=True)
+                # houses-real pass 2 (exterior review 2026-11-27: "a strange blue panel" through the glass): the side toward the window
+                # is the cream lining real lined curtains show the street, not the room-side colour
+                gface(W, P, m, (1, 0, 0), 0.6, (0, -1, 0), tn=LINING, smooth=True)
         # one ring per fold crest on the rod, a strap down to the cloth's top edge
         for f_ in range(0, nf, 2 if open_ else 1):
             u = (f_ + 0.25) / nf

@@ -110,8 +110,11 @@ def rbox_lite(F, x0, x1, z0, z1, y0, y1, m, r=0.01, seg=2, **kw):
     return _rbox_orig(F, x0, x1, z0, z1, y0, y1, m, r=r, seg=seg, **kw)
 
 
+kit_shell_LINING = (0.94, 0.92, 0.87, 1)
+
+
 def curtain_lite(W, s0, s1, y_top, y_bot, folds=8, z=0.17, amp=0.035, tn=None, m="H_floral", rod=True, panels=2, gap=0.0):
-    """pleated curtain, one-sided (the back never faces the room), 20 columns per panel, rod + finials + a few rings"""
+    """pleated curtain: the room side in the house's cloth, the window side a cream lining (seen through the glass from outside), rod + finials + a few rings"""
     tn = tn or PAL["cream"]
     width = s1 - s0
     for pi_ in range(panels):
@@ -131,6 +134,8 @@ def curtain_lite(W, s0, s1, y_top, y_bot, folds=8, z=0.17, amp=0.035, tn=None, m
         for i in range(n):
             (xa, za), (xb, zb) = cols[i], cols[i + 1]
             K.gface(W, [(xa, za, y_bot), (xb, zb, y_bot), (xb, zb, y_top), (xa, za, y_top)], m, (1, 0, 0), 0.6, (0, 1, 0), tn=tn, smooth=True)
+            # houses-real pass 2 (exterior review 2026-11-27): the window side is a cream lining, as the street sees real curtains
+            K.gface(W, [(xa, za, y_bot), (xb, zb, y_bot), (xb, zb, y_top), (xa, za, y_top)], "H_drape", (1, 0, 0), 0.6, (0, -1, 0), tn=kit_shell_LINING, smooth=True)
     if rod:
         dk = (0.18, 0.18, 0.18, 1)
         K.tube(W, [(s0 - 0.12, z + 0.04, y_top + 0.06), (s1 + 0.12, z + 0.04, y_top + 0.06)], 0.014, "H_metal", 6, tn=dk)
