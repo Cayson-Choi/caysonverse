@@ -147,7 +147,7 @@
   {
    "name": "seat__h10_2_2",
    "x": 576.3,
-   "z": 25.47,
+   "z": 24.45,
    "y": 0.48,
    "furn": "windowseat",
    "kind": "backless",
@@ -165,7 +165,7 @@
   {
    "name": "seat__h10_2_3",
    "x": 576.3,
-   "z": 26.27,
+   "z": 25.25,
    "y": 0.48,
    "furn": "windowseat",
    "kind": "backless",
