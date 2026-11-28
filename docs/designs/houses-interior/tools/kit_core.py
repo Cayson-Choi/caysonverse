@@ -99,6 +99,11 @@ MATS = {
     "H_glass": dict(color="#E8F2F2", rough=0.03, transmission=1.0, ior=1.45),
     "H_mirror": dict(color="#C9D3D6", rough=0.04, metal=1.0),     # mirror glass: opaque, drawn direct (M_mirror / E_H_mirror), the game gives it a room reflection
     "H_ceramic": dict(color="#FFFFFF", rough=0.15, coat=0.5, tint=True),
+    # polish4 (2026-11-28): glazed table ceramics (vases, cups, teapots, bowls, plates) — their own material, never merged into H_paint,
+    # so the game can give them a glaze sheen (client houseLeather.ts HOUSE_SHEENS)
+    "H_glaze": dict(color="#FFFFFF", rough=0.1, coat=0.7, tint=True),
+    # polish4: the petals and florets of the table flowers — their own material so the game lights them round (client ROUND_LIT)
+    "H_petal": dict(color="#FFFFFF", rough=0.6, tint=True),
     "H_lamp": dict(kind="emit", color="#FFE2B8", strength=10.0),
     "H_shade": dict(color="#F2E6CC", rough=0.9, glow=0.0, kind="shade"),
     "H_screen": dict(color="#0B0C0E", rough=0.12, coat=0.4),

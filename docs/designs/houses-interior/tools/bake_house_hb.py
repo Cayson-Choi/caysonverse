@@ -150,6 +150,8 @@ def lightmap_uv(objs, margin=0.002):   # houses-real pass 2: 4 px gaps (were 3; 
     log("lm islands boosted", uv_compact.boost_small_lm_islands(objs))
     bpy.ops.uv.pack_islands(rotate=True, margin_method="FRACTION", margin=margin, shape_method="CONCAVE")
     bpy.ops.object.mode_set(mode="OBJECT")
+    import uph_light     # polish4: the small round table things share one light-map point each (a light probe)
+    log("decor probes", uph_light.collapse_decor_uv(objs))
 
 
 KIND_DAY = {"downlight": 0.5, "lamp": 3.0, "sconce": 3.0, "pendant": 1.6, "fire": 1.2, "led": 1.5}
