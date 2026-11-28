@@ -12,7 +12,7 @@ import { armedHouseUse, currentPadWalk, disarmHouseUse, stepPadWalk, takeArmedHo
 import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor, sendUseStair } from "../net/connection";
-import { rideStatusText, sendBusRide, sendBusSit, sendBusStand, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState } from "../net/transitSync";
+import { rideStatusText, sendBusRide, sendBusSit, sendBusStand, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState, useTransitBoarded } from "../net/transitSync";
 import { BUS_VIEW_YAW, busCamGoal, busSeatPreferred, busWalk, selfBusRide } from "../game/busRide";
 import { requestViewToggle, viewState } from "../game/viewState";
 import { recenterYaw } from "../game/cameraControls";
@@ -283,7 +283,7 @@ function selfServerPose(): { x: number; z: number; area: string } | null {
 }
 
 function VillageDoors({ pose }: { pose: Pose }) {
-  const { boarded } = useTransitState();
+  const boarded = useTransitBoarded();
   const keypadOpen = useKeypad().buildingId !== null;
   useEffect(() => {
     // Nothing is offered while the cubby card or a guide's questions are open (the E / action button hides).

@@ -103,13 +103,13 @@ H.piece(1, "musicstand", KR.music_stand, 8.94, 5.75, 0, -PI / 2 - 0.5)
 pass  # (interior polish 2026-11-27: it read as a flat board with a dark edge over the back cushion, as on houses 1 and 3) removed: H.piece(1, "throw", KR.throw_draped, 3.98, 2.6, 0.8, -PI / 2, cols=False, w=0.5, top_d=0.14, drop_front=0.28, drop_back=0.4, tn=(0.86, 0.78, 0.62, 1))
 pass  # (cottage pass) removed: H.piece(1, "purifier", KR.air_purifier, 7.5, 7.45)
 pass  # (cottage pass) removed: H.piece(1, "slippers", KR.slippers, 6.55, 1.15, 0.0, -PI / 2
-H.piece(1, "mats", KR.placemats, 8.45, 2.4, 0.745, 0.0, cols=False, spots=[(-0.3, 0.0, PI / 2), (0.3, 0.0, -PI / 2)], tn=(0.65, 0.6, 0.55, 1))
+H.piece(1, "mats", KR.placemats, 8.45, 2.4, 0.74, 0.0, cols=False, table=("round", 0.55), spots=[(-0.3, 0.0, PI / 2), (0.3, 0.0, -PI / 2)], tn=(0.65, 0.6, 0.55, 1))
 pass  # (cottage pass) removed: H.piece(2, "vac", KR.shop_vac, 7.2, 6.65)
 H.piece(2, "toolchest", KR.chest_drawers, 7.3, 7.5, 0, PI, w=0.8, d=0.45, h=0.74, rows=4, tn=(0.62, 0.72, 0.66, 1))   # layered pass 2: painted in the house's soft sage (was tool-chest red)
 pass  # (cottage pass) removed: H.piece(2, "fan", KR.electric_fan, 5.2, 5.6, 0, PI - 0.4)
 
 # ---- dream show-home styling (owner 2026-11-17): fresh flowers, styled tables, lamps and sconces, a console vignette --------
-H.piece(1, "flowers", KR.flower_vase, 8.7, 2.4, 0.745, 0.0, cols=False, tn=(0.95, 0.62, 0.52, 1), kind="rose", h=0.24)
+H.piece(1, "flowers", KR.flower_vase, 8.7, 2.4, 0.74, 0.0, cols=False, tn=(0.95, 0.62, 0.52, 1), kind="rose", h=0.24)
 
 VIEWS = [
     dict(name="f1_entry", floor=1, eye=[5.3, 0.55, 1.35], look=[4.4, 5.5, 1.3], lens=17),

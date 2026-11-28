@@ -554,12 +554,25 @@ const LAMP_FRAG = /* glsl */ `#include <lights_fragment_end>
 }`;
 
 /**
- * A flower's petals (`LM_*_petal`, church_room_kit.py): a thin white bloom is lit through as well as on — the candle and the chancel spot
- * stand above the altar flowers and the pews see their undersides, so lit only by the lamps and the room's low fill (a lightmapped
- * room keeps 30 % of it) the petals read grey (owner 2026-11-27 "교회 제대 꽃이 회색"). This share of the petal's own colour (albedo x
- * vertex colour, linear) is added as a warm candlelit glow: white and cream again, the hydrangeas' cool tint kept. No extra lamp, no texture.
+ * A flower's petals (`LM_*_petal`, church / temple / café / library room kits): a thin bloom is lit through as well as on — the candle and
+ * the chancel spot stand above the altar flowers and the pews see their undersides, so lit only by the lamps and the room's low fill (a
+ * lightmapped room keeps 30 % of it) the petals read grey (owner 2026-11-27 "교회 제대 꽃이 회색"). This share of the petal's own colour
+ * (vertex colour, linear) is added as a soft lit-through glow.
+ *
+ * Polish 3 (owner 2026-11-28: the temple / café / library flowers only a little less grey): the petal is drawn from its own colour alone —
+ * the plaster set the kits put on it (albedo ~0.75 grey, its normal and ORM) dulled every bloom like dust — with its chroma lifted
+ * (PETAL_SATURATION about the colour's own luminance, then PETAL_DEEPEN: a white rose stays white, a pink lotus turns clearly pink),
+ * a satin roughness, and a near-neutral fill so pinks and lilacs are not pulled toward salmon. Day and night, PC and phone: one program.
  */
-export const PETAL_FILL: readonly [number, number, number] = [0.55, 0.48, 0.38];
+export const PETAL_FILL: readonly [number, number, number] = [0.4, 0.37, 0.34];
+/** Chroma lift of a petal's colour about its luminance (linear; 1 = as modelled). */
+export const PETAL_SATURATION = 2.2;
+/** Then the colour is deepened (a power on the linear colour: white stays white, a pale tint turns to a real petal colour). */
+export const PETAL_DEEPEN = 1.4;
+/** A petal's roughness (satin: the plaster set's ORM is not read). */
+export const PETAL_ROUGHNESS = 0.55;
+
+const f3 = (v: number): string => v.toFixed(3);
 
 export function patchPetalFill(m: MeshStandardMaterial): void {
   if (m.userData.petalFill) return;
@@ -567,14 +580,28 @@ export function patchPetalFill(m: MeshStandardMaterial): void {
   const prev = m.onBeforeCompile;
   m.onBeforeCompile = (shader, r) => {
     prev?.call(m, shader, r);
-    shader.fragmentShader = shader.fragmentShader.replace(
-      "#include <emissivemap_fragment>",
-      `#include <emissivemap_fragment>
-totalEmissiveRadiance += diffuseColor.rgb * vec3( ${PETAL_FILL.map((v) => v.toFixed(3)).join(", ")} );`,
-    );
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <map_fragment>", "")
+      .replace("#include <aomap_fragment>", "")
+      .replace("#include <normal_fragment_maps>", "")
+      .replace("#include <roughnessmap_fragment>", `float roughnessFactor = ${f3(PETAL_ROUGHNESS)};`)
+      .replace("#include <metalnessmap_fragment>", "float metalnessFactor = 0.0;")
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+{
+  float petalL = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+  diffuseColor.rgb = pow( clamp( mix( vec3( petalL ), diffuseColor.rgb, ${f3(PETAL_SATURATION)} ), 0.0, 1.0 ), vec3( ${f3(PETAL_DEEPEN)} ) );
+}`,
+      )
+      .replace(
+        "#include <emissivemap_fragment>",
+        `#include <emissivemap_fragment>
+totalEmissiveRadiance += diffuseColor.rgb * vec3( ${PETAL_FILL.map(f3).join(", ")} );`,
+      );
   };
   const key = m.customProgramCacheKey.bind(m);
-  m.customProgramCacheKey = () => `${key()}|petal`;
+  m.customProgramCacheKey = () => `${key()}|petal3`;
   m.needsUpdate = true;
 }
 
@@ -658,7 +685,12 @@ export interface LoadedRoom {
   lamps: RoomLamps;
   /** The baked light's day/night mix (null: the room has no lightmap, or the phone's file). */
   lightmap: { mix: { value: number } } | null;
-  solid: SolidIndex;
+  /**
+   * The camera's and the seat framing's solid model, built on first read (perf/100, 2026-11-28): only a player inside the room
+   * needs it (read under the door cover), while the café's and the other buildings' showcases load the same rooms in the village —
+   * where building it was one 190-350 ms main-thread frame per room on a PC (x4 on a phone) as the player walked the plaza.
+   */
+  readonly solid: SolidIndex;
   stats: { triangles: number; draws: number; sacred: number; sacredTriangles: number; file: string; phone: boolean };
 }
 
@@ -988,7 +1020,20 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
     root.updateMatrixWorld(true);
     // the camera's and the seat framing's solid model: the drawn room (its glass is no wall: the stained glass is in it)
     const b = room.bounds;
-    const solid = buildSolidIndex(solidTriangles(root), b.minX - 1, b.maxX + 1, b.minZ - 1, b.maxZ + 1);
+    let solidIndex: SolidIndex | null = null;
+    const solid = (): SolidIndex => {
+      if (solidIndex) return solidIndex;
+      // the triangles in the room's own frame (root's position only), as at load: lifted out of the drawn scene for the read
+      const parent = root.parent;
+      root.parent = null;
+      try {
+        solidIndex = buildSolidIndex(solidTriangles(root), b.minX - 1, b.maxX + 1, b.minZ - 1, b.maxZ + 1);
+      } finally {
+        root.parent = parent;
+        root.updateMatrixWorld(true);
+      }
+      return solidIndex;
+    };
     // the fire's point light (the node `fire__<unit>_light`)
     const fl = scene.getObjectByName(`fire__${unit}_light`);
     const fireLight = fl ? new Vector3().setFromMatrixPosition(fl.matrixWorld) : null;
@@ -1007,7 +1052,9 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
       fire,
       fireLight,
       lamps,
-      solid,
+      get solid() {
+        return solid();
+      },
       stats: { triangles: Math.round(triangles), draws, sacred: props.filter((p) => p.status === "fulfilled").length, sacredTriangles: Math.round(sacredTriangles), file, phone },
     };
   } finally {
