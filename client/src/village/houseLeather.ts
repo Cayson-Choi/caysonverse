@@ -18,6 +18,74 @@ export function isHouseLeatherMaterial(name: string): boolean {
 /** Peak sheen (share of the baked light at the point), its lobe's sharpness, and the grazing rim's share. */
 export const LEATHER_SHEEN = { spec: 0.16, power: 18, rim: 0.06 } as const;
 
+/**
+ * Glazed table ceramics (polish 4, 2026-11-28: vases, cups, teapots, bowls and plates of the houses, material `H_glaze` in the builders):
+ * the same view-dependent highlight as the leather, sharper and brighter (a glaze is a thin glass coat), a cool-white rim.
+ */
+export const GLAZE_SHEEN = { spec: 0.34, power: 64, rim: 0.1 } as const;
+
+export interface HouseSheen {
+  spec: number;
+  power: number;
+  rim: number;
+}
+
+/** The house glaze materials (HA `LM_glaze`, HB `E_H_glaze`). */
+export function isHouseGlazeMaterial(name: string): boolean {
+  return name === "LM_glaze" || name === "E_H_glaze";
+}
+
+/**
+ * Round small things (polish 4, 2026-11-28: the house 1 vase still showed flat vertical panels and the fruit read lumpy in the phone
+ * close-up): a vase, a cup or an apple was a scatter of sub-texel light-map islands, one flat value per face. The bake now gives each
+ * such thing ONE light-map point (uph_light.py collapse_decor_uv: the mean of its vertex light, a light probe), so the light map gives
+ * it a single level, and here that level is shaped by the smooth normal (`shape`: a soft top light, darker underneath) so it reads
+ * round. `bias` (a mip bias on the read) stays 0: the probe is a 5 x 5 texel block. Glaze strongly, petals and the atlas props gently.
+ */
+export const ROUND_LIT = { glaze: { bias: 0.0, shape: 0.55 }, petal: { bias: 0.0, shape: 0.35 }, atlas: { bias: 0.0, shape: 0.4 } } as const;
+
+/** The house atlas materials (HA `LM_atlas`, HB `E_H_atlas`): the small props in atlas colours. */
+export function isHouseAtlasMaterial(name: string): boolean {
+  return name === "LM_atlas" || name === "E_H_atlas";
+}
+
+/** The table flowers' petals and florets (HA `LM_petal`, HB `E_H_petal`; polish 4). */
+export function isHousePetalMaterial(name: string): boolean {
+  return name === "LM_petal" || name === "E_H_petal";
+}
+
+/** How a house material is lit round (glaze, petals, atlas), or null. */
+export function houseRoundLitOf(name: string): { bias: number; shape: number } | null {
+  if (isHouseGlazeMaterial(name)) return ROUND_LIT.glaze;
+  if (isHousePetalMaterial(name)) return ROUND_LIT.petal;
+  if (isHouseAtlasMaterial(name)) return ROUND_LIT.atlas;
+  return null;
+}
+
+/** Whether a house material needs smooth normals in the game (a sheen or a round light). */
+export function houseWantsNormals(name: string): boolean {
+  return houseSheenOf(name) !== null || houseRoundLitOf(name) !== null;
+}
+
+/** The round light, right after the light map's texel is read (lightMapTexel; needs vLeatherN). */
+export function roundLitFrag(p: { shape: number }): string {
+  return /* glsl */ `
+	{
+		float rOk = step( 0.01, length( vLeatherN ) );
+		vec3 rN = vLeatherN / max( length( vLeatherN ), 0.01 );
+		rN *= dot( rN, cameraPosition - vHouseFireW ) < 0.0 ? -1.0 : 1.0; // toward the eye (the faces' winding is not to be trusted)
+		float rUp = 0.5 + 0.5 * dot( rN, normalize( vec3( 0.35, 1.0, 0.25 ) ) );
+		lightMapTexel.rgb *= mix( 1.0, 1.0 - ${p.shape.toFixed(3)} * 0.65 + ${p.shape.toFixed(3)} * rUp, rOk );
+	}`;
+}
+
+/** The sheen a house material takes (leather, glaze), or null. */
+export function houseSheenOf(name: string): { kind: "leather" | "glaze"; sheen: HouseSheen } | null {
+  if (isHouseLeatherMaterial(name)) return { kind: "leather", sheen: LEATHER_SHEEN };
+  if (isHouseGlazeMaterial(name)) return { kind: "glaze", sheen: GLAZE_SHEEN };
+  return null;
+}
+
 /** Smooth normals by position (idempotent: a flag on the geometry). Returns false when there was nothing to do. */
 export function smoothNormalsByPosition(g: BufferGeometry): boolean {
   if (g.userData.leatherNormals) return false;
@@ -28,7 +96,7 @@ export function smoothNormalsByPosition(g: BufferGeometry): boolean {
   const n = pos.count;
   const key = new Map<string, number>();
   const slot = new Int32Array(n);
-  const q = (v: number) => Math.round(v * 2000); // 0.5 mm
+  const q = (v: number) => Math.round(v * 700); // 1.4 mm (the files' 16-bit Draco positions are ~0.6 mm steps over a house: a finer key split the copies)
   for (let i = 0; i < n; i++) {
     const k = `${q(pos.getX(i))},${q(pos.getY(i))},${q(pos.getZ(i))}`;
     let s = key.get(k);
@@ -47,13 +115,15 @@ export function smoothNormalsByPosition(g: BufferGeometry): boolean {
     const ax = pos.getX(a), ay = pos.getY(a), az = pos.getZ(a);
     const ux = pos.getX(b) - ax, uy = pos.getY(b) - ay, uz = pos.getZ(b) - az;
     const vx = pos.getX(c) - ax, vy = pos.getY(c) - ay, vz = pos.getZ(c) - az;
-    // area-weighted face normal
+    // area-weighted face normal; the builders' faces are not all wound the same way (polish 4: a vase read as two halves), so each face
+    // is added turned to agree with what its vertex has gathered so far
     const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
     for (const i of [a, b, c]) {
       const s = slot[i]! * 3;
-      acc[s] += nx;
-      acc[s + 1] += ny;
-      acc[s + 2] += nz;
+      const sg = acc[s]! * nx + acc[s + 1]! * ny + acc[s + 2]! * nz < 0 ? -1 : 1;
+      acc[s] += sg * nx;
+      acc[s + 1] += sg * ny;
+      acc[s + 2] += sg * nz;
     }
   }
   const out = new Float32Array(n * 3);
@@ -78,15 +148,20 @@ export const LEATHER_VERT = /* glsl */ `
 	vLeatherN = mat3( modelMatrix ) * leatherN;`;
 export const LEATHER_FRAG_PARS = /* glsl */ `varying vec3 vLeatherN;`;
 /** Added to the outgoing colour (after the light map); needs vHouseFireW (the world position) and lightMapTexel. */
-export const LEATHER_FRAG = /* glsl */ `
+export function sheenFrag(p: HouseSheen): string {
+  return /* glsl */ `
 	{
 		float lOk = step( 0.01, length( vLeatherN ) ); // (no normals: no sheen, never a NaN)
-		vec3 lN = vLeatherN / max( length( vLeatherN ), 0.01 ) * ( gl_FrontFacing ? 1.0 : -1.0 );
+		vec3 lN = vLeatherN / max( length( vLeatherN ), 0.01 );
+		lN *= dot( lN, cameraPosition - vHouseFireW ) < 0.0 ? -1.0 : 1.0; // toward the eye (the faces' winding is not to be trusted)
 		vec3 lV = normalize( cameraPosition - vHouseFireW );
 		vec3 lH = normalize( lV + vec3( 0.0, 1.0, 0.0 ) );
-		float lSpec = pow( max( dot( lN, lH ), 0.0 ), ${LEATHER_SHEEN.power.toFixed(1)} );
+		float lSpec = pow( max( dot( lN, lH ), 0.0 ), ${p.power.toFixed(1)} );
 		float lRim = pow( 1.0 - max( dot( lN, lV ), 0.0 ), 3.0 );
 		float lLum = dot( lightMapTexel.rgb * lightMapIntensity * RECIPROCAL_PI, vec3( 0.2126, 0.7152, 0.0722 ) );
-		outgoingLight += vec3( 1.0, 0.95, 0.88 ) * lOk * lLum * ( ${LEATHER_SHEEN.spec.toFixed(3)} * lSpec + ${LEATHER_SHEEN.rim.toFixed(3)} * lRim );
+		outgoingLight += vec3( 1.0, 0.95, 0.88 ) * lOk * lLum * ( ${p.spec.toFixed(3)} * lSpec + ${p.rim.toFixed(3)} * lRim );
 	}
 	#include <opaque_fragment>`;
+}
+/** The leather's (polish 3). */
+export const LEATHER_FRAG = sheenFrag(LEATHER_SHEEN);

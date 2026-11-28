@@ -24,6 +24,7 @@ import kit_real as KR  # noqa: E402
 PAL = K.PAL
 PI = math.pi
 H = HC.House(5)
+H.store_tri_cap = 52572   # polish4: the same storage as before the rounder table decor (+772 triangles): the floor-2 left bookcase stays out
 H.pull_body = 0.49        # room for the game's 0.45 m body in front of each dining chair
 FX.set_house(5)
 P = HA.prop_fn(H)

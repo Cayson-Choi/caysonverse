@@ -553,7 +553,7 @@ def _tulip(F, top, col, seed):
     for (rm, L, W, off) in ((0.017, 0.056, 0.036, 0.0), (0.013, 0.052, 0.032, math.pi / 3)):
         for k in range(3):
             a = off + k * 2 * math.pi / 3 + rnd.uniform(-0.12, 0.12)
-            _petal(F, top, a, L, W, lambda v, rm=rm, L=L: (0.003 + rm * math.sin(math.pi * min(1.0, 0.1 + 0.85 * v)) ** 0.9, L * v), "H_paint",
+            _petal(F, top, a, L, W, lambda v, rm=rm, L=L: (0.003 + rm * math.sin(math.pi * min(1.0, 0.1 + 0.85 * v)) ** 0.9, L * v), "H_petal",
                    col, tn0, nu=3, nv=4, cup=0.45)
 
 
@@ -568,7 +568,7 @@ def _rose(F, top, col, seed, r=0.03):
         L = r * (0.6 + 0.6 * k)
         o = 0.15 + 0.75 * k
         _petal(F, top, a, L, L * (0.95 + 0.4 * k), lambda v, L=L, o=o, k=k: (0.002 + r * 0.1 * k + L * v * (0.25 + 0.6 * o),
-               L * v * (1.0 - 0.55 * o) * (1.0 - 0.25 * v * o)), "H_paint", col, tn0, nu=3, nv=3, cup=0.5 - 0.3 * k)
+               L * v * (1.0 - 0.55 * o) * (1.0 - 0.25 * v * o)), "H_petal", col, tn0, nu=3, nv=3, cup=0.5 - 0.3 * k)
 
 
 def flower_vase(F, tn=None, kind="hydrangea", h=0.3, glass=False):
@@ -578,33 +578,37 @@ def flower_vase(F, tn=None, kind="hydrangea", h=0.3, glass=False):
     from kit_core import tube
     from kit_decor import leaf
     tn = tn or (0.88, 0.72, 0.82, 1)
-    vase_m, vase_tn = ("H_glass", None) if glass else ("H_ceramic", (0.94, 0.93, 0.9, 1))
+    vase_m, vase_tn = ("H_glass", None) if glass else ("H_glaze", (0.94, 0.93, 0.9, 1))
     mouth = 0.045
     lathe(F, 0, 0, 0.0, [(0.0, 0.0), (0.045, 0.0), (0.058, 0.012), (0.068, h * 0.3), (0.066, h * 0.55), (0.052, h * 0.8), (0.042, h * 0.92),
-                         (mouth + 0.004, h), (mouth, h + 0.004), (mouth - 0.006, h - 0.01), (0.0, h * 0.8)], vase_m, 28, tn=vase_tn, keep=True)
+                         (mouth + 0.004, h), (mouth, h + 0.004), (mouth - 0.006, h - 0.01), (0.0, h * 0.8)], vase_m, 36, tn=vase_tn, keep=True)
     rnd = random.Random(int(tn[0] * 100 + tn[1] * 10))
     green = (0.33, 0.5, 0.28, 1)
     if kind == "hydrangea":
-        for i in range(4):
+        for i in range(3):     # polish4: three fuller heads (triangle budget for the rounder florets)
             a = i * 2.4 + rnd.uniform(-0.2, 0.2)
             r = 0.03 + 0.08 * rnd.random()
             top = (math.cos(a) * r, math.sin(a) * r, h + 0.12 + 0.12 * rnd.random())
             tube(F, [(0.0, 0.0, h - 0.02), (top[0] * 0.5, top[1] * 0.5, h + (top[2] - h) * 0.6), top], 0.004, "H_leaf", 4, tn=green, caps=False)
             c = tuple(min(1.0, v * (0.9 + 0.2 * rnd.random())) for v in tn[:3]) + (1,)
+            # polish4: the blue kept in daylight (the pale tint washed out to white under the day bake): chroma x 2.4, a shade deeper
+            lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+            c = tuple(max(0.0, min(1.0, (lum + (v - lum) * 2.4) * 0.86)) for v in c[:3]) + (1,)
             # a mop-head: a low dome of floret clusters (polish3: one fabric-textured blob read as a knitted pom-pom)
-            lathe(F, top[0], top[1], top[2] - 0.03, [(0.0, 0.0), (0.05, 0.015), (0.058, 0.04), (0.0, 0.05)], "H_paint", 10, tn=tuple(x * 0.82 for x in c[:3]) + (1,), keep=True)
+            lathe(F, top[0], top[1], top[2] - 0.03, [(0.0, 0.0), (0.05, 0.015), (0.058, 0.04), (0.0, 0.05)], "H_petal", 10, tn=tuple(x * 0.82 for x in c[:3]) + (1,), keep=True)
             for q in range(6):
                 qa = q * 1.047 + i
                 qr = 0.034 if q else 0.0
                 cy = top[2] + (0.012 if q else 0.03)
                 cc = tuple(min(1.0, x * (0.95 + 0.1 * ((q * 7 + i) % 3) / 2)) for x in c[:3]) + (1,)
                 lathe(F, top[0] + qr * math.cos(qa), top[1] + qr * math.sin(qa), cy - 0.012,
-                      [(0.0, 0.0), (0.022, 0.006), (0.026, 0.018), (0.016, 0.03), (0.0, 0.034)], "H_paint", 12, tn=cc, keep=True)
+                      [(0.0, 0.0), (0.016, 0.003), (0.025, 0.012), (0.023, 0.025), (0.012, 0.032), (0.0, 0.034)], "H_petal", 12,
+                      tn=cc, keep=True)
         for k in range(4):
             a = k * 1.7
-            leaf(F, (math.cos(a) * 0.03, math.sin(a) * 0.03, h + 0.01), (math.cos(a), math.sin(a), 0.35), 0.11, 0.06, droop=0.25, tn=green, segs=3)
+            leaf(F, (math.cos(a) * 0.03, math.sin(a) * 0.03, h + 0.01), (math.cos(a), math.sin(a), 0.35), 0.11, 0.06, droop=0.25, tn=green, segs=4)
         return
-    n = 7 if kind == "tulip" else 6
+    n = 6
     for i in range(n):
         a = i * 2.39996 + rnd.uniform(-0.2, 0.2)
         spread = (0.03 + 0.075 * ((i + 0.5) / n) ** 0.7) * (1.0 if kind == "tulip" else 0.8)
@@ -618,7 +622,7 @@ def flower_vase(F, tn=None, kind="hydrangea", h=0.3, glass=False):
             _tulip(F, (top[0], top[1], top[2] - 0.004), c, i + 3)
         else:
             _rose(F, (top[0], top[1], top[2] - 0.004), c, i + 7, r=0.032 + 0.008 * rnd.random())
-            leaf(F, mid, (math.cos(a + 1.1), math.sin(a + 1.1), 0.25), 0.045, 0.026, droop=0.12, tn=(0.3, 0.46, 0.26, 1), segs=2)
+            leaf(F, mid, (math.cos(a + 1.1), math.sin(a + 1.1), 0.25), 0.045, 0.026, droop=0.12, tn=(0.3, 0.46, 0.26, 1), segs=3)
     if kind == "tulip":
         for k in range(4):
             a = k * 1.57 + 0.4
@@ -642,8 +646,8 @@ def coffee_styling(F, tn=None, w=0.5):
     tn = tn or (0.85, 0.7, 0.75, 1)
     rbox(F, -0.2, 0.2, -0.13, 0.13, 0.0, 0.02, "H_wood_oak", r=0.006, seg=1, tn=(0.55, 0.38, 0.25, 1))
     rbox(F, -0.18, 0.18, -0.11, 0.11, 0.004, 0.025, "H_wood_oak", r=0.0, seg=1, tn=(0.6, 0.42, 0.28, 1), skip=("-y",))
-    cyl(F, -0.08, 0.0, 0.02, 0.1, 0.04, "H_paint", segs=10, tn=(0.97, 0.95, 0.9, 1))
-    lathe(F, 0.08, 0.0, 0.02, [(0.0, 0.0), (0.035, 0.0), (0.04, 0.05), (0.015, 0.12), (0.02, 0.14), (0.0, 0.14)], "H_ceramic", 10, tn=tn)
+    cyl(F, -0.08, 0.0, 0.02, 0.1, 0.04, "H_paint", segs=16, tn=(0.97, 0.95, 0.9, 1), keep=True)
+    lathe(F, 0.08, 0.0, 0.02, [(0.0, 0.0), (0.035, 0.0), (0.04, 0.05), (0.015, 0.12), (0.02, 0.14), (0.0, 0.14)], "H_glaze", 24, tn=tn, keep=True)
     for k, (c, dy) in enumerate((((0.3, 0.38, 0.45, 1), 0.0), ((0.88, 0.85, 0.78, 1), 0.035))):
         rbox(F, w / 2 - 0.05 - 0.28, w / 2 - 0.05, -0.12 + 0.01 * k, 0.1 + 0.01 * k, dy, dy + 0.035, "H_paint", r=0.004, seg=1, tn=c) if w > 0.5 else None
 
