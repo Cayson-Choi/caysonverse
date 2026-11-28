@@ -401,7 +401,7 @@ def counter(kit, sol):
             Gd.box(11.42 + k * 0.075, 11.47 + k * 0.075, y + 0.14, y + 0.16, 5.58 + j * 0.05, 5.62 + j * 0.05, C.PAINT)
     # a bell and a small vase of tulips at the end
     Gd.lathe([(0.0, 0.0), (0.035, 0.0), (0.035, 0.01), (0.03, 0.03), (0.01, 0.05), (0.008, 0.07), (0.0, 0.075)], 12, C.BRASS, 11.9, 5.65, y)
-    vase(Gd, 7.12, y, 5.62, (0.9, 0.35, 0.4))
+    vase(Gd, 7.12, y, 5.62, (0.9, 0.35, 0.4), full=True)
 
 
 def matte_keep(m, n0):
@@ -415,21 +415,27 @@ def matte_keep(m, n0):
         p.mat = C.ART.mat
 
 
-def vase(m, x, y, z, flower):
-    """A glazed bud vase of three garden roses on real stems with two leaves (flora.py: each bloom built from its petals; before
-    2026-11-27 five lathed blobs)."""
+def vase(m, x, y, z, flower, full=False):
+    """A glazed bud vase of garden roses on real stems with leaves (flora.py: each bloom built from its petals; before 2026-11-27 five
+    lathed blobs). full=True (the counter's vase, the one the phone room keeps; polish3, owner 2026-11-28: the phone's read small and
+    sparse next to the PC's): five larger blooms and four leaves, built at the same detail on PC and phone."""
     n0 = len(m.polys)
     m.lathe([(0.0, 0.0), (0.03, 0.0), (0.04, 0.05), (0.025, 0.12), (0.03, 0.14), (0.0, 0.13)], C.seg(12, 8), C.ART, x, z, y)
     C.glaze(m, n0, (0.36, 0.55, 0.62))
     n1 = len(m.polys)
-    lod0, G.LOD = G.LOD, min(G.LOD, 0.6)
+    lod0, G.LOD = G.LOD, 0.6
     green = C.LEAF_DK.t(G.hexc("3F6E35"))
-    for k, (dx, dy, dz) in enumerate(((0.0, 0.25, 0.0), (0.035, 0.21, 0.02), (-0.03, 0.2, -0.025))):
+    if full:
+        heads = ((0.0, 0.27, 0.0, 0.036), (0.05, 0.24, 0.025, 0.032), (-0.045, 0.235, -0.03, 0.032), (0.02, 0.215, -0.05, 0.03),
+                 (-0.035, 0.22, 0.045, 0.03))
+    else:
+        heads = ((0.0, 0.25, 0.0, 0.026), (0.035, 0.21, 0.02, 0.022), (-0.03, 0.2, -0.025, 0.022))
+    for k, (dx, dy, dz, r) in enumerate(heads):
         c = (x + dx, y + dy, z + dz)
         F.stem(m, (x, y + 0.1, z), c, 0.0025, green)
-        F.rose(m, c, 0.022 if k else 0.026, C.PETAL, flower, open_=0.5 + 0.15 * k, seed=int(x * 37 + z * 11) + k)
-    for k, a in enumerate((0.6, 3.6)):
-        F.leaf(m, (x, y + 0.15, z), (math.cos(a), 0.3, math.sin(a)), 0.05, 0.025, green, rise=0.5, fall=0.9,
+        F.rose(m, c, r, C.PETAL, flower, open_=0.5 + 0.15 * (k % 3), seed=int(x * 37 + z * 11) + k)
+    for k, a in enumerate((0.6, 3.6, 2.1, 5.1) if full else (0.6, 3.6)):
+        F.leaf(m, (x, y + 0.15, z), (math.cos(a), 0.3, math.sin(a)), 0.06 if full else 0.05, 0.03 if full else 0.025, green, rise=0.5, fall=0.9,
                c0=G.hexc("2E5A2A"), c1=G.hexc("4F8A3E"), seed=k)
     G.LOD = lod0
     matte_keep(m, n1)

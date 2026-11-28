@@ -106,7 +106,7 @@ H.piece(2, "plant2", HP.plant_big, 8.9, 5.6, 0, 0.0, kind="monstera", h=1.0)
 pass  # (cottage pass) removed: H.piece(1, "rack", KR.dish_rack, 0.33, 3.05, 0.9, PI / 2, co
 pass  # (cottage pass) removed: H.piece(1, "rice", KR.rice_cooker, 0.33, 1.4, 0.9, PI / 2, c
 pass  # (cottage pass) removed: H.piece(1, "purif", KR.water_purifier, 0.3, 2.45, 0.9, PI / 
-H.piece(1, "mats", KR.placemats, 7.3, 4.6, 0.745, PI / 2, cols=False,
+H.piece(1, "mats", KR.placemats, 7.3, 4.6, 0.74, PI / 2, cols=False, table=("rect", 0.8, 0.4),
         spots=[(x_, z_, 0.0) for x_ in (-0.4, 0.4) for z_ in (-0.26, 0.26)], tn=(0.55, 0.5, 0.45, 1))
 pass  # (cottage pass) removed: H.piece(1, "aircon", KR.aircon_stand, 9.15, 0.22, 0, 0.0)
 pass  # (cottage pass) removed: H.piece(1, "slippers", KR.slippers, 6.55, 1.15, 0.0, -PI / 2
@@ -118,7 +118,7 @@ pass  # (cottage pass) removed: H.piece(2, "laundry", KR.laundry_basket, 3.4, 7.
 pass  # (cottage pass) removed: H.piece(2, "purifier", KR.air_purifier, 10.3, 0.4)
 
 # ---- dream show-home styling (owner 2026-11-17): fresh flowers, styled tables, lamps and sconces, a console vignette --------
-H.piece(1, "flowers", KR.flower_vase, 7.3, 4.95, 0.745, 0.0, cols=False, tn=(0.92, 0.62, 0.6, 1), kind="rose", h=0.24)
+H.piece(1, "flowers", KR.flower_vase, 7.45, 4.6, 0.74, 0.0, cols=False, tn=(0.92, 0.62, 0.6, 1), kind="rose", h=0.24)   # polish3: was (7.3, 4.95), standing on the book stack of the table props
 H.piece(1, "cstyle", KR.coffee_styling, 2.4, 6.55, 0.5, 0.0, cols=False, tn=(0.9, 0.66, 0.64, 1))
 H.piece(2, "sconce", KR.wall_sconce, 1.5, 7.8, 1.5, PI, cols=False)
 

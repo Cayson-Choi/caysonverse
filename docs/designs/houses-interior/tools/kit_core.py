@@ -461,11 +461,17 @@ def rbox(F, x0, x1, z0, z1, y0, y1, m, r=0.01, seg=2, grain=(1, 0, 0), tile=1.0,
     return out
 
 
-def lathe(F, cx, cz, y0, profile, m, segs=24, tn=None, tile=1.0, smooth=True, uvscale=None):
-    """Surface of revolution, profile [(r, y)] bottom to top; faces with r = 0 become triangles."""
+SMALL_ROUND_SEGS = 12   # polish3 (owner 2026-11-28 "초·컵이 육각형"): a cup, a candle, a glass asked with >= 10 sides keeps 12 (was 6)
+
+
+def lathe(F, cx, cz, y0, profile, m, segs=24, tn=None, tile=1.0, smooth=True, uvscale=None, keep=False):
+    """Surface of revolution, profile [(r, y)] bottom to top; faces with r = 0 become triangles.
+    keep=True: exactly `segs` sides (the table decor read up close: vases, bowls, cups)."""
     rmax = max(r for r, _ in profile)
-    if rmax < 0.06:                          # realism pass budget: a cup, a knob, a candle -> 8 sides at most read round at reach
-        segs = min(segs, max(6, int(segs * 0.45)))
+    if keep:
+        pass
+    elif rmax < 0.06:                        # realism pass budget: a knob -> 6 sides; a cup, a candle, a glass -> 12 (polish3)
+        segs = min(segs, SMALL_ROUND_SEGS) if segs >= 10 else min(segs, max(6, int(segs * 0.45)))
     elif rmax < 0.3:                         # HA triangle budget: small turned parts need fewer segments
         segs = max(8, int(segs * 0.62))
     rings = [[(cx + r * math.cos(2 * math.pi * i / segs), cz + r * math.sin(2 * math.pi * i / segs), y0 + y)
@@ -495,14 +501,14 @@ def lathe(F, cx, cz, y0, profile, m, segs=24, tn=None, tile=1.0, smooth=True, uv
                 gface(F, pts, m, (0, 0, 1), tile, hint, None, tn, smooth)
 
 
-def cyl(F, cx, cz, y0, y1, r, m, segs=16, r2=None, cap=True, tn=None, bottom=False, uvscale=None):
+def cyl(F, cx, cz, y0, y1, r, m, segs=16, r2=None, cap=True, tn=None, bottom=False, uvscale=None, keep=False):
     r2 = r if r2 is None else r2
     prof = [(r, 0.0), (r2, y1 - y0)]
     if bottom:
         prof = [(0, 0.0)] + prof
     if cap:
         prof = prof + [(0, y1 - y0)]
-    lathe(F, cx, cz, y0, prof, m, segs, tn, uvscale=uvscale or (1.0, 1.0))
+    lathe(F, cx, cz, y0, prof, m, segs, tn, uvscale=uvscale or (1.0, 1.0), keep=keep)
 
 
 def tube(F, pts, r, m, segs=8, tn=None, caps=True, uv_per_m=1.0):

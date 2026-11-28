@@ -464,7 +464,8 @@ def garlic_braid(F, n=10):
 def vase_branch(F, h=0.3, seed=2):
     """꽃병 + 가지 (8번 집 청자 화병): celadon-green vase with a long neck and a few leafy twigs."""
     rnd = random.Random(seed)
-    lathe(F, 0, 0, 0.0, [(0, 0.0), (0.05, 0.0), (0.095, 0.08), (0.1, 0.14), (0.06, 0.22), (0.03, 0.27), (0.035, h), (0.05, h + 0.02)], "H_ceramic", 20, tn=(0.62, 0.78, 0.7, 1))
+    lathe(F, 0, 0, 0.0, [(0, 0.0), (0.05, 0.0), (0.095, 0.08), (0.1, 0.14), (0.06, 0.22), (0.03, 0.27), (0.035, h), (0.05, h + 0.02), (0.042, h + 0.016), (0.0, h - 0.04)], "H_ceramic", 28,
+          tn=(0.62, 0.78, 0.7, 1), keep=True)   # polish3: 28 sides kept, an open mouth (it read as a faceted plug at 12)
     for k in range(3):
         a = k * 2.1
         pts = [(0, 0, h), (0.05 * math.cos(a), 0.05 * math.sin(a), h + 0.18), (0.12 * math.cos(a), 0.12 * math.sin(a), h + 0.34)]
