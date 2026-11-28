@@ -48,6 +48,30 @@ export async function joinVillage(p, prefix, time = NOON) {
   return { nick, sheet };
 }
 
+/**
+ * After the entry's loading screen has lifted, watch the page for `ms` while standing in the plaza: no "불러오는 중" anywhere (the old
+ * chip `.cv-loading`, or the words on screen) — everything the plaza shows loaded under the loading screen (fix/entry-full-load,
+ * 2026-11-28). Returns { lifted, seen: [{ at, text }] } (at: ms after the screen lifted).
+ */
+export async function watchNoLoadingPill(p, ms = 10000) {
+  const lifted = await p.page
+    .waitForFunction(() => !document.querySelector("[data-testid='village-loader']"), null, { timeout: 120000 * SLOW, polling: 200 })
+    .then(() => true, () => false);
+  const seen = await p.page.evaluate(async (ms) => {
+    const out = [];
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms) {
+      const pill = document.querySelector(".cv-loading");
+      const shown = !!pill && !pill.hidden && pill.getClientRects().length > 0;
+      const text = document.body.innerText.includes("불러오는 중");
+      if ((shown || text) && out.length < 20) out.push({ at: Math.round(performance.now() - t0), pill: shown, text });
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    return out;
+  }, ms);
+  return { lifted, seen };
+}
+
 /** From the plaza to the memorial's door, then the action: the curtain closes, the hall loads and the player is inside. */
 export async function enterHall(p) {
   for (const [x, z] of DOOR_ROUTE) await walkAndWait(p, x, z, 40000, 1.2);
@@ -346,6 +370,11 @@ export async function runVillageScenario({ name, device }) {
       run.check("the village scene is up", (await screenOf(A)) === "village");
       run.check("no destination sheet (no open dialog, no '어디로 갈까요')", !r.sheet.dialogOpen && !r.sheet.asks, r.sheet);
       run.check("the plaza is where we stand (spawn near (0, 14))", Math.hypot((await pos(A)).x, (await pos(A)).z - 14) < 6, await pos(A));
+      // fix/entry-full-load: the loading screen lifts on a complete plaza; no "불러오는 중…" after it while standing there
+      const pill = await watchNoLoadingPill(A, 12000);
+      summary.noPill = pill;
+      run.check("the entry's loading screen lifted", pill.lifted);
+      run.check("no '불러오는 중' for 12 s after the reveal, standing in the plaza", pill.seen.length === 0, pill.seen);
     });
 
     await run.step("2. a second player sees the first one", async () => {

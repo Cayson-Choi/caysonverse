@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
+import { entryCovering } from "../../ui/villageLoad";
 import { BufferGeometry, Group, InstancedBufferAttribute, Matrix4, Uint32BufferAttribute, type BufferAttribute, type InstancedMesh, type Material, type Mesh, type Object3D } from "three";
 import { trimMesh, type Footprint } from "../street/streetTrim";
 import { LOT_ROOMS, lotFootprint, lotLocalToWorld } from "@caysonverse/shared/village/villageLots";
@@ -347,6 +348,9 @@ export function LotRoomShowcase({ root, glass }: { root: Object3D; glass: ClearG
   }, []);
 
   useFrame(({ clock }) => {
+    // the rooms are for walking up to: none is read while the entry's loading screen covers the plaza (fix/entry-full-load), and the
+    // SHOW_AFTER_S wait counts from its lifting
+    if (entryCovering()) mountedAt.current = clock.elapsedTime;
     const p = camera.position;
     const lim = phone ? SHOW_M.phone : SHOW_M.pc;
     const act = active.current;

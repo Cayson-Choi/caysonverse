@@ -25,6 +25,8 @@ import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
 import { VegVeil } from "./VegVeil";
 import { VeilFrameThrottle } from "./VeilFrameThrottle";
+import { EntryReveal } from "./EntryReveal";
+import { entryCovering, villageLoad } from "../ui/villageLoad";
 import { vegDressing } from "./vegDressing";
 import { vegetationPark } from "./veg/villageVegetation";
 import { doorFade } from "./doorFadeModel";
@@ -43,7 +45,7 @@ import { VillageBus } from "./VillageBus";
 import { BUSSTOP_MODEL_URL, BusStopShelter } from "./BusStopShelter";
 import { VillageMusic } from "./VillageMusic";
 import { AreaSfx } from "./AreaSfx";
-import { LakeLampLights, LakeWorld } from "../lake/LakeScene";
+import { LakeLampLights, LakeWorld, preloadLakeFiles } from "../lake/LakeScene";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
 import {
   clearBusCache,
@@ -170,7 +172,29 @@ function PlainGround() {
 }
 
 const dressedNow = () => vegDressing.dressed();
-/** Its children mount once the village has been dressed (and stay: a later cover does not take them away). */
+/**
+ * The village model is in while the entry's loading screen is up (its download no longer competes with anything): the lake's FILES
+ * start then (LakeFilesEarly). Its build and the skyline's wait for the dressing on every tier: run beside the vegetation's build they
+ * made it miss its 20 s cap (measured: dressed by the fail-safe at 66 s on a 4x phone, 39 s on a PC, with bare trees growing after).
+ */
+const modelInUnderLoader = () => {
+  const s = villageLoad.get();
+  return s.open && (s.modelIn || s.dressed);
+};
+
+/** Under the entry's loading screen, once the village model is in: the lake's files start (a phone builds the lake after the dressing). */
+function LakeFilesEarly() {
+  const early = useSyncExternalStore(villageLoad.subscribe, modelInUnderLoader, modelInUnderLoader);
+  useEffect(() => {
+    if (early) preloadLakeFiles();
+  }, [early]);
+  return null;
+}
+/**
+ * Its children mount once the village has been dressed (and stay: a later cover does not take them away). Under the entry's loading
+ * screen that is still before the reveal: the screen waits for them too (EntryReveal; fix/entry-full-load, 2026-11-28: they used to
+ * come in after the reveal, with the "불러오는 중…" chip over the plaza for 5-12 s).
+ */
 function AfterDressed({ children }: { children: ReactNode }) {
   const dressed = useSyncExternalStore(vegDressing.subscribe, dressedNow, dressedNow);
   const [once, setOnce] = useState(dressed);
@@ -247,8 +271,10 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
           <SceneWarmUp key={tier} />
         </Suspense>
       </LoadBoundary>
-      {/* The lake (100 m east) waits until the village is dressed (UX 2026-11-16): its files and its build never compete
-          with the plaza's on the way in, and its Suspense is its own (it never holds the village back). */}
+      {/* The lake (100 m east): its files start once the village model is in, its build waits until the village is dressed (it
+          never competes with the vegetation's), and its Suspense is its own (it never holds the village back). On the entry both
+          still happen under the loading screen (EntryReveal waits for them). */}
+      <LakeFilesEarly />
       <AfterDressed>
         <Suspense fallback={null}>
           <LakeWorld pose={pose} tier={tier} />
@@ -476,7 +502,9 @@ function VillageDoors({ pose }: { pose: Pose }) {
       else if (armedRide() !== null && peekClickTarget() === null) armRide(null);
       return;
     }
-    if (area === "village") maybePreloadPark(pose.x, pose.z); // the park's files start loading as the gate comes near
+    // the park's files start loading as the gate comes near — never under the entry's loading screen (fix/entry-full-load: the plaza is
+    // within PRELOAD_RANGE_M of the gate, and ~10 MB of the park's files competed with village.glb for the phone's bandwidth)
+    if (area === "village" && !entryCovering()) maybePreloadPark(pose.x, pose.z);
     // a tap on a stair / door: its walk is followed onto the pad, planned again from here if it ended short (houseTap.ts stepPadWalk)
     // (inside a house or a lot room only: a room's way round is a small search; a village door tapped from afar keeps its one walk)
     if ((isHouseArea(area) || isLotArea(area)) && stepPadWalk(pose.x, pose.z, peekClickTarget() !== null || peekPendingClick() !== null) === "replan") {
@@ -693,6 +721,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <AreaSfx area={area} />
           {(area === "village" || area === "park") && <StarSky tier={tier} />}
           <VeilFrameThrottle active={area === "village"} />
+          <EntryReveal phone={tier !== "high"} />
         </>
       )}
       hudColumn={

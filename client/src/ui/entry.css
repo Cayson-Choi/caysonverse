@@ -622,23 +622,6 @@
   left: calc(100% - var(--cv-sheet-w));
 }
 
-/* In-canvas loading fallback overlay (the world scene). */
-.cv-loading {
-  position: fixed;
-  left: 50%;
-  bottom: calc(96px + env(safe-area-inset-bottom, 0px));
-  transform: translateX(-50%);
-  z-index: 30;
-  padding: 6px 12px;
-  border-radius: 999px;
-  color: #fff;
-  background: #1c1d3a;
-  font-family: system-ui, sans-serif;
-  font-size: 12px;
-  letter-spacing: 0.02em;
-  pointer-events: none;
-}
-
 /* ── motion off ── */
 
 @media (prefers-reduced-motion: reduce) {
