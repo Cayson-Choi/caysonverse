@@ -198,6 +198,8 @@ function Signpost({ x, z, toX, toZ, parts }: { x: number; z: number; toX: number
           paintFaceWords(g, tipRight, tone);
           g.restore();
         },
+        // a plain lit board (MeshStandardMaterial under the sun and the sky light): its light worked out from them, day and night
+        lit: "standard",
         // the plank between the words and the tip (the square end is shaded by the post standing in front of it)
         probe: { x: tipRight ? BOARD.length / 2 - 0.27 : -BOARD.length / 2 + 0.27, y: 0, albedo: plankAt(tipRight, tipRight ? BOARD.length - 0.27 : 0.27) },
         setInk: (on) => {
