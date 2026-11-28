@@ -3,13 +3,18 @@
  * (or 나가기) until the place on the other side is really on screen, a full-screen loading screen with a spinning ring, a stage line and a bar.
  * This file is the store and the pure stage model; AreaLoadingOverlay.tsx draws it. Module state, like houseEntry.ts.
  *
- * Ends: park — the park has been DRAWN (parkReady.ts); village — the village's area is back, its vegetation dressed and a few frames drawn.
+ * Ends: park — the park has been DRAWN (parkReady.ts); village / outside — the village's area is back, the village model on screen
+ * (villageDrawn.ts), its vegetation dressed and a few frames drawn.
+ *
+ * "outside" (perf/return, 2026-11-28): the way out of the memorial hall, a house or a lot building on the light tier, where the
+ * village's files were let go indoors and load again — "마을로 나가는 중…" from the press until the village is drawn, never the
+ * empty ground it stands on.
  * A press the server never answers (nothing moved) is dropped after `NO_MOVE_MS`.
  */
 import { useSyncExternalStore } from "react";
 import type { AreaId } from "@caysonverse/shared/village/villageLayout";
 
-export type LoadTarget = "park" | "village";
+export type LoadTarget = "park" | "village" | "outside";
 
 export interface AreaLoadingState {
   target: LoadTarget | null;
@@ -67,6 +72,8 @@ export interface LoadInputs {
   villageFrames: number;
   /** village: its vegetation is dressed */
   vegDressed: boolean;
+  /** village: the village model is on screen (villageDrawn.ts); absent = true (older callers) */
+  villageDrawn?: boolean;
 }
 
 export type LoadStageId = "door" | "files" | "build" | "almost";
@@ -91,10 +98,12 @@ export function loadView(i: LoadInputs): LoadView {
     if (i.parkStage === 1) return { done: false, stage: "build", progress: 0.75, title, subtitle: "꽃밭과 불빛을 꾸미고 있어요" };
     return { done: false, stage: "files", progress: 0.1 + 0.55 * clamp01(i.downloaded), title, subtitle: "놀이기구를 준비하고 있어요" };
   }
-  const title = "마을로 돌아가는 중…";
+  const title = i.target === "outside" ? "마을로 나가는 중…" : "마을로 돌아가는 중…";
   if (i.area !== "village") return { done: false, stage: "door", progress: 0.06, title, subtitle: "문을 열고 있어요" };
-  const ready = i.vegDressed && i.villageFrames >= VILLAGE_READY_FRAMES;
+  const drawn = i.villageDrawn !== false;
+  const ready = drawn && i.vegDressed && i.villageFrames >= VILLAGE_READY_FRAMES;
   if (ready) return { done: true, stage: "almost", progress: 1, title, subtitle: "거의 다 됐어요" };
-  if (!i.vegDressed) return { done: false, stage: "build", progress: 0.5, title, subtitle: "마을 풍경을 불러오고 있어요" };
+  if (!drawn) return { done: false, stage: "files", progress: 0.1 + 0.55 * clamp01(i.downloaded), title, subtitle: "마을 풍경을 불러오고 있어요" };
+  if (!i.vegDressed) return { done: false, stage: "build", progress: 0.75, title, subtitle: "나무와 꽃을 꾸미고 있어요" };
   return { done: false, stage: "almost", progress: 0.9, title, subtitle: "거의 다 됐어요" };
 }

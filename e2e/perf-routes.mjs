@@ -159,7 +159,7 @@ function recorder() {
   // loading covers (polled, never per frame): the vegetation veil, the door fade, the house cover, the hall curtain
   setInterval(() => {
     let c = 0;
-    for (const sel of [".cv-veg-veil", ".cv-door-fade", ".cv-house-cover", ".cv-curtain", ".cv-loader", "[data-testid=park-loading]"]) {
+    for (const sel of [".cv-veg-veil", ".cv-door-fade", ".cv-house-cover", ".cv-curtain", ".cv-loader", "[data-testid=park-loading]", ".cv-aload"]) {
       const e = document.querySelector(sel);
       if (!e) continue;
       const o = parseFloat(getComputedStyle(e).opacity || "1");
