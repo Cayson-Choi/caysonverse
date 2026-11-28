@@ -221,8 +221,10 @@ export const PARK_LAMPS: readonly { x: number; z: number }[] = Object.freeze(bui
 /** People-scale props: a ticket kiosk by the arch, stone planters at the promenade's south end, litter bins by the lamp posts. */
 export const PARK_KIOSK = Object.freeze({ x: 55, z: -177, w: 4.2, d: 3.4 });
 export const PARK_PLANTERS: readonly { x: number; z: number; w: number; d: number }[] = Object.freeze([
-  { x: 33.5, z: -137, w: 3, d: 1.6 },
-  { x: 46.5, z: -137, w: 3, d: 1.6 },
+  // beside the tea shop's / the photo studio's front walks (z -137..-135), on the lawn south of them by the lamp posts at z -140: they
+  // stood on the promenade at (33.5 / 46.5, -137), right in front of the walks' mouths (2026-11-28; the promenade stays open)
+  { x: 28.5, z: -139.4, w: 3, d: 1.6 },
+  { x: 51.5, z: -139.4, w: 3, d: 1.6 },
   // (the two that flanked the old arch at z -182 went: the gatehouse's own turnstile canopy and planters stand there now)
   // flower beds flanking the station apron (where the queue hall stood)
   { x: -8.5, z: -20, w: 3, d: 1.6 },

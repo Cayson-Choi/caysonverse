@@ -26,6 +26,8 @@
  *    print). BANNER_SLOTS says which atlas cell holds which banner.
  */
 
+import { RING_LAMP_MOVES, RING_LAMP_RADIUS } from "@caysonverse/shared/village/streetPoles";
+
 /** One post as it stands: its foot and the centre of its lantern. */
 export interface LampPost {
   /** The glb's light empty for this lantern (light__lamp_N), kept for the rebake and the tests. */
@@ -36,6 +38,8 @@ export interface LampPost {
   lightY: number;
   /** Turn (rad, three.js rotation.y): the base's access door faces local +z. */
   yaw: number;
+  /** Where the bake's post (and its `light` empty) stands when the post was moved since (shared streetPoles.ts RING_LAMP_MOVES). */
+  baked?: { x: number; z: number };
 }
 
 /** The height the post model is drawn for (the plaza and ring posts); other heights stretch the shaft (`lift`). */
@@ -45,6 +49,14 @@ export const LAMP_MODEL_LIGHT_Y = 4.23;
 const outward = (x: number, z: number): number => Math.atan2(x, z);
 
 const post = (light: string, x: number, z: number, lightY: number): LampPost => ({ light, x, z, lightY, yaw: outward(x, z) });
+
+/** A ring post the game moved off the bake's spot (x, z): it stands at `deg` on the ring now (shared RING_LAMP_MOVES). */
+const moved = (light: string, x: number, z: number, lightY: number): LampPost => {
+  const m = RING_LAMP_MOVES.find((r) => Math.hypot(RING_LAMP_RADIUS * Math.cos((r.bakedDeg * Math.PI) / 180) - x, RING_LAMP_RADIUS * Math.sin((r.bakedDeg * Math.PI) / 180) - z) < 0.01);
+  if (!m) throw new Error(`no RING_LAMP_MOVES entry for ${light}`);
+  const a = (m.deg * Math.PI) / 180;
+  return { ...post(light, RING_LAMP_RADIUS * Math.cos(a), RING_LAMP_RADIUS * Math.sin(a), lightY), baked: { x, z } };
+};
 
 /** The bake's five plaza lamps (r 28): taken out, not redrawn (the plaza ring replaces them). */
 export const OLD_PLAZA_LAMPS: readonly LampPost[] = [
@@ -62,7 +74,8 @@ export const LAMP_POSTS: readonly LampPost[] = [
   post("light__lamp_8", 13.134, 36.084, 4.23),
   post("light__lamp_9", -24.683, 29.416, 4.23),
   post("light__lamp_10", -33.255, 19.2, 4.23),
-  post("light__lamp_11", -37.817, -6.668, 4.23),
+  // the house 5 lamp: moved off the mouth of house 5's front walk (2026-11-28) to beside it
+  moved("light__lamp_11", -37.817, -6.668, 4.23),
   post("light__lamp_12", -24.683, -29.416, 4.23),
   post("light__lamp_13", -13.134, -36.084, 4.23),
   post("light__lamp_14", 13.134, -36.084, 4.23),

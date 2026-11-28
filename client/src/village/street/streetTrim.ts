@@ -36,7 +36,8 @@ export interface Footprint {
 /** The old posts' and poles' footprints (parts_props.py lamp / banners, parts_fill.py lane lamps). */
 export function oldFootprints(): Footprint[] {
   const out: Footprint[] = [];
-  for (const p of [...LAMP_POSTS, ...OLD_PLAZA_LAMPS]) {
+  // the bake's posts where the bake put them (a moved post's old one goes from its old spot: LampPost.baked)
+  for (const p of [...LAMP_POSTS, ...OLD_PLAZA_LAMPS].map((q) => ({ ...q, ...(q.baked ?? {}) }))) {
     const top = p.lightY + OLD_LAMP_TOP_ABOVE_LIGHT;
     const r2 = OLD_LAMP_RADIUS * OLD_LAMP_RADIUS;
     out.push({

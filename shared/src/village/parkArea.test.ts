@@ -19,6 +19,7 @@ import { arrivalArea, spreadArrival } from "./arrivalSpot";
 import { shopWindows, WINDOW_BOX } from "./parkShopWindowLayout";
 import { PLAYER_RADIUS } from "../constants";
 import * as P from "./parkArea";
+import { parkBenchSolids } from "./parkBenches";
 
 const inSolid = (x: number, z: number, r = PLAYER_RADIUS) => PARK_SOLIDS.some((b) => x > b.minX - r && x < b.maxX + r && z > b.minZ - r && z < b.maxZ + r);
 
@@ -112,13 +113,22 @@ describe("the shops' front walks", () => {
       }
     }
   });
-  it("no lamp post, bin or bench stands on a walk or its kerb (14 cm)", () => {
-    const things = [...P.PARK_LAMPS, ...P.PARK_BINS].map((l) => ({ x: l.x, z: l.z }));
-    for (const w of P.PARK_SHOP_WALKS)
+  it("no lamp post, bin, bench or planter stands on a walk, its kerb (14 cm) or in front of its mouth (3 m into the promenade)", () => {
+    // footprints: lamps and bins as points, the benches (2 m x 0.72 m) and the stone planters as boxes
+    const things = [
+      ...[...P.PARK_LAMPS, ...P.PARK_BINS].map((l) => ({ id: `(${l.x}, ${l.z})`, minX: l.x, maxX: l.x, minZ: l.z, maxZ: l.z })),
+      ...parkBenchSolids().map((b) => ({ id: `bench (${(b.minX + b.maxX) / 2}, ${(b.minZ + b.maxZ) / 2})`, ...b })),
+      ...P.PARK_PLANTERS.map((p) => ({ id: `planter (${p.x}, ${p.z})`, minX: p.x - p.w / 2, maxX: p.x + p.w / 2, minZ: p.z - p.d / 2, maxZ: p.z + p.d / 2 })),
+    ];
+    for (const w of P.PARK_SHOP_WALKS) {
+      // the walk with its mouth carried 3 m on into the promenade (2026-11-28: the planters and a bench pair stood there)
+      const west = w.maxX === P.PARK_PROMENADE.minX;
+      const z = { minX: west ? w.minX : w.minX - 3, maxX: west ? w.maxX + 3 : w.maxX, minZ: w.minZ, maxZ: w.maxZ };
       for (const t of things) {
-        const dx = Math.max(w.minX - 0.14 - t.x, 0, t.x - w.maxX - 0.14);
-        const dz = Math.max(w.minZ - 0.14 - t.z, 0, t.z - w.maxZ - 0.14);
-        expect(Math.hypot(dx, dz), `${w.id} by (${t.x}, ${t.z})`).toBeGreaterThan(0.5);
+        const dx = Math.max(z.minX - 0.14 - t.maxX, 0, t.minX - z.maxX - 0.14);
+        const dz = Math.max(z.minZ - 0.14 - t.maxZ, 0, t.minZ - z.maxZ - 0.14);
+        expect(Math.hypot(dx, dz), `${w.id} by ${t.id}`).toBeGreaterThan(0.5);
       }
+    }
   });
 });

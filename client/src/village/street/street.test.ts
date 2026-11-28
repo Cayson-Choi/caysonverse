@@ -6,6 +6,8 @@ import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { signalPoleSpots } from "@caysonverse/shared/village/crossings";
 import { BANNER, BANNER_ATLAS, BANNER_POLES, BANNER_POLE_LIGHT_Y, BANNER_TEXT, BANNER_THEMES, LAMP_POSTS, OLD_BANNER_POLES, OLD_PLAZA_LAMPS, PLAZA_RING, bannerSlot, lanternPositions, ringAzimuth } from "./streetLayout";
 import { trimOldStreetFurniture } from "./streetTrim";
+import { EDGE_PROFILE, LANES, laneCobble, polylineDistance } from "../ground/groundPaths";
+import { lampSpots } from "@caysonverse/shared/village/streetPoles";
 import { LIFT_FROM_Y, bannerFabricGeometry, bannerHardwareGeometry, lampPostGeometry, lanternGlassGeometry, shaftRadius } from "./streetGeometry";
 import { metalTextures, poolTexture, weaveTexture } from "./streetMaterials";
 
@@ -23,8 +25,10 @@ describe("streetLayout: the posts and poles stand where the bake put them", () =
       const n = nodes.find((o) => o.name === p.light);
       expect(n, p.light).toBeDefined();
       const [x, y, z] = n!.translation!;
-      expect(Math.abs(x! - p.x), p.light).toBeLessThan(0.02);
-      expect(Math.abs(z! - p.z), p.light).toBeLessThan(0.02);
+      // a moved post (house 5's, 2026-11-28) is checked where the bake put it
+      const at = p.baked ?? p;
+      expect(Math.abs(x! - at.x), p.light).toBeLessThan(0.02);
+      expect(Math.abs(z! - at.z), p.light).toBeLessThan(0.02);
       expect(Math.abs(y! - p.lightY), p.light).toBeLessThan(0.02);
     }
   });
@@ -250,5 +254,35 @@ describe("streetMaterials' small textures", () => {
     const d = p.image.data as Uint8Array;
     expect(d[3]).toBe(0);
     expect(d[(32 * 64 + 32) * 4 + 3]).toBeGreaterThan(200);
+  });
+});
+
+// owner 2026-11-28: every path straight on its door — the house 5 lamp stood at the mouth of its new front walk
+describe("no street lamp stands on a walk or at its mouth", () => {
+  it("every post's base is >= 1 m clear of every lane's and front walk's cobble and edging, the mouth carried 1.5 m back", () => {
+    const edge = EDGE_PROFILE[EDGE_PROFILE.length - 1]![0];
+    const tight: string[] = [];
+    for (const spec of LANES) {
+      const c = laneCobble(spec);
+      const a = c.mid[0]!;
+      const b = c.mid[1]!;
+      const n = Math.hypot(b.x - a.x, b.z - a.z);
+      const line = [{ x: a.x - ((b.x - a.x) / n) * 1.5, z: a.z - ((b.z - a.z) / n) * 1.5 }, ...c.mid];
+      for (const p of [...LAMP_POSTS, ...BANNER_POLES.map((q, i) => ({ light: `banner_${i}`, x: q.x, z: q.z }))]) {
+        const gap = polylineDistance(line, p.x, p.z) - c.half - edge - 0.17;
+        if (gap < 1) tight.push(`${p.light} by ${spec.id}: ${gap.toFixed(2)} m`);
+      }
+    }
+    expect(tight).toEqual([]);
+  });
+  it("house 5's lamp: beside its walk as house 10's lamp 9 is beside its own (3 m off the centre line), on the ring's sidewalk", () => {
+    const l11 = LAMP_POSTS.find((p) => p.light === "light__lamp_11")!;
+    const l9 = LAMP_POSTS.find((p) => p.light === "light__lamp_9")!;
+    expect(Math.hypot(l11.x, l11.z)).toBeCloseTo(38.4, 6);
+    expect(Math.abs(l11.z - -8)).toBeCloseTo(Math.abs(l9.z - 26.4), 1);
+    expect(l11.baked).toEqual({ x: -37.817, z: -6.668 });
+    // the shared collider stands where the post is drawn
+    const spots = lampSpots(VILLAGE_LAYOUT);
+    for (const p of LAMP_POSTS) expect(spots.some((s) => Math.hypot(s.x - p.x, s.z - p.z) < 0.01), p.light).toBe(true);
   });
 });

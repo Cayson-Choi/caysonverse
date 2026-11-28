@@ -6,7 +6,9 @@ import type { AABB } from "../collision";
 
 export const PARK_BENCHES: ReadonlyArray<readonly [number, number, number]> = (() => {
   const out: Array<[number, number, number]> = [];
-  for (let z = -170; z <= -140; z += 10) out.push([34, z, Math.PI], [46, z, 0]);
+  // along the promenade, clear of the shops' front walks (parkArea.ts PARK_SHOP_WALKS): the south pair stood on z -170, in line with
+  // the bakery's / the souvenir shop's walk (z -172.5..-170.5) 2.6 m off its mouth; -168 now, beside it (2026-11-28)
+  for (const z of [-168, -160, -150, -140]) out.push([34, z, Math.PI], [46, z, 0]);
   for (let x = 90; x <= 330; x += 30) out.push([x, -108.2, 0]);
   return out;
 })();

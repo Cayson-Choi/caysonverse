@@ -46,8 +46,19 @@ export function plazaRingSpots(): PoleSpot[] {
 /** The lane lamps' bases (client street/streetLayout.ts LAMP_POSTS light__lamp_42 / _43). */
 export const LANE_LAMPS: readonly PoleSpot[] = [{ x: 2.35, z: -51 }, { x: -26.35, z: 44.723 }];
 
-/** Every street lamp's base (the plaza ring's posts, then the ring road's, skipping the lanes' crossings and the bus stop). */
-export function lampSpots(layout: Pick<VillageLayout, "plaza" | "lanes">): PoleSpot[] {
+/**
+ * Ring lamps that stand somewhere else than the bake put them (azimuth in deg, atan2(z, x), on RING_LAMP_RADIUS): the house 5 lamp
+ * (light__lamp_11, 190 deg) stood at the mouth of house 5's new front walk (z -8, 2.4 m wide; owner 2026-11-28: every path straight
+ * on its door), so it moved along the sidewalk to beside the walk, 3 m from its centre line as house 10's walk has lamp 9. The glb
+ * still carries the old post and its light empty there (client street/streetTrim.ts takes the old post out, the new one is drawn).
+ */
+export const RING_LAMP_MOVES: ReadonlyArray<{ bakedDeg: number; deg: number }> = [{ bakedDeg: 190, deg: 187.5 }];
+
+/**
+ * Every street lamp's base (the plaza ring's posts, then the ring road's, skipping the lanes' crossings and the bus stop). `baked`:
+ * where village.glb's posts stand (before RING_LAMP_MOVES), for the checks against the file.
+ */
+export function lampSpots(layout: Pick<VillageLayout, "plaza" | "lanes">, opts: { baked?: boolean } = {}): PoleSpot[] {
   const pts: PoleSpot[] = plazaRingSpots();
   const laneAngles: number[] = [];
   for (const lane of layout.lanes) {
@@ -65,7 +76,11 @@ export function lampSpots(layout: Pick<VillageLayout, "plaza" | "lanes">): PoleS
     const x = RING_LAMP_RADIUS * Math.cos(a);
     const z = RING_LAMP_RADIUS * Math.sin(a);
     if (Math.abs(x - 38) < 3 && z > -11 && z < -1) continue;
-    pts.push({ x, z });
+    const move = opts.baked ? undefined : RING_LAMP_MOVES.find((m) => Math.abs(wrap(a - (m.bakedDeg * Math.PI) / 180)) < 1e-6);
+    if (move) {
+      const b = (move.deg * Math.PI) / 180;
+      pts.push({ x: RING_LAMP_RADIUS * Math.cos(b), z: RING_LAMP_RADIUS * Math.sin(b) });
+    } else pts.push({ x, z });
   }
   // the two lane lamps last (light__lamp_42 beside the memorial's lane, light__lamp_43 on the bridge lane): they had no collider
   // (owner 2026-11-21: "조명이랑 그냥 통과해버리네")
