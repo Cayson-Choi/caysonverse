@@ -1,4 +1,19 @@
-import { ACESFilmicToneMapping, LinearToneMapping, NeutralToneMapping, NoToneMapping, type Camera, type Object3D, type WebGLRenderer } from "three";
+import {
+  ACESFilmicToneMapping,
+  LinearToneMapping,
+  NeutralToneMapping,
+  NoToneMapping,
+  Vector3,
+  type AmbientLight,
+  type Camera,
+  type DirectionalLight,
+  type Fog,
+  type FogExp2,
+  type HemisphereLight,
+  type Object3D,
+  type Scene,
+  type WebGLRenderer,
+} from "three";
 import {
   INK_MAX_H,
   INK_MAX_W,
@@ -10,8 +25,11 @@ import {
   lightFromProbe,
   makeTone,
   screenGrid,
+  standardLight,
   toneKey,
+  type InkFog,
   type InkLabel,
+  type SceneLightLike,
   type ToneCurveId,
 } from "./inkLabels";
 import { postChainFrames } from "./renderScale";
@@ -34,7 +52,7 @@ import { postChainFrames } from "./renderScale";
  */
 
 /** At most this many signs are drawn crisp at once (the biggest on screen). */
-export const MAX_SIGNS = 8;
+export const MAX_SIGNS = 5;
 /** A sign smaller than this on screen (its height, device px) keeps its 3D lettering. */
 export const MIN_SIGN_PX = 14;
 /** A query result older than this many frames is too old to draw from. */
@@ -50,8 +68,29 @@ const STRIP_ERR = 12;
 const DROP_AFTER = 240;
 /** The canvas draws the scene at less than this share of the device's pixels: the ink layer runs. */
 export const INK_DPR_SHARE = 0.8;
-/** The occlusion proxy stands this far in front of the sign (m; and 0.4% of the distance): the board itself never hides it. */
-const PROXY_LIFT = 0.012;
+/**
+ * The occlusion proxy stands this far in front of the sign (m; and 0.4% of the distance): the sign's own board, rim and frame
+ * (the gate's moulding stands 2.5 cm proud) never hide it.
+ */
+const PROXY_LIFT = 0.03;
+/**
+ * The "anything in front of it?" test is made on each cell grown by this margin (framebuffer px) plus three frames of the sign's
+ * own motion on screen (and twice the parallax of the eye's travel): a wall coming in over the sign is caught before it reaches a
+ * cell, so the results' frame or two of delay never shows letters over it. Capped.
+ */
+const GUARD_PX = 1.5;
+const GUARD_MAX = 64;
+/** A guard wider than this (fb px) means the eye or the sign moves fast: a sign with any cell partly hidden is left to WebGL then. */
+const FAST_GUARD = 6;
+/**
+ * A wider ring round each cell (fb px, on top of the guard): which cells have something in front of them within it. While that set
+ * changes from one result to the next, something is moving near the sign (a car, an avatar, a wall sliding past as the eye walks)
+ * and the sign is left to WebGL's own lettering (its depth test has no delay) until it holds still.
+ */
+const RING_PX = 24;
+/** The eye moved this far in one frame (m), or a sign this far on screen (fb px): a cut, every result before it is void. */
+const CUT_STEP = 0.75;
+const CUT_PX = 60;
 
 interface Raster {
   canvas: HTMLCanvasElement;
@@ -62,12 +101,36 @@ interface SignState {
   label: InkLabel;
   cols: number;
   rows: number;
-  queries: WebGLQuery[];
+  /** Per cell "anything in front of it" (depth GREATER on the cell grown by the guard), per column the same on the wider ring. */
+  blockers: WebGLQuery[];
+  rings: WebGLQuery[];
   pending: boolean;
-  /** The frame the in-flight queries were issued on, and the last result: bit (row * cols + col) set = that cell is seen. */
+  /** The frame the in-flight queries were issued on, and the results: bit (row * cols + col) per cell. */
   issued: number;
+  seen: number;
+  seenBefore: number;
+  blocked: number;
+  /** The ring results, this one and the one before (-1: none yet). */
+  ring: number;
+  ringBefore: number;
+  /** The last cut it saw (a frame number): results issued on or before it are void. */
+  cutFrame: number;
+  /** The cells drawn: nothing in front of them (nor within the guard) in the last two results (`seen & seenBefore`). */
   mask: number;
   maskFrame: number;
+  /** The cells drawn this frame (all of them: a sign is drawn whole or not at all). */
+  drawMask: number;
+  /** The cells its lettering touches (bit per cell; -1: not worked out yet), and the fonts it was worked out with. */
+  ink: number;
+  inkFonts: number;
+  /** The guard (fb px) the in-flight blocker queries were grown by, and the one the last result had. */
+  guardIssued: number;
+  guard: number;
+  /** The sign's centre on screen last frame (device px; NaN: none) for its speed. */
+  lastX: number;
+  lastY: number;
+  speed: number;
+  fog: InkFog | null;
   light: [number, number, number] | null;
   probeFrame: number;
   probing: boolean;
@@ -144,6 +207,12 @@ export class InkLayer {
   private readonly freeBuffers: WebGLBuffer[] = [];
   private lastChain = -1;
   private active = false;
+  /** The GL path failed once (a missing feature, a driver error): the signs keep their own lettering from then on. */
+  private broken = false;
+  private overlayW = 1;
+  private readonly lastEye = new Vector3(Number.NaN, 0, 0);
+  private eyeStep = 0;
+  private readonly lights: SceneLightLike[] = [];
   private curve: ToneCurveId = "neutral";
   private exposure = 1;
   private readonly drawList: SignState[] = [];
@@ -166,9 +235,11 @@ export class InkLayer {
     if (chainRan) return false;
     // DEV/E2E: the signs as WebGL alone draws them (the before/after shots: e2e/text-crisp-signs.mjs)
     if (import.meta.env.DEV && (globalThis as { __cvInkOff?: boolean }).__cvInkOff) return false;
-    if (typeof WebGL2RenderingContext === "undefined") return false;
+    if (this.broken || typeof WebGL2RenderingContext === "undefined") return false;
     const gl = renderer.getContext();
     if (!(gl instanceof WebGL2RenderingContext) || gl.isContextLost()) return false;
+    // what the layer needs of WebGL2 (a browser may leave some out): occlusion queries, fences, pixel-pack buffers
+    if (!hasInkFeatures(gl)) return false;
     return renderer.getPixelRatio() < INK_DPR_SHARE * deviceDpr;
   }
 
@@ -177,7 +248,35 @@ export class InkLayer {
    * on a `W` x `H` device-px overlay.
    */
   update(renderer: WebGLRenderer, scene: Object3D, camera: Camera, W: number, H: number, deviceDpr: number): void {
+    try {
+      this.updateInner(renderer, scene, camera, W, H, deviceDpr);
+    } catch {
+      // never let the signs' lettering break the frame: give every sign its own lettering back, for good
+      this.fail(renderer);
+    }
+  }
+
+  /** Off for good: every sign's own lettering back, nothing drawn, GL state handed back to three. */
+  private fail(renderer: WebGLRenderer): void {
+    this.broken = true;
+    this.active = false;
+    this.stats.active = false;
+    this.drawList.length = 0;
+    for (const s of this.states.values()) {
+      s.drawn = false;
+      s.pending = false;
+      this.setInk(s, true);
+    }
+    try {
+      renderer.resetState();
+    } catch {
+      /* the context may be gone */
+    }
+  }
+
+  private updateInner(renderer: WebGLRenderer, scene: Object3D, camera: Camera, W: number, H: number, deviceDpr: number): void {
     const t0 = performance.now();
+    this.overlayW = W;
     this.frame++;
     this.drawList.length = 0;
     const labels = inkLabels();
@@ -208,6 +307,14 @@ export class InkLayer {
     }
     this.curve = curveOf(renderer);
     this.exposure = renderer.toneMappingExposure;
+    // the eye's travel since the last frame (m): the parallax a wall in front of a sign can sweep with
+    const ex0 = camera.matrixWorld.elements[12]!;
+    const ey0 = camera.matrixWorld.elements[13]!;
+    const ez0 = camera.matrixWorld.elements[14]!;
+    this.eyeStep = Number.isNaN(this.lastEye.x) ? 0 : Math.hypot(ex0 - this.lastEye.x, ey0 - this.lastEye.y, ez0 - this.lastEye.z);
+    this.lastEye.set(ex0, ey0, ez0);
+    this.lights.length = 0;
+    let lightsRead = false;
 
     // results that came in: occlusion and probes
     for (const s of this.states.values()) this.readQueries(gl, s);
@@ -221,11 +328,14 @@ export class InkLayer {
       let s = this.states.get(label);
       if (!s) {
         const { cols, rows } = inkGrid(label.w, label.h);
-        s = { label, cols, rows, queries: [], pending: false, issued: -1, mask: 0, maskFrame: -1e9, light: null, probeFrame: -1e9, probing: false, raster: null, lastDrawn: -1e9, ink3d: true, grid: [], gridCols: 0, sub: 1, strips: false, drawn: false, size: 0 };
+        s = { label, cols, rows, blockers: [], rings: [], pending: false, issued: -1, seen: 0, seenBefore: 0, blocked: 0, ring: -1, ringBefore: -1, cutFrame: -1, mask: 0, maskFrame: -1e9, drawMask: 0, ink: -1, inkFonts: -1, guardIssued: 0, guard: 0, lastX: Number.NaN, lastY: Number.NaN, speed: 0, fog: null, light: null, probeFrame: -1e9, probing: false, raster: null, lastDrawn: -1e9, ink3d: true, grid: [], gridCols: 0, sub: 1, strips: false, drawn: false, size: 0 };
         this.states.set(label, s);
       }
       s.drawn = false;
-      if (!shownIn(label.object, scene)) continue;
+      if (!shownIn(label.object, scene)) {
+        s.lastX = Number.NaN;
+        continue;
+      }
       const m = label.object.matrixWorld.elements;
       if (!screenGrid(m, label.w, label.h, 1, 1, view, proj, W, H, s.grid)) continue;
       const g = s.grid;
@@ -249,6 +359,19 @@ export class InkLayer {
       s.strips = n > 1;
       s.sub = n > 1 ? Math.max(1, Math.ceil(n / s.cols)) : 1;
       s.size = (x1 - x0) * (y1 - y0);
+      // its speed on screen (device px a frame)
+      const cx = (x0 + x1) / 2;
+      const cy = (y0 + y1) / 2;
+      s.speed = Number.isNaN(s.lastX) ? 0 : Math.hypot(cx - s.lastX, cy - s.lastY);
+      s.lastX = cx;
+      s.lastY = cy;
+      // a cut (the eye jumped, or the sign leapt across the screen): every result before it is void, its history starts over
+      if (this.eyeStep > CUT_STEP || s.speed * (renderer.getContext().drawingBufferWidth / Math.max(1, W)) > CUT_PX) {
+        s.seen = 0;
+        s.ring = -1;
+        s.mask = 0;
+        s.cutFrame = this.frame;
+      }
       cands.push(s);
     }
     cands.sort((a, b) => b.size - a.size);
@@ -262,12 +385,23 @@ export class InkLayer {
     for (const s of cands)
       if (!s.pending) {
         issue.push(s);
-        cells += s.cols * s.rows;
+        cells += s.cols * s.rows + s.cols;
       }
     // probes (sign with a probe, its cell seen, its turn)
     const probe: SignState[] = [];
     for (const s of cands) {
       const p = s.label.probe;
+      const m = s.label.object.matrixWorld.elements;
+      s.fog = p && !s.label.lit ? null : fogOver(scene as Scene, m, view);
+      if (s.label.lit === "standard") {
+        if (!lightsRead) {
+          readLights(scene, this.lights);
+          lightsRead = true;
+        }
+        const nl = Math.hypot(m[8]!, m[9]!, m[10]!) || 1;
+        s.light = standardLight([m[8]! / nl, m[9]! / nl, m[10]! / nl], this.lights);
+        continue;
+      }
       if (!p) {
         const l = s.label.light?.() ?? 1;
         s.light = [l, l, l];
@@ -286,10 +420,24 @@ export class InkLayer {
     // what is drawn: a fresh mask with a cell seen, a light known
     let drawn = 0;
     for (const s of cands) {
-      if (this.frame - s.maskFrame > FRESH_FRAMES || s.mask === 0 || !s.light) continue;
+      if (this.frame - s.maskFrame > FRESH_FRAMES || !s.light) continue;
+      // every cell with lettering in it clear (nothing in front of it, nor within the guard) in two results running; one that is
+      // not — a sign partly behind a wall, an avatar, a post — is left whole to WebGL's own lettering (its depth test is exact):
+      // never letters over what stands in front, never a letter cut at a cell's edge
+      const ink = this.inkCells(s);
+      if (ink === 0 || (s.mask & ink) !== ink) continue;
+      // moving fast with a cell partly hidden, or something moving near it: WebGL's own lettering (its depth test is exact) until
+      // it settles
+      if (s.guard > FAST_GUARD && s.blocked !== 0) continue;
+      if (s.ring !== s.ringBefore) continue;
+      // it moved further on screen this frame than its last result's guard reaches (a camera cut, a fast turn): that result cannot
+      // vouch for where it is now; and a cut starts its history over
+      const speedFb = s.speed * (gl.drawingBufferWidth / Math.max(1, W));
+      if (speedFb > Math.max(s.guard, 4) || s.cutFrame === this.frame) continue;
       const gc = s.cols * s.sub;
       if (!screenGrid(s.label.object.matrixWorld.elements, s.label.w, s.label.h, gc, s.rows, view, proj, W, H, s.grid)) continue;
       s.gridCols = gc;
+      s.drawMask = s.cols * s.rows >= 31 ? -1 : (1 << (s.cols * s.rows)) - 1;
       s.drawn = true;
       this.drawList.push(s);
       drawn++;
@@ -336,6 +484,34 @@ export class InkLayer {
     s.label.setInk(on);
   }
 
+  /** The cells its lettering touches: painted once, small, and looked at (fonts in: worked out again). */
+  private inkCells(s: SignState): number {
+    if (s.ink >= 0 && s.inkFonts === this.fontsVersion) return s.ink;
+    const all = s.cols * s.rows >= 31 ? 0x7fffffff : (1 << (s.cols * s.rows)) - 1;
+    if (typeof document === "undefined") return all;
+    const cell = 16;
+    const h = s.rows * cell;
+    const w = Math.max(s.cols * cell, Math.round(h * (s.label.w / s.label.h)));
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const g = c.getContext("2d", { willReadFrequently: true });
+    if (!g) return all;
+    try {
+      s.label.paint(g, w, h, (x) => x);
+      const d = g.getImageData(0, 0, w, h).data;
+      let bits = 0;
+      for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++)
+          if (d[(y * w + x) * 4 + 3]! > 24) bits |= 1 << (Math.min(s.rows - 1, Math.floor((y / h) * s.rows)) * s.cols + Math.min(s.cols - 1, Math.floor((x / w) * s.cols)));
+      s.ink = bits;
+    } catch {
+      s.ink = all;
+    }
+    s.inkFonts = this.fontsVersion;
+    return s.ink;
+  }
+
   /** The sign's raster at its bucket size and light (cached). */
   private raster(s: SignState): HTMLCanvasElement | null {
     if (typeof document === "undefined" || !s.light) return null;
@@ -350,7 +526,8 @@ export class InkLayer {
     const right = Math.hypot(g[at(gc, rows)]! - g[at(gc, 0)]!, g[at(gc, rows) + 1]! - g[at(gc, 0) + 1]!);
     const wb = inkBucket(Math.max(top, bottom), INK_MAX_W);
     const hb = inkBucket(Math.max(left, right), INK_MAX_H);
-    const key = `${wb}x${hb}|${toneKey(s.light, this.curve, this.exposure)}|${this.fontsVersion}`;
+    const desat = s.label.desaturate?.() ?? 0;
+    const key = `${wb}x${hb}|${toneKey(s.light, this.curve, this.exposure, s.fog, desat)}|${this.fontsVersion}`;
     if (s.raster && s.raster.key === key) return s.raster.canvas;
     const t0 = performance.now();
     const canvas = s.raster?.canvas ?? document.createElement("canvas");
@@ -361,7 +538,7 @@ export class InkLayer {
     // the painter draws at the sign's own aspect, squeezed to the raster (one raster px = one screen px both ways)
     const nominalW = hb * (s.label.w / s.label.h);
     c2.setTransform(wb / nominalW, 0, 0, 1, 0, 0);
-    s.label.paint(c2, nominalW, hb, makeTone(s.light, this.curve, this.exposure));
+    s.label.paint(c2, nominalW, hb, makeTone(s.light, this.curve, this.exposure, s.fog, desat));
     s.raster = { canvas, key };
     this.stats.rasters++;
     this.stats.rasterMs += performance.now() - t0;
@@ -376,7 +553,7 @@ export class InkLayer {
     const iw = img.width;
     const ih = img.height;
     const at = (i: number, j: number) => 2 * (j * (gc + 1) + i);
-    const full = s.mask === (1 << (s.cols * rows)) - 1;
+    const full = s.drawMask === (1 << (s.cols * rows)) - 1 || s.drawMask === -1;
     ctx.globalAlpha = 1;
     let x0 = Infinity;
     let y0 = Infinity;
@@ -398,7 +575,7 @@ export class InkLayer {
       const cols0 = strips === 1 ? 0 : Math.floor(k / s.sub);
       const cols1 = strips === 1 ? s.cols : cols0 + 1;
       let any = false;
-      for (let r = 0; r < rows; r++) for (let c = cols0; c < cols1; c++) if (s.mask & (1 << (r * s.cols + c))) any = true;
+      for (let r = 0; r < rows; r++) for (let c = cols0; c < cols1; c++) if (s.drawMask & (1 << (r * s.cols + c))) any = true;
       if (!any) continue;
       const clip = !(strips === 1 && full);
       ctx.save();
@@ -407,7 +584,7 @@ export class InkLayer {
         ctx.beginPath();
         for (let r = 0; r < rows; r++)
           for (let c = cols0; c < cols1; c++) {
-            if (!(s.mask & (1 << (r * s.cols + c)))) continue;
+            if (!(s.drawMask & (1 << (r * s.cols + c)))) continue;
             // the cell's quad on the grid (a query column spans `sub` grid columns), widened half a pixel along the strip
             const ga = strips === 1 ? c * s.sub : i0;
             const gb = strips === 1 ? (c + 1) * s.sub : i1;
@@ -499,7 +676,8 @@ export class InkLayer {
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
     // queries and buffers made for an older context are gone with it
     for (const s of this.states.values()) {
-      s.queries.length = 0;
+      s.blockers.length = 0;
+      s.rings.length = 0;
       s.pending = false;
       s.probing = false;
     }
@@ -511,12 +689,28 @@ export class InkLayer {
   private readQueries(gl: WebGL2RenderingContext, s: SignState): void {
     if (!s.pending) return;
     const n = s.cols * s.rows;
-    for (let i = 0; i < n; i++) if (!gl.getQueryParameter(s.queries[i]!, gl.QUERY_RESULT_AVAILABLE)) return;
-    let mask = 0;
-    for (let i = 0; i < n; i++) if (gl.getQueryParameter(s.queries[i]!, gl.QUERY_RESULT)) mask |= 1 << i;
-    s.mask = mask;
-    s.maskFrame = s.issued;
+    // the last query issued is the last to come in
+    if (!gl.getQueryParameter(s.rings[s.cols - 1]!, gl.QUERY_RESULT_AVAILABLE)) return;
+    for (let i = 0; i < n; i++) if (!gl.getQueryParameter(s.blockers[i]!, gl.QUERY_RESULT_AVAILABLE)) return;
+    for (let i = 0; i < s.cols; i++) if (!gl.getQueryParameter(s.rings[i]!, gl.QUERY_RESULT_AVAILABLE)) return;
     s.pending = false;
+    if (s.issued <= s.cutFrame) return;
+    let blocked = 0;
+    let ring = 0;
+    for (let i = 0; i < n; i++) if (gl.getQueryParameter(s.blockers[i]!, gl.QUERY_RESULT)) blocked |= 1 << i;
+    for (let i = 0; i < s.cols; i++) if (gl.getQueryParameter(s.rings[i]!, gl.QUERY_RESULT)) ring |= 1 << i;
+    const recent = s.maskFrame > -1e9 && s.issued - s.maskFrame <= FRESH_FRAMES * 2;
+    s.ringBefore = recent ? s.ring : -1;
+    s.ring = ring;
+    // a cell shows once nothing stood in front of it (nor near it: the guard) in two results running; it goes at once
+    const all = n >= 31 ? -1 : (1 << n) - 1;
+    const clear = all & ~blocked;
+    s.seenBefore = recent ? s.seen : 0;
+    s.seen = clear;
+    s.blocked = blocked;
+    s.mask = clear & s.seenBefore;
+    s.guard = s.guardIssued;
+    s.maskFrame = s.issued;
   }
 
   private readProbes(gl: WebGL2RenderingContext): void {
@@ -544,7 +738,7 @@ export class InkLayer {
           bl += px[i * 36 + q * 4 + 2]!;
         }
         const albedo = parseHex(p.albedo);
-        s.light = lightFromProbe([r / 9 / 255, g / 9 / 255, bl / 9 / 255], albedo, this.curve, this.exposure);
+        s.light = lightFromProbe([r / 9 / 255, g / 9 / 255, bl / 9 / 255], albedo, this.curve, this.exposure, s.label.desaturate?.() ?? 0);
       });
       this.freeBuffers.push(b.buffer);
       this.batches.splice(k, 1);
@@ -556,7 +750,8 @@ export class InkLayer {
     const bw = gl.drawingBufferWidth;
     const bh = gl.drawingBufferHeight;
     if (cells > 0) {
-      if (this.verts.length < cells * 24) this.verts = new Float32Array(cells * 24 * 2);
+      // per cell its grown quad (6 vertices x 4), per column the ring's (the same)
+      if (this.verts.length < cells * 48) this.verts = new Float32Array(cells * 48 * 2);
       const v = this.verts;
       let k = 0;
       const ex = eye[12]!;
@@ -569,20 +764,31 @@ export class InkLayer {
         const dist = Math.hypot(ex - m[12]!, ey - m[13]!, ez - m[14]!);
         const lz = (PROXY_LIFT + dist * 0.004) / sc;
         const { w, h } = s.label;
-        for (let r = 0; r < s.rows; r++)
-          for (let c = 0; c < s.cols; c++) {
-            const xa = -w / 2 + (w * c) / s.cols;
-            const xb = -w / 2 + (w * (c + 1)) / s.cols;
-            const ya = h / 2 - (h * r) / s.rows;
-            const yb = h / 2 - (h * (r + 1)) / s.rows;
-            clipOf(m, xa, ya, lz, view, proj, v, k);
-            clipOf(m, xb, ya, lz, view, proj, v, k + 4);
-            clipOf(m, xb, yb, lz, view, proj, v, k + 8);
-            clipOf(m, xa, ya, lz, view, proj, v, k + 12);
-            clipOf(m, xb, yb, lz, view, proj, v, k + 16);
-            clipOf(m, xa, yb, lz, view, proj, v, k + 20);
-            k += 24;
+        // the guard: its own speed on screen (device px -> fb px) and the parallax of the eye's travel at its distance, 3 frames
+        const fbPerDevice = bw / Math.max(1, this.overlayW);
+        const parallax = (this.eyeStep * proj[5]! * 0.5 * bh) / Math.max(0.3, dist);
+        const guard = Math.min(GUARD_MAX, GUARD_PX + 3 * Math.max(s.speed * fbPerDevice, 2 * parallax));
+        s.guardIssued = guard;
+        const gx = (2 * guard) / bw;
+        const gy = (2 * guard) / bh;
+        const rx = (2 * (guard + RING_PX)) / bw;
+        const ry = (2 * (guard + RING_PX)) / bh;
+        // a quad of the plane (local x0..x1, y0..y1 at the lift) grown on screen by (ax, ay) in clip units, each corner outward
+        const quad = (x0: number, x1: number, y0: number, y1: number, ax: number, ay: number) => {
+          const pts: Array<[number, number, number, number]> = [[x0, y0, -1, 1], [x1, y0, 1, 1], [x1, y1, 1, -1], [x0, y0, -1, 1], [x1, y1, 1, -1], [x0, y1, -1, -1]];
+          for (const [x, y, sx, sy] of pts) {
+            clipOf(m, x, y, lz, view, proj, v, k);
+            const cw = v[k + 3]!;
+            v[k] = v[k]! + sx * ax * cw;
+            v[k + 1] = v[k + 1]! + sy * ay * cw;
+            k += 4;
           }
+        };
+        // blocked: each cell grown by the guard
+        for (let r = 0; r < s.rows; r++)
+          for (let c = 0; c < s.cols; c++) quad(-w / 2 + (w * c) / s.cols, -w / 2 + (w * (c + 1)) / s.cols, h / 2 - (h * r) / s.rows, h / 2 - (h * (r + 1)) / s.rows, gx, gy);
+        // the ring: each column (all rows) grown by the guard and the ring
+        for (let c = 0; c < s.cols; c++) quad(-w / 2 + (w * c) / s.cols, -w / 2 + (w * (c + 1)) / s.cols, h / 2, -h / 2, rx, ry);
       }
       gl.viewport(0, 0, bw, bh);
       gl.disable(gl.SCISSOR_TEST);
@@ -593,7 +799,8 @@ export class InkLayer {
       gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
       gl.disable(gl.RASTERIZER_DISCARD);
       gl.enable(gl.DEPTH_TEST);
-      gl.depthFunc(gl.LEQUAL);
+      // a sample of a grown quad BEHIND what is drawn there passes: something nearer stands over it
+      gl.depthFunc(gl.GREATER);
       gl.depthMask(false);
       gl.depthRange(0, 1);
       gl.colorMask(false, false, false, false);
@@ -602,15 +809,17 @@ export class InkLayer {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
       if (this.verts.byteLength > (gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_SIZE) as number)) gl.bufferData(gl.ARRAY_BUFFER, this.verts.byteLength, gl.DYNAMIC_DRAW);
       gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.verts, 0, k);
-      let cell = 0;
+      let quadAt = 0;
       for (const s of issue) {
         const n = s.cols * s.rows;
-        while (s.queries.length < n) s.queries.push(gl.createQuery()!);
-        for (let i = 0; i < n; i++) {
-          gl.beginQuery(gl.ANY_SAMPLES_PASSED, s.queries[i]!);
-          gl.drawArrays(gl.TRIANGLES, cell * 6, 6);
+        while (s.blockers.length < n) s.blockers.push(newQuery(gl));
+        while (s.rings.length < s.cols) s.rings.push(newQuery(gl));
+        for (let i = 0; i < n + s.cols; i++) {
+          const q = i < n ? s.blockers[i]! : s.rings[i - n]!;
+          gl.beginQuery(gl.ANY_SAMPLES_PASSED, q);
+          gl.drawArrays(gl.TRIANGLES, quadAt * 6, 6);
           gl.endQuery(gl.ANY_SAMPLES_PASSED);
-          cell++;
+          quadAt++;
         }
         s.pending = true;
         s.issued = this.frame;
@@ -649,8 +858,9 @@ export class InkLayer {
 
   private release(s: SignState): void {
     const gl = this.gl;
-    if (gl) for (const q of s.queries) gl.deleteQuery(q);
-    s.queries.length = 0;
+    if (gl && !gl.isContextLost()) for (const q of [...s.blockers, ...s.rings]) gl.deleteQuery(q);
+    s.blockers.length = 0;
+    s.rings.length = 0;
     if (s.raster) s.raster.canvas.width = 0;
     s.raster = null;
     // a probe in flight for it is read and dropped with its batch
@@ -687,4 +897,57 @@ function parseHex(css: string): [number, number, number] {
   const h = css.replace("#", "");
   const f = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
   return [parseInt(f.slice(0, 2), 16) / 255, parseInt(f.slice(2, 4), 16) / 255, parseInt(f.slice(4, 6), 16) / 255];
+}
+
+/** A query object, or a throw (the caller falls back to WebGL's own lettering). */
+function newQuery(gl: WebGL2RenderingContext): WebGLQuery {
+  const q = gl.createQuery();
+  if (!q) throw new Error("no query");
+  return q;
+}
+
+/** The WebGL2 features the ink layer uses are there (a stub or a stripped-down browser may lack some). */
+export function hasInkFeatures(gl: WebGL2RenderingContext): boolean {
+  const g = gl as unknown as Record<string, unknown>;
+  return (
+    ["createQuery", "beginQuery", "endQuery", "getQueryParameter", "fenceSync", "getSyncParameter", "getBufferSubData", "createVertexArray", "readPixels"].every((k) => typeof g[k] === "function") &&
+    typeof gl.ANY_SAMPLES_PASSED === "number" &&
+    typeof gl.PIXEL_PACK_BUFFER === "number"
+  );
+}
+
+/** The scene's lights for `standardLight`: its direct children (where PlayShell puts the sun and the sky light). */
+function readLights(scene: Object3D, out: SceneLightLike[]): void {
+  const t = new Vector3();
+  const u = new Vector3();
+  for (const o of scene.children) {
+    const l = o as Partial<DirectionalLight & HemisphereLight & AmbientLight> & Object3D;
+    if (!o.visible || !(l as { isLight?: boolean }).isLight) continue;
+    const k = l.intensity ?? 1;
+    const c = l.color ? [l.color.r * k, l.color.g * k, l.color.b * k] : [0, 0, 0];
+    if ((l as { isDirectionalLight?: boolean }).isDirectionalLight && l.target) {
+      t.setFromMatrixPosition(o.matrixWorld);
+      u.setFromMatrixPosition(l.target.matrixWorld);
+      t.sub(u).normalize();
+      out.push({ kind: "directional", color: c, dir: [t.x, t.y, t.z] });
+    } else if ((l as { isHemisphereLight?: boolean }).isHemisphereLight && l.groundColor) {
+      t.setFromMatrixPosition(o.matrixWorld).normalize();
+      out.push({ kind: "hemisphere", color: c, ground: [l.groundColor.r * k, l.groundColor.g * k, l.groundColor.b * k], dir: [t.x, t.y, t.z] });
+    } else if ((l as { isAmbientLight?: boolean }).isAmbientLight) out.push({ kind: "ambient", color: c });
+  }
+}
+
+/** The scene's fog over a sign whose world matrix is `m` (three's fog_fragment: linear smoothstep, or exp2), or null for none. */
+function fogOver(scene: Scene, m: ArrayLike<number>, view: ArrayLike<number>): InkFog | null {
+  const fog = scene.fog as (Fog & FogExp2) | null;
+  if (!fog) return null;
+  const depth = -(view[2]! * m[12]! + view[6]! * m[13]! + view[10]! * m[14]! + view[14]!);
+  let f: number;
+  if ((fog as { isFogExp2?: boolean }).isFogExp2) f = 1 - Math.exp(-(fog.density * fog.density) * depth * depth);
+  else {
+    const t = Math.min(1, Math.max(0, (depth - fog.near) / Math.max(1e-6, fog.far - fog.near)));
+    f = t * t * (3 - 2 * t);
+  }
+  if (!(f > 0.002)) return null;
+  return { rgb: [fog.color.r, fog.color.g, fog.color.b], f };
 }

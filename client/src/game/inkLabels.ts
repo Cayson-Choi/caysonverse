@@ -40,6 +40,16 @@ export interface InkLabel {
    */
   probe?: { x: number; y: number; albedo: string };
   light?: () => number;
+  /**
+   * "standard": a MeshStandardMaterial (no light patch) lit by the scene's own lights (the sun, the sky light, an ambient): its light
+   * is worked out from them for its plane's normal, exactly as three does (`standardLight`), day and night. Wins over `probe`.
+   */
+  lit?: "standard";
+  /**
+   * How far its material pulls every albedo toward its own grey now (0..1: the lots' night fade, lotsPrep.ts NIGHT_COLOUR), as the
+   * shader does before the light: applied to the probe's albedo and to the ink's colours alike.
+   */
+  desaturate?: () => number;
   /** Show (true) or hide (false) the sign's own 3D lettering. */
   setInk(on3d: boolean): void;
 }
@@ -125,8 +135,15 @@ export function toneCurve(rgb: readonly number[], curve: ToneCurveId, exposure: 
  * (`shown`, sRGB 0..1) and its albedo there (sRGB 0..1). Solved per channel by bisection through the tone curve; a channel the
  * albedo hardly has (a navy board's red) takes the luminance's light, and no channel strays past 1.6x / 0.6x of it.
  */
-export function lightFromProbe(shown: readonly number[], albedo: readonly number[], curve: ToneCurveId, exposure: number): [number, number, number] {
-  const A = [srgbToLinear(albedo[0]!), srgbToLinear(albedo[1]!), srgbToLinear(albedo[2]!)];
+/** `c` (linear) pulled toward its luminance by `d` (0..1), as the lots' night fade does. */
+export function desaturated(c: readonly number[], d: number): [number, number, number] {
+  if (!(d > 0)) return [c[0]!, c[1]!, c[2]!];
+  const y = 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
+  return [c[0]! + (y - c[0]!) * d, c[1]! + (y - c[1]!) * d, c[2]! + (y - c[2]!) * d];
+}
+
+export function lightFromProbe(shown: readonly number[], albedo: readonly number[], curve: ToneCurveId, exposure: number, desat = 0): [number, number, number] {
+  const A = desaturated([srgbToLinear(albedo[0]!), srgbToLinear(albedo[1]!), srgbToLinear(albedo[2]!)], desat);
   const D = [srgbToLinear(shown[0]!), srgbToLinear(shown[1]!), srgbToLinear(shown[2]!)];
   // grey light first: the scale k with lum(T(A k)) = lum(D)
   const lum = (c: readonly number[]) => 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
@@ -159,7 +176,13 @@ export function lightFromProbe(shown: readonly number[], albedo: readonly number
 }
 
 /** A tone function: albedo css -> the colour shown under `light` (linear rgb) through the curve, as rgba() css. */
-export function makeTone(light: readonly number[], curve: ToneCurveId, exposure: number): InkTone {
+/** The scene's fog over a sign: its colour (linear, three's uniform) and how much of it (0..1). */
+export interface InkFog {
+  rgb: readonly number[];
+  f: number;
+}
+
+export function makeTone(light: readonly number[], curve: ToneCurveId, exposure: number, fog: InkFog | null = null, desat = 0): InkTone {
   const cache = new Map<string, string>();
   return (css) => {
     const hit = cache.get(css);
@@ -167,10 +190,14 @@ export function makeTone(light: readonly number[], curve: ToneCurveId, exposure:
     const p = parseCss(css);
     let out = css;
     if (p) {
-      const t = toneCurve([srgbToLinear(p[0]) * light[0]!, srgbToLinear(p[1]) * light[1]!, srgbToLinear(p[2]) * light[2]!], curve, exposure);
-      const r = Math.round(linearToSrgb(t[0]) * 255);
-      const g = Math.round(linearToSrgb(t[1]) * 255);
-      const b = Math.round(linearToSrgb(t[2]) * 255);
+      const a = desaturated([srgbToLinear(p[0]), srgbToLinear(p[1]), srgbToLinear(p[2])], desat);
+      const t = toneCurve([a[0] * light[0]!, a[1] * light[1]!, a[2] * light[2]!], curve, exposure);
+      // three mixes the fog in after the output encoding (fog_fragment follows colorspace_fragment), with the uniform's linear colour
+      const f = fog ? Math.min(1, Math.max(0, fog.f)) : 0;
+      const enc = (c: number, i: number) => Math.round(Math.min(1, Math.max(0, linearToSrgb(c) * (1 - f) + (fog ? fog.rgb[i]! : 0) * f)) * 255);
+      const r = enc(t[0], 0);
+      const g = enc(t[1], 1);
+      const b = enc(t[2], 2);
       out = p[3] >= 1 ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${p[3]})`;
     }
     cache.set(css, out);
@@ -179,9 +206,42 @@ export function makeTone(light: readonly number[], curve: ToneCurveId, exposure:
 }
 
 /** A key for a light (2% steps), a curve and an exposure: the raster is redrawn when it changes. */
-export function toneKey(light: readonly number[], curve: ToneCurveId, exposure: number): string {
+export function toneKey(light: readonly number[], curve: ToneCurveId, exposure: number, fog: InkFog | null = null, desat = 0): string {
   const q = (v: number) => Math.round(Math.log(Math.max(1e-4, v)) / Math.log(1.02));
-  return `${q(light[0]!)},${q(light[1]!)},${q(light[2]!)}|${curve}|${Math.round(exposure * 100)}`;
+  const fk = fog && fog.f > 0.005 ? `|${Math.round(fog.f * 50)}` : "";
+  const dk = desat > 0.005 ? `|d${Math.round(desat * 50)}` : "";
+  return `${q(light[0]!)},${q(light[1]!)},${q(light[2]!)}|${curve}|${Math.round(exposure * 100)}${fk}${dk}`;
+}
+
+/** A light of the scene as `standardLight` reads it (three's DirectionalLight, HemisphereLight, AmbientLight). */
+export interface SceneLightLike {
+  kind: "directional" | "hemisphere" | "ambient";
+  /** linear rgb x intensity */
+  color: readonly number[];
+  /** hemisphere: its ground colour x intensity */
+  ground?: readonly number[];
+  /** directional: toward the light (unit); hemisphere: the sky's up (unit) */
+  dir?: readonly number[];
+}
+
+/**
+ * The light a matte MeshStandardMaterial facing `n` (unit, world) gets from `lights`, as a factor on its albedo (linear rgb): three's
+ * physical lighting with BRDF_Lambert (albedo / pi): each directional light's colour x max(0, n.l), the hemisphere light's sky/ground
+ * mix by 0.5 n.up + 0.5, the ambient light's colour, summed, over pi. No shadows (the light tier has none) and no specular (rough).
+ */
+export function standardLight(n: readonly number[], lights: readonly SceneLightLike[]): [number, number, number] {
+  const out: [number, number, number] = [0, 0, 0];
+  for (const l of lights) {
+    if (l.kind === "directional" && l.dir) {
+      const k = Math.max(0, n[0]! * l.dir[0]! + n[1]! * l.dir[1]! + n[2]! * l.dir[2]!);
+      for (let c = 0; c < 3; c++) out[c] += l.color[c]! * k;
+    } else if (l.kind === "hemisphere" && l.dir && l.ground) {
+      const w = 0.5 * (n[0]! * l.dir[0]! + n[1]! * l.dir[1]! + n[2]! * l.dir[2]!) + 0.5;
+      for (let c = 0; c < 3; c++) out[c] += l.ground[c]! + (l.color[c]! - l.ground[c]!) * w;
+    } else if (l.kind === "ambient") for (let c = 0; c < 3; c++) out[c] += l.color[c]!;
+  }
+  for (let c = 0; c < 3; c++) out[c] /= Math.PI;
+  return out;
 }
 
 // ───────────────────────────── the plane on screen ─────────────────────────────
