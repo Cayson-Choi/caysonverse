@@ -535,27 +535,27 @@ def offering(kit):
     # candlesticks + candles + flames
     for x in (4.45, 6.95):
         g = Mesh("candlestick")
-        g.lathe([(0.1, 0.0), (0.09, 0.03), (0.035, 0.06), (0.03, 0.2), (0.05, 0.22), (0.025, 0.25), (0.025, 0.4), (0.08, 0.42), (0.07, 0.45), (0.03, 0.46)], 10, DAN, x, 5.15, yt)
+        g.lathe([(0.1, 0.0), (0.09, 0.03), (0.035, 0.06), (0.03, 0.2), (0.05, 0.22), (0.025, 0.25), (0.025, 0.4), (0.08, 0.42), (0.07, 0.45), (0.03, 0.46)], 20, DAN, x, 5.15, yt)   # (2026-11-28: 10 sides read as faceted brass)
         D.extend(gold(g))
         cand = Mesh("candle")
-        cand.lathe([(0.032, 0.0), (0.032, 0.26), (0.026, 0.275), (0.0, 0.275)], 10, DAN, x, 5.15, yt + 0.45)
+        cand.lathe([(0.032, 0.0), (0.032, 0.262), (0.031, 0.27), (0.026, 0.275), (0.016, 0.272), (0.0, 0.271)], 20, DAN, x, 5.15, yt + 0.45)
         D.extend(painted(cand, G.hexc("FFF7E6")))
-        D.lathe([(0.0, 0.0), (0.014, 0.025), (0.009, 0.06), (0.0, 0.085)], 6, SCREEN.t((1.0, 0.72, 0.3)), x, 5.15, yt + 0.735)
-        for p in D.polys[-12:]:
+        D.lathe([(0.0, 0.0), (0.014, 0.025), (0.009, 0.06), (0.0, 0.085)], 10, SCREEN.t((1.0, 0.72, 0.3)), x, 5.15, yt + 0.735)
+        for p in D.polys[-30:]:
             p.col = [(1.0, 0.75, 0.32, 1.0)] * len(p.pts)
         kit.lights.append(("point", x, yt + 0.8, 5.15, (1.0, 0.68, 0.32), 18.0))
     # incense burner: a round bronze bowl on three legs, sand, three sticks with glowing tips
     g = Mesh("burner")
-    g.lathe([(0.0, 0.05), (0.09, 0.06), (0.13, 0.12), (0.14, 0.18), (0.12, 0.2), (0.13, 0.215)], 12, DAN, 5.7, 5.15, yt)
+    g.lathe([(0.0, 0.05), (0.09, 0.06), (0.13, 0.12), (0.14, 0.18), (0.12, 0.2), (0.13, 0.215)], 24, DAN, 5.7, 5.15, yt)
     for k in range(3):
         a = k * 2 * math.pi / 3
-        g.member((5.7 + 0.08 * math.cos(a), yt + 0.07, 5.15 - 0.08 * math.sin(a)), (5.7 + 0.11 * math.cos(a), yt, 5.15 - 0.11 * math.sin(a)), G.prof_round(0.012, 4), DAN)
+        g.member((5.7 + 0.08 * math.cos(a), yt + 0.07, 5.15 - 0.08 * math.sin(a)), (5.7 + 0.11 * math.cos(a), yt, 5.15 - 0.11 * math.sin(a)), G.prof_round(0.012, 8), DAN)
     for sx in (-1, 1):
-        g.tube([(5.7 + sx * 0.12, yt + 0.19, 5.15), (5.7 + sx * 0.17, yt + 0.22, 5.15), (5.7 + sx * 0.17, yt + 0.26, 5.15)], 0.012, 4, DAN)
+        g.tube([(5.7 + sx * 0.12, yt + 0.19, 5.15), (5.7 + sx * 0.17, yt + 0.22, 5.15), (5.7 + sx * 0.17, yt + 0.26, 5.15)], 0.012, 8, DAN)
     D.extend(gold(g))
     D.lathe([(0.0, 0.0), (0.12, 0.0)], 10, DAN.t(G.hexc("D9CCB4")), 5.7, 5.15, yt + 0.195) if False else None
     sand = Mesh("sand")
-    sand.poly([(5.7 + 0.12 * math.cos(2 * math.pi * i / 10), yt + 0.195, 5.15 - 0.12 * math.sin(2 * math.pi * i / 10)) for i in range(10)], DAN)
+    sand.poly([(5.7 + 0.12 * math.cos(2 * math.pi * i / 24), yt + 0.195, 5.15 - 0.12 * math.sin(2 * math.pi * i / 24)) for i in range(24)], DAN)
     D.extend(painted(sand, G.hexc("D6C8B0")))
     for k, dx in enumerate((-0.03, 0.0, 0.03)):
         D.member((5.7 + dx, yt + 0.195, 5.15), (5.7 + dx * 1.6, yt + 0.48, 5.15 + 0.01 * k), G.prof_round(0.004, 4), DAN.t(G.hexc("8B3A2A")))
@@ -564,16 +564,16 @@ def offering(kit):
     # vases of lotus and peony
     for x in (5.18, 6.22):
         v = Mesh("vase")
-        v.lathe([(0.06, 0.0), (0.09, 0.05), (0.1, 0.14), (0.07, 0.24), (0.045, 0.3), (0.06, 0.34)], 12, DAN, x, 5.12, yt)
+        v.lathe([(0.0, 0.0), (0.06, 0.0), (0.09, 0.05), (0.1, 0.14), (0.07, 0.24), (0.045, 0.3), (0.052, 0.33), (0.062, 0.34), (0.05, 0.335)], 24, DAN, x, 5.12, yt)
         D.extend(painted(v, G.hexc("F4F6F8")))
         b = Mesh("band")
-        b.lathe([(0.1, 0.1), (0.1, 0.15)], 12, DAN, x, 5.12, yt)
+        b.lathe([(0.0968, 0.1), (0.1006, 0.125), (0.0998, 0.15)], 24, DAN, x, 5.12, yt)
         D.extend(painted(b, G.hexc("3C5FA8")))
         bouquet(Gd, x, yt + 0.33, 5.12)
     # fruit on raised plates (고배): apples, pears, oranges stacked
     for x in (4.9, 6.5):
         p = Mesh("plate")
-        p.lathe([(0.07, 0.0), (0.04, 0.03), (0.035, 0.12), (0.15, 0.15), (0.16, 0.17), (0.0, 0.17)], 10, DAN, x, 5.15, yt)
+        p.lathe([(0.0, 0.0), (0.07, 0.0), (0.04, 0.03), (0.035, 0.12), (0.15, 0.15), (0.16, 0.17), (0.152, 0.172), (0.0, 0.168)], 24, DAN, x, 5.15, yt)
         D.extend(painted(p, G.hexc("B83A2E")))
         fruit_pile(Gd, x, yt + 0.17, 5.15, 11 if x < 5 else 23)
 
@@ -623,8 +623,14 @@ def fruit_pile(m, x, y, z, seed):
             a = 2 * math.pi * i / n + rg.uniform(0, 0.4)
             col, r, sy = kinds[(i + int(dy * 100)) % 3]
             f = Mesh("fruit")
-            f.sphere(x + rr * math.cos(a), y + dy + r * sy, z - rr * math.sin(a), r, DAN, n=8, rings=5, sy=sy)
+            fx, fy, fz = x + rr * math.cos(a), y + dy + r * sy, z - rr * math.sin(a)
+            f.sphere(fx, fy, fz, r, DAN, n=14, rings=9, sy=sy)   # (2026-11-28: 8 x 5 read as faceted balls)
             m.extend(painted(f, col))
+            if col != G.hexc("F08A1C"):
+                # an apple's / a pear's short brown stalk in its dimple
+                st = Mesh("stalk")
+                st.member((fx, fy + r * sy - 0.004, fz), (fx + 0.004, fy + r * sy + 0.014, fz), G.prof_round(0.0022, 5), DAN)
+                m.extend(painted(st, G.hexc("5A3A22")))
 
 
 # ------------------------------------------------------------------------------------------------ side pieces --

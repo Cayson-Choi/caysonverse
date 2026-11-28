@@ -22,6 +22,7 @@ import b1_parts as P
 import b1_room as R
 import cafe_parts as C
 import flora as F
+import props_fine as PF
 from b1_geom import Mesh, S
 
 STAIR = dict(x0=0.0, x1=2.45, z0=3.85, z1=7.8, ax0=0.05, ax1=1.15, bx0=1.25, bx1=2.35, foot=3.9, landing=6.6, risers=20, riser=0.23, tread=0.3)
@@ -394,11 +395,23 @@ def counter(kit, sol):
             C.macaron(Gd, 10.75 + 0.03 * math.cos(k * 2.3), y + 0.02 + (k // 3) * 0.024, 5.7 + 0.03 * math.sin(k * 2.3), cols[k % 5])
     Gd.lathe([(0.0, 0.0), (0.04, 0.0), (0.0, 0.32)], 4, C.BRASS, 10.75, 5.7, y + 0.28) if False else None
     # the till: a small brass-and-oak cash register
+    # (2026-11-28: was an olive brass block behind eight white cubes — read as a box) an oak drawer base; the brass body with a round
+    # top (a half-drum along the till); a cream price flag standing on its crown; three rows of round white key caps on stalks rising toward the
+    # body; the crank on the right
     Gd.cbox(11.35, 11.75, y, y + 0.14, 5.55, 5.95, C.OAK_DK, c=0.01)
-    Gd.cbox(11.38, 11.72, y + 0.14, y + 0.3, 5.7, 5.94, C.BRASS, c=0.01)
-    for k in range(4):
-        for j in range(2):
-            Gd.box(11.42 + k * 0.075, 11.47 + k * 0.075, y + 0.14, y + 0.16, 5.58 + j * 0.05, 5.62 + j * 0.05, C.PAINT)
+    Gd.box(11.5, 11.6, y + 0.06, y + 0.075, 5.548, 5.552, C.BRASS)                     # the drawer pull
+    body = [(-0.12, 0.0), (0.12, 0.0)] + [(0.12 * math.cos(math.pi * i / 12), 0.09 + 0.12 * math.sin(math.pi * i / 12)) for i in range(13)]
+    Gd.member((11.38, y + 0.14, 5.82), (11.72, y + 0.14, 5.82), body, C.BRASS, caps=True)
+    Gd.box(11.47, 11.63, y + 0.345, y + 0.405, 5.808, 5.814, C.PAINT.t(G.hexc("F4EBD6")))   # the price flag on the drum's crown
+    Gd.box(11.46, 11.64, y + 0.335, y + 0.415, 5.814, 5.826, C.OAK_DK)
+    for j in range(3):
+        zk, hk = 5.6 + 0.04 * j, 0.025 + 0.022 * j
+        for k in range(5):
+            xk = 11.41 + k * 0.07
+            Gd.member((xk, y + 0.14, zk), (xk, y + 0.14 + hk, zk), G.prof_round(0.0035, 5), C.BRASS)
+            Gd.lathe([(0.0, 0.0), (0.016, 0.0), (0.017, 0.004), (0.015, 0.008), (0.0, 0.009)], C.seg(14, 10), C.PAINT, xk, zk, y + 0.14 + hk)
+    Gd.tube([(11.72, y + 0.2, 5.82), (11.78, y + 0.2, 5.82), (11.78, y + 0.12, 5.78)], 0.007, 6, C.BRASS)
+    Gd.sphere(11.78, y + 0.115, 5.778, 0.014, C.OAK_DK, n=10, rings=6)
     # a bell and a small vase of tulips at the end
     Gd.lathe([(0.0, 0.0), (0.035, 0.0), (0.035, 0.01), (0.03, 0.03), (0.01, 0.05), (0.008, 0.07), (0.0, 0.075)], 12, C.BRASS, 11.9, 5.65, y)
     vase(Gd, 7.12, y, 5.62, (0.9, 0.35, 0.4))
@@ -419,7 +432,7 @@ def vase(m, x, y, z, flower):
     """A glazed bud vase of three garden roses on real stems with two leaves (flora.py: each bloom built from its petals; before
     2026-11-27 five lathed blobs)."""
     n0 = len(m.polys)
-    m.lathe([(0.0, 0.0), (0.03, 0.0), (0.04, 0.05), (0.025, 0.12), (0.03, 0.14), (0.0, 0.13)], C.seg(12, 8), C.ART, x, z, y)
+    m.lathe([(0.0, 0.0), (0.03, 0.0), (0.04, 0.05), (0.025, 0.12), (0.03, 0.14), (0.0, 0.13)], C.seg(20, 14), C.ART, x, z, y)
     C.glaze(m, n0, (0.36, 0.55, 0.62))
     n1 = len(m.polys)
     lod0, G.LOD = G.LOD, min(G.LOD, 0.6)
@@ -883,21 +896,24 @@ def salon_dress(kit, sol, W, X, Z, H):
     r = sol["centretable_up"]
     cx, cz = (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2
     D.lathe([(0.0, 0.0), (0.09, 0.0), (0.1, 0.03), (0.06, 0.08), (0.045, 0.2), (0.06, 0.32), (0.04, 0.45), (0.05, 0.62), (0.09, 0.7), (0.0, 0.7)],
-            C.seg(20, 10), C.OAK_DK, cx, cz, 0.0)
+            C.seg(24, 16), C.OAK_DK, cx, cz, 0.0)
     for k in range(3):
         a = 2 * math.pi * k / 3 + 0.3
         D.tube([(cx + 0.06 * math.cos(a), 0.12, cz + 0.06 * math.sin(a)), (cx + 0.22 * math.cos(a), 0.05, cz + 0.22 * math.sin(a)),
                 (cx + 0.32 * math.cos(a), 0.015, cz + 0.32 * math.sin(a))], 0.025, C.seg(8, 5), C.OAK_DK)
-    D.lathe([(0.39, 0.0), (0.4, 0.012), (0.4, 0.035), (0.385, 0.045), (0.0, 0.045)], C.seg(36, 18), C.OAK_DK, cx, cz, 0.7)
+    D.lathe([(0.39, 0.0), (0.4, 0.012), (0.4, 0.035), (0.385, 0.045), (0.0, 0.045)], C.seg(48, 32), C.OAK_DK, cx, cz, 0.7)
     n0 = len(D.polys)
-    D.lathe([(0.37, 0.0), (0.37, 0.03), (0.0, 0.03)], C.seg(36, 18), C.ART, cx, cz, 0.745)
+    D.lathe([(0.37, 0.0), (0.37, 0.03), (0.0, 0.03)], C.seg(48, 32), C.ART, cx, cz, 0.745)
     C.planar(D, n0, "marble_round", cx, cz, 0.37)
     if not PHONE:
         centre_bouquet(Gd, cx, 0.775, cz)
     yp = C.plate(Gd, cx + 0.22, 0.775, cz + 0.14, 0.08)
     for i, col in enumerate(((0.96, 0.72, 0.78), (0.78, 0.89, 0.69), (0.96, 0.87, 0.54))):
         C.macaron(Gd, cx + 0.19 + 0.03 * i, yp + 0.008, cz + 0.14 + 0.015 * (i % 2), col)
-    Gd.cbox(cx - 0.3, cx - 0.1, 0.775, 0.8, cz - 0.22, cz - 0.07, S("LM_cafe_fabric", G.hexc("2F4E66")), c=0.004)
+    # two clothbound books, one on the other (2026-11-28: was a 20 x 15 cm dark slab that read as a laptop): cloth boards, a cream
+    # page block, a round spine
+    PF.closed_book(Gd, cx - 0.2, 0.775, cz - 0.145, 0.15, 0.21, 0.032, S("LM_cafe_fabric", G.hexc("2F4E66")), S("LM_cafe_paint", G.hexc("F4EBD6")), yaw=0.35)
+    PF.closed_book(Gd, cx - 0.205, 0.807, cz - 0.15, 0.13, 0.18, 0.024, S("LM_cafe_fabric", G.hexc("7A2E2A")), S("LM_cafe_paint", G.hexc("F4EBD6")), yaw=0.55)
     if PHONE:
         vase(Gd, cx, 0.775, cz, G.hexc("F3B4C2"))
     # the demilune console on the left wall (x = 0): an oak half-moon top on a curved apron and four tapered legs
