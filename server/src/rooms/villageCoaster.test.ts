@@ -5,7 +5,7 @@ import { VillageMsg, VillageServerMsg } from "@caysonverse/shared/village/messag
 import { DROP_CYCLE_MS } from "@caysonverse/shared/land/dropTower";
 import { CAROUSEL_CYCLE_MS, CAROUSEL_SEATS } from "@caysonverse/shared/land/carousel";
 import { WHEEL_BOARD_HALF_MS, WHEEL_REV_MS, WHEEL_STEP_MS, WHEEL_SEATS_PER, boardingSeatsOfWheel } from "@caysonverse/shared/land/wheel";
-import { MOON_END_FIRST, moonSeatCell } from "@caysonverse/shared/land/moonBoat";
+import { MOON_CYCLE_MS, MOON_DWELL_MS, MOON_END_FIRST, MOON_GATE_MS, MOON_UNLOAD_MS, moonSeatCell } from "@caysonverse/shared/land/moonBoat";
 import { VillageCoaster, type CoasterHost } from "./villageCoaster";
 
 const WHEEL_T0 = 1_900_000_000_000 - (1_900_000_000_000 % WHEEL_REV_MS);
@@ -326,7 +326,10 @@ describe("VillageCoaster (server rules)", () => {
   });
   it("the moon boat: the end rows fill first (bow and stern in turn), 가운데 자리 picks the middle, a reservation keeps the choice", () => {
     const r = rig();
-    const MB_T0 = 20 * 130_000 + 8000; // 8 s into a cycle: boarding
+    // the boat's own clock (moonBoat.ts; the cycle grew from 130 s to 150 s with the 30 m boat, 7090a433), not a copied number
+    const MB_T0 = 20 * MOON_CYCLE_MS + 8000; // 8 s into a cycle: boarding
+    expect(8000).toBeGreaterThan(MOON_UNLOAD_MS);
+    expect(8000).toBeLessThan(MOON_DWELL_MS - MOON_GATE_MS);
     r.setNow(MB_T0);
     const rowOf = (seat: number) => moonSeatCell(seat).row;
     for (const sid of ["e0", "e1", "e2", "mid", "late"]) {
@@ -344,17 +347,17 @@ describe("VillageCoaster (server rules)", () => {
     expect(rowOf(r.players.get("e2")!.rideSeat)).toBe(0); // an unknown choice is the default
     expect([3, 4]).toContain(rowOf(r.players.get("mid")!.rideSeat));
     // pressed while the boat swings: the reservation is seated with the same choice when it next loads
-    r.setNow(20 * 130_000 + 60_000);
+    r.setNow(20 * MOON_CYCLE_MS + MOON_DWELL_MS + 20_000); // 20 s into the swing
     r.send("late", VillageMsg.RideBoard, { ride: "moonboat", pref: "middle" });
     expect(r.players.get("late")!.rideSeat).toBe(-1);
-    r.setNow(21 * 130_000 + 8000);
+    r.setNow(21 * MOON_CYCLE_MS + 8000);
     r.coaster.tick(); // puts the last cycle's riders off
     r.coaster.tick();
     expect([3, 4]).toContain(rowOf(r.players.get("late")!.rideSeat));
   });
   it("the moon boat: 32 seats, all handed out once, a rider is put off when the cycle ends", () => {
     const r = rig();
-    const MB_T0 = 20 * 150_000 + 8000; // 8 s into a cycle: boarding
+    const MB_T0 = 20 * MOON_CYCLE_MS + 8000; // 8 s into a cycle: boarding
     r.setNow(MB_T0);
     for (let i = 0; i < 33; i++) {
       r.add(`m${i}`);
@@ -368,7 +371,7 @@ describe("VillageCoaster (server rules)", () => {
     expect(p0.rideSeat).toBe(MOON_END_FIRST[0]);
     expect(new Set(Array.from({ length: 32 }, (_, i) => r.players.get(`m${i}`)!.rideSeat)).size).toBe(32);
     expect(r.players.get("m32")!.rideSeat).toBe(-1); // full
-    r.setNow(20 * 150_000 + 150_000 + 300);
+    r.setNow(21 * MOON_CYCLE_MS + 300);
     r.coaster.tick();
     expect(p0.rideSeat).toBe(-1);
     expect(p0.rideId).toBe(0);

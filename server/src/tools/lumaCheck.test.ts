@@ -270,7 +270,7 @@ describe("expandArg", () => {
   });
 });
 
-describe("e2e/luma-check.mjs CLI", () => {
+describe("e2e/luma-check.mjs CLI", { timeout: 30_000 }, () => { // real node processes: slow only on a loaded machine
   const run = (...args: string[]) => spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8" });
 
   it("passes a bright image (exit 0) and prints mean and p5", () => {
@@ -368,7 +368,7 @@ function splitPng(top: number, bottom: number, w: number, h: number, topRows: nu
   return encodePng({ width: w, height: h, colorType: 2, rows: Array.from({ length: h }, (_, y) => row(y < topRows ? top : bottom)) });
 }
 
-describe("the night bar (--night)", () => {
+describe("the night bar (--night)", { timeout: 30_000 }, () => { // real node processes: slow only on a loaded machine
   const night = () => luma as unknown as NightModule;
   const run = (...args: string[]) => spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8" });
 

@@ -1,5 +1,5 @@
 import { rideScheduleKey } from "@caysonverse/shared/land/rides";
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import config from "@colyseus/tools";
 import { matchMaker } from "colyseus";
@@ -42,6 +42,10 @@ import { APPEARANCE_FIELDS, APPEARANCE_RANGES, DEFAULT_APPEARANCE, pickAppearanc
 import type { Player } from "@caysonverse/shared/schema";
 import { rooms, type VillageRoom } from "./index";
 import type { Tracking } from "./PlayerRoom";
+
+// A real server and real sockets/HTTP: each step takes well under a second alone, but a loaded machine (the whole suite in parallel,
+// other worktrees) has pushed a boot past the 10 s hook default and a round trip past the 5 s test default. A hang still fails.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 /**
  * VillageRoom (케이슨 마을 1단계 Task 2). ONE boot for the whole file, on its own port; vitest runs files in

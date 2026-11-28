@@ -1074,5 +1074,7 @@ describe("the village's files are versioned (a phone must not keep an old villag
     for (const url of [VILLAGE_MODEL_URL, VILLAGE_LIGHTMAP_URL, VILLAGE_NIGHT_LIGHTMAP_URL, SIGNALS_MODEL_URL, BUSSTOP_MODEL_URL]) {
       expect(url).toMatch(/^\/models\/village\/[a-z_]+\.(glb|webp)\?v=[0-9a-f]{10}$/);
     }
-  });
+    // the first import of the two scene components transforms their whole three/R3F tree: half a second alone, past the 5 s
+    // default on a loaded machine
+  }, 30_000);
 });
