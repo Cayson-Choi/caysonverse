@@ -581,7 +581,7 @@ def flower_vase(F, tn=None, kind="hydrangea", h=0.3, glass=False):
     vase_m, vase_tn = ("H_glass", None) if glass else ("H_glaze", (0.94, 0.93, 0.9, 1))
     mouth = 0.045
     lathe(F, 0, 0, 0.0, [(0.0, 0.0), (0.045, 0.0), (0.058, 0.012), (0.068, h * 0.3), (0.066, h * 0.55), (0.052, h * 0.8), (0.042, h * 0.92),
-                         (mouth + 0.004, h), (mouth, h + 0.004), (mouth - 0.006, h - 0.01), (0.0, h * 0.8)], vase_m, 44, tn=vase_tn, keep=True)
+                         (mouth + 0.004, h), (mouth, h + 0.004), (mouth - 0.006, h - 0.01), (0.0, h * 0.8)], vase_m, 36, tn=vase_tn, keep=True)
     rnd = random.Random(int(tn[0] * 100 + tn[1] * 10))
     green = (0.33, 0.5, 0.28, 1)
     if kind == "hydrangea":
@@ -608,7 +608,7 @@ def flower_vase(F, tn=None, kind="hydrangea", h=0.3, glass=False):
             a = k * 1.7
             leaf(F, (math.cos(a) * 0.03, math.sin(a) * 0.03, h + 0.01), (math.cos(a), math.sin(a), 0.35), 0.11, 0.06, droop=0.25, tn=green, segs=4)
         return
-    n = 7 if kind == "tulip" else 6
+    n = 6
     for i in range(n):
         a = i * 2.39996 + rnd.uniform(-0.2, 0.2)
         spread = (0.03 + 0.075 * ((i + 0.5) / n) ** 0.7) * (1.0 if kind == "tulip" else 0.8)
@@ -646,8 +646,8 @@ def coffee_styling(F, tn=None, w=0.5):
     tn = tn or (0.85, 0.7, 0.75, 1)
     rbox(F, -0.2, 0.2, -0.13, 0.13, 0.0, 0.02, "H_wood_oak", r=0.006, seg=1, tn=(0.55, 0.38, 0.25, 1))
     rbox(F, -0.18, 0.18, -0.11, 0.11, 0.004, 0.025, "H_wood_oak", r=0.0, seg=1, tn=(0.6, 0.42, 0.28, 1), skip=("-y",))
-    cyl(F, -0.08, 0.0, 0.02, 0.1, 0.04, "H_paint", segs=24, tn=(0.97, 0.95, 0.9, 1), keep=True)
-    lathe(F, 0.08, 0.0, 0.02, [(0.0, 0.0), (0.035, 0.0), (0.04, 0.05), (0.015, 0.12), (0.02, 0.14), (0.0, 0.14)], "H_glaze", 32, tn=tn, keep=True)
+    cyl(F, -0.08, 0.0, 0.02, 0.1, 0.04, "H_paint", segs=16, tn=(0.97, 0.95, 0.9, 1), keep=True)
+    lathe(F, 0.08, 0.0, 0.02, [(0.0, 0.0), (0.035, 0.0), (0.04, 0.05), (0.015, 0.12), (0.02, 0.14), (0.0, 0.14)], "H_glaze", 24, tn=tn, keep=True)
     for k, (c, dy) in enumerate((((0.3, 0.38, 0.45, 1), 0.0), ((0.88, 0.85, 0.78, 1), 0.035))):
         rbox(F, w / 2 - 0.05 - 0.28, w / 2 - 0.05, -0.12 + 0.01 * k, 0.1 + 0.01 * k, dy, dy + 0.035, "H_paint", r=0.004, seg=1, tn=c) if w > 0.5 else None
 

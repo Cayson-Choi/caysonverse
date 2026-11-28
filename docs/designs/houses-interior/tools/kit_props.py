@@ -27,8 +27,8 @@ def GZ(i):
     return tint(CELLS[i])
 
 
-def ball(F, x, y, z, r, n=20, rings=8):
-    """polish4: 20 sides x 8 rings kept, a little squat like a real apple / orange (polish3's 16 x 6 still read lumpy up close)"""
+def ball(F, x, y, z, r, n=16, rings=7):
+    """polish4: 16 sides x 7 rings kept, a little squat like a real apple / orange (polish3's 16 x 6 still read lumpy up close)"""
     prof = [(r * math.sin(math.pi * k / rings), 0.94 * r * (1.0 - math.cos(math.pi * k / rings))) for k in range(rings + 1)]
     prof[0], prof[-1] = (0.0, 0.0), (0.0, 0.94 * 2 * r)
     lathe(F, x, z, y - r, prof, "H_atlas", n, keep=True)
@@ -59,13 +59,13 @@ PLATE = [(0, 0.0), (0.06, 0.0), (0.065, 0.004), (0.11, 0.022), (0.112, 0.026), (
 
 
 def plate(F):
-    lathe(F, 0, 0, 0.0, PLATE, "H_glaze", 28, tn=GZ(0), keep=True)
+    lathe(F, 0, 0, 0.0, PLATE, "H_glaze", 24, tn=GZ(0), keep=True)
 
 
 def plates_stack(F):
     t = GZ(0)
     for k in range(3):
-        lathe(F, 0, 0, k * 0.013, PLATE, "H_glaze", 24, tn=t, keep=True)
+        lathe(F, 0, 0, k * 0.013, PLATE, "H_glaze", 20, tn=t, keep=True)
 
 
 def bowl_p(F):
@@ -74,7 +74,7 @@ def bowl_p(F):
 
 
 def fruit_bowl(F):
-    lathe(F, 0, 0, 0.0, [(0, 0.0), (0.05, 0.0), (0.12, 0.05), (0.13, 0.06), (0.125, 0.062), (0.05, 0.012), (0, 0.01)], "H_glaze", 36, tn=GZ(24), keep=True)
+    lathe(F, 0, 0, 0.0, [(0, 0.0), (0.05, 0.0), (0.12, 0.05), (0.13, 0.06), (0.125, 0.062), (0.05, 0.012), (0, 0.01)], "H_glaze", 24, tn=GZ(24), keep=True)
     for (c, x, z, y, r) in ((8, -0.04, 0.0, 0.012, 0.035), (10, 0.04, 0.02, 0.012, 0.03), (9, 0.0, -0.045, 0.014, 0.033), (11, 0.012, 0.0, 0.05, 0.03)):
         C(c)
         ball(F, x, y + r, z, r)
@@ -82,7 +82,7 @@ def fruit_bowl(F):
 
 def mug_p(F):
     t = GZ(0)
-    lathe(F, 0, 0, 0.0, [(0, 0.0), (0.036, 0.0), (0.04, 0.004), (0.042, 0.095), (0.036, 0.095), (0.035, 0.01), (0, 0.008)], "H_glaze", 28, tn=t, keep=True)
+    lathe(F, 0, 0, 0.0, [(0, 0.0), (0.036, 0.0), (0.04, 0.004), (0.042, 0.095), (0.036, 0.095), (0.035, 0.01), (0, 0.008)], "H_glaze", 24, tn=t, keep=True)
     tube(F, [(0.04, 0, 0.075), (0.065, 0, 0.07), (0.065, 0, 0.03), (0.04, 0, 0.02)], 0.005, "H_glaze", 6, tn=t, caps=False)
 
 
@@ -96,7 +96,7 @@ def teacup(F):
 
 def teapot(F):
     t = GZ(0)
-    lathe(F, 0, 0, 0.0, [(0, 0.0), (0.05, 0.0), (0.066, 0.015), (0.075, 0.04), (0.075, 0.07), (0.062, 0.088), (0.045, 0.095), (0.0, 0.1)], "H_glaze", 26,
+    lathe(F, 0, 0, 0.0, [(0, 0.0), (0.05, 0.0), (0.066, 0.015), (0.075, 0.04), (0.075, 0.07), (0.062, 0.088), (0.045, 0.095), (0.0, 0.1)], "H_glaze", 22,
           tn=t, keep=True)
     lathe(F, 0, 0, 0.1, [(0, 0.0), (0.012, 0.0), (0.014, 0.015), (0, 0.02)], "H_glaze", 16, tn=t, keep=True)
     tube(F, [(0.07, 0, 0.1), (0.12, 0, 0.1), (0.125, 0, 0.05), (0.075, 0, 0.045)], 0.007, "H_glaze", 8, tn=t, caps=False)
@@ -165,7 +165,7 @@ def candle(F):
 
 def vase_small(F):
     lathe(F, 0, 0, 0.0, [(0, 0.0), (0.04, 0.0), (0.058, 0.025), (0.07, 0.06), (0.07, 0.1), (0.056, 0.135), (0.04, 0.16), (0.025, 0.2), (0.03, 0.22),
-                         (0.024, 0.215), (0, 0.18)], "H_glaze", 40, tn=GZ(13), keep=True)
+                         (0.024, 0.215), (0, 0.18)], "H_glaze", 28, tn=GZ(13), keep=True)
 
 
 def leaf_pot(F):
