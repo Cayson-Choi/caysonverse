@@ -27,10 +27,11 @@ export interface PathPlantMove {
 }
 
 export const PATH_PLANT_MOVES: ReadonlyArray<PathPlantMove> = Object.freeze([
-  // the nw lane to the temple (lane_plot_nw): the tree in the middle of the cobbles and the two shrubs on its edge
-  { id: "tree_44", kind: "tree", from: { x: -31.37, z: -30.39 }, to: { x: -29.27, z: -31.51 }, box: { minX: -31.62, maxX: -31.12, minZ: -30.64, maxZ: -30.14 } },
-  // the ne lane (lane_plot_ne) to the chapel: its mirror
-  { id: "tree_37", kind: "tree", from: { x: 31.37, z: -30.39 }, to: { x: 30.47, z: -30.99 }, box: { minX: 31.12, maxX: 31.62, minZ: -30.64, maxZ: -30.14 } },
+  // the nw lane to the temple (lane_plot_nw): the tree in the middle of the cobbles and the two shrubs on its edge. 2026-11-28: on
+  // between the lane and house 9's front walk (x -31), which leaves the lane there (>= 1.4 m off both)
+  { id: "tree_44", kind: "tree", from: { x: -31.37, z: -30.39 }, to: { x: -28.3, z: -34.5 }, box: { minX: -31.62, maxX: -31.12, minZ: -30.64, maxZ: -30.14 } },
+  // the ne lane (lane_plot_ne) to the chapel: its mirror (house 7's walk, x 31)
+  { id: "tree_37", kind: "tree", from: { x: 31.37, z: -30.39 }, to: { x: 28.3, z: -34.5 }, box: { minX: 31.12, maxX: 31.62, minZ: -30.64, maxZ: -30.14 } },
   // the sidewalk's outer edge by the bridge lane: the cherry whose trunk stood 35 cm inside the paving
   { id: "tree_11", kind: "tree", from: { x: -13.5, z: 36 }, to: { x: -14.15, z: 37.74 }, box: { minX: -13.75, maxX: -13.25, minZ: 35.75, maxZ: 36.25 } },
 ]);

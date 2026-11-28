@@ -9,10 +9,18 @@
 //    lot's front edge), corners rounded, with a low granite edging (7 cm over the grass, chamfered) on both sides;
 //  - every crossing gets a connector straight along the radius and as wide as the zebra (4.6 m for 4 m of stripes), the verge's
 //    two curbs dropped where it crosses.
+//  - 2026-11-28 (owner, the library: "도서관 문에 맞게 도로가 연결되어야 이쁘지"): every lane ends straight and centred on its
+//    door, flush with the step; every house and the café get a front walk the same way (a second-row house's leaves the side
+//    of the nearest paving, `start`), and the gate's forecourt a walk from the footbridge round the fountain to the arch. Where
+//    one walk joins another neither edging crosses the join (edgingRuns).
 // The texture is the village's own world-planar mapping (u = x / 2, v = z / 2 + 1), so the cobbles run on across every join; the
-// light-map coordinates come from the old triangles (barycentric where they covered the spot, the nearest vertex beyond).
+// light-map coordinates come from the old triangles (barycentric where they covered the spot, the nearest vertex beyond; the
+// house walks read one open spot, OPEN_WALK_LIGHT).
 
 import { BufferAttribute, BufferGeometry, Uint16BufferAttribute, Uint32BufferAttribute, type Material, type Mesh, type Object3D } from "three";
+import { houseLocalToWorld, porchStairsLocal } from "@caysonverse/shared/village/houseExterior";
+import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
+import { TRIM_KEEP_FROM } from "../street/streetTrim";
 
 export interface P2 {
   x: number;
@@ -46,25 +54,163 @@ export interface LaneSpec {
   trim: number;
   /** The line the ribbon ends on: keep points with `a*x + b*z <= c`. */
   end: { a: number; b: number; c: number };
+  /** The cobble's width (m); default LANE_WIDTH. A house's front walk is a little wider than its door (2.4 m). */
+  width?: number;
+  /**
+   * A walk that does not start on the ring's sidewalk (a house's walk joining a lane or another walk): the ribbon starts where
+   * `a*x + b*z >= c` (a few cm inside the other paving), and the ring's curb is left alone.
+   */
+  start?: { a: number; b: number; c: number };
+  /** Where the cobble's baked light is read: the old lane strip under each spot (default) or one spot in open sun (a house's walk). */
+  light?: "lane" | "open";
 }
 
 /**
- * The six lanes (villageLayout.ts lanes lane_plot_*, lane_bridge) to their doors (villageLots.ts `approach`): the first point
- * of each is the lane's own start on the ring's inner side, the ribbon begins where its edges cross the sidewalk's outer circle.
+ * Where a house's front walk reads its baked light: one spot in the middle of an old lane strip (the west lane's, between the
+ * ring and the library, where the redrawn lane's cobble reads too), the same for every vertex, so the walks and the lanes wear
+ * one tone. The baked strips ran nowhere near most houses: a vertex's nearest old strip vertex can be 20 m away, in a wall's or
+ * a tree's baked shade (the south lane's, between the church walls, is blue-grey).
+ */
+export const OPEN_WALK_LIGHT: P2 = { x: -40, z: 12.07 };
+
+/** A lane's cobble width. */
+export const laneWidth = (spec: Pick<LaneSpec, "width">): number => spec.width ?? LANE_WIDTH;
+
+/** A house's front steps: the bottom tread's front edge at the door's centre line, the way out of the door, the steps' half width. */
+export function houseSteps(id: string): { step: P2; out: P2; half: number } {
+  const h = VILLAGE_LAYOUT.sceneryHouses.find((x) => x.id === id);
+  if (!h) throw new Error(`no house ${id}`);
+  const st = porchStairsLocal(id);
+  const step = houseLocalToWorld(h, 0, st.z1);
+  const o = houseLocalToWorld(h, 0, st.z1 + 1);
+  return { step, out: { x: o.x - step.x, z: o.z - step.z }, half: (st.x1 - st.x0) / 2 };
+}
+
+/** The houses' front walks: a little wider than the 1.8 m door, never wider than the steps. */
+export const HOUSE_WALK_WIDTH = 2.4;
+/** How far (m) a walk's end tucks under the bottom tread or a terrace's edge (no sliver of grass at the threshold). */
+export const THRESHOLD_TUCK = 0.03;
+
+/** The line a walk heading INTO a door ends on: `step` is the threshold's centre, `out` the way out of the door. */
+const endAt = (step: P2, out: P2, tuck = THRESHOLD_TUCK): LaneSpec["end"] => ({ a: -out.x, b: -out.z, c: -(out.x * step.x + out.z * step.z) + tuck });
+
+/** A walk straight out of a door (`step`, `out`) to the ring's sidewalk (the door's line crosses the sidewalk within `reach` m). */
+function doorToRing(id: string, step: P2, out: P2, reach: number): LaneSpec {
+  return {
+    id,
+    points: [{ x: step.x + out.x * reach, z: step.z + out.z * reach }, { x: step.x - out.x * 0.5, z: step.z - out.z * 0.5 }],
+    trim: 1,
+    end: endAt(step, out),
+    width: HOUSE_WALK_WIDTH,
+    light: "open",
+  };
+}
+const houseToRing = (id: string, reach: number): LaneSpec => {
+  const { step, out } = houseSteps(id);
+  return doorToRing(`walk_${id}`, step, out, reach);
+};
+
+/**
+ * The start line of a walk that leaves the side of another straight piece of paving (from `a` to `b`, `half` m wide) towards
+ * `toward`: the paving's edge on that side, 5 cm inside it (the walk's cobble tucks under the edge, no sliver of grass).
+ */
+function sideStart(a: P2, b: P2, half: number, toward: P2): NonNullable<LaneSpec["start"]> {
+  const l = Math.hypot(b.x - a.x, b.z - a.z);
+  let nx = (b.z - a.z) / l;
+  let nz = -(b.x - a.x) / l;
+  if (nx * (toward.x - a.x) + nz * (toward.z - a.z) < 0) {
+    nx = -nx;
+    nz = -nz;
+  }
+  return { a: nx, b: nz, c: nx * a.x + nz * a.z + half - 0.05 };
+}
+
+/** Where a straight piece of paving (a to b) crosses the line x = `x` (or z = `z`). */
+function onLeg(a: P2, b: P2, at: { x: number } | { z: number }): P2 {
+  const t = "x" in at ? (at.x - a.x) / (b.x - a.x) : (at.z - a.z) / (b.z - a.z);
+  return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
+}
+
+/**
+ * A house's walk that leaves the side of a straight piece of paving (a to b, `half` m wide) where that crosses the line `at`, turns
+ * at the `via` corners and runs on to its door.
+ */
+function houseOffLeg(id: string, a: P2, b: P2, half: number, at: { x: number } | { z: number }, via: readonly P2[] = [], trim = 1): LaneSpec {
+  const { step, out } = houseSteps(id);
+  return {
+    id: `walk_${id}`,
+    points: [onLeg(a, b, at), ...via, { x: step.x - out.x * 0.5, z: step.z - out.z * 0.5 }],
+    trim,
+    start: sideStart(a, b, half, via[0] ?? step),
+    end: endAt(step, out),
+    width: HOUSE_WALK_WIDTH,
+    light: "open",
+  };
+}
+
+/**
+ * The lanes to the lot buildings' doors (villageLots.ts: each door's centre line, `approach` on the lot's front edge) and the houses'
+ * front walks (owner 2026-11-28, the library: "도서관 문에 맞게 도로가 연결되어야 이쁘지" — every path ends straight on its door,
+ * centred, flush with the step). A lane's first point is its own start on the ring's inner side: the ribbon begins where its edges
+ * cross the sidewalk's outer circle; a walk with a `start` leaves the side of other paving. Each ends straight on its door's centre line.
  */
 export const LANES: readonly LaneSpec[] = [
   // north: to the memorial forecourt's front (z -47.5), straight
   { id: "n", points: [{ x: 0, z: -30 }, { x: 0, z: -52 }], trim: 1, end: { a: 0, b: -1, c: 47.5 } },
-  // north-east: the lane's own heading to (38.5, -33), then to the chapel's door line (x 40, z -37)
-  { id: "ne", points: [{ x: 24.72, z: -16.99 }, { x: 37.2, z: -36.7 }, { x: 42, z: -36.7 }], trim: 3.2, end: { a: 1, b: 0, c: 40.2 } },
+  // north-east / north-west: the lane's own heading, then onto the chapel's / the temple gate's door line (z -37) to the stone
+  // forecourt (x 40.2 / -39.6). The chapel's used to end on z -36.7, 30 cm off its door; its first leg keeps its heading (the
+  // moved tree_37, shared/village/pathPlants.ts, stays clear of it)
+  { id: "ne", points: [{ x: 24.72, z: -16.99 }, { x: 37.39, z: -37 }, { x: 44, z: -37 }], trim: 2.4, end: { a: 1, b: 0, c: 40.2 } },
   { id: "nw", points: [{ x: -24.72, z: -16.99 }, { x: -35.2, z: -37 }, { x: -42, z: -37 }], trim: 3.2, end: { a: -1, b: 0, c: 39.6 } },
-  // east / west: to the school's and the library's gates (z 15)
-  { id: "e", points: [{ x: 28.98, z: 7.76 }, { x: 47.5, z: 15 }, { x: 52, z: 16.8 }], trim: 1, end: { a: 1, b: 0, c: 49.2 } },
-  { id: "w", points: [{ x: -28.98, z: 7.76 }, { x: -47.5, z: 15 }, { x: -54, z: 17.6 }], trim: 1, end: { a: -1, b: 0, c: 52.4 } },
-  // south: to the church's front (z 50)
-  { id: "s", points: [{ x: 0, z: 30 }, { x: 0, z: 52 }], trim: 1, end: { a: 0, b: 1, c: 50 } },
+  // east / west: the lane's own heading to its corner on the door line (z 15), then straight along it. The old ribbons kept the
+  // heading past the corner (to z 16.8 / 17.6) and met the fronts 0.7 m / 2 m left of the doors: the library's half on its wall
+  // and bay window. The corner keeps its place (the trees and shrubs beside the first leg stay clear of it).
+  // east: through the schoolyard's gate (the fence's 5.2 m opening, x 48.5) on across the yard to the porch's stone step (x 58.8)
+  { id: "e", points: [{ x: 28.98, z: 7.76 }, { x: 47.5, z: 15 }, { x: 62, z: 15 }], trim: 1.5, end: { a: 1, b: 0, c: 58.8 + THRESHOLD_TUCK } },
+  // west: to the library's entrance, between the topiaries' planters (x -52.4)
+  { id: "w", points: [{ x: -28.98, z: 7.76 }, { x: -47.5, z: 15 }, { x: -56, z: 15 }], trim: 1.5, end: { a: -1, b: 0, c: 52.4 } },
+  // south: to the church porch's stone step (z 53.2); it stopped 3 m short on the lawn
+  { id: "s", points: [{ x: 0, z: 30 }, { x: 0, z: 56 }], trim: 1, end: { a: 0, b: 1, c: 53.2 + THRESHOLD_TUCK } },
   // bridge lane: its own two legs with the corner rounded, to the bridge's foot (z 72)
   { id: "bridge", points: [{ x: -11, z: 27.91 }, { x: -24, z: 46 }, { x: -24, z: 74 }], trim: 7, end: { a: 0, b: 1, c: 72 } },
+  // the houses that face the ring: straight out of the door to the sidewalk
+  houseToRing("house_1", 7),
+  houseToRing("house_2", 7),
+  houseToRing("house_3", 9.5),
+  houseToRing("house_5", 5.5),
+  houseToRing("house_10", 8.5),
+  // the café: straight out of its door (z -15.1) to the terrace deck's front edge (x 40.6, the planters' line; the 3 cm deck is
+  // walkable to the door), the cobble tucked under it
+  doorToRing("walk_cafe", { x: 40.6, z: -15.1 }, { x: -1, z: 0 }, 6.5),
+  // the second-row houses and house 4 leave the side of the nearest paving (a T) and run straight to their doors:
+  // house 4 (its door's line would cross house 10's walk) off house 10's walk
+  houseOffLeg("house_4", houseSteps("house_10").step, { x: -26, z: 26.4 }, HOUSE_WALK_WIDTH / 2, { x: -32.4 }),
+  // house 7 / 9 behind house 1 / 2: off the chapel's / the temple's lane (its first leg), past house 1's / 2's side
+  houseOffLeg("house_7", { x: 24.72, z: -16.99 }, { x: 37.39, z: -37 }, LANE_WIDTH / 2, { x: 31 }),
+  houseOffLeg("house_9", { x: -24.72, z: -16.99 }, { x: -35.2, z: -37 }, LANE_WIDTH / 2, { x: -31 }),
+  // house 6 behind house 3: off house 3's walk (z 29.5), along the lawn north of house 3 and round to its door
+  houseOffLeg("house_6", { x: 29, z: 20 }, houseSteps("house_3").step, HOUSE_WALK_WIDTH / 2, { z: 29.5 }, [{ x: 42, z: 29.5 }], 2.2),
+  // house 8 behind house 4: off house 4's walk (z 33.6, between house 10's side and house 4's front), along house 4's front, round its corner and to the door
+  houseOffLeg("house_8", { x: -32.4, z: 26.4 }, houseSteps("house_4").step, HOUSE_WALK_WIDTH / 2, { z: 33.6 }, [{ x: -40.6, z: 33.6 }, { x: -40.6, z: 40.6 }], 2),
+  // 케이슨랜드's gate: from the footbridge's south end (z 78) to the fountain's flagstone ring (r 2.5 round (-24, 88.225); the
+  // cobble tucks under the ring where its chord is the walk's width), and on from the ring through the arch to the gate's leaves
+  // (z 94.6; the queue's stanchions stand on it)
+  {
+    id: "gate_n",
+    points: [{ x: -24, z: 76 }, { x: -24, z: 88 }],
+    trim: 1,
+    start: { a: 0, b: 1, c: 78 - 0.05 },
+    end: { a: 0, b: 1, c: 88.225 - 2 + 0.02 },
+    light: "open",
+  },
+  {
+    id: "gate_s",
+    points: [{ x: -24, z: 89 }, { x: -24, z: 97 }],
+    trim: 1,
+    start: { a: 0, b: 1, c: 88.225 + 2 - 0.02 },
+    end: { a: 0, b: 1, c: 94.6 + THRESHOLD_TUCK },
+    light: "open",
+  },
 ];
 
 /** The seven crossings' centres on the ring (rad, atan2(z, x)): the middle of each zebra's road-texture patch (LM_road_x). */
@@ -220,15 +366,19 @@ export interface LaneShape {
 }
 
 export function laneShape(spec: LaneSpec): LaneShape {
-  // the first point lies inside the ring, so each edge crosses the sidewalk's circle once
+  // a ring lane's first point lies inside the ring, so each edge crosses the sidewalk's circle once; a joining walk's first point
+  // lies on the other paving, before its start line
   const centre = smoothPolyline(spec.points, spec.trim, 0.5);
-  const half = LANE_WIDTH / 2;
+  const half = laneWidth(spec) / 2;
   const endF = (p: P2): number => spec.end.a * p.x + spec.end.b * p.z - spec.end.c;
   const ringF = (r: number) => (p: P2): number => Math.hypot(p.x, p.z) - r;
-  const build = (d: number, r: number): P2[] => clipEnd(clipStart(offsetLine(centre, d), ringF(r)), endF);
-  const { left, right } = clipPair(offsetLine(centre, half), offsetLine(centre, -half), ringF(SIDEWALK_OUT_R), endF);
-  const edgeLeft = build(half, SIDEWALK_OUT_R + 0.1);
-  const edgeRight = build(-half, SIDEWALK_OUT_R + 0.1);
+  const st = spec.start;
+  const startF = st ? (p: P2): number => st.a * p.x + st.b * p.z - st.c : ringF(SIDEWALK_OUT_R);
+  const edgeStartF = st ? startF : ringF(SIDEWALK_OUT_R + 0.1);
+  const build = (d: number): P2[] => clipEnd(clipStart(offsetLine(centre, d), edgeStartF), endF);
+  const { left, right } = clipPair(offsetLine(centre, half), offsetLine(centre, -half), startF, endF);
+  const edgeLeft = build(half);
+  const edgeRight = build(-half);
   return {
     left,
     right,
@@ -238,24 +388,53 @@ export function laneShape(spec: LaneSpec): LaneShape {
   };
 }
 
+/** The cobble's own centreline (the middle of each row, start line to end line) and its half width. */
+export function laneCobble(spec: LaneSpec): { mid: P2[]; half: number } {
+  const s = laneShape(spec);
+  return { mid: s.left.map((l, i) => ({ x: (l.x + s.right[i].x) / 2, z: (l.z + s.right[i].z) / 2 })), half: laneWidth(spec) / 2 };
+}
+
+/** Distance (m) from a spot to a polyline. */
+export function polylineDistance(line: readonly P2[], x: number, z: number): number {
+  let best = Infinity;
+  for (let i = 1; i < line.length; i++) {
+    const dx = line[i].x - line[i - 1].x;
+    const dz = line[i].z - line[i - 1].z;
+    const l2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - line[i - 1].x) * dx + (z - line[i - 1].z) * dz) / l2));
+    best = Math.min(best, Math.hypot(x - line[i - 1].x - dx * t, z - line[i - 1].z - dz * t));
+  }
+  return best;
+}
+
+/**
+ * An edging line cut where it runs over another lane's cobble (a walk joining a lane: neither the lane's kerb across the join nor
+ * the walk's kerb inside the lane): the runs of samples that stay off every other cobble (8 cm of slack for the stone's width).
+ */
+export function edgingRuns(line: readonly P2[], others: ReadonlyArray<{ mid: P2[]; half: number }>): P2[][] {
+  const runs: P2[][] = [];
+  let cur: P2[] = [];
+  for (const p of line) {
+    const covered = others.some((o) => o.mid.length > 1 && polylineDistance(o.mid, p.x, p.z) < o.half + 0.08);
+    if (covered) {
+      if (cur.length > 1) runs.push(cur);
+      cur = [];
+    } else cur.push(p);
+  }
+  if (cur.length > 1) runs.push(cur);
+  return runs;
+}
+
 // ───────────────────────────────────────────── what stands clear of them ─────────────────────────────────────────────
 
-let laneCentres: P2[][] | null = null;
+let laneCentres: Array<{ c: P2[]; half: number }> | null = null;
 
 /** Distance (m) from a spot to the nearest lane's edging outer face (negative: on the lane or its edging). */
 export function laneClearance(x: number, z: number): number {
-  laneCentres ??= LANES.map((l) => laneShape(l).centre);
+  laneCentres ??= LANES.map((l) => ({ c: laneShape(l).centre, half: laneWidth(l) / 2 }));
   let best = Infinity;
-  for (const c of laneCentres) {
-    for (let i = 1; i < c.length; i++) {
-      const dx = c[i].x - c[i - 1].x;
-      const dz = c[i].z - c[i - 1].z;
-      const l2 = dx * dx + dz * dz || 1;
-      const t = Math.max(0, Math.min(1, ((x - c[i - 1].x) * dx + (z - c[i - 1].z) * dz) / l2));
-      best = Math.min(best, Math.hypot(x - c[i - 1].x - dx * t, z - c[i - 1].z - dz * t));
-    }
-  }
-  return best - (LANE_WIDTH / 2 + EDGE_PROFILE[EDGE_PROFILE.length - 1][0]);
+  for (const { c, half } of laneCentres) best = Math.min(best, polylineDistance(c, x, z) - half);
+  return best - EDGE_PROFILE[EDGE_PROFILE.length - 1][0];
 }
 
 // ───────────────────────────────────────────── triangles ─────────────────────────────────────────────
@@ -314,13 +493,18 @@ export class TriBuilder {
 export const walkUv = (x: number, z: number): [number, number] => [x / 2, z / 2 + 1];
 
 /** The cobble ribbon between two edges. */
-export function addRibbon(b: TriBuilder, left: readonly P2[], right: readonly P2[], y = WALK_Y): void {
-  const rows: Array<[number, number]> = left.map((l, i) => {
-    const r = right[i];
-    const [lu, lv] = walkUv(l.x, l.z);
-    const [ru, rv] = walkUv(r.x, r.z);
-    return [b.add({ x: l.x, y, z: l.z, nx: 0, ny: 1, nz: 0, u: lu, v: lv }), b.add({ x: r.x, y, z: r.z, nx: 0, ny: 1, nz: 0, u: ru, v: rv })];
-  });
+export function addRibbon(
+  b: TriBuilder,
+  left: readonly P2[],
+  right: readonly P2[],
+  y = WALK_Y,
+  light?: (p: P2) => { sx: number; sz: number; group: number },
+): void {
+  const vert = (p: P2): number => {
+    const [u, v] = walkUv(p.x, p.z);
+    return b.add({ x: p.x, y, z: p.z, nx: 0, ny: 1, nz: 0, u, v, ...(light ? light(p) : {}) });
+  };
+  const rows: Array<[number, number]> = left.map((l, i) => [vert(l), vert(right[i])]);
   for (let i = 0; i + 1 < rows.length; i++) b.quad(rows[i][0], rows[i][1], rows[i + 1][0], rows[i + 1][1]);
 }
 
@@ -428,6 +612,7 @@ export function isOldWalkTri(vy: readonly number[], cx: number, cz: number): "la
 
 /** Does the ring's outer curb triangle (all vertices low, at the sidewalk's edge) sit in a lane's opening? */
 export function inLaneOpening(spec: LaneSpec, vs: ReadonlyArray<readonly [number, number, number]>): boolean {
+  if (spec.start) return false; // a joining walk does not cross the ring's curb
   const cx = (vs[0][0] + vs[1][0] + vs[2][0]) / 3;
   const cz = (vs[0][2] + vs[1][2] + vs[2][2]) / 3;
   const r = Math.hypot(cx, cz);
@@ -435,7 +620,7 @@ export function inLaneOpening(spec: LaneSpec, vs: ReadonlyArray<readonly [number
   if (vs.some((v) => v[1] > 0.1)) return false;
   return vs.some((v) => {
     const f = laneFrame(spec, v[0], v[2]);
-    return Math.abs(f.lat) < LANE_WIDTH / 2 + 0.02 && f.along > 0;
+    return Math.abs(f.lat) < laneWidth(spec) / 2 + 0.02 && f.along > 0;
   });
 }
 
@@ -553,7 +738,11 @@ export function editGeometry(geo: BufferGeometry, edit: GeometryEdit): BufferGeo
   const kept: number[] = [];
   for (let t = 0; t < idx.count; t += 3) if (!edit.drop.has(t)) kept.push(idx.getX(t), idx.getX(t + 1), idx.getX(t + 2));
   for (const i of edit.add.index) kept.push(pos.count + i);
+  const keepFrom = kept.length / 3 - edit.add.index.length / 3;
   out.setIndex(total > 65535 ? new Uint32BufferAttribute(kept, 1) : new Uint16BufferAttribute(kept, 1));
+  // the new triangles stay whatever a later trim of old pieces covers (housesPrep.ts cutOldHouses: the old porches' cut reaches
+  // past the new steps, over the front walks' edging)
+  out.userData[TRIM_KEEP_FROM] = keepFrom;
   out.computeBoundingBox();
   out.computeBoundingSphere();
   return out;
@@ -618,11 +807,13 @@ export function patchGroundPaths(root: Object3D): { stats: GroundPatchStats; res
   }
   const wb = new TriBuilder();
   const sb = new TriBuilder();
-  const shapes = LANES.map((l) => ({ spec: l, shape: laneShape(l) }));
-  for (const { shape } of shapes) {
-    addRibbon(wb, shape.left, shape.right);
-    addEdging(sb, shape.edgeLeft, 1);
-    addEdging(sb, shape.edgeRight, -1);
+  const shapes = LANES.map((l) => ({ spec: l, shape: laneShape(l), cobble: laneCobble(l) }));
+  const openLight = (): { sx: number; sz: number; group: number } => ({ sx: OPEN_WALK_LIGHT.x, sz: OPEN_WALK_LIGHT.z, group: 0 });
+  for (const { spec, shape } of shapes) {
+    const others = shapes.filter((o) => o.spec !== spec).map((o) => o.cobble);
+    addRibbon(wb, shape.left, shape.right, WALK_Y, spec.light === "open" ? openLight : undefined);
+    for (const run of edgingRuns(shape.edgeLeft, others)) addEdging(sb, run, 1);
+    for (const run of edgingRuns(shape.edgeRight, others)) addEdging(sb, run, -1);
     stats.lanesDrawn++;
   }
   for (const a of CROSSING_ANGLES) {

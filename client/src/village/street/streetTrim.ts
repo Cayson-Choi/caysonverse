@@ -73,6 +73,9 @@ export function oldFootprints(): Footprint[] {
   return out;
 }
 
+/** `geometry.userData` key: the first triangle a trim keeps whatever it covers (it and every later one). */
+export const TRIM_KEEP_FROM = "trimKeepFrom";
+
 const va = new Vector3();
 const vb = new Vector3();
 const vc = new Vector3();
@@ -98,9 +101,17 @@ export function trimMesh(mesh: Mesh, feet: readonly Footprint[]): { geometry: Bu
   const kept: number[] = [];
   const newGroups: Array<{ start: number; count: number; materialIndex: number }> = [];
   let removed = 0;
+  // the triangles another patch built new on the end of this geometry (the ground paths' edging, groundPaths.ts TRIM_KEEP_FROM):
+  // drawn for the game as it is now, never part of what a trim takes out
+  const keepFrom = (geo.userData[TRIM_KEEP_FROM] as number | undefined) ?? Infinity;
+  let removedBefore = 0;
   for (const g of groups) {
     const start = kept.length;
     for (let t = g.start / 3; t < (g.start + g.count) / 3; t++) {
+      if (t >= keepFrom) {
+        kept.push(get(t, 0), get(t, 1), get(t, 2));
+        continue;
+      }
       const a = get(t, 0);
       const b = get(t, 1);
       const c = get(t, 2);
@@ -118,8 +129,10 @@ export function trimMesh(mesh: Mesh, feet: readonly Footprint[]): { geometry: Bu
           }
         }
       }
-      if (drop) removed++;
-      else kept.push(a, b, c);
+      if (drop) {
+        removed++;
+        removedBefore++;
+      } else kept.push(a, b, c);
     }
     newGroups.push({ start, count: kept.length - start, materialIndex: g.materialIndex ?? 0 });
   }
@@ -130,6 +143,7 @@ export function trimMesh(mesh: Mesh, feet: readonly Footprint[]): { geometry: Bu
   if (geo.groups.length > 0) for (const g of newGroups) out.addGroup(g.start, g.count, g.materialIndex);
   out.boundingSphere = geo.boundingSphere?.clone() ?? null;
   out.boundingBox = geo.boundingBox?.clone() ?? null;
+  if (Number.isFinite(keepFrom)) out.userData[TRIM_KEEP_FROM] = keepFrom - removedBefore;
   return { geometry: out, removed };
 }
 

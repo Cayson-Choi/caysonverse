@@ -148,7 +148,11 @@ function plantSpots(): Array<{ what: string; x: number; z: number; need: number 
 
 describe("nothing grows on a paved surface (lanes, ring road and sidewalk, bus pad, bridge, doorsteps)", () => {
   it("every tree trunk keeps 0.8 m off the paving; every shrub and meadow tuft stays off it", () => {
+    // (a meadow patch is no plant: the game reads its tufts and wild flowers card by card, villageVegetation.ts, and moves every
+    // card on the paving to the grass beside it, floraOffPaving.ts; a patch whose middle a house's front walk now crosses splits
+    // to either side of it, 2026-11-28)
     const bad = plantSpots()
+      .filter((p) => !/^inst__meadow/.test(p.what))
       .filter((p) => !inPlaza(p.x, p.z) && pavedClearance(p.x, p.z) < p.need - 1e-6)
       .map((p) => `${p.what} (${p.x.toFixed(2)}, ${p.z.toFixed(2)}) clear ${pavedClearance(p.x, p.z).toFixed(2)} < ${p.need}`);
     expect(bad).toEqual([]);

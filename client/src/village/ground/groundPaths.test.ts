@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import { BufferAttribute, BufferGeometry, Uint16BufferAttribute } from "three";
 import { wornEdges, noise2, clipAtSidewalk, MOUTH_R } from "../../lake/lakeTrailEdge";
 import { wearPixels } from "./roadPaint";
+import { VILLAGE_LOTS, lotDoorPoint } from "@caysonverse/shared/village/villageLots";
+import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { TRIM_KEEP_FROM, trimMesh } from "../street/streetTrim";
+import { Mesh } from "three";
 import {
   CONNECTOR_HALF_W,
   CROSSING_ANGLES,
   EDGE_PROFILE,
   LANES,
-  LANE_WIDTH,
   SIDEWALK_OUT_R,
   TriBuilder,
   addConnector,
@@ -18,7 +21,12 @@ import {
   inLaneOpening,
   isOldWalkTri,
   laneClearance,
+  laneCobble,
   laneShape,
+  laneWidth,
+  edgingRuns,
+  houseSteps,
+  polylineDistance,
   smoothPolyline,
   walkUv,
 } from "./groundPaths";
@@ -27,7 +35,11 @@ describe("lanes", () => {
   it("each ribbon starts on the sidewalk's circle and ends on its lot's line", () => {
     for (const l of LANES) {
       const s = laneShape(l);
-      for (const p of [s.left[0], s.right[0]]) expect(Math.hypot(p.x, p.z)).toBeCloseTo(SIDEWALK_OUT_R, 1);
+      const st = l.start;
+      for (const p of [s.left[0], s.right[0]]) {
+        if (st) expect(st.a * p.x + st.b * p.z).toBeCloseTo(st.c, 3);
+        else expect(Math.hypot(p.x, p.z)).toBeCloseTo(SIDEWALK_OUT_R, 1);
+      }
       for (const p of [s.left[s.left.length - 1], s.right[s.right.length - 1]]) expect(l.end.a * p.x + l.end.b * p.z).toBeCloseTo(l.end.c, 3);
       expect(s.left.length).toBe(s.right.length);
     }
@@ -37,8 +49,8 @@ describe("lanes", () => {
       const s = laneShape(l);
       s.left.slice(4, -4).forEach((p, i) => {
         const w = Math.hypot(p.x - s.right[i + 4].x, p.z - s.right[i + 4].z);
-        expect(w).toBeGreaterThan(LANE_WIDTH * 0.8);
-        expect(w).toBeLessThan(LANE_WIDTH * 1.25);
+        expect(w).toBeGreaterThan(laneWidth(l) * 0.8 - 1e-9);
+        expect(w).toBeLessThan(laneWidth(l) * 1.25);
       });
     }
   });
@@ -226,5 +238,120 @@ describe("worn road paint", () => {
     expect(Math.max(...whites)).toBeLessThan(235);
     expect(Math.min(...whites)).toBeLessThan(0.7 * 235); // grit
     expect(new Set(whites).size).toBeGreaterThan(10); // a mottle, not one tint
+  });
+});
+
+// owner 2026-11-28, the library: "도서관 문에 맞게 도로가 연결되어야 이쁘지" — its lane met the front 2 m left of the door
+describe("every path ends straight on its door", () => {
+  /** The cobble's last row: its middle, and the row's direction (unit). */
+  const lastRow = (id: string) => {
+    const s = laneShape(LANES.find((l) => l.id === id)!);
+    const l = s.left[s.left.length - 1];
+    const r = s.right[s.right.length - 1];
+    const len = Math.hypot(r.x - l.x, r.z - l.z);
+    return { mid: { x: (l.x + r.x) / 2, z: (l.z + r.z) / 2 }, dir: { x: (r.x - l.x) / len, z: (r.z - l.z) / len }, len };
+  };
+  const LOT_LANE: Record<string, string> = { lot_school: "e", lot_chapel: "ne", lot_library: "w", lot_temple: "nw", lot_church: "s" };
+
+  it("each lot's lane ends centred on its main door's line, square to it", () => {
+    for (const [lotId, laneId] of Object.entries(LOT_LANE)) {
+      const lot = VILLAGE_LOTS.find((l) => l.id === lotId)!;
+      const d = lotDoorPoint(lot, lot.doors[0]!);
+      const out = { x: d.pad.x - d.centre.x, z: d.pad.z - d.centre.z };
+      const n = Math.hypot(out.x, out.z);
+      const ux = out.x / n;
+      const uz = out.z / n;
+      const row = lastRow(laneId);
+      // sideways from the door's centre line (along the wall): within 2 cm
+      const side = (row.mid.x - d.centre.x) * -uz + (row.mid.z - d.centre.z) * ux;
+      expect(Math.abs(side), `${laneId} off ${lotId}'s door`).toBeLessThan(0.02);
+      // the last row runs along the wall (square to the way out)
+      expect(Math.abs(row.dir.x * ux + row.dir.z * uz), `${laneId} skewed`).toBeLessThan(0.01);
+    }
+  });
+
+  it("the library's lane runs straight on its door's line for its last 3 m and stops before the topiaries' planters", () => {
+    const s = laneShape(LANES.find((l) => l.id === "w")!);
+    const mids = s.left.map((l, i) => ({ x: (l.x + s.right[i].x) / 2, z: (l.z + s.right[i].z) / 2 }));
+    for (const m of mids.filter((p) => p.x <= -49.4)) expect(m.z).toBeCloseTo(15, 2);
+    expect(Math.max(...mids.map((m) => -m.x))).toBeCloseTo(52.4, 3);
+  });
+
+  it("every house (and the café) has a front walk, centred on its door, no wider than its steps, tucked under the bottom tread", () => {
+    for (const h of VILLAGE_LAYOUT.sceneryHouses.filter((x) => x.kind === "house")) {
+      const id = `walk_${h.id}`;
+      expect(LANES.some((l) => l.id === id), `${h.id} has no walk`).toBe(true);
+      const { step, out, half } = houseSteps(h.id);
+      const row = lastRow(id);
+      const side = (row.mid.x - step.x) * -out.z + (row.mid.z - step.z) * out.x;
+      const along = (row.mid.x - step.x) * out.x + (row.mid.z - step.z) * out.z;
+      expect(Math.abs(side), `${id} off the door`).toBeLessThan(0.02);
+      expect(along, `${id} end`).toBeCloseTo(-0.03, 3); // 3 cm under the tread
+      expect(row.len / 2).toBeLessThanOrEqual(half + 1e-9);
+      expect(Math.abs(row.dir.x * out.x + row.dir.z * out.z)).toBeLessThan(0.01);
+    }
+    expect(LANES.some((l) => l.id === "walk_cafe")).toBe(true);
+  });
+
+  it("no walk's cobble or edging runs over a solid (a wall, a bed, a trunk, a lamp post) between its start and its door", () => {
+    const near = (b: { minX: number; maxX: number; minZ: number; maxZ: number }, x: number, z: number) => Math.abs((b.minX + b.maxX) / 2 - x) < 0.1 && Math.abs((b.minZ + b.maxZ) / 2 - z) < 0.1;
+    const allowed = (id: string, b: { minX: number; maxX: number; minZ: number; maxZ: number }): boolean =>
+      id === "bridge" || // (its own story: the footbridge's railing posts at its foot)
+      // the library's two clipped bay topiaries: the planters stand behind the lane's end (x -52.45..-52.95), the clipped crowns'
+      // boxes (0.9 m) overhang its last 15 cm at the corners
+      (id === "w" && (near(b, -52.7, 16.7) || near(b, -52.7, 13.3))) ||
+      // the gate's queue stanchions stand on the paving through the arch
+      (id === "gate_s" && near(b, -24, 94.2));
+    const bad: string[] = [];
+    for (const l of LANES) {
+      const { mid, half } = laneCobble(l);
+      for (const b of villageGeometry.obstacles) {
+        // the box's own points, every 10 cm (the obstacles near a walk are small)
+        if (b.maxX - b.minX > 40 || b.maxZ - b.minZ > 40) continue;
+        let hit = false;
+        for (let x = b.minX; x <= b.maxX + 1e-9 && !hit; x += Math.max(0.1, (b.maxX - b.minX) / 20))
+          for (let z = b.minZ; z <= b.maxZ + 1e-9 && !hit; z += Math.max(0.1, (b.maxZ - b.minZ) / 20)) {
+            // beyond the end line (the building the walk leads into) is the door's business, before the start the other paving's
+            if (l.end.a * x + l.end.b * z > l.end.c) continue;
+            if (l.start && l.start.a * x + l.start.b * z < l.start.c) continue;
+            if (!l.start && Math.hypot(x, z) < SIDEWALK_OUT_R) continue;
+            if (polylineDistance(mid, x, z) < half + EDGE_PROFILE[EDGE_PROFILE.length - 1][0]) hit = true;
+          }
+        if (hit && !allowed(l.id, b)) bad.push(`${l.id}: ${JSON.stringify(b)}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  }, 30_000);
+
+  it("a walk that joins another paving has no kerb across the join, and the paving it joins has none across its mouth", () => {
+    const cobbles = LANES.map((l) => ({ id: l.id, c: laneCobble(l) }));
+    for (const l of LANES.filter((x) => x.start)) {
+      const own = cobbles.find((c) => c.id === l.id)!.c;
+      const s = laneShape(l);
+      const others = cobbles.filter((c) => c.id !== l.id).map((c) => c.c);
+      for (const run of [...edgingRuns(s.edgeLeft, others), ...edgingRuns(s.edgeRight, others)])
+        for (const p of run) for (const o of others) expect(polylineDistance(o.mid, p.x, p.z)).toBeGreaterThanOrEqual(o.half + 0.08 - 1e-9);
+      // the joined paving's edging, cut where this walk's cobble meets it
+      for (const other of LANES.filter((x) => x !== l)) {
+        const os = laneShape(other);
+        for (const run of [...edgingRuns(os.edgeLeft, [own]), ...edgingRuns(os.edgeRight, [own])])
+          for (const p of run) expect(polylineDistance(own.mid, p.x, p.z)).toBeGreaterThanOrEqual(own.half + 0.08 - 1e-9);
+      }
+    }
+  });
+
+  it("the new edging survives the old houses' trim (its triangles are kept past TRIM_KEEP_FROM)", () => {
+    // two triangles, both inside a footprint that takes anything above 1 cm; the second is marked as new
+    const g = new BufferGeometry();
+    g.setAttribute("position", new BufferAttribute(new Float32Array([0, 0.05, 0, 1, 0.05, 0, 0, 0.05, 1, 0, 0.05, 0, 1, 0.05, 0, 0, 0.05, 1]), 3));
+    g.setIndex(new Uint16BufferAttribute([0, 1, 2, 3, 4, 5], 1));
+    g.userData[TRIM_KEEP_FROM] = 1;
+    const mesh = new Mesh(g);
+    mesh.updateMatrixWorld();
+    const foot = { minX: -5, maxX: 5, minZ: -5, maxZ: 5, maxY: 1, minTop: 0.01, inside: () => true };
+    const t = trimMesh(mesh, [foot])!;
+    expect(t.removed).toBe(1);
+    expect(t.geometry.getIndex()!.count).toBe(3);
+    expect(t.geometry.userData[TRIM_KEEP_FROM]).toBe(0);
   });
 });
