@@ -116,6 +116,23 @@ const targets = arg("targets") ? JSON.parse(readFileSync(arg("targets"), "utf8")
 const explicit = arg("shots") ? JSON.parse(readFileSync(arg("shots"), "utf8"))[where] ?? {} : {};
 const centreOf = (ts) => [ts.reduce((s, t) => s + t[0], 0) / Math.max(1, ts.length), ts.reduce((s, t) => s + t[2], 0) / Math.max(1, ts.length)];
 
+if (where === "cafe1" || where === "cafe2") {
+  // the café: by the plaza side to its door, the action; upstairs by the stair pad's button (e2e/cafe-upstairs.mjs)
+  const d = await page.evaluate(async () => { const L = await window.__imp("/shared/src/village/villageLots.ts"); const r = L.lotRoomOf("lot:lot_cafe_room"); return L.lotDoorPoint(r.lot, r.door); });
+  for (const [x, z] of [[20, -8], [36, -12], [42, -15.1]]) await planned(x, z, 1.3);
+  await planned(d.pad.x - 0.6, d.pad.z, 0.9);
+  await sleep(800);
+  await act(p);
+  console.log("cafe inside", await waitArea("lot:lot_cafe_room", 60000));
+  if (where === "cafe2") {
+    const st = await page.evaluate(async () => { const L = await window.__imp("/shared/src/village/villageLots.ts"); const r = L.lotRoomOf("lot:lot_cafe_room"); return L.lotRoomStair(r).pad; });
+    await planned(st.x, st.z - 0.3, 0.5);
+    await sleep(1500);
+    await act(p);
+    console.log("upstairs", await waitArea("lot:lot_cafe_upstairs", 60000));
+  }
+  await shoot(where, { ...closeViews(targets, centreOf(targets)), ...explicit });
+}
 if (where.startsWith("lot_")) {
   const info = await page.evaluate(async (unit) => {
     const L = await window.__imp("/shared/src/village/villageLots.ts");
@@ -130,7 +147,7 @@ if (where.startsWith("lot_")) {
   const ok = await waitArea(info.area, 25000);
   console.log(where, "inside", ok);
   const b = info.bounds;
-  await shoot(where, { ...closeViews(targets, [(b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2]), ...explicit });
+  await shoot(where, { ...closeViews(targets, FRAME ? centreOf(targets) : [(b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2]), ...explicit });
 }
 if (where === "hall") {
   await enterHall(p);
@@ -144,6 +161,19 @@ if (where === "shop") {
 if (where === "outdoor") {
   await sleep(4000);
   await shoot("outdoor", explicit);
+}
+if (where.startsWith("park:")) {
+  // Caysonland: through the park gate (its door pad, the action), then walk to x,z and shoot the explicit cameras
+  const g = await page.evaluate(async () => (await window.__imp("/village/parkArea.ts")).parkGateDoor().pad);
+  await walkWay("lot_gate", g.x, g.z - 0.5);
+  await planned(g.x, g.z - 0.5, 1.0);
+  await act(p);
+  console.log("park", await waitArea("park", 30000));
+  await sleep(3000);
+  const [x, z] = where.slice(5).split(",").map(Number);
+  await planned(x, z, 1.5);
+  await sleep(5000);
+  await shoot("park", explicit);
 }
 if (where.startsWith("walk:")) {
   // walk:<x>,<z> then shoot the explicit cameras (park shops etc.)
