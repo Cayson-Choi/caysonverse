@@ -29,6 +29,12 @@ def seg(pc, phone=None):
     return (phone if phone is not None else max(6, int(pc * 0.5))) if PHONE else pc
 
 
+def segr(pc, phone):
+    """Round sections that keep `phone` sides on the phone after Mesh.lathe's phone LOD (n * G.LOD): seg() counts are scaled twice
+    there (seg(14, 9) drew 8 sides). 2026-11-28 prop sweep: the table-top props a phone looks down on."""
+    return int(math.ceil(phone / max(G.LOD, 0.05))) if PHONE else pc
+
+
 # ------------------------------------------------------------------------------------------------ surfaces --
 
 def hx(h):
@@ -192,9 +198,9 @@ def disc(m, cx, cy, cz, r, s, n, up=True):
     m.poly(pts, s)
 
 
-def cup(m, x, y, z, r=0.042, h=0.065, tint=(0.98, 0.97, 0.94), saucer=True, coffee=True, yaw=0.0):
+def cup(m, x, y, z, r=0.042, h=0.065, tint=(0.98, 0.97, 0.94), saucer=True, coffee=True, yaw=0.0, far=False):
     """A café cup on its saucer: a glazed porcelain bowl (rim lip, foot), a handle loop, latte art in it."""
-    n = seg(14, 14)   # (2026-11-28: was 9 sides on the phone)
+    n = seg(14, 9) if far else segr(14, 12)   # (2026-11-28: the phone drew 8 sides; `far`: rows on shelves keep the old count)
     n0 = len(m.polys)
     if saucer:
         m.lathe([(0.0, 0.0), (0.045, 0.0), (0.05, 0.004), (0.072, 0.010), (0.074, 0.014), (0.05, 0.009), (0.0, 0.009)], n, S("LM_cafe_paint"), x, z, y)
@@ -213,9 +219,9 @@ def cup(m, x, y, z, r=0.042, h=0.065, tint=(0.98, 0.97, 0.94), saucer=True, coff
         planar(m, n2, "latte", x, z, r * 0.85)
 
 
-def plate(m, x, y, z, r, tint=(0.98, 0.97, 0.94)):
+def plate(m, x, y, z, r, tint=(0.98, 0.97, 0.94), far=False):
     n0 = len(m.polys)
-    m.lathe([(0.0, 0.0), (r * 0.6, 0.0), (r * 0.65, 0.004), (r * 0.95, 0.012), (r, 0.016), (r * 0.94, 0.016), (r * 0.62, 0.008), (0.0, 0.008)], seg(18, 16), S("LM_cafe_paint"), x, z, y)
+    m.lathe([(0.0, 0.0), (r * 0.6, 0.0), (r * 0.65, 0.004), (r * 0.95, 0.012), (r, 0.016), (r * 0.94, 0.016), (r * 0.62, 0.008), (0.0, 0.008)], seg(18, 10) if far else segr(18, 12), S("LM_cafe_paint"), x, z, y)
     glaze(m, n0, tint)
     return y + 0.008
 
@@ -262,9 +268,9 @@ def croissant(m, x, y, z, yaw=0.0, L=0.075, R=0.026, choc=False):
     remap(m, n0, "croissant", (1.0, 1.0, 1.0) if not choc else (0.94, 0.86, 0.78))
 
 
-def tart(m, x, y, z, r, top="tart_fruit", h=0.022):
+def tart(m, x, y, z, r, top="tart_fruit", h=0.022, far=False):
     """A tartlet: the fluted pâte sucrée ring (atlas crust), its rim, the filling's top (glazed fruit / torched meringue)."""
-    n = seg(20, 14)
+    n = seg(20, 12) if far else segr(20, 12)
     n0 = len(m.polys)
     m.lathe([(r * 0.92, 0.0), (r, h * 0.9), (r * 0.97, h), (r * 0.88, h * 0.92)], n, ART, x, z, y)
     remap(m, n0, "tart_crust")
@@ -318,8 +324,8 @@ def cake(m, x, y, z, r, h, top, side_tint, cut=False):
         P_.uv = [(u0 + (u1 - u0) * (0 if math.hypot(p[0] - x, p[2] - z) < 1e-6 else 1), v0 + (v1 - v0) * ((p[1] - y) / h)) for p in P_.pts]
 
 
-def macaron(m, x, y, z, tint, r=0.021):
-    n = seg(12, 10)
+def macaron(m, x, y, z, tint, r=0.021, far=False):
+    n = seg(12, 8) if far else segr(12, 8)
     for (y0, top) in ((y, False), (y + 0.012, True)):
         n0 = len(m.polys)
         prof = [(r * 0.9, 0.0), (r, 0.004), (r * 0.9, 0.009), (r * 0.5, 0.012), (0.0, 0.013)] if top else [(0.0, 0.0), (r * 0.6, 0.0), (r * 0.95, 0.003), (r, 0.007), (r * 0.92, 0.009)]
@@ -395,18 +401,18 @@ def bistro_table(r=0.33, top_h=0.755):
     """A bistro table: Carrara top (the atlas's round marble, a 2.4 cm slab with an eased edge) on a black cast-iron pedestal: a
     turned column, a round foot. Inside x/z +-0.34."""
     m = Mesh("table")
-    n = seg(32, 28)   # (2026-11-28: 14 sides on the phone read as an octagon at the table)
+    n = segr(32, 24)   # (2026-11-28: the phone's 8 sides read as an octagon at the table)
     n0 = len(m.polys)
     m.lathe([(0.0, top_h - 0.024), (r - 0.006, top_h - 0.024), (r, top_h - 0.016), (r, top_h - 0.006), (r - 0.006, top_h), (0.0, top_h)], n, ART, 0, 0, 0)
     planar(m, n0, "marble_round", 0.0, 0.0, r)
-    m.lathe([(0.0, 0.0), (0.24, 0.0), (0.24, 0.015), (0.2, 0.03), (0.06, 0.05), (0.04, 0.08), (0.03, 0.12), (0.03, 0.6), (0.045, 0.64), (0.035, 0.67), (0.12, 0.7), (0.14, top_h - 0.026), (0.0, top_h - 0.026)], seg(20, 18), IRON, 0, 0, 0)
+    m.lathe([(0.0, 0.0), (0.24, 0.0), (0.24, 0.015), (0.2, 0.03), (0.06, 0.05), (0.04, 0.08), (0.03, 0.12), (0.03, 0.6), (0.045, 0.64), (0.035, 0.67), (0.12, 0.7), (0.14, top_h - 0.026), (0.0, top_h - 0.026)], segr(20, 16), IRON, 0, 0, 0)
     return m
 
 
 def plant_pot(m, x, z, r, h, kind="fig", seed=1):
     """A terracotta pot (rim, foot) with a leafy plant: a fiddle-leaf fig, a pothos trailing, or a palm."""
     rg = G.rng(seed)
-    n = seg(24, 18)
+    n = segr(24, 16)
     ph = min(0.42, r * 1.3)
     m.lathe([(0.0, 0.0), (r * 0.72, 0.0), (r * 0.78, 0.02), (r * 0.94, ph - 0.05), (r, ph - 0.05), (r, ph), (r * 0.9, ph), (r * 0.88, ph - 0.03), (0.0, ph - 0.03)], n, TERRA, x, z, 0.0)
     disc(m, x, ph - 0.035, z, r * 0.86, SOIL, n)

@@ -409,7 +409,7 @@ def counter(kit, sol):
         for k in range(5):
             xk = 11.41 + k * 0.07
             Gd.member((xk, y + 0.14, zk), (xk, y + 0.14 + hk, zk), G.prof_round(0.0035, 5), C.BRASS)
-            Gd.lathe([(0.0, 0.0), (0.016, 0.0), (0.017, 0.004), (0.015, 0.008), (0.0, 0.009)], C.seg(14, 10), C.PAINT, xk, zk, y + 0.14 + hk)
+            Gd.lathe([(0.0, 0.0), (0.016, 0.0), (0.017, 0.004), (0.015, 0.008), (0.0, 0.009)], C.segr(14, 10), C.PAINT, xk, zk, y + 0.14 + hk)
     Gd.tube([(11.72, y + 0.2, 5.82), (11.78, y + 0.2, 5.82), (11.78, y + 0.12, 5.78)], 0.007, 6, C.BRASS)
     Gd.sphere(11.78, y + 0.115, 5.778, 0.014, C.OAK_DK, n=10, rings=6)
     # a bell and a small vase of tulips at the end
@@ -433,7 +433,7 @@ def vase(m, x, y, z, flower, full=False):
     lathed blobs). full=True (the counter's vase, the one the phone room keeps; polish3, owner 2026-11-28: the phone's read small and
     sparse next to the PC's): five larger blooms and four leaves, built at the same detail on PC and phone."""
     n0 = len(m.polys)
-    m.lathe([(0.0, 0.0), (0.03, 0.0), (0.04, 0.05), (0.025, 0.12), (0.03, 0.14), (0.0, 0.13)], C.seg(20, 14), C.ART, x, z, y)
+    m.lathe([(0.0, 0.0), (0.03, 0.0), (0.04, 0.05), (0.025, 0.12), (0.03, 0.14), (0.0, 0.13)], C.segr(20, 12), C.ART, x, z, y)
     C.glaze(m, n0, (0.36, 0.55, 0.62))
     n1 = len(m.polys)
     lod0, G.LOD = G.LOD, 0.6
@@ -553,7 +553,7 @@ def pastry_case(kit, m, x0, x1, zc, y):
     k = 0
     for i in range(3 if PHONE else 5):
         for j in range(2):
-            C.tart(m, x0 + 1.46 + i * 0.15, yy, z0 + 0.2 + j * 0.16, 0.068, "tart_fruit" if (i + j) % 2 == 0 else "cake_lemon")
+            C.tart(m, x0 + 1.46 + i * 0.15, yy, z0 + 0.2 + j * 0.16, 0.068, "tart_fruit" if (i + j) % 2 == 0 else "cake_lemon", far=True)
     # upper tier: éclairs, an opéra cut, macarons in rows
     yy = ys + 0.008
     for i in range(3 if PHONE else 5):
@@ -563,7 +563,7 @@ def pastry_case(kit, m, x0, x1, zc, y):
         cols = [(0.96, 0.72, 0.78), (0.78, 0.89, 0.69), (0.96, 0.87, 0.54), (0.78, 0.72, 0.9), (0.95, 0.76, 0.6), (0.6, 0.42, 0.3)]
         for i in range(12):
             for j in range(2):
-                C.macaron(m, x0 + 1.35 + i * 0.05, yy, z1 - 0.2 + j * 0.06, cols[(i // 2) % 6])
+                C.macaron(m, x0 + 1.35 + i * 0.05, yy, z1 - 0.2 + j * 0.06, cols[(i // 2) % 6], far=True)
 
 
 def back_bar(kit, sol):
@@ -602,7 +602,7 @@ def back_bar(kit, sol):
             zc = z1 - 0.16
             if kind == "cups":
                 for i in range(3):
-                    C.cup(Gd, x + i * 0.1, ys, zc, tint=[(0.98, 0.97, 0.94), (0.36, 0.55, 0.62), (0.98, 0.97, 0.94)][i], coffee=False, yaw=math.pi / 2)
+                    C.cup(Gd, x + i * 0.1, ys, zc, tint=[(0.98, 0.97, 0.94), (0.36, 0.55, 0.62), (0.98, 0.97, 0.94)][i], coffee=False, yaw=math.pi / 2, far=True)
                 x += 0.36
             elif kind == "jar":
                 h = 0.2 + 0.08 * rg.random()
@@ -625,7 +625,7 @@ def back_bar(kit, sol):
                 x += 0.24
             elif kind == "plates":
                 for i in range(6):
-                    C.plate(Gd, x + 0.12, ys + i * 0.016, zc, 0.11)
+                    C.plate(Gd, x + 0.12, ys + i * 0.016, zc, 0.11, far=True)
                 x += 0.28
             elif kind == "bottle":
                 for i in range(2):
@@ -647,7 +647,7 @@ def back_bar(kit, sol):
     for k in range(2):
         Gd.lathe([(0.0, 0.0), (0.04, 0.0), (0.045, 0.06), (0.04, 0.12), (0.045, 0.13), (0.0, 0.12)], C.seg(12, 8), C.CHROME, 10.3 + k * 0.12, z0 + 0.2, 0.94)
     for k in range(4):
-        C.cup(Gd, 10.65 + k * 0.11, 0.94, z0 + 0.22, tint=(0.98, 0.97, 0.94), coffee=False, yaw=math.pi / 2)
+        C.cup(Gd, 10.65 + k * 0.11, 0.94, z0 + 0.22, tint=(0.98, 0.97, 0.94), coffee=False, yaw=math.pi / 2, far=True)
     # the two chalk menus in oak frames, the clock between them, the enamel sign above
     fb = R.walls(13.6, 7.8)["back"]
     X = 13.6
@@ -902,14 +902,14 @@ def salon_dress(kit, sol, W, X, Z, H):
     r = sol["centretable_up"]
     cx, cz = (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2
     D.lathe([(0.0, 0.0), (0.09, 0.0), (0.1, 0.03), (0.06, 0.08), (0.045, 0.2), (0.06, 0.32), (0.04, 0.45), (0.05, 0.62), (0.09, 0.7), (0.0, 0.7)],
-            C.seg(24, 16), C.OAK_DK, cx, cz, 0.0)
+            C.segr(24, 16), C.OAK_DK, cx, cz, 0.0)
     for k in range(3):
         a = 2 * math.pi * k / 3 + 0.3
         D.tube([(cx + 0.06 * math.cos(a), 0.12, cz + 0.06 * math.sin(a)), (cx + 0.22 * math.cos(a), 0.05, cz + 0.22 * math.sin(a)),
                 (cx + 0.32 * math.cos(a), 0.015, cz + 0.32 * math.sin(a))], 0.025, C.seg(8, 5), C.OAK_DK)
-    D.lathe([(0.39, 0.0), (0.4, 0.012), (0.4, 0.035), (0.385, 0.045), (0.0, 0.045)], C.seg(48, 32), C.OAK_DK, cx, cz, 0.7)
+    D.lathe([(0.39, 0.0), (0.4, 0.012), (0.4, 0.035), (0.385, 0.045), (0.0, 0.045)], C.segr(48, 28), C.OAK_DK, cx, cz, 0.7)
     n0 = len(D.polys)
-    D.lathe([(0.37, 0.0), (0.37, 0.03), (0.0, 0.03)], C.seg(48, 32), C.ART, cx, cz, 0.745)
+    D.lathe([(0.37, 0.0), (0.37, 0.03), (0.0, 0.03)], C.segr(48, 28), C.ART, cx, cz, 0.745)
     C.planar(D, n0, "marble_round", cx, cz, 0.37)
     if not PHONE:
         centre_bouquet(Gd, cx, 0.775, cz)
@@ -1096,19 +1096,19 @@ def sideboard(kit, r):
     Gd.tube([(cx, y, cz), (cx, y + 0.42, cz)], 0.006, 6, C.BRASS)
     cols = [(0.96, 0.72, 0.78), (0.78, 0.89, 0.69), (0.96, 0.87, 0.54), (0.78, 0.72, 0.9), (0.95, 0.76, 0.6)]
     for k, (rr, yy) in enumerate(((0.15, 0.02), (0.11, 0.17), (0.08, 0.31))):
-        C.plate(Gd, cx, y + yy, cz, rr)
+        C.plate(Gd, cx, y + yy, cz, rr, far=True)
         if not PHONE:
             cnt = int(2 * math.pi * rr * 0.7 / 0.05)
             for i in range(cnt):
                 a = 2 * math.pi * i / cnt
-                C.macaron(Gd, cx + math.cos(a) * rr * 0.7, y + yy + 0.008, cz + math.sin(a) * rr * 0.7, cols[(i + k) % 5])
+                C.macaron(Gd, cx + math.cos(a) * rr * 0.7, y + yy + 0.008, cz + math.sin(a) * rr * 0.7, cols[(i + k) % 5], far=True)
     # a teapot and two cups
     n0 = len(Gd.polys)
     Gd.lathe([(0.0, 0.0), (0.06, 0.0), (0.085, 0.05), (0.08, 0.1), (0.05, 0.13), (0.03, 0.14), (0.035, 0.155), (0.0, 0.16)], C.seg(16, 10), C.ART, x1 - 1.4, (z0 + z1) / 2, y)
     Gd.tube([(x1 - 1.32, y + 0.04, (z0 + z1) / 2), (x1 - 1.27, y + 0.09, (z0 + z1) / 2), (x1 - 1.25, y + 0.13, (z0 + z1) / 2)], 0.01, 6, C.ART)
     C.glaze(Gd, n0, (0.98, 0.97, 0.94))
     for k in range(2):
-        C.cup(Gd, x1 - 1.15 + k * 0.14, y, (z0 + z1) / 2 + 0.05, coffee=False)
+        C.cup(Gd, x1 - 1.15 + k * 0.14, y, (z0 + z1) / 2 + 0.05, coffee=False, far=True)
 
 
 def bookcase(kit, r):

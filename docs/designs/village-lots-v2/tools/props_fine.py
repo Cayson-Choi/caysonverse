@@ -7,6 +7,11 @@ import b1_geom as G
 from b1_geom import Mesh
 
 
+def _facing(q, want):
+    """The polygon wound so its normal points along `want` (one-sided materials show only the front)."""
+    return q if G.dot(G.poly_normal(q), want) >= 0 else list(reversed(q))
+
+
 def _place(src, dst, fn):
     for p in src.polys:
         dst.polys.append(G.Poly([fn(q) for q in p.pts], p.uv, p.col, p.mat, p.smooth))
@@ -41,7 +46,8 @@ def closed_book(m, x, y, z, w, d, t, cover, pages, yaw=0.0, tilt=0.0, spine="-u"
         a0, a1 = math.pi / 2 + math.pi * i / n, math.pi / 2 + math.pi * (i + 1) / n
         p0 = (-hw + 0.004 + r * 0.55 * math.cos(a0), r + r * math.sin(a0), 0)
         p1 = (-hw + 0.004 + r * 0.55 * math.cos(a1), r + r * math.sin(a1), 0)
-        k.poly([(p0[0], p0[1], -hd), (p1[0], p1[1], -hd), (p1[0], p1[1], hd), (p0[0], p0[1], hd)][::-1], cover, smooth=True)
+        mid = ((p0[0] + p1[0]) / 2 - (-hw + 0.004), (p0[1] + p1[1]) / 2 - r, 0.0)
+        k.poly(_facing([(p0[0], p0[1], -hd), (p1[0], p1[1], -hd), (p1[0], p1[1], hd), (p0[0], p0[1], hd)], mid), cover, smooth=True)
     yaw2 = yaw + {"-u": 0.0, "+u": math.pi, "-v": -math.pi / 2, "+v": math.pi / 2}[spine]
     _place(k, m, _frame(x, y, z, yaw2, tilt))
 
@@ -62,18 +68,11 @@ def open_book(m, x, y, z, w, d, cover, pages, yaw=0.0, tilt=0.0, ink=None, lines
             prof.append((u, h))
         for i in range(n):
             (u0, h0), (u1, h1) = prof[i], prof[i + 1]
-            q = [(u0, h0, -hd), (u1, h1, -hd), (u1, h1, hd), (u0, h0, hd)]
-            if side < 0:
-                q.reverse()
-            k.poly(q, pages, smooth=True)
+            k.poly(_facing([(u0, h0, -hd), (u1, h1, -hd), (u1, h1, hd), (u0, h0, hd)], (0, 1, 0)), pages, smooth=True)
         # the fore-edge and the stack's ends (a thin wall down to the board)
         ue, he = prof[-1]
-        q = [(ue, 0.003, -hd), (ue, 0.003, hd), (ue, he, hd), (ue, he, -hd)]
-        if side < 0:
-            q.reverse()
-        k.poly(q, pages)
+        k.poly(_facing([(ue, 0.003, -hd), (ue, 0.003, hd), (ue, he, hd), (ue, he, -hd)], (side, 0, 0)), pages)
         for zz, sg in ((-hd, -1), (hd, 1)):
-            q = [(u, 0.003, zz) for u, _ in prof[::-1]] + [(u, h, zz) for u, h in prof]
             pts = [(u, h, zz) for u, h in prof] + [(prof[-1][0], 0.003, zz), (prof[0][0], 0.003, zz)]
             if G.dot(G.poly_normal(pts), (0, 0, sg)) < 0:
                 pts.reverse()
@@ -84,10 +83,7 @@ def open_book(m, x, y, z, w, d, cover, pages, yaw=0.0, tilt=0.0, ink=None, lines
                 vv = -hd + 0.025 + j * (d - 0.05) / (lines - 0.5)
                 for i in range(2, n - 1):
                     (u0, h0), (u1, h1) = prof[i], prof[i + 1]
-                    q = [(u0, h0 + 0.0004, vv), (u1, h1 + 0.0004, vv), (u1, h1 + 0.0004, vv + 0.004), (u0, h0 + 0.0004, vv + 0.004)]
-                    if side < 0:
-                        q.reverse()
-                    k.poly(q[::-1], ink)
+                    k.poly(_facing([(u0, h0 + 0.0004, vv), (u1, h1 + 0.0004, vv), (u1, h1 + 0.0004, vv + 0.004), (u0, h0 + 0.0004, vv + 0.004)], (0, 1, 0)), ink)
     _place(k, m, _frame(x, y, z, yaw, tilt))
 
 
