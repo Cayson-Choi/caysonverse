@@ -118,6 +118,11 @@ interface SignState {
   /** The cells drawn: nothing in front of them (nor within the guard) in the last two results (`seen & seenBefore`). */
   mask: number;
   maskFrame: number;
+  /** The cells drawn this frame (all of them: a sign is drawn whole or not at all). */
+  drawMask: number;
+  /** The cells its lettering touches (bit per cell; -1: not worked out yet), and the fonts it was worked out with. */
+  ink: number;
+  inkFonts: number;
   /** The guard (fb px) the in-flight blocker queries were grown by, and the one the last result had. */
   guardIssued: number;
   guard: number;
@@ -323,7 +328,7 @@ export class InkLayer {
       let s = this.states.get(label);
       if (!s) {
         const { cols, rows } = inkGrid(label.w, label.h);
-        s = { label, cols, rows, blockers: [], rings: [], pending: false, issued: -1, seen: 0, seenBefore: 0, blocked: 0, ring: -1, ringBefore: -1, cutFrame: -1, mask: 0, maskFrame: -1e9, guardIssued: 0, guard: 0, lastX: Number.NaN, lastY: Number.NaN, speed: 0, fog: null, light: null, probeFrame: -1e9, probing: false, raster: null, lastDrawn: -1e9, ink3d: true, grid: [], gridCols: 0, sub: 1, strips: false, drawn: false, size: 0 };
+        s = { label, cols, rows, blockers: [], rings: [], pending: false, issued: -1, seen: 0, seenBefore: 0, blocked: 0, ring: -1, ringBefore: -1, cutFrame: -1, mask: 0, maskFrame: -1e9, drawMask: 0, ink: -1, inkFonts: -1, guardIssued: 0, guard: 0, lastX: Number.NaN, lastY: Number.NaN, speed: 0, fog: null, light: null, probeFrame: -1e9, probing: false, raster: null, lastDrawn: -1e9, ink3d: true, grid: [], gridCols: 0, sub: 1, strips: false, drawn: false, size: 0 };
         this.states.set(label, s);
       }
       s.drawn = false;
@@ -415,7 +420,12 @@ export class InkLayer {
     // what is drawn: a fresh mask with a cell seen, a light known
     let drawn = 0;
     for (const s of cands) {
-      if (this.frame - s.maskFrame > FRESH_FRAMES || s.mask === 0 || !s.light) continue;
+      if (this.frame - s.maskFrame > FRESH_FRAMES || !s.light) continue;
+      // every cell with lettering in it clear (nothing in front of it, nor within the guard) in two results running; one that is
+      // not — a sign partly behind a wall, an avatar, a post — is left whole to WebGL's own lettering (its depth test is exact):
+      // never letters over what stands in front, never a letter cut at a cell's edge
+      const ink = this.inkCells(s);
+      if (ink === 0 || (s.mask & ink) !== ink) continue;
       // moving fast with a cell partly hidden, or something moving near it: WebGL's own lettering (its depth test is exact) until
       // it settles
       if (s.guard > FAST_GUARD && s.blocked !== 0) continue;
@@ -427,6 +437,7 @@ export class InkLayer {
       const gc = s.cols * s.sub;
       if (!screenGrid(s.label.object.matrixWorld.elements, s.label.w, s.label.h, gc, s.rows, view, proj, W, H, s.grid)) continue;
       s.gridCols = gc;
+      s.drawMask = s.cols * s.rows >= 31 ? -1 : (1 << (s.cols * s.rows)) - 1;
       s.drawn = true;
       this.drawList.push(s);
       drawn++;
@@ -473,6 +484,34 @@ export class InkLayer {
     s.label.setInk(on);
   }
 
+  /** The cells its lettering touches: painted once, small, and looked at (fonts in: worked out again). */
+  private inkCells(s: SignState): number {
+    if (s.ink >= 0 && s.inkFonts === this.fontsVersion) return s.ink;
+    const all = s.cols * s.rows >= 31 ? 0x7fffffff : (1 << (s.cols * s.rows)) - 1;
+    if (typeof document === "undefined") return all;
+    const cell = 16;
+    const h = s.rows * cell;
+    const w = Math.max(s.cols * cell, Math.round(h * (s.label.w / s.label.h)));
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const g = c.getContext("2d", { willReadFrequently: true });
+    if (!g) return all;
+    try {
+      s.label.paint(g, w, h, (x) => x);
+      const d = g.getImageData(0, 0, w, h).data;
+      let bits = 0;
+      for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++)
+          if (d[(y * w + x) * 4 + 3]! > 24) bits |= 1 << (Math.min(s.rows - 1, Math.floor((y / h) * s.rows)) * s.cols + Math.min(s.cols - 1, Math.floor((x / w) * s.cols)));
+      s.ink = bits;
+    } catch {
+      s.ink = all;
+    }
+    s.inkFonts = this.fontsVersion;
+    return s.ink;
+  }
+
   /** The sign's raster at its bucket size and light (cached). */
   private raster(s: SignState): HTMLCanvasElement | null {
     if (typeof document === "undefined" || !s.light) return null;
@@ -514,7 +553,7 @@ export class InkLayer {
     const iw = img.width;
     const ih = img.height;
     const at = (i: number, j: number) => 2 * (j * (gc + 1) + i);
-    const full = s.mask === (1 << (s.cols * rows)) - 1;
+    const full = s.drawMask === (1 << (s.cols * rows)) - 1 || s.drawMask === -1;
     ctx.globalAlpha = 1;
     let x0 = Infinity;
     let y0 = Infinity;
@@ -536,7 +575,7 @@ export class InkLayer {
       const cols0 = strips === 1 ? 0 : Math.floor(k / s.sub);
       const cols1 = strips === 1 ? s.cols : cols0 + 1;
       let any = false;
-      for (let r = 0; r < rows; r++) for (let c = cols0; c < cols1; c++) if (s.mask & (1 << (r * s.cols + c))) any = true;
+      for (let r = 0; r < rows; r++) for (let c = cols0; c < cols1; c++) if (s.drawMask & (1 << (r * s.cols + c))) any = true;
       if (!any) continue;
       const clip = !(strips === 1 && full);
       ctx.save();
@@ -545,7 +584,7 @@ export class InkLayer {
         ctx.beginPath();
         for (let r = 0; r < rows; r++)
           for (let c = cols0; c < cols1; c++) {
-            if (!(s.mask & (1 << (r * s.cols + c)))) continue;
+            if (!(s.drawMask & (1 << (r * s.cols + c)))) continue;
             // the cell's quad on the grid (a query column spans `sub` grid columns), widened half a pixel along the strip
             const ga = strips === 1 ? c * s.sub : i0;
             const gb = strips === 1 ? (c + 1) * s.sub : i1;
