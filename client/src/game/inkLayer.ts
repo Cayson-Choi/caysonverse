@@ -52,7 +52,7 @@ import { postChainFrames } from "./renderScale";
  */
 
 /** At most this many signs are drawn crisp at once (the biggest on screen). */
-export const MAX_SIGNS = 8;
+export const MAX_SIGNS = 5;
 /** A sign smaller than this on screen (its height, device px) keeps its 3D lettering. */
 export const MIN_SIGN_PX = 14;
 /** A query result older than this many frames is too old to draw from. */
@@ -101,8 +101,7 @@ interface SignState {
   label: InkLabel;
   cols: number;
   rows: number;
-  /** Per cell: "any of it seen" (depth LEQUAL on the cell) and "anything in front of it" (depth GREATER on the grown cell). */
-  queries: WebGLQuery[];
+  /** Per cell "anything in front of it" (depth GREATER on the cell grown by the guard), per column the same on the wider ring. */
   blockers: WebGLQuery[];
   rings: WebGLQuery[];
   pending: boolean;
@@ -116,7 +115,7 @@ interface SignState {
   ringBefore: number;
   /** The last cut it saw (a frame number): results issued on or before it are void. */
   cutFrame: number;
-  /** The cells drawn: seen in the last two results and nothing in front of them (`seen & seenBefore & ~blocked`). */
+  /** The cells drawn: nothing in front of them (nor within the guard) in the last two results (`seen & seenBefore`). */
   mask: number;
   maskFrame: number;
   /** The guard (fb px) the in-flight blocker queries were grown by, and the one the last result had. */
@@ -324,7 +323,7 @@ export class InkLayer {
       let s = this.states.get(label);
       if (!s) {
         const { cols, rows } = inkGrid(label.w, label.h);
-        s = { label, cols, rows, queries: [], blockers: [], rings: [], pending: false, issued: -1, seen: 0, seenBefore: 0, blocked: 0, ring: -1, ringBefore: -1, cutFrame: -1, mask: 0, maskFrame: -1e9, guardIssued: 0, guard: 0, lastX: Number.NaN, lastY: Number.NaN, speed: 0, fog: null, light: null, probeFrame: -1e9, probing: false, raster: null, lastDrawn: -1e9, ink3d: true, grid: [], gridCols: 0, sub: 1, strips: false, drawn: false, size: 0 };
+        s = { label, cols, rows, blockers: [], rings: [], pending: false, issued: -1, seen: 0, seenBefore: 0, blocked: 0, ring: -1, ringBefore: -1, cutFrame: -1, mask: 0, maskFrame: -1e9, guardIssued: 0, guard: 0, lastX: Number.NaN, lastY: Number.NaN, speed: 0, fog: null, light: null, probeFrame: -1e9, probing: false, raster: null, lastDrawn: -1e9, ink3d: true, grid: [], gridCols: 0, sub: 1, strips: false, drawn: false, size: 0 };
         this.states.set(label, s);
       }
       s.drawn = false;
@@ -381,7 +380,7 @@ export class InkLayer {
     for (const s of cands)
       if (!s.pending) {
         issue.push(s);
-        cells += s.cols * s.rows;
+        cells += s.cols * s.rows + s.cols;
       }
     // probes (sign with a probe, its cell seen, its turn)
     const probe: SignState[] = [];
@@ -419,7 +418,7 @@ export class InkLayer {
       if (this.frame - s.maskFrame > FRESH_FRAMES || s.mask === 0 || !s.light) continue;
       // moving fast with a cell partly hidden, or something moving near it: WebGL's own lettering (its depth test is exact) until
       // it settles
-      if (s.guard > FAST_GUARD && (s.seen & s.blocked) !== 0) continue;
+      if (s.guard > FAST_GUARD && s.blocked !== 0) continue;
       if (s.ring !== s.ringBefore) continue;
       // it moved further on screen this frame than its last result's guard reaches (a camera cut, a fast turn): that result cannot
       // vouch for where it is now; and a cut starts its history over
@@ -638,7 +637,6 @@ export class InkLayer {
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
     // queries and buffers made for an older context are gone with it
     for (const s of this.states.values()) {
-      s.queries.length = 0;
       s.blockers.length = 0;
       s.rings.length = 0;
       s.pending = false;
@@ -653,31 +651,27 @@ export class InkLayer {
     if (!s.pending) return;
     const n = s.cols * s.rows;
     // the last query issued is the last to come in
-    if (!gl.getQueryParameter(s.rings[n - 1]!, gl.QUERY_RESULT_AVAILABLE)) return;
-    for (let i = 0; i < n; i++)
-      if (!gl.getQueryParameter(s.queries[i]!, gl.QUERY_RESULT_AVAILABLE) || !gl.getQueryParameter(s.blockers[i]!, gl.QUERY_RESULT_AVAILABLE) || !gl.getQueryParameter(s.rings[i]!, gl.QUERY_RESULT_AVAILABLE)) return;
-    if (s.issued <= s.cutFrame) {
-      s.pending = false;
-      return;
-    }
-    let seen = 0;
+    if (!gl.getQueryParameter(s.rings[s.cols - 1]!, gl.QUERY_RESULT_AVAILABLE)) return;
+    for (let i = 0; i < n; i++) if (!gl.getQueryParameter(s.blockers[i]!, gl.QUERY_RESULT_AVAILABLE)) return;
+    for (let i = 0; i < s.cols; i++) if (!gl.getQueryParameter(s.rings[i]!, gl.QUERY_RESULT_AVAILABLE)) return;
+    s.pending = false;
+    if (s.issued <= s.cutFrame) return;
     let blocked = 0;
     let ring = 0;
-    for (let i = 0; i < n; i++) {
-      if (gl.getQueryParameter(s.queries[i]!, gl.QUERY_RESULT)) seen |= 1 << i;
-      if (gl.getQueryParameter(s.blockers[i]!, gl.QUERY_RESULT)) blocked |= 1 << i;
-      if (gl.getQueryParameter(s.rings[i]!, gl.QUERY_RESULT)) ring |= 1 << i;
-    }
-    s.ringBefore = s.maskFrame > -1e9 && s.issued - s.maskFrame <= FRESH_FRAMES * 2 ? s.ring : -1;
+    for (let i = 0; i < n; i++) if (gl.getQueryParameter(s.blockers[i]!, gl.QUERY_RESULT)) blocked |= 1 << i;
+    for (let i = 0; i < s.cols; i++) if (gl.getQueryParameter(s.rings[i]!, gl.QUERY_RESULT)) ring |= 1 << i;
+    const recent = s.maskFrame > -1e9 && s.issued - s.maskFrame <= FRESH_FRAMES * 2;
+    s.ringBefore = recent ? s.ring : -1;
     s.ring = ring;
-    // a cell shows once it was seen twice running and nothing stands in front of it (or near it, the guard); it goes at once
-    s.seenBefore = s.maskFrame > -1e9 && s.issued - s.maskFrame <= FRESH_FRAMES * 2 ? s.seen : 0;
-    s.seen = seen;
+    // a cell shows once nothing stood in front of it (nor near it: the guard) in two results running; it goes at once
+    const all = n >= 31 ? -1 : (1 << n) - 1;
+    const clear = all & ~blocked;
+    s.seenBefore = recent ? s.seen : 0;
+    s.seen = clear;
     s.blocked = blocked;
-    s.mask = seen & s.seenBefore & ~blocked;
+    s.mask = clear & s.seenBefore;
     s.guard = s.guardIssued;
     s.maskFrame = s.issued;
-    s.pending = false;
   }
 
   private readProbes(gl: WebGL2RenderingContext): void {
@@ -717,7 +711,8 @@ export class InkLayer {
     const bw = gl.drawingBufferWidth;
     const bh = gl.drawingBufferHeight;
     if (cells > 0) {
-      if (this.verts.length < cells * 72) this.verts = new Float32Array(cells * 72 * 2);
+      // per cell its grown quad (6 vertices x 4), per column the ring's (the same)
+      if (this.verts.length < cells * 48) this.verts = new Float32Array(cells * 48 * 2);
       const v = this.verts;
       let k = 0;
       const ex = eye[12]!;
@@ -739,35 +734,22 @@ export class InkLayer {
         const gy = (2 * guard) / bh;
         const rx = (2 * (guard + RING_PX)) / bw;
         const ry = (2 * (guard + RING_PX)) / bh;
-        for (let r = 0; r < s.rows; r++)
-          for (let c = 0; c < s.cols; c++) {
-            const xa = -w / 2 + (w * c) / s.cols;
-            const xb = -w / 2 + (w * (c + 1)) / s.cols;
-            const ya = h / 2 - (h * r) / s.rows;
-            const yb = h / 2 - (h * (r + 1)) / s.rows;
-            // the cell itself (seen?)
-            clipOf(m, xa, ya, lz, view, proj, v, k);
-            clipOf(m, xb, ya, lz, view, proj, v, k + 4);
-            clipOf(m, xb, yb, lz, view, proj, v, k + 8);
-            clipOf(m, xa, ya, lz, view, proj, v, k + 12);
-            clipOf(m, xb, yb, lz, view, proj, v, k + 16);
-            clipOf(m, xa, yb, lz, view, proj, v, k + 20);
-            // the cell grown by the guard on screen (anything in front?): each corner pushed out, in clip space (x w)
-            const grow = (src: number, dst: number, sx: number, sy: number, ax: number, ay: number) => {
-              const cw = v[k + src + 3]!;
-              v[k + dst] = v[k + src]! + sx * ax * cw;
-              v[k + dst + 1] = v[k + src + 1]! + sy * ay * cw;
-              v[k + dst + 2] = v[k + src + 2]!;
-              v[k + dst + 3] = cw;
-            };
-            const corners: Array<[number, number, number]> = [[0, -1, 1], [4, 1, 1], [8, 1, -1], [12, -1, 1], [16, 1, -1], [20, -1, -1]];
-            for (let q = 0; q < 6; q++) {
-              const [src, sx, sy] = corners[q]!;
-              grow(src, 24 + q * 4, sx, sy, gx, gy);
-              grow(src, 48 + q * 4, sx, sy, rx, ry);
-            }
-            k += 72;
+        // a quad of the plane (local x0..x1, y0..y1 at the lift) grown on screen by (ax, ay) in clip units, each corner outward
+        const quad = (x0: number, x1: number, y0: number, y1: number, ax: number, ay: number) => {
+          const pts: Array<[number, number, number, number]> = [[x0, y0, -1, 1], [x1, y0, 1, 1], [x1, y1, 1, -1], [x0, y0, -1, 1], [x1, y1, 1, -1], [x0, y1, -1, -1]];
+          for (const [x, y, sx, sy] of pts) {
+            clipOf(m, x, y, lz, view, proj, v, k);
+            const cw = v[k + 3]!;
+            v[k] = v[k]! + sx * ax * cw;
+            v[k + 1] = v[k + 1]! + sy * ay * cw;
+            k += 4;
           }
+        };
+        // blocked: each cell grown by the guard
+        for (let r = 0; r < s.rows; r++)
+          for (let c = 0; c < s.cols; c++) quad(-w / 2 + (w * c) / s.cols, -w / 2 + (w * (c + 1)) / s.cols, h / 2 - (h * r) / s.rows, h / 2 - (h * (r + 1)) / s.rows, gx, gy);
+        // the ring: each column (all rows) grown by the guard and the ring
+        for (let c = 0; c < s.cols; c++) quad(-w / 2 + (w * c) / s.cols, -w / 2 + (w * (c + 1)) / s.cols, h / 2, -h / 2, rx, ry);
       }
       gl.viewport(0, 0, bw, bh);
       gl.disable(gl.SCISSOR_TEST);
@@ -778,7 +760,8 @@ export class InkLayer {
       gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
       gl.disable(gl.RASTERIZER_DISCARD);
       gl.enable(gl.DEPTH_TEST);
-      gl.depthFunc(gl.LEQUAL);
+      // a sample of a grown quad BEHIND what is drawn there passes: something nearer stands over it
+      gl.depthFunc(gl.GREATER);
       gl.depthMask(false);
       gl.depthRange(0, 1);
       gl.colorMask(false, false, false, false);
@@ -787,28 +770,17 @@ export class InkLayer {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
       if (this.verts.byteLength > (gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_SIZE) as number)) gl.bufferData(gl.ARRAY_BUFFER, this.verts.byteLength, gl.DYNAMIC_DRAW);
       gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.verts, 0, k);
-      let cell = 0;
+      let quadAt = 0;
       for (const s of issue) {
         const n = s.cols * s.rows;
-        while (s.queries.length < n) s.queries.push(newQuery(gl));
         while (s.blockers.length < n) s.blockers.push(newQuery(gl));
-        while (s.rings.length < n) s.rings.push(newQuery(gl));
-        for (let i = 0; i < n; i++) {
-          // seen: a sample of the cell at or before the depth there
-          gl.depthFunc(gl.LEQUAL);
-          gl.beginQuery(gl.ANY_SAMPLES_PASSED, s.queries[i]!);
-          gl.drawArrays(gl.TRIANGLES, cell * 18, 6);
+        while (s.rings.length < s.cols) s.rings.push(newQuery(gl));
+        for (let i = 0; i < n + s.cols; i++) {
+          const q = i < n ? s.blockers[i]! : s.rings[i - n]!;
+          gl.beginQuery(gl.ANY_SAMPLES_PASSED, q);
+          gl.drawArrays(gl.TRIANGLES, quadAt * 6, 6);
           gl.endQuery(gl.ANY_SAMPLES_PASSED);
-          // blocked: a sample of the grown cell BEHIND what is there (something nearer stands over it)
-          gl.depthFunc(gl.GREATER);
-          gl.beginQuery(gl.ANY_SAMPLES_PASSED, s.blockers[i]!);
-          gl.drawArrays(gl.TRIANGLES, cell * 18 + 6, 6);
-          gl.endQuery(gl.ANY_SAMPLES_PASSED);
-          // the wider ring (the same test): does anything stand near it
-          gl.beginQuery(gl.ANY_SAMPLES_PASSED, s.rings[i]!);
-          gl.drawArrays(gl.TRIANGLES, cell * 18 + 12, 6);
-          gl.endQuery(gl.ANY_SAMPLES_PASSED);
-          cell++;
+          quadAt++;
         }
         s.pending = true;
         s.issued = this.frame;
@@ -847,8 +819,7 @@ export class InkLayer {
 
   private release(s: SignState): void {
     const gl = this.gl;
-    if (gl && !gl.isContextLost()) for (const q of [...s.queries, ...s.blockers, ...s.rings]) gl.deleteQuery(q);
-    s.queries.length = 0;
+    if (gl && !gl.isContextLost()) for (const q of [...s.blockers, ...s.rings]) gl.deleteQuery(q);
     s.blockers.length = 0;
     s.rings.length = 0;
     if (s.raster) s.raster.canvas.width = 0;

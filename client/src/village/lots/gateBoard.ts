@@ -1,6 +1,5 @@
 import { TEXT_ANISOTROPY, sharpenTextMaterial } from "../../game/sceneText";
 import { addInkLabel, type InkTone } from "../../game/inkLabels";
-import { lotNightDesaturate } from "./lotsPrep";
 import {
   BoxGeometry,
   BufferGeometry,
@@ -216,7 +215,7 @@ export interface GateBoard {
  * Build the board (two draw calls: the painted frame and posts, the lettered panel). `patch` hooks the materials into the lots' light
  * (the live sun's shadow, the night's fade), as every piece of the gate's dressing is.
  */
-export function buildGateBoard(low: boolean, patch: (m: MeshStandardMaterial, key: string) => void): GateBoard {
+export function buildGateBoard(low: boolean, patch: (m: MeshStandardMaterial, key: string) => void, nightDesaturate: () => number = () => 0): GateBoard {
   const B = GATE_BOARD;
   const NAVY = new Color("#1a2566");
   const GILT = new Color("#d9ae4a");
@@ -298,7 +297,7 @@ export function buildGateBoard(low: boolean, patch: (m: MeshStandardMaterial, ke
     // albedo in all three channels, so the lamps' tint at night reads true (the navy enamel had next to no red to measure it by)
     probe: { x: 0, y: -h / 2 - fw / 2, albedo: "#d9ae4a" },
     // the lots' night fade pulls the board's colours toward grey before the light (patchLotLight): the letters' too
-    desaturate: lotNightDesaturate,
+    desaturate: nightDesaturate,
     setInk(on) {
       if (!on && !blank) {
         const bc = new CanvasTexture(drawGateBoardCanvas(false, false, 0.5));
