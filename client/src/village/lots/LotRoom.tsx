@@ -685,7 +685,12 @@ export interface LoadedRoom {
   lamps: RoomLamps;
   /** The baked light's day/night mix (null: the room has no lightmap, or the phone's file). */
   lightmap: { mix: { value: number } } | null;
-  solid: SolidIndex;
+  /**
+   * The camera's and the seat framing's solid model, built on first read (perf/100, 2026-11-28): only a player inside the room
+   * needs it (read under the door cover), while the café's and the other buildings' showcases load the same rooms in the village —
+   * where building it was one 190-350 ms main-thread frame per room on a PC (x4 on a phone) as the player walked the plaza.
+   */
+  readonly solid: SolidIndex;
   stats: { triangles: number; draws: number; sacred: number; sacredTriangles: number; file: string; phone: boolean };
 }
 
@@ -1015,7 +1020,20 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
     root.updateMatrixWorld(true);
     // the camera's and the seat framing's solid model: the drawn room (its glass is no wall: the stained glass is in it)
     const b = room.bounds;
-    const solid = buildSolidIndex(solidTriangles(root), b.minX - 1, b.maxX + 1, b.minZ - 1, b.maxZ + 1);
+    let solidIndex: SolidIndex | null = null;
+    const solid = (): SolidIndex => {
+      if (solidIndex) return solidIndex;
+      // the triangles in the room's own frame (root's position only), as at load: lifted out of the drawn scene for the read
+      const parent = root.parent;
+      root.parent = null;
+      try {
+        solidIndex = buildSolidIndex(solidTriangles(root), b.minX - 1, b.maxX + 1, b.minZ - 1, b.maxZ + 1);
+      } finally {
+        root.parent = parent;
+        root.updateMatrixWorld(true);
+      }
+      return solidIndex;
+    };
     // the fire's point light (the node `fire__<unit>_light`)
     const fl = scene.getObjectByName(`fire__${unit}_light`);
     const fireLight = fl ? new Vector3().setFromMatrixPosition(fl.matrixWorld) : null;
@@ -1034,7 +1052,9 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
       fire,
       fireLight,
       lamps,
-      solid,
+      get solid() {
+        return solid();
+      },
       stats: { triangles: Math.round(triangles), draws, sacred: props.filter((p) => p.status === "fulfilled").length, sacredTriangles: Math.round(sacredTriangles), file, phone },
     };
   } finally {

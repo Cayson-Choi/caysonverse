@@ -10,6 +10,7 @@
  *
  *   entry     the entry screen → the village (load time; the vegetation veil); not judged (loading screen)
  *   plaza     stand, orbit the camera round, walk round the fountain
+ *   houserow  along the south houses (front, side and back window boxes with 3D flowers), camera swung at each stop, then night
  *   map       open the 🗺 map (the camera rises over the whole village), close it, open it again
  *   crowd     stand on the plaza looking at the other players (run bots alongside: see below)
  *   daynight  the clock swept noon → sunset → night → morning (the DEV pin, villageClock.pin), a frame budget all the way
@@ -60,6 +61,8 @@ const { values: args } = parseArgs({
     "crowd-ms": { type: "string", default: "15000" },
     /** extra page query, e.g. gate=off (DEV: the shader gate left out, to compare) */
     query: { type: "string" },
+    /** DEV: the phone's ink labels off (inkLayer.ts __cvInkOff), to compare their cost */
+    "ink-off": { type: "boolean", default: false },
   },
 });
 const PHONE_DEV = args.device === "phone";
@@ -89,7 +92,7 @@ function recorder() {
     gl: [], // [compileMs, links, uploadMs, uploads, bufferMs] of the work since the previous frame
     loaf: [],
     samples: [],
-    acc: { compileMs: 0, links: 0, uploadMs: 0, uploads: 0, bufferMs: 0 },
+    acc: { compileMs: 0, links: 0, uploadMs: 0, uploads: 0, bufferMs: 0, queryMs: 0, queries: 0 },
     covered: 0,
     draws: [], // [calls, triangles] of each frame (all its render passes: info.autoReset is turned off, reset here)
     programs: [], // programs as three made them: { t, phase, name, key }
@@ -110,6 +113,9 @@ function recorder() {
       } else if (kind === "u") {
         acc.uploadMs += d;
         acc.uploads++;
+      } else if (kind === "q") {
+        acc.queryMs += d;
+        acc.queries++;
       } else acc.bufferMs += d;
       return r;
     };
@@ -121,6 +127,8 @@ function recorder() {
     for (const n of ["compileShader", "linkProgram", "getProgramParameter", "getShaderParameter", "getProgramInfoLog", "useProgram"]) wrap(p, n, "c");
     for (const n of ["texImage2D", "texSubImage2D", "texImage3D", "texSubImage3D", "compressedTexImage2D", "compressedTexSubImage2D", "texStorage2D", "generateMipmap"]) wrap(p, n, "u");
     for (const n of ["bufferData", "bufferSubData"]) wrap(p, n, "b");
+    // occlusion queries and pixel read-backs (the phone's ink labels, inkLayer.ts): any wait on the GPU shows here
+    for (const n of ["beginQuery", "endQuery", "getQueryParameter", "fenceSync", "getSyncParameter", "clientWaitSync", "getBufferSubData", "readPixels"]) wrap(p, n, "q");
   }
   const seenProg = new Set();
   const loop = (now) => {
@@ -143,15 +151,15 @@ function recorder() {
     R.t.push(now);
     R.ph.push(R.phase);
     R.cover.push(R.covered);
-    R.gl.push([+a.compileMs.toFixed(2), a.links, +a.uploadMs.toFixed(2), a.uploads, +a.bufferMs.toFixed(2)]);
-    a.compileMs = a.links = a.uploadMs = a.uploads = a.bufferMs = 0;
+    R.gl.push([+a.compileMs.toFixed(2), a.links, +a.uploadMs.toFixed(2), a.uploads, +a.bufferMs.toFixed(2), +a.queryMs.toFixed(3), a.queries]);
+    a.compileMs = a.links = a.uploadMs = a.uploads = a.bufferMs = a.queryMs = a.queries = 0;
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
   // loading covers (polled, never per frame): the vegetation veil, the door fade, the house cover, the hall curtain
   setInterval(() => {
     let c = 0;
-    for (const sel of [".cv-veg-veil", ".cv-door-fade", ".cv-house-cover", ".cv-curtain", ".cv-loader", "[data-testid=park-loading]"]) {
+    for (const sel of [".cv-veg-veil", ".cv-door-fade", ".cv-house-cover", ".cv-curtain", ".cv-loader", "[data-testid=park-loading]", ".cv-aload"]) {
       const e = document.querySelector(sel);
       if (!e) continue;
       const o = parseFloat(getComputedStyle(e).opacity || "1");
@@ -172,6 +180,10 @@ function recorder() {
       heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : null,
       remotes: window.__cv?.getRemotes ? Object.keys(window.__cv.getRemotes() ?? {}).length : null,
       dpr: th?.gl?.getPixelRatio?.() ?? null,
+      ink: (() => {
+        const st = window.__cvLabelOverlay?.ink?.stats;
+        return st ? { active: st.active, drawn: st.drawn, cells: st.cells, totalMs: st.totalMs, frames: st.frames, rasterMs: st.rasterMs } : null;
+      })(),
     });
   }, 1000);
   try {
@@ -245,7 +257,7 @@ const pct = (s, q) => (s.length ? s[Math.min(s.length - 1, Math.floor(s.length *
 function phaseStats(rec, phase, judgeFrom) {
   const iv = [];
   const hitches = [];
-  let gl = { compileMs: 0, links: 0, uploadMs: 0, uploads: 0, bufferMs: 0 };
+  let gl = { compileMs: 0, links: 0, uploadMs: 0, uploads: 0, bufferMs: 0, queryMs: 0, queries: 0, queryMaxMs: 0 };
   for (let i = 1; i < rec.t.length; i++) {
     if (rec.ph[i] !== phase) continue;
     const d = rec.t[i] - rec.t[i - 1];
@@ -256,6 +268,9 @@ function phaseStats(rec, phase, judgeFrom) {
     gl.uploadMs += g[2];
     gl.uploads += g[3];
     gl.bufferMs += g[4];
+    gl.queryMs += g[5] ?? 0;
+    gl.queries += g[6] ?? 0;
+    gl.queryMaxMs = Math.max(gl.queryMaxMs, g[5] ?? 0);
     if (d > 50)
       hitches.push({
         at: Math.round(rec.t[i - 1]),
@@ -290,7 +305,15 @@ function phaseStats(rec, phase, judgeFrom) {
     max: +(s[s.length - 1] ?? 0).toFixed(1),
     over50: hitches.length,
     over100judged: hitches.filter((h) => h.judged && h.ms > MAX_HITCH).length,
-    gl: { compileMs: +gl.compileMs.toFixed(1), links: gl.links, uploadMs: +gl.uploadMs.toFixed(1), uploads: gl.uploads, bufferMs: +gl.bufferMs.toFixed(1) },
+    gl: { compileMs: +gl.compileMs.toFixed(1), links: gl.links, uploadMs: +gl.uploadMs.toFixed(1), uploads: gl.uploads, bufferMs: +gl.bufferMs.toFixed(1), queryMsPerFrame: iv.length ? +(gl.queryMs / iv.length).toFixed(3) : 0, queriesPerFrame: iv.length ? +(gl.queries / iv.length).toFixed(1) : 0, queryMaxMs: +gl.queryMaxMs.toFixed(2) },
+    // the ink labels' own CPU time per frame they ran (inkLayer.ts stats; phone only), over the phase
+    ink: (() => {
+      const w = samples.filter((x) => x.ink);
+      if (w.length < 2) return null;
+      const a = w[0].ink, b = w[w.length - 1].ink;
+      const fr = b.frames - a.frames;
+      return { msPerFrame: fr > 0 ? +((b.totalMs - a.totalMs) / fr).toFixed(3) : 0, framesRun: fr, drawnMax: Math.max(...w.map((x) => x.ink.drawn)), cellsMax: Math.max(...w.map((x) => x.ink.cells)), rasterMs: +(b.rasterMs - a.rasterMs).toFixed(1), active: w.some((x) => x.ink.active) };
+    })(),
     render: { callsMean: nd ? Math.round(callsSum / nd) : null, callsMax, trisMax, programs: max("programs"), textures: max("textures"), geometries: max("geometries"), heapMBMax: max("heapMB"), remotes: max("remotes") },
     longFrames: loaf.length,
     loafBlockMs: Math.round(loaf.reduce((a, l) => a + (l.block ?? 0), 0)),
@@ -315,6 +338,7 @@ if (BOTS > 0) {
 const browser = await launchBrowser();
 const p = await openPlayer(browser, run, { tag: args.device, device, settings: args.graphics ? { graphics: args.graphics } : {} });
 await p.ctx.addInitScript(recorder);
+if (args["ink-off"]) await p.ctx.addInitScript(() => (globalThis.__cvInkOff = true));
 const session = await cdp(p);
 if (THROTTLE > 1) await session.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE });
 await session.send("Profiler.enable");
@@ -462,6 +486,25 @@ try {
     await sleep(1500);
     for (const [x, z] of [[8, 8], [8, -8], [-8, -8], [-8, 8], [0, 12]]) await walkAndWait(p, x, z, 30000, 1.2);
     await sleep(2000);
+  });
+
+  // the house row (perf/100, 2026-11-28): along the south houses (1, 7 east; 2, 9 west) where the front, side and back window
+  // boxes with their 3D flowers are in view, the camera swung round at each stop; then the same at night (the warm window veil)
+  await phase("houserow", async () => {
+    const stops = [[0, -40], [11, -48], [11, -40], [-11, -40], [-11, -50], [-11, -40], [0, -40]];
+    for (const [x, z] of stops) {
+      await walkAndWait(p, x, z, 25000, 1.5);
+      await dragOrbit(PHONE_DEV ? 220 : 360, 20);
+      await sleep(900);
+    }
+    const night = Date.parse(`${args.time.slice(0, 10)}T21:00:00+09:00`);
+    await p.page.evaluate(async (ms) => (await window.__imp("/src/village/villageClock.ts")).villageClock.pin(ms), night);
+    await sleep(2500);
+    await dragOrbit(PHONE_DEV ? 300 : 500, 30);
+    await sleep(2500);
+    await p.page.evaluate(async (ms) => (await window.__imp("/src/village/villageClock.ts")).villageClock.pin(ms), Date.parse(`${args.time.slice(0, 10)}T12:30:00+09:00`));
+    await walkAndWait(p, 0, 14, 30000, 1.5);
+    await sleep(1500);
   });
 
   await phase("map", async () => {

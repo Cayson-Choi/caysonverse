@@ -215,6 +215,17 @@ export function useTransitState(): TransitClientState {
   return useSyncExternalStore(subscribeTransit, getTransitState, getTransitState);
 }
 
+const getBoarded = (): boolean => state.boarded;
+
+/**
+ * Whether the local player is aboard: re-renders only when that changes (perf/100, 2026-11-28). `useTransitState` re-renders
+ * on every bus snapshot (4 a second); in the 3D scene each of those was an update that cut into whatever React was mounting
+ * (LocalPlayer, the village's doors), and on a phone the village coming back from the hall was never finished (keptMemo.ts).
+ */
+export function useTransitBoarded(): boolean {
+  return useSyncExternalStore(subscribeTransit, getBoarded, getBoarded);
+}
+
 /**
  * The bus's trip at `nowMs` (server time): by the drive the server's driver published (it stops for avatars on the road,
  * busDrive.ts), evaluated here at the synced time so it moves smoothly between snapshots; by the bare timetable before the

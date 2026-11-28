@@ -26,6 +26,13 @@ import { preloadBus } from "./villageBusLoader";
 import { createVegetation, hideLegacyVegetationSources, vegModeFrom, vegetationPark, type VegStats, type VillageVegetation } from "./veg/villageVegetation";
 import { vegDressing } from "./vegDressing";
 import { villageLoad } from "../ui/villageLoad";
+import { KeptSlot } from "../game/keptMemo";
+import { setVillageDrawn } from "./villageDrawn";
+
+/** The dressed village, kept across the renders React throws away (keptMemo.ts); an undrawn one is freed when replaced. */
+const preparedVillage = new KeptSlot<VillageNodes>(disposeVillage);
+/** How many times the village was dressed this page (DEV probe). */
+let villagePrepares = 0;
 
 /** The vegetation build's slice (ms) while the village is covered (see sliceMs below). */
 const COVERED_SLICE_MS = 160;
@@ -53,6 +60,8 @@ declare global {
   interface Window {
     /** Dev-only: the dressed village model (VillageModel). Absent in production builds. */
     __cvVillage?: () => VillageNodes;
+    /** Dev-only: how many times the village was dressed this page (once per visit and tier, never per render: keptMemo.ts). */
+    __cvVillagePrepares?: () => number;
     /** Dev-only: the 3D vegetation's numbers (veg3d: mode, instances per level, triangles, draw calls), or null (`?veg=old`). */
     __cvVeg?: () => VegStats | null;
     /** Dev-only: every leaf spray's and blossom bunch's gap to the drawn twigs and bark (slow: checks only). */
@@ -116,18 +125,22 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   // The village's shaders bind the live shadows' samplers on every draw: a valid comparison texture before any map.
   useMemo(() => ensureShadowPlaceholder(gl), [gl]);
   const nodes = useMemo(
+    // Kept across the renders React throws away (keptMemo.ts): dressed once per model, light map, tier and renderer.
     // A texture already on the GPU (a rich-to-light switch mid-visit) is never capped: its storage is immutable.
     () =>
-      prepareVillage(
-        gltf.scene,
-        lightmap,
-        tier,
-        LIGHTING.village.toneCurve,
-        undefined,
-        (t) => gl.properties.has(t),
-        gl.capabilities.getMaxAnisotropy(),
-        { fountain: fountainMode() },
-      ),
+      preparedVillage.get([gltf, lightmap, tier, gl], () => {
+        villagePrepares++;
+        return prepareVillage(
+          gltf.scene,
+          lightmap,
+          tier,
+          LIGHTING.village.toneCurve,
+          undefined,
+          (t) => gl.properties.has(t),
+          gl.capabilities.getMaxAnisotropy(),
+          { fountain: fountainMode() },
+        );
+      }),
     [gltf, lightmap, tier, gl],
   );
   // The 3D flowers, trees and bushes (veg3d), built in steps after the village is up (the old foliage cards and the
@@ -251,11 +264,22 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   const night = useNightMapWanted();
   useEffect(() => {
     // Dev/E2E probe: the dressed model (draw-call and material checks). Tree-shaken in production.
-    if (import.meta.env.DEV) window.__cvVillage = () => nodes;
+    if (import.meta.env.DEV) {
+      window.__cvVillage = () => nodes;
+      window.__cvVillagePrepares = () => villagePrepares;
+    }
+    preparedVillage.commit(nodes);
     reconnectFrame.villageIn(); // the village is in the scene: a reconnect's overlay may lift (ReconnectingOverlay)
+    // on screen once two frames have been drawn with it (the way-out screen waits for this: villageDrawn.ts)
+    let raf = requestAnimationFrame(() => {
+      raf = requestAnimationFrame(() => setVillageDrawn(true));
+    });
     return () => {
+      cancelAnimationFrame(raf);
+      setVillageDrawn(false);
       reconnectFrame.villageOut();
       if (import.meta.env.DEV) delete window.__cvVillage;
+      preparedVillage.release(nodes);
       disposeVillage(nodes);
     };
   }, [nodes]);
