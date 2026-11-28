@@ -110,7 +110,7 @@ pass  # (cottage pass) removed: H.piece(1, "rack", KR.dish_rack, 7.45, 0.33, 0.9
 pass  # (cottage pass) removed: H.piece(1, "purifierk", KR.water_purifier, 7.88, 0.28, 0.9, 
 pass  # (cottage pass) removed: H.piece(1, "rice", KR.rice_cooker, 9.05, 0.33, 0.9, 0.0, col
 pass  # (cottage pass) removed: H.piece(1, "micro", KR.microwave, 10.3, 3.05, 0.9, -PI / 2, 
-H.piece(1, "mats", KR.placemats, 8.15, 2.9, 0.745, PI / 2, cols=False, spots=[(-0.4, -0.22, 0.0), (0.4, -0.22, 0.0), (-0.4, 0.22, 0.0), (0.4, 0.22, 0.0)])
+H.piece(1, "runner", KR.table_runner, 8.14, 2.9, 0.74, PI / 2, cols=False, length=1.3, w=0.3)   # polish3: the 0.5 m deep table has no room for facing mats (they hung off its edge)
 pass  # (cottage pass) removed: H.piece(1, "slippers", KR.slippers, 6.6, 1.75, 0.0, 0.0, col
 pass  # (cottage pass) removed: H.piece(1, "umbrella", KR.umbrella_stand, 6.7, 0.35, 0.0, 0.
 
@@ -119,14 +119,14 @@ P(1, "cvase", "vase_small", 2.75, 5.35, 0.4)
 P(1, "cbooks", "books3", 2.25, 5.38, 0.4, 0.3)
 P(1, "tvvase", "vase_small", 3.2, 7.55, 0.45)
 P(1, "tvbooks", "books5", 2.95, 7.6, 0.45, PI)
-P(1, "fruit", "fruit_bowl", 8.15, 2.9, 0.74)
-P(1, "candle", "candle", 8.15, 2.45, 0.74)
-P(1, "candle", "candle", 8.15, 3.35, 0.74)
+P(1, "fruit", "fruit_bowl", 8.14, 2.92, 0.743)
+P(1, "candle", "candle", 8.14, 2.4, 0.743)
+P(1, "candle", "candle", 8.14, 3.4, 0.743)
 P(1, "kettle", "kettle", 9.45, 0.3, 0.9)
 pass  # (cottage pass) removed: P(1, "pan", "pan", 10.25, 2.1, 0.9, -PI / 2)
 pass  # (cottage pass) removed: P(1, "board", "cutting_board", 10.3, 1.35, 0.9, -PI / 2)
 P(1, "plates", "plates_stack", 10.3, 1.0, 0.9)
-P(1, "kcup", "teacup", 7.95, 3.15, 0.74)
+P(1, "kcup", "teacup", 8.02, 3.12, 0.743)   # polish3: its saucer hung over the table edge at x 7.95
 P(1, "boots", "boots_pair", 6.55, 0.55, 0.0, 0.3) if False else None
 H.piece(1, "cushion", DE.basket, 3.6, 1.0, 0.0, 0.0, r=0.22, h=0.3, cols=False) if False else None
 
@@ -180,7 +180,7 @@ H.piece(2, "shelf", KR.wall_shelf_deco, 10.6, 3.75, 0.0, -PI / 2, cols=False, w=
 pass  # (cottage pass) removed: H.piece(2, "laundry", KR.laundry_basket, 3.45, 7.35)
 
 # ---- dream show-home styling (owner 2026-11-17): fresh flowers, styled tables, lamps and sconces, a console vignette --------
-H.piece(1, "flowers", KR.flower_vase, 8.15, 2.65, 0.745, 0.0, cols=False, tn=(0.92, 0.66, 0.72, 1), kind="rose", h=0.24)
+H.piece(1, "flowers", KR.flower_vase, 8.15, 2.65, 0.74, 0.0, cols=False, tn=(0.92, 0.66, 0.72, 1), kind="rose", h=0.24)
 H.piece(1, "cstyle", KR.coffee_styling, 2.5, 5.25, 0.4, 0.0, cols=False, tn=(0.9, 0.7, 0.75, 1))
 H.piece(1, "vignette", KR.console_vignette, 0.0, 3.5, 0.0, PI / 2, w=0.8, accent=(0.92, 0.7, 0.76, 1))
 H.piece(2, "sconce", KR.wall_sconce, 0.0, 0.85, 1.5, PI / 2, cols=False)

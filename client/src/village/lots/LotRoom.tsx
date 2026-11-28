@@ -554,12 +554,25 @@ const LAMP_FRAG = /* glsl */ `#include <lights_fragment_end>
 }`;
 
 /**
- * A flower's petals (`LM_*_petal`, church_room_kit.py): a thin white bloom is lit through as well as on — the candle and the chancel spot
- * stand above the altar flowers and the pews see their undersides, so lit only by the lamps and the room's low fill (a lightmapped
- * room keeps 30 % of it) the petals read grey (owner 2026-11-27 "교회 제대 꽃이 회색"). This share of the petal's own colour (albedo x
- * vertex colour, linear) is added as a warm candlelit glow: white and cream again, the hydrangeas' cool tint kept. No extra lamp, no texture.
+ * A flower's petals (`LM_*_petal`, church / temple / café / library room kits): a thin bloom is lit through as well as on — the candle and
+ * the chancel spot stand above the altar flowers and the pews see their undersides, so lit only by the lamps and the room's low fill (a
+ * lightmapped room keeps 30 % of it) the petals read grey (owner 2026-11-27 "교회 제대 꽃이 회색"). This share of the petal's own colour
+ * (vertex colour, linear) is added as a soft lit-through glow.
+ *
+ * Polish 3 (owner 2026-11-28: the temple / café / library flowers only a little less grey): the petal is drawn from its own colour alone —
+ * the plaster set the kits put on it (albedo ~0.75 grey, its normal and ORM) dulled every bloom like dust — with its chroma lifted
+ * (PETAL_SATURATION about the colour's own luminance, then PETAL_DEEPEN: a white rose stays white, a pink lotus turns clearly pink),
+ * a satin roughness, and a near-neutral fill so pinks and lilacs are not pulled toward salmon. Day and night, PC and phone: one program.
  */
-export const PETAL_FILL: readonly [number, number, number] = [0.55, 0.48, 0.38];
+export const PETAL_FILL: readonly [number, number, number] = [0.4, 0.37, 0.34];
+/** Chroma lift of a petal's colour about its luminance (linear; 1 = as modelled). */
+export const PETAL_SATURATION = 2.2;
+/** Then the colour is deepened (a power on the linear colour: white stays white, a pale tint turns to a real petal colour). */
+export const PETAL_DEEPEN = 1.4;
+/** A petal's roughness (satin: the plaster set's ORM is not read). */
+export const PETAL_ROUGHNESS = 0.55;
+
+const f3 = (v: number): string => v.toFixed(3);
 
 export function patchPetalFill(m: MeshStandardMaterial): void {
   if (m.userData.petalFill) return;
@@ -567,14 +580,28 @@ export function patchPetalFill(m: MeshStandardMaterial): void {
   const prev = m.onBeforeCompile;
   m.onBeforeCompile = (shader, r) => {
     prev?.call(m, shader, r);
-    shader.fragmentShader = shader.fragmentShader.replace(
-      "#include <emissivemap_fragment>",
-      `#include <emissivemap_fragment>
-totalEmissiveRadiance += diffuseColor.rgb * vec3( ${PETAL_FILL.map((v) => v.toFixed(3)).join(", ")} );`,
-    );
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <map_fragment>", "")
+      .replace("#include <aomap_fragment>", "")
+      .replace("#include <normal_fragment_maps>", "")
+      .replace("#include <roughnessmap_fragment>", `float roughnessFactor = ${f3(PETAL_ROUGHNESS)};`)
+      .replace("#include <metalnessmap_fragment>", "float metalnessFactor = 0.0;")
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+{
+  float petalL = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+  diffuseColor.rgb = pow( clamp( mix( vec3( petalL ), diffuseColor.rgb, ${f3(PETAL_SATURATION)} ), 0.0, 1.0 ), vec3( ${f3(PETAL_DEEPEN)} ) );
+}`,
+      )
+      .replace(
+        "#include <emissivemap_fragment>",
+        `#include <emissivemap_fragment>
+totalEmissiveRadiance += diffuseColor.rgb * vec3( ${PETAL_FILL.map(f3).join(", ")} );`,
+      );
   };
   const key = m.customProgramCacheKey.bind(m);
-  m.customProgramCacheKey = () => `${key()}|petal`;
+  m.customProgramCacheKey = () => `${key()}|petal3`;
   m.needsUpdate = true;
 }
 

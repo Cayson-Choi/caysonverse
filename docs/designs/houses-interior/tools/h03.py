@@ -82,7 +82,7 @@ P(1, "kcups", "mug_p", 5.05, 4.5, 0.74)
 P(1, "kcups", "mug_p", 5.55, 5.6, 0.74)
 P(1, "kplate", "plate", 5.05, 5.65, 0.74)
 P(1, "kplate", "plate", 5.55, 4.45, 0.74)
-P(1, "kteapot", "teapot", 5.3, 5.4, 0.74)
+P(1, "kteapot", "teapot", 5.3, 4.75, 0.74)   # polish3: it stood inside the flower vase (5.3, 5.55)
 # window platform (평상) with cushions
 H.piece(1, "pyeong", SE.pyeongsang, 2.6, 0.58, 0, 0.0, w=1.8, d=1.0)
 H.piece(1, "pcush", DE.basket, 1.95, 0.62, 0.36, 0.0, r=0.17, h=0.12, tn=(0.9, 0.65, 0.45, 1), cols=False)
@@ -130,7 +130,7 @@ pass  # (cottage pass) removed: H.piece(1, "rack", KR.dish_rack, 3.95, 7.47, 0.9
 pass  # (cottage pass) removed: H.piece(1, "rice", KR.rice_cooker, 1.85, 7.47, 0.9, PI, cols
 pass  # (cottage pass) removed: H.piece(1, "purif", KR.water_purifier, 2.25, 7.52, 0.9, PI, 
 pass  # (cottage pass) removed: H.piece(1, "micro", KR.microwave, 8.55, 7.55, 1.75, PI, cols
-H.piece(1, "mats", KR.placemats, 5.3, 5.05, 0.745, PI / 2, cols=False, spots=[(-0.6, -0.27, 0.0), (0.0, -0.27, 0.0), (0.6, -0.27, 0.0), (-0.6, 0.27, 0.0), (0.0, 0.27, 0.0), (0.6, 0.27, 0.0)],
+H.piece(1, "mats", KR.placemats, 5.3, 5.05, 0.74, PI / 2, cols=False, table=("rect", 0.95, 0.475), spots=[(-0.6, -0.27, 0.0), (0.0, -0.27, 0.0), (0.6, -0.27, 0.0), (-0.6, 0.27, 0.0), (0.0, 0.27, 0.0), (0.6, 0.27, 0.0)],
         tn=(0.72, 0.62, 0.48, 1))
 pass  # (cottage pass) removed: H.piece(1, "aircon", KR.aircon_stand, 0.35, 5.05, 0, PI / 2)
 pass  # (cottage pass) removed: H.piece(1, "slippers", KR.slippers, 4.0, 1.75, 0.0, 0.0, col
@@ -150,7 +150,7 @@ P(2, "drbooks", "books3", 7.85, 0.3, 0.875, 0.3)
 pass  # (cottage pass) removed: H.piece(2, "purifier", KR.air_purifier, 8.6, 1.0)
 
 # ---- dream show-home styling (owner 2026-11-17): fresh flowers, styled tables, lamps and sconces, a console vignette --------
-H.piece(1, "flowers", KR.flower_vase, 5.3, 5.55, 0.745, 0.0, cols=False, tn=(0.98, 0.84, 0.35, 1), kind="tulip", h=0.28)
+H.piece(1, "flowers", KR.flower_vase, 5.3, 5.55, 0.74, 0.0, cols=False, tn=(0.98, 0.84, 0.35, 1), kind="tulip", h=0.28)
 H.piece(2, "cstyle", KR.coffee_styling, 4.85, 3.45, 0.4, 0.0, cols=False, tn=(0.95, 0.82, 0.45, 1))
 
 H.piece(1, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=3)
