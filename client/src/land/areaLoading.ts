@@ -99,7 +99,8 @@ export function loadView(i: LoadInputs): LoadView {
     return { done: false, stage: "files", progress: 0.1 + 0.55 * clamp01(i.downloaded), title, subtitle: "놀이기구를 준비하고 있어요" };
   }
   const title = i.target === "outside" ? "마을로 나가는 중…" : "마을로 돌아가는 중…";
-  if (i.area !== "village") return { done: false, stage: "door", progress: 0.06, title, subtitle: "문을 열고 있어요" };
+  // the way out of a building: the village's files were already on their way from the door (VillageScene prefetchVillageReturn)
+  if (i.area !== "village") return { done: false, stage: "door", progress: 0.06, title, subtitle: i.target === "outside" ? "마을 풍경을 불러오고 있어요" : "문을 열고 있어요" };
   const drawn = i.villageDrawn !== false;
   const ready = drawn && i.vegDressed && i.villageFrames >= VILLAGE_READY_FRAMES;
   if (ready) return { done: true, stage: "almost", progress: 1, title, subtitle: "거의 다 됐어요" };
