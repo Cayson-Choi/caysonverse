@@ -27,6 +27,7 @@ import {
 import {
   PARK_LAMPS,
   PARK_PLAZA,
+  PARK_SHOP_WALKS,
 } from "@caysonverse/shared/village/parkArea";
 import { isTouchDevice } from "../device";
 import { CoasterWorld } from "./CoasterWorld";
@@ -141,31 +142,55 @@ function brassInlay(r0: number, r1: number): BufferGeometry {
   return new LatheGeometry(pts, 96).rotateX(Math.PI / 2); // the meshes are laid with rotation-x -90 deg
 }
 
-type PadRect = readonly [number, number, number, number, string];
+/** A paved rectangle on the ground: centre x, z, size along x, z, material key, and the short ends left open (no kerb: "w" x-, "e" x+). */
+type PadRect = readonly [number, number, number, number, string, string?];
 
-/** The kerb's boxes: a 14 cm x 8 cm granite bar along every pad's edge and round the plaza, in 2 m pieces, left out where another pad lies. */
+/** The runs of `[a, b]` (sampled every 5 cm) where `free(t)` holds. */
+function freeRuns(a: number, b: number, free: (t: number) => boolean, step = 0.05): Array<[number, number]> {
+  const runs: Array<[number, number]> = [];
+  const n = Math.max(1, Math.round((b - a) / step));
+  let start: number | null = null;
+  for (let k = 0; k <= n; k++) {
+    const t = a + ((b - a) * k) / n;
+    if (free(t)) start ??= t;
+    else if (start !== null) {
+      if (t - start > 0.1) runs.push([start, t]);
+      start = null;
+    }
+  }
+  if (start !== null && b - start > 0.1) runs.push([start, b]);
+  return runs;
+}
+
+/** A granite kerb round each paved pad and the plaza; cut exactly where another pad (or the plaza) meets it (2026-11-28: it was cut
+ * a whole 2 m piece at a time, leaving stubs across a narrow walk's mouth). */
 function parkKerb(pads: readonly PadRect[], plaza: { x: number; z: number; radius: number }): BufferGeometry {
   const b = new GeoBuilder();
   const colour: V3 = [0.62, 0.6, 0.55];
+  const K = 0.07; // half the kerb's width: its line stands this far outside the paving's edge
   const insideOther = (x: number, z: number, skip: number): boolean =>
-    pads.some((p, i) => i !== skip && Math.abs(x - p[0]) < p[2] / 2 + 0.3 && Math.abs(z - p[1]) < p[3] / 2 + 0.3) ||
-    (skip !== -1 && Math.hypot(x - plaza.x, z - plaza.z) < plaza.radius + 0.3);
-  pads.forEach(([cx, cz, w, d], i) => {
-    const pieces = (len: number): number => Math.max(1, Math.round(len / 2));
+    pads.some((p, i) => i !== skip && Math.abs(x - p[0]) < p[2] / 2 + K && Math.abs(z - p[1]) < p[3] / 2 + K) ||
+    (skip !== -1 && Math.hypot(x - plaza.x, z - plaza.z) < plaza.radius + K);
+  const lay = (runs: Array<[number, number]>, at: (t: number) => [number, number], dir: V3) => {
+    for (const [r0, r1] of runs) {
+      const n = Math.max(1, Math.round((r1 - r0) / 2));
+      for (let k = 0; k < n; k++) {
+        const t = r0 + ((k + 0.5) * (r1 - r0)) / n;
+        const [x, z] = at(t);
+        b.box([x, 0.04, z], dir, Y, (r1 - r0) / n / 2 + 0.005, 0.04, K, colour);
+      }
+    }
+  };
+  pads.forEach(([cx, cz, w, d, , open], i) => {
     for (const sgn of [-1, 1]) {
-      // the two long edges / the two short ends, in pieces
-      const nx = pieces(w);
-      for (let k = 0; k < nx; k++) {
-        const x = cx - w / 2 + ((k + 0.5) * w) / nx;
-        const z = cz + (sgn * (d + 0.14)) / 2;
-        if (!insideOther(x, z, i)) b.box([x, 0.04, z], X, Y, w / nx / 2 + 0.01, 0.04, 0.07, colour);
-      }
-      const nz = pieces(d);
-      for (let k = 0; k < nz; k++) {
-        const z = cz - d / 2 + ((k + 0.5) * d) / nz;
-        const x = cx + (sgn * (w + 0.14)) / 2;
-        if (!insideOther(x, z, i)) b.box([x, 0.04, z], [0, 0, 1], Y, d / nz / 2 + 0.01, 0.04, 0.07, colour);
-      }
+      // the two long edges (along x) and the two short ends (along z), each where nothing else is paved
+      const z = cz + sgn * (d / 2 + K);
+      const x0 = cx - w / 2 - (open?.includes("w") ? 0 : 2 * K); // (round the corners, but not past an open end)
+      const x1 = cx + w / 2 + (open?.includes("e") ? 0 : 2 * K);
+      lay(freeRuns(x0, x1, (t) => !insideOther(t, z, i)), (t) => [t, z], X);
+      if (open?.includes(sgn < 0 ? "w" : "e")) continue;
+      const x = cx + sgn * (w / 2 + K);
+      lay(freeRuns(cz - d / 2, cz + d / 2, (t) => !insideOther(x, t, i)), (t) => [x, t], [0, 0, 1]);
     }
   });
   const seg = 72;
@@ -224,6 +249,8 @@ function Ground({ all }: { all: Texture[] }) {
       [161, -112, 368, 12, "p"], // the east-west avenue
       [2, -62.5, 12, 87, "g"], // the station approach (gravel): from the avenue's south edge (z -106; the avenue spans -118..-106) to the apron's (z -19), never on or under either (was 94 m long and overlapped the apron by 7 m: z-fighting shimmer)
       [2, -13, 18, 12, "p"], // the station apron: paving at the foot of the platform's north steps (the boarding pad)
+      // the shops' front walks, from the promenade's edge to each door's step (open at the step's end)
+      ...PARK_SHOP_WALKS.map((r): PadRect => [(r.minX + r.maxX) / 2, (r.minZ + r.maxZ) / 2, r.maxX - r.minX, r.maxZ - r.minZ, "p", r.minX < 40 ? "w" : "e"]),
     ] as const;
   }, []);
   const setsPave = useMemo(() => pickSet(all, "PavingStones070"), [all]);

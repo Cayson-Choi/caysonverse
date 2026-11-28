@@ -18,6 +18,7 @@ import {
 import { arrivalArea, spreadArrival } from "./arrivalSpot";
 import { shopWindows, WINDOW_BOX } from "./parkShopWindowLayout";
 import { PLAYER_RADIUS } from "../constants";
+import * as P from "./parkArea";
 
 const inSolid = (x: number, z: number, r = PLAYER_RADIUS) => PARK_SOLIDS.some((b) => x > b.minX - r && x < b.maxX + r && z > b.minZ - r && z < b.maxZ + r);
 
@@ -87,5 +88,37 @@ describe("park layout", () => {
     expect(parkGeometry.id).toBe("park");
     expect(parkGeometry.bounds).toEqual(PARK_BOUNDS);
     expect(parkGeometry.obstacles.length).toBe(PARK_SOLIDS.length);
+  });
+});
+
+// owner 2026-11-28: every path straight on its door (the shops stood 7 m of lawn off the promenade with no walk to their doors)
+describe("the shops' front walks", () => {
+  it("one per shop, centred on its door, from the promenade's edge to under the door's step", () => {
+    expect(P.PARK_SHOP_WALKS.length).toBe(P.PARK_SHOPS.length);
+    for (const s of P.PARK_SHOPS) {
+      const w = P.PARK_SHOP_WALKS.find((x) => x.id === s.id)!;
+      const d = P.parkShopDoor(s);
+      expect((w.minZ + w.maxZ) / 2).toBeCloseTo(d.z, 6);
+      expect(w.maxZ - w.minZ).toBeGreaterThanOrEqual(1.7); // the door
+      expect(w.maxZ - w.minZ).toBeLessThanOrEqual(2.0);
+      if (s.faces === 1) {
+        expect(w.maxX).toBe(P.PARK_PROMENADE.minX);
+        expect(w.minX).toBeLessThan(d.stepX); // under the step
+        expect(w.minX).toBeGreaterThan(d.x); // never into the wall
+      } else {
+        expect(w.minX).toBe(P.PARK_PROMENADE.maxX);
+        expect(w.maxX).toBeGreaterThan(d.stepX);
+        expect(w.maxX).toBeLessThan(d.x);
+      }
+    }
+  });
+  it("no lamp post, bin or bench stands on a walk or its kerb (14 cm)", () => {
+    const things = [...P.PARK_LAMPS, ...P.PARK_BINS].map((l) => ({ x: l.x, z: l.z }));
+    for (const w of P.PARK_SHOP_WALKS)
+      for (const t of things) {
+        const dx = Math.max(w.minX - 0.14 - t.x, 0, t.x - w.maxX - 0.14);
+        const dz = Math.max(w.minZ - 0.14 - t.z, 0, t.z - w.maxZ - 0.14);
+        expect(Math.hypot(dx, dz), `${w.id} by (${t.x}, ${t.z})`).toBeGreaterThan(0.5);
+      }
   });
 });

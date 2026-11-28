@@ -118,6 +118,27 @@ export const PARK_SHOPS: readonly ParkShop[] = Object.freeze([
   { id: "photo", x: 63, z: -133, w: 12, d: 8, faces: -1, wall: [0.82, 0.8, 0.92], beam: [0.3, 0.2, 0.13], roofH: 3.8 },
 ]);
 
+/** A shop's front door: its centre on the street wall (z) and the outer edge of its stone step (x), 1.9 m wide. */
+export function parkShopDoor(s: ParkShop): { x: number; z: number; stepX: number } {
+  return { x: s.x + (s.faces * s.d) / 2, z: s.z - s.w / 4, stepX: s.x + s.faces * (s.d / 2 + 0.71) };
+}
+
+/** The promenade's paving (x 31..49, z -188..-134). */
+export const PARK_PROMENADE = Object.freeze({ minX: 31, maxX: 49, minZ: -188, maxZ: -134 });
+
+/**
+ * Each shop's front walk (owner 2026-11-28: every path straight on its door): from the promenade's edge across the lawn to the
+ * door's step, centred on the door, 2 m wide (the door 1.7), the cobble 5 cm under the step.
+ */
+export const PARK_SHOP_WALKS: readonly { id: string; minX: number; maxX: number; minZ: number; maxZ: number }[] = Object.freeze(
+  PARK_SHOPS.map((s) => {
+    const d = parkShopDoor(s);
+    const tuck = 0.05;
+    const [minX, maxX] = s.faces === 1 ? [d.stepX - tuck, PARK_PROMENADE.minX] : [PARK_PROMENADE.maxX, d.stepX + tuck];
+    return { id: s.id, minX, maxX, minZ: d.z - 1, maxZ: d.z + 1 };
+  }),
+);
+
 /** The coaster's station platform (the queue hall that stood north of it was taken away: owner 2026-11-19; boarding is from the platform's steps, like every ride). */
 export const PARK_PLATFORM = Object.freeze({ minX: -14, maxX: 17, minZ: -6.8, maxZ: -1.4 });
 
@@ -182,7 +203,9 @@ export const PARK_TREES: readonly ParkTree[] = Object.freeze(buildTrees().filter
 /** Lamp posts: both sides of the promenade, round the plaza, along the avenue and the queue approach. */
 function buildLamps(): { x: number; z: number }[] {
   const out: { x: number; z: number }[] = [];
-  for (let z = -176; z <= -140; z += 12) out.push({ x: 31, z }, { x: 49, z });
+  // the promenade's edges, every 12 m; the third pair stands 1.5 m north of its place (z -152) to clear the toy shop's and the
+  // candy shop's front walks (z -154.25..-152.25, PARK_SHOP_WALKS), 2026-11-28
+  for (const z of [-176, -164, -150.5, -140]) out.push({ x: 31, z }, { x: 49, z });
   for (let i = 0; i < 10; i++) {
     const a = (i / 10) * Math.PI * 2;
     out.push({ x: PARK_PLAZA.x + Math.cos(a) * (PARK_PLAZA.radius - 2.5), z: PARK_PLAZA.z + Math.sin(a) * (PARK_PLAZA.radius - 2.5) });
