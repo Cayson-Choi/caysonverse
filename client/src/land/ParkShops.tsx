@@ -252,6 +252,8 @@ function ShopSign({ shop: s, mat }: { shop: ParkShop; mat: MeshStandardMaterial 
           paintShopName(g, name, tone);
           g.restore();
         },
+        // a plain lit board (MeshStandardMaterial under the scene's lights): its light worked out from them, day and night
+        lit: "standard",
         // the plain board above the name, inside the rim
         probe: { x: 0, y: SIGN.h / 2 - 0.15, albedo: signBoardColour(s.wall) },
         setInk: (on) => {

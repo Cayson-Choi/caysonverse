@@ -27,6 +27,7 @@ import { createVegetation, hideLegacyVegetationSources, vegModeFrom, vegetationP
 import { vegDressing } from "./vegDressing";
 import { villageLoad } from "../ui/villageLoad";
 import { KeptSlot } from "../game/keptMemo";
+import { setVillageDrawn } from "./villageDrawn";
 
 /** The dressed village, kept across the renders React throws away (keptMemo.ts); an undrawn one is freed when replaced. */
 const preparedVillage = new KeptSlot<VillageNodes>(disposeVillage);
@@ -269,7 +270,13 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
     }
     preparedVillage.commit(nodes);
     reconnectFrame.villageIn(); // the village is in the scene: a reconnect's overlay may lift (ReconnectingOverlay)
+    // on screen once two frames have been drawn with it (the way-out screen waits for this: villageDrawn.ts)
+    let raf = requestAnimationFrame(() => {
+      raf = requestAnimationFrame(() => setVillageDrawn(true));
+    });
     return () => {
+      cancelAnimationFrame(raf);
+      setVillageDrawn(false);
       reconnectFrame.villageOut();
       if (import.meta.env.DEV) delete window.__cvVillage;
       preparedVillage.release(nodes);

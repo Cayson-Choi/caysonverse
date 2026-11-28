@@ -3,6 +3,7 @@ import { Object3D, PerspectiveCamera, Vector3 } from "three";
 import {
   addInkLabel,
   affineError,
+  desaturated,
   inkBucket,
   inkGrid,
   inkLabels,
@@ -13,6 +14,7 @@ import {
   parseCss,
   screenGrid,
   srgbToLinear,
+  standardLight,
   toneCurve,
   toneKey,
   type InkLabel,
@@ -133,5 +135,49 @@ describe("the plane on screen", () => {
   it("affineError: none for a parallelogram, the perspective's miss for a trapezoid", () => {
     expect(affineError(0, 0, 10, 0, 0, 5, 10, 5)).toBe(0);
     expect(affineError(0, 0, 10, 1, 0, 5, 10, 4)).toBeCloseTo(2, 6);
+  });
+});
+
+describe("standardLight: three's matte MeshStandardMaterial lighting, on the CPU", () => {
+  it("a directional light straight on gives colour x intensity / pi; edge-on or behind gives nothing", () => {
+    const sun = { kind: "directional" as const, color: [3, 3, 3], dir: [0, 0, 1] };
+    expect(standardLight([0, 0, 1], [sun])[0]).toBeCloseTo(3 / Math.PI, 6);
+    expect(standardLight([1, 0, 0], [sun])[0]).toBeCloseTo(0, 6);
+    expect(standardLight([0, 0, -1], [sun])[0]).toBe(0);
+  });
+  it("the hemisphere light mixes ground to sky by 0.5 n.up + 0.5; an ambient adds its colour", () => {
+    const hemi = { kind: "hemisphere" as const, color: [1, 1, 2], ground: [0.2, 0.2, 0.2], dir: [0, 1, 0] };
+    const side = standardLight([0, 0, 1], [hemi]); // half way
+    expect(side[0]).toBeCloseTo(0.6 / Math.PI, 6);
+    expect(side[2]).toBeCloseTo(1.1 / Math.PI, 6);
+    const up = standardLight([0, 1, 0], [hemi, { kind: "ambient", color: [0.5, 0.5, 0.5] }]);
+    expect(up[0]).toBeCloseTo(1.5 / Math.PI, 6);
+  });
+});
+
+describe("fog and the night fade in the ink's colours", () => {
+  it("fog mixes the encoded colour toward the fog's (three mixes after the output encoding)", () => {
+    const plain = makeTone([1, 1, 1], "none", 1)("#000000");
+    expect(plain).toBe("rgb(0,0,0)");
+    const fogged = makeTone([1, 1, 1], "none", 1, { rgb: [1, 1, 1], f: 0.5 })("#000000");
+    expect(fogged).toBe("rgb(128,128,128)");
+    expect(toneKey([1, 1, 1], "none", 1, { rgb: [1, 1, 1], f: 0.5 })).not.toBe(toneKey([1, 1, 1], "none", 1));
+  });
+  it("desaturated pulls toward the luminance; the probe and the ink use the same pull", () => {
+    expect(desaturated([1, 0, 0], 0)).toEqual([1, 0, 0]);
+    const g = desaturated([1, 0, 0], 1);
+    expect(g[0]).toBeCloseTo(0.2126, 6);
+    expect(g[1]).toBeCloseTo(0.2126, 6);
+    // a gilt board shown at night (desaturated, dim light): the ink drawn from the recovered light matches the ink under the true light
+    const albedo = [0xd9 / 255, 0xae / 255, 0x4a / 255];
+    const L = [0.07, 0.06, 0.09];
+    const d = 0.6;
+    const shown = toneCurve(desaturated(albedo.map(srgbToLinear), d).map((c, i) => c * L[i]!), "neutral", 1.95).map(linearToSrgb);
+    const got = lightFromProbe(shown, albedo, "neutral", 1.95, d);
+    const ink = "#f6efe2";
+    const want = makeTone(L, "neutral", 1.95, null, d)(ink);
+    const have = makeTone(got, "neutral", 1.95, null, d)(ink);
+    const nums = (s: string) => s.match(/\d+/g)!.map(Number);
+    for (let c = 0; c < 3; c++) expect(Math.abs(nums(have)[c]! - nums(want)[c]!)).toBeLessThanOrEqual(6);
   });
 });

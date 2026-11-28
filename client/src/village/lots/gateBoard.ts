@@ -107,7 +107,7 @@ export function drawGateBoardCanvas(height: boolean, letters = true, scale = 1):
  * The panel's lettering on a `w` x `h` canvas: the lines, the gilt line's dark under-edge and its two stars. `height`: the relief's
  * white (the bump map); else the colours, through `tone` (the label overlay draws them crisp: inkLabels.ts).
  */
-export function paintGateLettering(g: CanvasRenderingContext2D, w: number, h: number, height: boolean, tone: InkTone = (c) => c): void {
+export function paintGateLettering(g: CanvasRenderingContext2D, w: number, h: number, height: boolean, tone: InkTone = (c) => c, emboss = false): void {
   const GILT = tone(height ? "#fff" : "#f0c460");
   const CREAM = tone(height ? "#d8d8d8" : "#f6efe2");
   const m = Math.round(h * 0.06);
@@ -129,17 +129,36 @@ export function paintGateLettering(g: CanvasRenderingContext2D, w: number, h: nu
       g.font = `700 ${px}px ${FONT}`;
     }
     const tw = g.measureText(line.text).width;
+    const cy = y + lh / 2;
+    const stars = (dx: number, dy: number) => {
+      if (!line.gilt) return;
+      star(g, w / 2 - tw / 2 - px * 0.6 + dx, cy + dy, px * 0.36);
+      star(g, w / 2 + tw / 2 + px * 0.6 + dx, cy + dy, px * 0.36);
+    };
     if (!height && line.gilt) {
       // a dark edge under the gilt letters: the enamel's shadow side
       g.fillStyle = tone("rgba(6, 10, 40, 0.55)");
-      g.fillText(line.text, w / 2 + px * 0.035, y + lh / 2 + px * 0.045);
+      g.fillText(line.text, w / 2 + px * 0.035, cy + px * 0.045);
+      if (emboss) stars(px * 0.035, px * 0.045);
     }
-    g.fillStyle = line.gilt ? GILT : CREAM;
-    g.fillText(line.text, w / 2, y + lh / 2);
-    if (line.gilt) {
-      star(g, w / 2 - tw / 2 - px * 0.6, y + lh / 2, px * 0.36);
-      star(g, w / 2 + tw / 2 + px * 0.6, y + lh / 2, px * 0.36);
-    }
+    if (emboss && !height) {
+      // the embossed letters as the 3D board's bump map shows them (the label overlay's copy has no bump): a soft shade on the lower
+      // edge, a lit rim on the upper edge, and the face a little brighter at the top than at the foot
+      if (!line.gilt) {
+        g.fillStyle = tone("rgba(6, 10, 40, 0.45)");
+        g.fillText(line.text, w / 2 + px * 0.03, cy + px * 0.04);
+      }
+      g.fillStyle = tone(line.gilt ? "rgba(255, 226, 140, 0.7)" : "rgba(255, 255, 255, 0.45)");
+      g.fillText(line.text, w / 2 - px * 0.02, cy - px * 0.028);
+      stars(-px * 0.02, -px * 0.028);
+      const face = g.createLinearGradient(0, cy - px * 0.5, 0, cy + px * 0.5);
+      face.addColorStop(0, tone(line.gilt ? "#f7d478" : "#fbf6ec"));
+      face.addColorStop(0.55, line.gilt ? GILT : CREAM);
+      face.addColorStop(1, tone(line.gilt ? "#d29f3e" : "#ddd5c6"));
+      g.fillStyle = face;
+    } else g.fillStyle = line.gilt ? GILT : CREAM;
+    g.fillText(line.text, w / 2, cy);
+    stars(0, 0);
     y += lh;
   }
 }
@@ -196,7 +215,7 @@ export interface GateBoard {
  * Build the board (two draw calls: the painted frame and posts, the lettered panel). `patch` hooks the materials into the lots' light
  * (the live sun's shadow, the night's fade), as every piece of the gate's dressing is.
  */
-export function buildGateBoard(low: boolean, patch: (m: MeshStandardMaterial, key: string) => void): GateBoard {
+export function buildGateBoard(low: boolean, patch: (m: MeshStandardMaterial, key: string) => void, nightDesaturate: () => number = () => 0): GateBoard {
   const B = GATE_BOARD;
   const NAVY = new Color("#1a2566");
   const GILT = new Color("#d9ae4a");
@@ -273,9 +292,12 @@ export function buildGateBoard(low: boolean, patch: (m: MeshStandardMaterial, ke
     object: anchor,
     w,
     h,
-    paint: (g, pw, ph, tone) => paintGateLettering(g, pw, ph, false, tone),
-    // the enamel just under the last line, over the inner rule (its albedo: the gradient there)
-    probe: { x: 0, y: -h / 2 + 0.101, albedo: "#1a2465" },
+    paint: (g, pw, ph, tone) => paintGateLettering(g, pw, ph, false, tone, true),
+    // the gilt moulding's bottom rail just under the panel (fw = 4.5 cm wide, the frame's gilt vertex colour): a bright, warm
+    // albedo in all three channels, so the lamps' tint at night reads true (the navy enamel had next to no red to measure it by)
+    probe: { x: 0, y: -h / 2 - fw / 2, albedo: "#d9ae4a" },
+    // the lots' night fade pulls the board's colours toward grey before the light (patchLotLight): the letters' too
+    desaturate: nightDesaturate,
     setInk(on) {
       if (!on && !blank) {
         const bc = new CanvasTexture(drawGateBoardCanvas(false, false, 0.5));

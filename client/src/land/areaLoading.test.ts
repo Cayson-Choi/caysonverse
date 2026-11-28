@@ -47,3 +47,23 @@ describe("loadView: village", () => {
     expect(loadView({ ...t, area: "village", vegDressed: false, villageFrames: 60 }).done).toBe(false);
   });
 });
+
+describe("loadView: outside (a building's way out, perf/return)", () => {
+  const t = { ...base, target: "outside" as const };
+  it("says 마을로 나가는 중… and waits for the village model to be on screen", () => {
+    const door = loadView({ ...t, area: "hall" });
+    expect(door.title).toBe("마을로 나가는 중…");
+    expect(door.done).toBe(false);
+    // the area is the village again but the model is not drawn yet: never done, however dressed the kept vegetation is
+    const files = loadView({ ...t, area: "village", villageDrawn: false, vegDressed: true, villageFrames: 99, downloaded: 0.5 });
+    expect(files.done).toBe(false);
+    expect(files.stage).toBe("files");
+    expect(files.subtitle).toBe("마을 풍경을 불러오고 있어요");
+    expect(door.progress).toBeLessThan(files.progress);
+    expect(loadView({ ...t, area: "village", villageDrawn: true, vegDressed: true, villageFrames: 2 }).done).toBe(false);
+    expect(loadView({ ...t, area: "village", villageDrawn: true, vegDressed: true, villageFrames: 6 }).done).toBe(true);
+  });
+  it("the park's way back waits for the drawn village too", () => {
+    expect(loadView({ ...base, target: "village", area: "village", villageDrawn: false, vegDressed: true, villageFrames: 60 }).done).toBe(false);
+  });
+});
