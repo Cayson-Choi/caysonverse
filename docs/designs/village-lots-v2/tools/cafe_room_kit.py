@@ -902,14 +902,14 @@ def salon_dress(kit, sol, W, X, Z, H):
     r = sol["centretable_up"]
     cx, cz = (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2
     D.lathe([(0.0, 0.0), (0.09, 0.0), (0.1, 0.03), (0.06, 0.08), (0.045, 0.2), (0.06, 0.32), (0.04, 0.45), (0.05, 0.62), (0.09, 0.7), (0.0, 0.7)],
-            C.segr(24, 16), C.OAK_DK, cx, cz, 0.0)
+            C.segr(32, 24), C.OAK_DK, cx, cz, 0.0)
     for k in range(3):
         a = 2 * math.pi * k / 3 + 0.3
         D.tube([(cx + 0.06 * math.cos(a), 0.12, cz + 0.06 * math.sin(a)), (cx + 0.22 * math.cos(a), 0.05, cz + 0.22 * math.sin(a)),
                 (cx + 0.32 * math.cos(a), 0.015, cz + 0.32 * math.sin(a))], 0.025, C.seg(8, 5), C.OAK_DK)
-    D.lathe([(0.39, 0.0), (0.4, 0.012), (0.4, 0.035), (0.385, 0.045), (0.0, 0.045)], C.segr(48, 28), C.OAK_DK, cx, cz, 0.7)
+    D.lathe([(0.39, 0.0), (0.4, 0.012), (0.4, 0.035), (0.385, 0.045), (0.0, 0.045)], C.segr(56, 48), C.OAK_DK, cx, cz, 0.7)
     n0 = len(D.polys)
-    D.lathe([(0.37, 0.0), (0.37, 0.03), (0.0, 0.03)], C.segr(48, 28), C.ART, cx, cz, 0.745)
+    D.lathe([(0.37, 0.0), (0.37, 0.03), (0.0, 0.03)], C.segr(56, 48), C.ART, cx, cz, 0.745)
     C.planar(D, n0, "marble_round", cx, cz, 0.37)
     if not PHONE:
         centre_bouquet(Gd, cx, 0.775, cz)

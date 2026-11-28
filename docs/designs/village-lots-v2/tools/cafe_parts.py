@@ -401,18 +401,20 @@ def bistro_table(r=0.33, top_h=0.755):
     """A bistro table: Carrara top (the atlas's round marble, a 2.4 cm slab with an eased edge) on a black cast-iron pedestal: a
     turned column, a round foot. Inside x/z +-0.34."""
     m = Mesh("table")
-    n = segr(32, 24)   # (2026-11-28: the phone's 8 sides read as an octagon at the table)
+    n = segr(48, 36)   # (2026-11-28: the phone's 8 sides read as an octagon at the table; 24 still showed corners in round 2)
     n0 = len(m.polys)
     m.lathe([(0.0, top_h - 0.024), (r - 0.006, top_h - 0.024), (r, top_h - 0.016), (r, top_h - 0.006), (r - 0.006, top_h), (0.0, top_h)], n, ART, 0, 0, 0)
     planar(m, n0, "marble_round", 0.0, 0.0, r)
-    m.lathe([(0.0, 0.0), (0.24, 0.0), (0.24, 0.015), (0.2, 0.03), (0.06, 0.05), (0.04, 0.08), (0.03, 0.12), (0.03, 0.6), (0.045, 0.64), (0.035, 0.67), (0.12, 0.7), (0.14, top_h - 0.026), (0.0, top_h - 0.026)], segr(20, 16), IRON, 0, 0, 0)
+    # the round foot (what a phone sees from a chair: many sides) and the column and spider under the top (fewer)
+    m.lathe([(0.0, 0.0), (0.24, 0.0), (0.24, 0.015), (0.2, 0.03), (0.06, 0.05), (0.04, 0.08)], segr(40, 32), IRON, 0, 0, 0)
+    m.lathe([(0.04, 0.08), (0.03, 0.12), (0.03, 0.6), (0.045, 0.64), (0.035, 0.67), (0.12, 0.7), (0.14, top_h - 0.026), (0.0, top_h - 0.026)], segr(20, 12), IRON, 0, 0, 0)
     return m
 
 
 def plant_pot(m, x, z, r, h, kind="fig", seed=1):
     """A terracotta pot (rim, foot) with a leafy plant: a fiddle-leaf fig, a pothos trailing, or a palm."""
     rg = G.rng(seed)
-    n = segr(24, 16)
+    n = segr(40, 24)   # (round 2: the big pots still showed corners at 16)
     ph = min(0.42, r * 1.3)
     m.lathe([(0.0, 0.0), (r * 0.72, 0.0), (r * 0.78, 0.02), (r * 0.94, ph - 0.05), (r, ph - 0.05), (r, ph), (r * 0.9, ph), (r * 0.88, ph - 0.03), (0.0, ph - 0.03)], n, TERRA, x, z, 0.0)
     disc(m, x, ph - 0.035, z, r * 0.86, SOIL, n)

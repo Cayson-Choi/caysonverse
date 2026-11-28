@@ -412,7 +412,16 @@ def pulpit(kit, x, z):
     D.lathe([(R - 0.03, 0.0), (R - 0.03, 0.04)], 6, OAK, x, z, yb - 0.02, phase=math.pi / 6, cap_top=True, smooth=False)
     # the book rest facing the nave, with a blue fall
     D.member((x - 0.22, yb + 1.0, z - 0.42), (x + 0.22, yb + 1.0, z - 0.42), G.prof_box(0.04, 0.06), OAK_DK)
-    D.box(x - 0.2, x + 0.2, yb + 0.55, yb + 0.95, z - 0.47, z - 0.455, BLUE)
+    # the pulpit fall (2026-11-28 round 2: a flat navy board): blue cloth hanging from the book rest in soft folds, a gilt-thread
+    # hem, a gold fringe and an embroidered gold cross
+    gilt = S("LM_church_brass", G.hexc("F2CE7A"))
+    F.drape(D, x - 0.2, x + 0.2, yb + 0.56, yb + 0.95, z - 0.462, BLUE, folds=3, depth=0.009, face=-1, hem=gilt, seed=7)
+    nfr = 17 if PHONE else 33
+    for k in range(nfr):
+        fx = x - 0.195 + 0.39 * k / (nfr - 1)
+        D.box(fx - 0.0018, fx + 0.0018, yb + 0.515, yb + 0.562, z - 0.468, z - 0.464, gilt)
+    D.box(x - 0.012, x + 0.012, yb + 0.66, yb + 0.86, z - 0.479, z - 0.475, gilt)
+    D.box(x - 0.055, x + 0.055, yb + 0.78, yb + 0.804, z - 0.479, z - 0.475, gilt)
     D.box(x - 0.21, x + 0.21, yb + 0.93, yb + 0.97, z - 0.48, z - 0.44, S("LM_church_brass", G.hexc("E8C27C")))
     # the stair: four oak treads rising from the chancel floor behind it (inside the chancel)
     for k in range(4):
