@@ -22,6 +22,7 @@
  */
 
 import type { Camera, Object3D, SpriteMaterial } from "three";
+import type { InkLayer } from "./inkLayer";
 import { labelInfo, labelSprites } from "./spriteCanvas";
 
 /** The overlay's pixel ratio is the device's, held inside [MIN, MAX] (a dpr-5 screen gains nothing visible past 4). */
@@ -193,6 +194,8 @@ export class LabelOverlay {
   totalMs = 0;
   totalFrames = 0;
   totalDrawn = 0;
+  /** The signs' lettering (inkLayer.ts), drawn after the planar labels and under the sprites; its `update` runs before `draw`. */
+  ink: InkLayer | null = null;
 
   constructor(canvas?: OverlayCanvas) {
     this.canvas = canvas ?? (document.createElement("canvas") as unknown as OverlayCanvas);
@@ -265,6 +268,7 @@ export class LabelOverlay {
     ctx.imageSmoothingQuality = "high";
     let planarDrawn = 0;
     if (planarLabels.size > 0) planarDrawn = this.drawPlanar(scene, view, proj, W, H);
+    if (this.ink) planarDrawn += this.ink.draw(ctx as unknown as CanvasRenderingContext2D, d, W, H);
     for (const e of entries) {
       ctx.globalAlpha = e.alpha;
       ctx.drawImage(e.image, e.x, e.y, e.w, e.h);

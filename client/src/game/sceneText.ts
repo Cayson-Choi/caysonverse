@@ -51,3 +51,28 @@ export function sharpenTextMaterial<M extends Material>(m: M, bias: number = TEX
   m.needsUpdate = true;
   return m;
 }
+
+/**
+ * Hide some of a merged mesh's lettering (inkLabels.ts: the label overlay draws those crisp): its vertices carry `aInk`, the
+ * index of the board they letter (-1: not lettering), and a board whose `hidden[index]` is 1 is not drawn. Chains onto the
+ * material's onBeforeCompile and program key, as `sharpenTextMaterial` does. Returns the flags (set them, no recompile).
+ */
+export function inkMaskMaterial<M extends Material>(m: M, count: number): Float32Array {
+  const n = Math.max(1, count);
+  const hidden = new Float32Array(n);
+  const prev = m.onBeforeCompile;
+  const prevKey = m.customProgramCacheKey;
+  m.onBeforeCompile = (shader, renderer) => {
+    prev.call(m, shader, renderer);
+    shader.uniforms.uInkHide = { value: hidden };
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", `#include <common>\nattribute float aInk;\nuniform float uInkHide[${n}];\nvarying float vInkHide;`)
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvInkHide = aInk >= 0.0 ? uInkHide[int(aInk + 0.5)] : 0.0;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying float vInkHide;")
+      .replace("#include <clipping_planes_fragment>", "if (vInkHide > 0.5) discard;\n#include <clipping_planes_fragment>");
+  };
+  m.customProgramCacheKey = () => `${prevKey.call(m)}|ink-mask${n}`;
+  m.needsUpdate = true;
+  return hidden;
+}

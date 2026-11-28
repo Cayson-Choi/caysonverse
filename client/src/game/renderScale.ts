@@ -23,6 +23,18 @@ export function resetInteractionPressure(): void {
   interactionPressureUntil = -Infinity;
 }
 
+let chainFrames = 0;
+
+/** The rich tier's post chain drew a frame (postChain.ts): the scene's depth is then in its own target, not the canvas's. */
+export function markPostChainFrame(): void {
+  chainFrames++;
+}
+
+/** How many frames the post chain has drawn (the ink layer, inkLayer.ts, runs only while this stands still). */
+export function postChainFrames(): number {
+  return chainFrames;
+}
+
 export function renderScale(): number {
   return scale;
 }

@@ -1,8 +1,9 @@
 import { crispTextTexture, sharpenTextMaterial } from "../game/sceneText";
-import { useMemo } from "react";
+import { addInkLabel, type InkTone } from "../game/inkLabels";
+import { useEffect, useMemo, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { dayNight } from "../village/dayNightDriver";
-import { CanvasTexture, Color, DoubleSide, MeshStandardMaterial, SRGBColorSpace, type Texture } from "three";
+import { CanvasTexture, Color, DoubleSide, MeshStandardMaterial, SRGBColorSpace, type Object3D, type Texture } from "three";
 import { PARK_SHOPS, type ParkShop } from "@caysonverse/shared/village/parkArea";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 import { parkMaterial, pickSet } from "./pbr";
@@ -18,27 +19,43 @@ const SHOP_GLOW = [1.5, 1.1, 1.7, 0.9, 1.3, 0.0];
 const SHOP_WARM = ["#ffb35e", "#ffc27a", "#ffa94d", "#ffd08a", "#ff9f55", "#ffb35e"];
 const SHUTTERS: V3[] = [[0.2, 0.42, 0.3], [0.52, 0.24, 0.2], [0.24, 0.36, 0.5], [0.3, 0.45, 0.28]];
 
-/** A hanging shop sign (canvas): the shop's name on a painted board with a gold rim. */
-function shopSignTexture(name: string, wall: V3): CanvasTexture {
-  const c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 256;
-  const ctx = c.getContext("2d")!;
-  ctx.fillStyle = `rgb(${Math.round(wall[0] * 130)},${Math.round(wall[1] * 110)},${Math.round(wall[2] * 150)})`;
-  ctx.fillRect(0, 0, 512, 256);
-  ctx.strokeStyle = "#f2c14e";
-  ctx.lineWidth = 12;
-  ctx.strokeRect(10, 10, 492, 236);
+/** The hanging sign's board (m) and its canvas (px). */
+const SIGN = { w: 1.5, h: 0.75, d: 0.06 } as const;
+const SIGN_PX = { w: 512, h: 256 } as const;
+
+/** The sign's painted board colour (sRGB hex): the shop's wall colour, deepened. */
+function signBoardColour(wall: V3): string {
+  const hex = (v: number) => Math.round(v).toString(16).padStart(2, "0");
+  return `#${hex(wall[0] * 130)}${hex(wall[1] * 110)}${hex(wall[2] * 150)}`;
+}
+
+/** The shop's name in the sign's 512 x 256 px (scale the context for another size), its colours through `tone`. */
+function paintShopName(ctx: CanvasRenderingContext2D, name: string, tone: InkTone = (c) => c): void {
   ctx.font = "bold 96px 'Jua', 'Malgun Gothic', 'Noto Sans KR', sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   // a dark rim round the cream letters: they stay apart from the painted board when the sign is far and small (fix/pine-text)
   ctx.lineJoin = "round";
   ctx.lineWidth = 10;
-  ctx.strokeStyle = "rgba(30, 20, 30, 0.55)";
+  ctx.strokeStyle = tone("rgba(30, 20, 30, 0.55)");
   ctx.strokeText(name, 256, 134, 460);
-  ctx.fillStyle = "#fff6e0";
+  ctx.fillStyle = tone("#fff6e0");
   ctx.fillText(name, 256, 134, 460);
+}
+
+/** A hanging shop sign (canvas): the shop's name (`name` null: none) on a painted board with a gold rim. `scale`: of the 512 x 256 px. */
+function shopSignTexture(name: string | null, wall: V3, scale = 1): CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = SIGN_PX.w * scale;
+  c.height = SIGN_PX.h * scale;
+  const ctx = c.getContext("2d")!;
+  ctx.scale(scale, scale);
+  ctx.fillStyle = signBoardColour(wall);
+  ctx.fillRect(0, 0, 512, 256);
+  ctx.strokeStyle = "#f2c14e";
+  ctx.lineWidth = 12;
+  ctx.strokeRect(10, 10, 492, 236);
+  if (name !== null) paintShopName(ctx, name);
   // mipmapped, trilinear, the GPU's highest anisotropy (sceneText.ts); its material samples it half a mip sharper
   const t = crispTextTexture(new CanvasTexture(c));
   t.colorSpace = SRGBColorSpace;
@@ -204,10 +221,61 @@ export function Shops({ all }: { all: Texture[] }) {
       <mesh geometry={roofGeo} material={roofMat} castShadow receiveShadow />
       <mesh geometry={clothGeo} material={clothMat} castShadow receiveShadow />
       {signs.map(({ s, mat }) => (
-        <mesh key={s.id} position={[s.x + s.faces * (s.d / 2 + 0.95), 3.45, s.z - s.w / 4 + 1.7]} material={mat} castShadow>
-          <boxGeometry args={[1.5, 0.75, 0.06]} />
-        </mesh>
+        <ShopSign key={s.id} shop={s} mat={mat} />
       ))}
+    </group>
+  );
+}
+
+/**
+ * One hanging sign: a painted box, the name on both broad faces. The name is drawn crisp on the label overlay where the scene is drawn
+ * at fewer pixels than the screen has (inkLabels.ts); the box then wears its board alone (made on first use, at half the pixels).
+ */
+function ShopSign({ shop: s, mat }: { shop: ParkShop; mat: MeshStandardMaterial }) {
+  const [front, setFront] = useState<Object3D | null>(null);
+  const [back, setBack] = useState<Object3D | null>(null);
+  useEffect(() => {
+    if (!front || !back) return;
+    const name = SHOP_NAMES[s.id] ?? s.id;
+    const ink = mat.map;
+    let blank: Texture | null = null;
+    // either face may be on the overlay (only one faces the eye at a time)
+    const off = new Set<Object3D>();
+    const label = (anchor: Object3D) =>
+      addInkLabel({
+        object: anchor,
+        w: SIGN.w,
+        h: SIGN.h,
+        paint: (g, w, h, tone) => {
+          g.save();
+          g.scale(w / SIGN_PX.w, h / SIGN_PX.h);
+          paintShopName(g, name, tone);
+          g.restore();
+        },
+        // the plain board above the name, inside the rim
+        probe: { x: 0, y: SIGN.h / 2 - 0.15, albedo: signBoardColour(s.wall) },
+        setInk: (on) => {
+          if (on) off.delete(anchor);
+          else off.add(anchor);
+          if (off.size > 0 && !blank) blank = shopSignTexture(null, s.wall, 0.5);
+          mat.map = off.size > 0 && blank ? blank : ink;
+        },
+      });
+    const a = label(front);
+    const b = label(back);
+    return () => {
+      a();
+      b();
+      blank?.dispose();
+    };
+  }, [front, back, mat, s]);
+  return (
+    <group position={[s.x + s.faces * (s.d / 2 + 0.95), 3.45, s.z - s.w / 4 + 1.7]}>
+      <mesh material={mat} castShadow>
+        <boxGeometry args={[SIGN.w, SIGN.h, SIGN.d]} />
+      </mesh>
+      <object3D ref={setFront} position={[0, 0, SIGN.d / 2]} name="shop_sign_ink" />
+      <object3D ref={setBack} position={[0, 0, -SIGN.d / 2]} rotation={[0, Math.PI, 0]} name="shop_sign_ink" />
     </group>
   );
 }
