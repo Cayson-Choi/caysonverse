@@ -29,6 +29,37 @@ export const LAKE_MAP_LABEL = { x: 145, z: -12, text: "🎣 케이슨 낚시터"
 const BOARD = { length: 1.5, height: 0.3, depth: 0.045, tip: 0.22, y: 1.78 } as const;
 const POST = { side: 0.11, height: 2.15 } as const;
 
+/**
+ * The planks' mean colour round a spot `along` m from the face's left end, half way up (sRGB hex): the grain darkens them, so the
+ * gradient's middle stop alone reads too light for the light probe (inkLabels.ts). From the words-free face, once per side.
+ */
+const plankMeans = new Map<string, string>();
+function plankAt(tipRight: boolean, along: number): string {
+  const key = `${tipRight}|${along}`;
+  const hit = plankMeans.get(key);
+  if (hit) return hit;
+  let out: string = PLANK_MID;
+  const t = faceTexture(tipRight, false);
+  const c = t.image as HTMLCanvasElement;
+  const g = c.getContext("2d");
+  if (g) {
+    const x = Math.round((along / BOARD.length) * c.width);
+    const d = g.getImageData(Math.max(0, x - 8), Math.round(c.height / 2) - 12, 16, 24).data;
+    let r = 0, gg = 0, b = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      r += d[i]!;
+      gg += d[i + 1]!;
+      b += d[i + 2]!;
+    }
+    const n = d.length / 4;
+    const hex = (v: number) => Math.round(v / n).toString(16).padStart(2, "0");
+    out = `#${hex(r)}${hex(gg)}${hex(b)}`;
+  }
+  t.dispose();
+  plankMeans.set(key, out);
+  return out;
+}
+
 /** The face's canvas (px): the texture is laid over the board's 1.5 x 0.3 m box. */
 const FACE_PX = { w: 512, h: 104 } as const;
 /** The plank's colour half way up (its gradient's middle stop): the light probe's albedo (inkLabels.ts). */
@@ -168,7 +199,7 @@ function Signpost({ x, z, toX, toZ, parts }: { x: number; z: number; toX: number
           g.restore();
         },
         // the plank between the words and the tip (the square end is shaded by the post standing in front of it)
-        probe: { x: tipRight ? BOARD.length / 2 - 0.27 : -BOARD.length / 2 + 0.27, y: 0, albedo: PLANK_MID },
+        probe: { x: tipRight ? BOARD.length / 2 - 0.27 : -BOARD.length / 2 + 0.27, y: 0, albedo: plankAt(tipRight, tipRight ? BOARD.length - 0.27 : 0.27) },
         setInk: (on) => {
           if (on) mesh.material = tipRight ? parts.faceFront : parts.faceBack;
           else mesh.material = tipRight ? parts.blankFaces().front : parts.blankFaces().back;

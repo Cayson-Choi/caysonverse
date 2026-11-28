@@ -4,7 +4,7 @@
  * phone). The ink layer (client/src/game/inkLayer.ts) draws a sign's lettering at the device's pixel ratio where the scene is drawn
  * at fewer pixels; `window.__cvInkOff` turns it off (the signs as WebGL alone draws them: "before").
  *
- *   CV_CLIENT_URL=http://localhost:5624 node e2e/text-crisp-signs.mjs --device phone3|pc1 [--out <dir>] [--park]
+ *   CV_CLIENT_URL=http://localhost:5624 node e2e/text-crisp-signs.mjs --device phone3|pc1 [--out <dir>] [--no-park]
  *
  * Each sign from a pinned camera (straight on, 45 degrees off), shot with the ink layer off and on (the same frame pose):
  * <out>/<device>-<item>-<deg>-before.png / -after.png (crops round the sign, device px), and <out>/<device>-sheet.png (all of them
@@ -21,7 +21,7 @@ const { values: args } = parseArgs({
   options: {
     device: { type: "string", default: "phone3" },
     out: { type: "string", default: "D:/ClaudeCode/tmpshots/text2" },
-    park: { type: "boolean", default: true },
+    "no-park": { type: "boolean", default: false },
   },
 });
 const ANDROID_UA =
@@ -330,7 +330,7 @@ try {
   await shoot("museum-label", label, 1.4, { eyeY: 1.6 });
   report.occlusionZone = await occlusionCheck("zone-sign", zone, 3);
   // ── 케이슨랜드: a shop sign ──
-  if (args.park) {
+  if (!args["no-park"]) {
     await leaveHall(p);
     await sleep(2000);
     if (await enterPark()) {
