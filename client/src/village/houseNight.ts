@@ -1,5 +1,6 @@
 import type { Material, Texture } from "three";
 import { FLAME_GLSL, houseEmberY, houseFireLight, houseFireTime, houseHearthMax, houseHearthMin } from "./houseFire";
+import { LEATHER_FRAG, LEATHER_FRAG_PARS, LEATHER_VERT, LEATHER_VERT_PARS, isHouseLeatherMaterial } from "./houseLeather";
 
 /**
  * A house at night (집 실내 G): the baked light of a house changes with the village's clock, like the memorial hall's (hallNight.ts).
@@ -58,16 +59,21 @@ export function patchHouseLightmapMaterial(material: Material): void {
   if (patched.has(material)) return;
   patched.add(material);
   const drape = material.name === "LM_drape" || material.name === "E_H_drape";
+  // polish 3: leather takes a view-dependent sheen on top of its baked light (houseLeather.ts; its geometry carries smooth normals)
+  const leather = isHouseLeatherMaterial(material.name);
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uHouseNight = houseNightUniform;
     shader.uniforms.uHouseNightMap = houseNightMapUniform;
     shader.uniforms.uHouseFire = houseFireLight;
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vHouseFireW;")
-      .replace("#include <project_vertex>", FIRE_WORLD);
-    shader.fragmentShader = shader.fragmentShader.replace("void main() {", PARS).replace(TEXEL_FROM, (drape ? DRAPE_TEXEL_TO : TEXEL_TO) + FIRE_LIGHT);
+      .replace("#include <common>", "#include <common>\nvarying vec3 vHouseFireW;" + (leather ? "\n" + LEATHER_VERT_PARS : ""))
+      .replace("#include <project_vertex>", FIRE_WORLD + (leather ? LEATHER_VERT : ""));
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", (leather ? LEATHER_FRAG_PARS + "\n" : "") + PARS)
+      .replace(TEXEL_FROM, (drape ? DRAPE_TEXEL_TO : TEXEL_TO) + FIRE_LIGHT);
+    if (leather) shader.fragmentShader = shader.fragmentShader.replace("#include <opaque_fragment>", LEATHER_FRAG);
   };
-  material.customProgramCacheKey = () => (drape ? "house-lightmap-night-drape" : "house-lightmap-night");
+  material.customProgramCacheKey = () => (drape ? "house-lightmap-night-drape" : leather ? "house-lightmap-night-leather" : "house-lightmap-night");
   material.needsUpdate = true;
 }
 
