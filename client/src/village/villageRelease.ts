@@ -174,6 +174,47 @@ export function holdVillageFiles(): () => void {
   };
 }
 
+// ── the way back out (perf/return, 2026-11-28) ──
+
+/**
+ * How long (ms) the way-out hold stays after the last sign that the player is leaving (on the exit pad, the exit pressed): a
+ * player who stepped onto the pad and walked back into the room lets the village's files go again.
+ */
+export const RETURN_HOLD_MS = 6000;
+let returnRelease: (() => void) | null = null;
+let returnTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * The player is about to leave a building (light tier: the village's files were let go indoors): hold them again now, so their
+ * download and decode run while the player still stands at the door and the door's curtain closes, not after. Called again
+ * while the wish lasts (each call restarts the RETURN_HOLD_MS timer); the caller starts the files' reads (VillageScene).
+ * Returns whether this call took a new hold (the files' reads should start).
+ */
+export function holdVillageForReturn(stillWanted: () => boolean): boolean {
+  const fresh = returnRelease === null;
+  if (fresh) returnRelease = holdVillageFiles();
+  if (returnTimer !== null) clearTimeout(returnTimer);
+  const check = (): void => {
+    returnTimer = null;
+    if (stillWanted()) returnTimer = setTimeout(check, RETURN_HOLD_MS);
+    else endVillageReturnHold(false);
+  };
+  returnTimer = setTimeout(check, RETURN_HOLD_MS);
+  return fresh;
+}
+
+/**
+ * The way-out hold ends: `keep` when the village scene holds the files itself now (the player is outside), else they go (the
+ * player stayed in).
+ */
+export function endVillageReturnHold(keep: boolean): void {
+  if (returnTimer !== null) clearTimeout(returnTimer);
+  returnTimer = null;
+  const release = returnRelease;
+  returnRelease = null;
+  if (release && !keep) release();
+}
+
 // ── the night light map ──
 
 let nightHeld = false;

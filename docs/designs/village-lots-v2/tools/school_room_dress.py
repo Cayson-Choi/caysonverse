@@ -511,8 +511,8 @@ def leafy_plant(m, x, y, z, pot_s, soil_s, leaf_s, leaf2_s, h=0.32, rg=None, flo
     elliptical blade with a folded midrib, two-sided), and for a geranium a few umbels of five-petalled flowers on stalks."""
     rg = rg or G.rng(3)
     pr = 0.07
-    m.lathe([(pr * 0.72, 0.0), (pr * 0.95, 0.11), (pr * 1.08, 0.112), (pr * 1.08, 0.135), (pr * 0.98, 0.135), (pr * 0.96, 0.12)], sg(12, 7), pot_s, x, z, y)
-    m.lathe([(pr * 0.96, 0.12), (0.0, 0.118)], sg(12, 7), soil_s, x, z, y)
+    m.lathe([(pr * 0.72, 0.0), (pr * 0.95, 0.11), (pr * 1.08, 0.112), (pr * 1.08, 0.135), (pr * 0.98, 0.135), (pr * 0.96, 0.12)], sg(16, 10), pot_s, x, z, y)   # (2026-11-28: a 7-sided pot on the phone)
+    m.lathe([(pr * 0.96, 0.12), (0.0, 0.118)], sg(16, 10), soil_s, x, z, y)
     n = sg(11, 6)
     for k in range(n):
         ang = k * 2.4 + rg.uniform(-0.3, 0.3)

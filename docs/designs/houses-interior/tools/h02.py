@@ -155,7 +155,7 @@ H.piece(1, "toyshelf", ST.toy_shelf, 7.85, 7.6, 0, PI, w=0.9, tn=(0.93, 0.92, 0.
 pass  # (cottage pass) removed: H.piece(1, "rack", KR.dish_rack, 2.15, 0.33, 0.9, 0.0, cols=
 pass  # (cottage pass) removed: H.piece(1, "rice", KR.rice_cooker, 3.7, 0.33, 0.9, 0.0, cols
 pass  # (cottage pass) removed: H.piece(1, "micro", KR.microwave, 0.3, 2.85, 0.9, PI / 2, co
-H.piece(1, "mats", KR.placemats, 2.9, 2.8, 0.745, 0.0, cols=False, spots=[(-0.7, 0.25, 0.0), (0.0, 0.25, 0.0), (0.7, 0.25, 0.0), (-0.4, -0.25, 0.0), (0.4, -0.25, 0.0)])
+H.piece(1, "mats", KR.placemats, 2.9, 2.8, 0.74, 0.0, cols=False, table=("rect", 1.0, 0.45), spots=[(-0.7, 0.25, 0.0), (0.0, 0.25, 0.0), (0.7, 0.25, 0.0), (-0.4, -0.25, 0.0), (0.4, -0.25, 0.0)])
 pass  # (cottage pass) removed: H.piece(1, "slippers", KR.slippers, 4.0, 1.75, 0.0, 0.0, col
 pass  # (cottage pass) removed: H.piece(1, "purifier", KR.air_purifier, 10.35, 4.6)
 pass  # (layered pass 2: a folded throw on the end seat caught taps meant for the next seat — release 4, h2_1_6 -> h2_1_5) H.piece(1, "throw", KR.throw_folded, 7.05, 3.85, 0.62, 0.0, cols=False, w=0.4, d=0.3, layers=3, tn=(0.88, 0.84, 0.76, 1))
@@ -166,7 +166,7 @@ pass  # (cottage pass) removed: H.piece(2, "laundry", KR.laundry_basket, 10.3, 6
 H.piece(2, "shelf", KR.wall_shelf_deco, 3.65, 0.0, 0.0, 0.0, cols=False, w=1.3, shelf_y=1.45, seed=1)  # window alignment 2026-11-27: over the desk (was x 4.65, across the middle window)
 
 # ---- dream show-home styling (owner 2026-11-17): fresh flowers, styled tables, lamps and sconces, a console vignette --------
-H.piece(1, "flowers", KR.flower_vase, 3.3, 2.8, 0.745, 0.0, cols=False, tn=(0.6, 0.74, 0.92, 1), kind="hydrangea", h=0.26)
+H.piece(1, "flowers", KR.flower_vase, 3.3, 2.8, 0.74, 0.0, cols=False, tn=(0.6, 0.74, 0.92, 1), kind="hydrangea", h=0.26)
 H.piece(1, "vignette", KR.console_vignette, 10.6, 3.65, 0.0, -PI / 2, w=1.0, accent=(0.62, 0.76, 0.92, 1))
 H.piece(2, "sconce", KR.wall_sconce, 10.6, 0.85, 1.5, -PI / 2, cols=False)
 H.piece(2, "sconce", KR.wall_sconce, 10.6, 3.15, 1.5, -PI / 2, cols=False)

@@ -24,6 +24,7 @@ import kit_real as KR  # noqa: E402
 PAL = K.PAL
 PI = math.pi
 H = HC.House(5)
+H.store_tri_cap = 52572   # polish4: the same storage as before the rounder table decor (+772 triangles): the floor-2 left bookcase stays out
 H.pull_body = 0.49        # room for the game's 0.45 m body in front of each dining chair
 FX.set_house(5)
 P = HA.prop_fn(H)
@@ -136,7 +137,7 @@ H.piece(1, "can", KR.watering_can, 6.25, 1.05, 0.0, 0.4, cols=False)
 H.piece(2, "ladder", KR.plant_ladder, 0.0, 3.65, 0, PI / 2, w=0.7, h=1.4)  # window alignment 2026-11-27: was z 2.1
 pass  # (cottage pass) removed: H.piece(1, "aircon", KR.aircon_stand, 1.75, 7.55, 0, PI)
 H.piece(1, "throw", KR.throw_draped, 2.4, 5.1, 0.78, PI, cols=False, w=0.5, top_d=0.12, drop_front=0.32, drop_back=0.2, tn=(0.88, 0.85, 0.76, 1)) if False else None
-H.piece(1, "mats", KR.placemats, dx, dz, 0.745, 0.0, cols=False, spots=[(0.33, 0.0, PI / 2), (-0.33, 0.0, PI / 2), (0.0, 0.33, 0.0), (0.0, -0.33, 0.0)],
+H.piece(1, "mats", KR.placemats, dx, dz, 0.74, 0.0, cols=False, table=("round", 0.55), spots=[(0.33, 0.0, PI / 2), (-0.33, 0.0, PI / 2), (0.0, 0.33, 0.0), (0.0, -0.33, 0.0)],
         tn=(0.82, 0.76, 0.6, 1))
 pass  # (cottage pass) removed: H.piece(1, "slippers", KR.slippers, 4.0, 1.75, 0.0, 0.0, col
 pass  # (cottage pass) removed: H.piece(2, "aircon", KR.aircon_wall, 1.45, 7.8, 2.4, PI, col
@@ -145,7 +146,7 @@ H.piece(2, "throw", KR.throw_folded, 8.85, 1.9, 0.56, -PI / 2, cols=False, w=0.9
 pass  # (cottage pass) removed: H.piece(2, "purifier", KR.air_purifier, 6.8, 6.0)
 
 # ---- dream show-home styling (owner 2026-11-17): fresh flowers, styled tables, lamps and sconces, a console vignette --------
-H.piece(1, "flowers", KR.flower_vase, 8.65, 2.9, 0.745, 0.0, cols=False, tn=(0.96, 0.96, 0.92, 1), kind="tulip", h=0.26, glass=True)
+H.piece(1, "flowers", KR.flower_vase, 8.65, 2.9, 0.74, 0.0, cols=False, tn=(0.96, 0.96, 0.92, 1), kind="tulip", h=0.26, glass=True)
 H.piece(1, "cstyle", KR.coffee_styling, 2.4, 2.5, 0.4, 0.0, cols=False, tn=(0.62, 0.74, 0.58, 1))
 
 H.piece(1, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=5)

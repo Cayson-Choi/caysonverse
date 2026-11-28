@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Pose } from "../game/types";
 import { crosswalkHintAt, type CrosswalkHint as Hint } from "./crosswalkHint";
-import { transitNowMs, useTransitState } from "../net/transitSync";
+import { transitNowMs, useTransitBoarded } from "../net/transitSync";
 import "./crosswalkHint.css";
 
 /**
@@ -12,7 +12,7 @@ import "./crosswalkHint.css";
  */
 export function CrosswalkHintPill({ pose }: { pose: Pose }) {
   const [hint, setHint] = useState<Hint | null>(null);
-  const { boarded } = useTransitState(); // a rider is in the bus, not on the road
+  const boarded = useTransitBoarded(); // a rider is in the bus, not on the road
   useEffect(() => {
     let last = "";
     const id = window.setInterval(() => {

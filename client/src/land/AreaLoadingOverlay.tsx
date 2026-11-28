@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useProgress } from "@react-three/drei";
 import { localArea, useLocalArea } from "../village/villageArea";
 import { vegDressing } from "../village/vegDressing";
+import { useVillageDrawn } from "../village/villageDrawn";
 import { useParkReady, useParkStage } from "./parkReady";
 import { MIN_SHOWN_MS, NO_MOVE_MS, VILLAGE_READY_FRAMES, areaLoadingState, endAreaLoading, loadView, useAreaLoading, type LoadTarget } from "./areaLoading";
 import "./areaLoading.css";
@@ -22,6 +23,7 @@ export function AreaLoadingOverlay() {
   const parkStage = useParkStage();
   const vegDressed = useSyncExternalStore(vegDressing.subscribe, vegDressing.dressed, vegDressing.dressed);
   const { progress: dlPct } = useProgress();
+  const villageDrawn = useVillageDrawn();
   // a park that is up without a press (a reconnect into it): the same screen until it is drawn
   const target: LoadTarget | null = store.target ?? (area === "park" && !parkReady ? "park" : null);
 
@@ -46,9 +48,9 @@ export function AreaLoadingOverlay() {
     setClosing(false);
   }, [target, shown]);
 
-  // village: frames drawn since the way back
+  // village: frames drawn since the way back (counted from the village model's first drawn frame)
   const [frames, setFrames] = useState(0);
-  const countFrames = target === "village" && area === "village";
+  const countFrames = (target === "village" || target === "outside") && area === "village" && villageDrawn;
   useEffect(() => {
     if (!countFrames) {
       setFrames(0);
@@ -65,7 +67,7 @@ export function AreaLoadingOverlay() {
     return () => cancelAnimationFrame(raf);
   }, [countFrames]);
 
-  const view = shown ? loadView({ target: shown, area, parkReady, parkStage, downloaded: dlPct / 100, villageFrames: frames, vegDressed }) : null;
+  const view = shown ? loadView({ target: shown, area, parkReady, parkStage, downloaded: dlPct / 100, villageFrames: frames, vegDressed, villageDrawn }) : null;
   const done = !!view?.done && target !== null;
 
   // ready: wait out the minimum, fade, then drop it
@@ -85,7 +87,7 @@ export function AreaLoadingOverlay() {
     const t = window.setTimeout(() => {
       const want = areaLoadingState().target;
       if (!want) return;
-      if (localArea() !== want) {
+      if (localArea() !== (want === "park" ? "park" : "village")) {
         endAreaLoading();
         fadeAway();
       }

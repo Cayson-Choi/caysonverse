@@ -239,8 +239,9 @@ export function buildBooth(s: BoothSpec) {
   wood.box([x, 1.85, z - hz + t + 0.12], X, Y, ww / 2 - 0.1, 0.035, 0.12, timber);
   wood.box([x, 2.2, z - hz + t + 0.12], X, Y, ww / 2 - 0.1, 0.035, 0.12, timber);
   const jar = (jx: number, jy: number, jz: number, c: V3) => {
-    goods.cylinder([jx, jy, jz], [jx, jy + 0.22, jz], 0.07, 0.07, 10, c, true);
-    goods.cylinder([jx, jy + 0.22, jz], [jx, jy + 0.26, jz], 0.075, 0.075, 10, [0.85, 0.7, 0.3], true);
+    // a glass sweet jar: a rounded shoulder, a neck and a brass screw lid (was a 10-sided can)
+    addLathe(goods, jx, jz, [[0, 0], [0.062, 0], [0.07, 0.012], [0.07, 0.17], [0.062, 0.2], [0.05, 0.212], [0.05, 0.222]], c, 1, 24, jy);
+    addLathe(goods, jx, jz, [[0.054, 0], [0.056, 0.004], [0.056, 0.036], [0.05, 0.04], [0, 0.041]], [0.85, 0.7, 0.3], 1, 24, jy + 0.22);
   };
   if (s.kind === "snack") {
     const cols: V3[] = [[0.96, 0.5, 0.6], [0.98, 0.82, 0.3], [0.5, 0.78, 0.95], [0.6, 0.85, 0.5], [0.85, 0.6, 0.95]];
@@ -255,7 +256,7 @@ export function buildBooth(s: BoothSpec) {
     for (let i = 0; i < 3; i++) {
       const cxp = x + 0.2 + i * 0.28 - 0.28;
       const body: V3 = i % 2 ? [0.65, 0.14, 0.12] : CREAM;
-      addLathe(goods, cxp, counterZ + 0.22, [[0.045, 0], [0.064, 0.15], [0.068, 0.153], [0.067, 0.159], [0.061, 0.159], [0.043, 0.009], [0, 0.009]], body, 1, 12, counterTop);
+      addLathe(goods, cxp, counterZ + 0.22, [[0.045, 0], [0.064, 0.15], [0.068, 0.153], [0.067, 0.159], [0.061, 0.159], [0.043, 0.009], [0, 0.009]], body, 1, 24, counterTop);
     }
   } else {
     const cols: V3[] = [[0.92, 0.35, 0.3], [0.3, 0.4, 0.85], [0.95, 0.8, 0.3]];
@@ -292,7 +293,13 @@ export function buildBooth(s: BoothSpec) {
   // a hanging lantern at each front corner
   for (const sx of [-1, 1]) {
     goods.cylinder([x + sx * (hx + 0.12), wallTop - 0.2, z + hz + 0.12], [x + sx * (hx + 0.12), wallTop - 0.06, z + hz + 0.12], 0.01, 0.01, 4, [0.2, 0.2, 0.24]);
-    goods.box([x + sx * (hx + 0.12), wallTop - 0.42, z + hz + 0.12], X, Y, 0.08, 0.14, 0.08, [1, 0.86, 0.5]);
+    // a carriage lantern: a dark iron cap and base round the lit glass box, corner posts (was a bare glowing box)
+    const lx = x + sx * (hx + 0.12), lz = z + hz + 0.12, ly = wallTop - 0.42;
+    goods.box([lx, ly, lz], X, Y, 0.07, 0.13, 0.07, [1, 0.86, 0.5]);
+    goods.box([lx, ly + 0.14, lz], X, Y, 0.09, 0.012, 0.09, [0.16, 0.16, 0.18]);
+    goods.cylinder([lx, ly + 0.152, lz], [lx, ly + 0.21, lz], 0.1, 0.012, 16, [0.16, 0.16, 0.18], true);
+    goods.box([lx, ly - 0.14, lz], X, Y, 0.08, 0.012, 0.08, [0.16, 0.16, 0.18]);
+    for (const [px, pz] of [[-1, -1], [-1, 1], [1, -1], [1, 1]] as const) goods.box([lx + px * 0.072, ly, lz + pz * 0.072], X, Y, 0.008, 0.13, 0.008, [0.16, 0.16, 0.18]);
   }
   // a litter barrel and a wooden crate by the wall with goods in it (the booth's own props, inside its footprint's skirt)
   return { stone: stone.build(), plaster: plaster.build(), roof: roof.build(), wood: wood.build(), cloth: cloth.build(), goods: goods.build(), signY: wallTop + 0.34, signZ: z + hz + over + 0.07, ww };

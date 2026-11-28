@@ -50,16 +50,16 @@ function shopDisplay(goods: GeoBuilder, id: string, at: WindowPoint, face: V3): 
     const [x, y, z] = at(0.345, 1.78, lateral);
     if (id === "photo") {
       goods.box([x, y + 0.075, z], face, Y, 0.055, 0.075, 0.102, [0.085, 0.076, 0.064]);
-      goods.cylinder(at(0.39, y + 0.08, lateral), at(0.445, y + 0.08, lateral), 0.047, 0.051, 10, [0.22, 0.23, 0.21], true);
+      goods.cylinder(at(0.39, y + 0.08, lateral), at(0.445, y + 0.08, lateral), 0.047, 0.051, 14, [0.22, 0.23, 0.21], true);
     } else if (id === "bakery") {
-      addLathe(goods, x, z, [[0.076, 0], [0.105, 0.024], [0.09, 0.077], [0.046, 0.106], [0, 0.112]], [0.64, 0.32 + index * 0.026, 0.105], 1, 10, y);
+      addLathe(goods, x, z, [[0.076, 0], [0.105, 0.024], [0.09, 0.077], [0.046, 0.106], [0, 0.112]], [0.64, 0.32 + index * 0.026, 0.105], 1, 14, y);
     } else {
       // Turned wooden tops at the toy shop and lidded ceramic canisters at the others.
       const profile: [number, number][] = id === "toys"
         ? [[0.016, 0], [0.086, 0.072], [0.069, 0.10], [0.018, 0.118], [0.014, 0.158], [0, 0.158]]
         : [[0.050, 0], [0.076, 0.024], [0.075, 0.12], [0.054, 0.15], [0.063, 0.16], [0.025, 0.18], [0, 0.20]];
       const colors: V3[] = [[0.29, 0.41, 0.31], [0.54, 0.22, 0.12], [0.72, 0.61, 0.42]];
-      addLathe(goods, x, z, profile, colors[index]!, 1, 10, y);
+      addLathe(goods, x, z, profile, colors[index]!, 1, 14, y);
     }
   }
 }

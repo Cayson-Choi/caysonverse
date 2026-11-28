@@ -1,4 +1,5 @@
 import { useGLTF, useTexture } from "@react-three/drei";
+import "../game/loadTracker"; // counts every file three fetches from the start (the entry reveal waits on it)
 import { GLTFLoader } from "three-stdlib";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { characterModel } from "../game/characterModel";

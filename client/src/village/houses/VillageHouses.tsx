@@ -30,6 +30,14 @@ import { addInkLabel } from "../../game/inkLabels";
 import { getLocalPose, setPorchesDrawn } from "./houseLift";
 import { createVegetation, type VillageVegetation } from "../veg/villageVegetation";
 import { vegModeFrom } from "../veg/vegMode";
+import { createVegPark } from "../veg/vegPark";
+
+/**
+ * The houses' grown flowers (window boxes, side boxes, baskets, pots, borders), kept while the player is indoors like the village's
+ * own vegetation (veg/vegPark.ts; perf/return, 2026-11-28): growing them again was ~4 s of every way back out of a building on a
+ * 4x-throttled phone (flowerPlacement, the plant atlas, the soil). The village scene holds the park while it is up.
+ */
+export const houseFlowerPark = createVegPark<VillageVegetation>();
 
 /** The flower masses, one per graphics tier, made once (houseFlowerMass.ts). */
 const flowerMasses = new Map<string, MassMesh>();
@@ -119,6 +127,23 @@ export function VillageHouses({ villageRoot, tier }: { villageRoot: Object3D; ti
     const mode = vegModeFrom(window.location.search, import.meta.env.DEV);
     if (mode === "old") return;
     let dead = false;
+    const keepOnLeave = (v: VillageVegetation): void => {
+      nodes.root.remove(v.group);
+      v.detach();
+      houseFlowerPark.park(v, tier, mode);
+    };
+    // back from a building: the flowers grown on the first visit dress this clone at once
+    const kept = houseFlowerPark.take(tier, mode);
+    if (kept) {
+      kept.attach(nodes.root);
+      vegRef.current = kept;
+      nodes.root.add(kept.group);
+      return () => {
+        const v = vegRef.current;
+        vegRef.current = null;
+        if (v) keepOnLeave(v);
+      };
+    }
     nodes.root.updateMatrixWorld(true);
     void createVegetation(nodes.root, tier, mode, () => dead, { flowersOnly: true })
       .then((v) => {
@@ -137,10 +162,7 @@ export function VillageHouses({ villageRoot, tier }: { villageRoot: Object3D; ti
       dead = true;
       const v = vegRef.current;
       vegRef.current = null;
-      if (v) {
-        nodes.root.remove(v.group);
-        v.dispose();
-      }
+      if (v) keepOnLeave(v); // kept for the way back out (the scene frees it when it goes)
     };
   }, [nodes, tier]);
 

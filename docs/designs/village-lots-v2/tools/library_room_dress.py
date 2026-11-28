@@ -16,6 +16,7 @@ import b1_geom as G
 import b1_parts as P
 import b1_room as R
 import flora as F
+import props_fine as PF
 import library_books as LB
 from b1_geom import Mesh, S
 
@@ -482,18 +483,28 @@ def chesterfield(m, cx, cz, yaw):
     m.extend(G.moved(a, cx, 0.0, cz, yaw))
 
 
+def _ph(pc, phone):
+    """Sides for a round part: the PC's, or on the phone `phone` sides after the phone LOD's scaling (Mesh.lathe: n * G.LOD)."""
+    return int(math.ceil(phone / G.LOD)) if PHONE else pc
+
+
 def side_table(m, glow, lights, cx, cz):
-    """A round oak side table on a turned pedestal with a brass table lamp (pleated shade), a book and a teacup."""
-    m.lathe([(0.26, 0.0), (0.26, 0.03), (0.24, 0.035), (0.0, 0.035)], 16, OAK_RICH, cx, cz, 0.6)
-    m.lathe([(0.2, 0.0), (0.18, 0.04), (0.05, 0.08), (0.04, 0.2), (0.06, 0.3), (0.035, 0.45), (0.05, 0.6)], 18, OAK, cx, cz, 0.0)
+    """A round oak side table on a turned pedestal with a brass table lamp (pleated shade), a book and a teacup. (2026-11-28: the
+    phone's top, foot, lamp and shade at 20 sides — 10 read as an octagon by the armchairs; the PC keeps its count: its budget)"""
+    m.lathe([(0.26, 0.0), (0.26, 0.03), (0.24, 0.035), (0.0, 0.035)], _ph(16, 22), OAK_RICH, cx, cz, 0.6)
+    m.lathe([(0.2, 0.0), (0.18, 0.04), (0.05, 0.08), (0.04, 0.2), (0.06, 0.3), (0.035, 0.45), (0.05, 0.6)], _ph(18, 18), OAK, cx, cz, 0.0)
     lx, lz = cx - 0.07, cz - 0.05
-    m.lathe([(0.07, 0.0), (0.06, 0.02), (0.05, 0.08), (0.02, 0.12), (0.012, 0.32)], 18, BRASS, lx, lz, 0.635)
-    m.lathe([(0.17, 0.0), (0.11, 0.2), (0.0, 0.205)], 16, S("LM_library_fabric", G.hexc("F2DFB8")), lx, lz, 0.88)
+    m.lathe([(0.07, 0.0), (0.06, 0.02), (0.05, 0.08), (0.02, 0.12), (0.012, 0.32)], _ph(18, 16), BRASS, lx, lz, 0.635)
+    m.lathe([(0.17, 0.0), (0.11, 0.2), (0.0, 0.205)], _ph(16, 22), S("LM_library_fabric", G.hexc("F2DFB8")), lx, lz, 0.88)
     glow.lathe([(0.0, 0.0), (0.14, 0.02), (0.1, 0.17), (0.0, 0.18)], 16, P.GLASS.t(P.LAMP), lx, lz, 0.885)
     lights.append(("point", lx, 0.98, lz, (1.0, 0.8, 0.55), 35.0))
-    m.box(cx + 0.02, cx + 0.2, 0.635, 0.66, cz - 0.02, cz + 0.12, S("LM_library_paint", G.hexc("6E1E1E")))
-    m.lathe([(0.0, 0.0), (0.03, 0.0), (0.045, 0.05), (0.0, 0.05)], 18, PAPER, cx + 0.12, cz + 0.17, 0.635)
-    m.lathe([(0.065, 0.0), (0.065, 0.006), (0.0, 0.006)], 12, PAPER, cx + 0.12, cz + 0.17, 0.632)
+    # a clothbound book (2026-11-28: was a plain dark-red box) and a teacup with its handle on a saucer
+    PF.closed_book(m, cx + 0.11, 0.635, cz + 0.05, 0.18, 0.13, 0.028, S("LM_library_paint", G.hexc("6E1E1E")), PAPER, yaw=0.2)
+    m.lathe([(0.0, 0.0), (0.045, 0.0), (0.05, 0.003), (0.068, 0.008), (0.07, 0.011), (0.05, 0.007), (0.0, 0.007)], _ph(16, 14), PAPER, cx + 0.12, cz + 0.2, 0.635)
+    m.lathe([(0.0, 0.0), (0.018, 0.0), (0.02, 0.004), (0.036, 0.022), (0.043, 0.045), (0.045, 0.052), (0.041, 0.052), (0.038, 0.042), (0.0, 0.04)], _ph(16, 14), PAPER, cx + 0.12, cz + 0.2, 0.642)
+    m.lathe([(0.0, 0.0), (0.037, 0.0)], _ph(16, 14), S("LM_library_paint", G.hexc("8A5A2E")), cx + 0.12, cz + 0.2, 0.683)
+    m.tube([(cx + 0.12 + 0.042, 0.642 + 0.04, cz + 0.2), (cx + 0.12 + 0.062, 0.642 + 0.034, cz + 0.2), (cx + 0.12 + 0.062, 0.642 + 0.018, cz + 0.2),
+            (cx + 0.12 + 0.04, 0.642 + 0.013, cz + 0.2)], 0.004, 6, PAPER)
 
 
 def globe(m, cx, cz):
@@ -578,17 +589,23 @@ def rug(m, cx, cz, w, d, field, border, accent, yaw=0.0):
 
 def tall_plant(m, cx, cz, h=1.7):
     """A fiddle-leaf fig in a glazed pot: a slim trunk, big leathery leaves (two-sided, slightly cupped)."""
-    m.lathe([(0.16, 0.0), (0.2, 0.32), (0.21, 0.36), (0.20, 0.38), (0.182, 0.38), (0.178, 0.345)], 14, S("LM_library_paint", G.hexc("2F5D5A")), cx, cz, 0.0)
-    m.lathe([(0.178, 0.345), (0, 0.345)], 14, S("LM_library_plaster", G.hexc("493A2C")), cx, cz)
+    m.lathe([(0.16, 0.0), (0.2, 0.32), (0.21, 0.36), (0.20, 0.38), (0.182, 0.38), (0.178, 0.345)], 28, S("LM_library_paint", G.hexc("2F5D5A")), cx, cz, 0.0)
+    m.lathe([(0.178, 0.345), (0, 0.345)], 28, S("LM_library_plaster", G.hexc("493A2C")), cx, cz)
     root, crown = (cx, 0.345, cz), (cx + 0.035, h - 0.04, cz - 0.022)
     m.member(root, crown, G.prof_round(0.018, 6), OAK_DK)
     rg = G.rng(int(cx * 100 + cz))
+    lod0, G.LOD = G.LOD, min(G.LOD, 0.5)   # (the blades' rows: the room is at its PC budget)
     for k in range(16):
         t = k / 15
         stem = G.lerp(root, crown, 0.26 + 0.74 * t)
         length = rg.uniform(0.21, 0.28) * (1.0 - 0.25 * t)
-        R.fiddle_leaf(m, stem, k * 2.40 + rg.uniform(-0.12, 0.12), length, length * 0.33,
-                      -0.09 + 0.19 * t, LEAF if k % 2 else LEAF_DK)
+        # a broad, glossy blade on a short petiole (flora.leaf; 2026-11-28: was b1_room.fiddle_leaf's folded diamonds)
+        a = k * 2.40 + rg.uniform(-0.12, 0.12)
+        out = (math.cos(a), 0.0, math.sin(a))
+        base = G.add(stem, G.mul(out, 0.012))
+        F.leaf(m, base, out, length, length * 0.42, LEAF if k % 2 else LEAF_DK, rise=0.25 + 0.5 * t, fall=0.85, fold=0.2,
+               c0=G.hexc("2C5A22"), c1=G.hexc("5E9A44") if k % 2 else G.hexc("4A7F36"), seed=k + int(cx * 10))
+    G.LOD = lod0
 
 
 def chandelier(kit, m, cx, cz, y):

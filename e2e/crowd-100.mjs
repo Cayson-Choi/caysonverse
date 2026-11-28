@@ -249,6 +249,7 @@ const out = {
 };
 console.log(JSON.stringify(out, null, 1));
 writeFileSync(join(OUT, `crowd-${args.device}-${args.label}.json`), JSON.stringify(out, null, 2));
+if (PROFILE) writeFileSync(join(OUT, `crowd-${args.device}-${args.label}.cpuprofile`), JSON.stringify(profile)); // open in DevTools › Performance
 await p.page.screenshot({ path: join(OUT, `crowd-${args.device}-${args.label}.png`) }).catch(() => {});
 await p.page.evaluate(() => (clearInterval(window.__crowdTimer), clearInterval(window.__crowdSay)));
 const code = run.finish();

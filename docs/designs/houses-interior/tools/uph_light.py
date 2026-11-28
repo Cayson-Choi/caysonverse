@@ -13,7 +13,8 @@ the mean of their lit neighbours, and the upholstery triangles are then painted 
 them, two texels past their edges (the islands are four texels apart). The cushions are dense (rounded boxes, subdivided tops), so the
 vertex light keeps the soft shading; walls, floors and every other piece keep the texel bake.
 
-  tag_upholstery(objs)                before the floor is joined: face attribute "uph" = 1 on upholstery faces of seating pieces
+  tag_upholstery(objs)                before the floor is joined: face attribute "uph" = 1 on upholstery faces of seating pieces and on the
+                                      smooth faces of the small table decor (polish3, below)
   bake_vertex_light(obs)              after the texel bake, same lights: per-vertex light {object name: (N, 3) array}
   paint(obs, a, vlight)               overwrites the upholstery texels of the float bake a [rows from the bottom, cols, 3]
 """
@@ -24,19 +25,52 @@ import bpy
 import numpy as np
 
 UPH_MATS = ("H_fabric", "H_leather", "H_check", "H_floral", "H_velvet", "H_linen")
+# polish3 (owner 2026-11-28, house 1's dining table: "초·컵이 육각형, 꽃병이 허접"): a cup, a candle, a vase or a fruit is a few texels of the
+# atlas per face, so every face baked to one flat value and the round things read faceted. The smooth faces of the small table decor
+# (pieces under DECOR_SIZE across, not lamps / glass / mirrors) take the same vertex light, interpolated round them.
+DECOR_SIZE = 0.5
+# the place mats and the table runner (thin linen sheets, their hem band a narrow strip of the atlas): the same vertex light, so no edge of
+# them bakes a dark smudge
+# the styled table tops (HB props_table / props_desk, coffee_styling, console_vignette): a book stack, a mug and a vase spread wider
+# than DECOR_SIZE
+DECOR_SET = re.compile(r"props|styling|vignette|cstyle")
+TABLE_LINEN = re.compile(r"^(mats|runner)\d*$")
+DECOR_SKIP = ("H_lamp", "H_shade", "H_glass", "H_mirror", "H_screen")
+# polish3 (owner 2026-11-28, house 6: "가죽 소파가 밋밋"): the vertex light of round 2 lost the leather's soft creases and its sheen. The
+# leather vertices take a short-range ambient occlusion (creases between the cushions, under the rolled arms; vertex-based, so no seam can
+# come back) and a broad view-independent sheen on the faces turned up toward the room (the rolled arm tops and the cushion crowns
+# catch the ceiling and window light like a waxed hide).
+LEATHER = "H_leather"
+AO_DIST = 0.15
+AO_FLOOR = 0.4
+SHEEN_BASE = 0.8     # the day bake clips on the lit tops: the sheen is a contrast (the hide a shade deeper, its crowns back up)
+SHEEN = 0.75
+SHEEN_POW = 4.0
 SEATING = re.compile(r"sofa|armchair|chair|lounge|bench|ottoman|bean|seat|stool|rocker|cush|pillow|daybed|boryo|bangseok|mattress")
 ATTR = "uph"
+# polish4: the small round table things (value 2 of the attribute) take ONE light each — a light probe: their light-map faces all share one
+# point of the atlas (collapse_decor_uv) where the mean of their vertex light is painted; the game shapes it round by the smooth normal
+# (client ROUND_LIT). Their faces were sub-texel islands scattered over the whole atlas, and each one read as a flat panel.
+DECOR = 2
 VCOL = "LM_vertex"
 
 
 def tag_upholstery(objs):
     n = 0
     for ob in objs:
-        if ob.type != "MESH" or not SEATING.search(ob.name.split("_", 2)[-1].lower()):
+        if ob.type != "MESH":
             continue
         me = ob.data
         names = [m.name if m else "" for m in me.materials]
-        vals = [1 if (p.material_index < len(names) and names[p.material_index] in UPH_MATS) else 0 for p in me.polygons]
+        if SEATING.search(ob.name.split("_", 2)[-1].lower()):
+            vals = [1 if (p.material_index < len(names) and names[p.material_index] in UPH_MATS) else 0 for p in me.polygons]
+        elif TABLE_LINEN.search(ob.name.split("_", 2)[-1].lower()):
+            vals = [1 if (p.material_index < len(names) and names[p.material_index] == "H_drape") else 0 for p in me.polygons]
+        elif len(me.vertices) and ((max(ob.dimensions[0], ob.dimensions[1]) < DECOR_SIZE and ob.dimensions[2] < 0.7) or
+                                   (DECOR_SET.search(ob.name.split("_", 2)[-1].lower()) and max(ob.dimensions) < 2.0)):
+            vals = [DECOR if (p.use_smooth and p.material_index < len(names) and names[p.material_index] not in DECOR_SKIP) else 0 for p in me.polygons]
+        else:
+            continue
         if not any(vals):
             continue
         at = me.attributes.get(ATTR) or me.attributes.new(ATTR, "INT", "FACE")
@@ -48,8 +82,54 @@ def tag_upholstery(objs):
     return n
 
 
+AO = {}
+
+
+def _bake_vertex(obs, select, kind, **kw):
+    for ob in obs:
+        me = ob.data
+        if VCOL in me.color_attributes:
+            me.color_attributes.remove(me.color_attributes[VCOL])
+        ca = me.color_attributes.new(VCOL, "FLOAT_COLOR", "POINT")
+        me.color_attributes.active_color = ca
+    select(obs)
+    bpy.ops.object.bake(type=kind, target="VERTEX_COLORS", use_selected_to_active=False, **kw)
+    out = {}
+    for ob in obs:
+        me = ob.data
+        ca = me.color_attributes[VCOL]
+        v = np.empty(len(me.vertices) * 4, np.float32)
+        ca.data.foreach_get("color", v)
+        out[ob.name] = v.reshape(-1, 4)[:, :3].copy()
+        me.color_attributes.remove(ca)
+    return out
+
+
+def _leather_ao(scene, obs, select):
+    """short-range ambient occlusion per vertex of the floors that have leather (polish3)"""
+    AO.clear()
+    has = [ob for ob in obs if any(m and m.name.startswith(LEATHER) for m in ob.data.materials)]
+    if not has:
+        return
+    w = scene.world
+    keep = w.light_settings.distance
+    w.light_settings.distance = AO_DIST
+    keep_col = {ob.name: ob.data.color_attributes.active_color_name for ob in obs}
+    try:
+        res = _bake_vertex(obs, select, "AO")
+        for ob in has:
+            AO[ob.name] = res[ob.name][:, 0].copy()
+    finally:
+        w.light_settings.distance = keep
+        for ob in obs:
+            n = keep_col[ob.name]
+            if n and n in ob.data.color_attributes:
+                ob.data.color_attributes.active_color = ob.data.color_attributes[n]
+
+
 def bake_vertex_light(scene, obs, select):
     """the Cycles diffuse bake (direct + indirect, no colour) once more, into a point-domain colour attribute"""
+    _leather_ao(scene, obs, select)
     keep = {}
     for ob in obs:
         me = ob.data
@@ -115,11 +195,156 @@ def _fix_buried(bm, uph_faces, light):
     return fixed
 
 
+def _leather_look(ob, bm, faces, light, centre):
+    """creases (AO) and a broad sheen on the leather vertices of these upholstery faces (polish3)"""
+    ao = AO.get(ob.name)
+    names = [m.name if m else "" for m in ob.data.materials]
+    lv = {v.index for f in faces if f.material_index < len(names) and names[f.material_index].startswith(LEATHER) for v in f.verts}
+    if not lv or ao is None:
+        return 0
+    idx = np.array(sorted(lv))
+    mw = ob.matrix_world
+    m3 = mw.to_3x3()
+    bm.verts.ensure_lookup_table()
+    k = np.clip(ao[idx], 0.0, 1.0)
+    light[idx] *= (AO_FLOOR + (1.0 - AO_FLOOR) * k)[:, None]
+    sh = np.empty(len(idx), np.float32)
+    for j, i in enumerate(idx):
+        v = bm.verts[int(i)]
+        n = (m3 @ v.normal).normalized()
+        pw = mw @ v.co
+        to_c = (centre - pw)
+        to_c.z = 0.0
+        if to_c.length > 1e-6:
+            to_c.normalize()
+        hv = (to_c * 0.75 + n.__class__((0.0, 0.0, 1.0))).normalized()
+        sh[j] = max(0.0, n.dot(hv)) ** SHEEN_POW
+    light[idx] *= (SHEEN_BASE + SHEEN * sh)[:, None]
+    print("[bake_house] uph leather vertices", ob.name, len(idx), "ao mean %.2f sheen mean %.2f" % (float(k.mean()), float(sh.mean())))
+    return len(idx)
+
+
+def _coverage(obs, H, W, layer):
+    """every texel touched by a triangle that does NOT take the vertex light (polish4): the vertex light's ring and margin grow only
+    where no other island is (and fill the sub-texel islands of the small round things whose texel centres no triangle holds)"""
+    cov = np.zeros((H, W), bool)
+    for ob in obs:
+        me = ob.data
+        if layer not in me.uv_layers:
+            continue
+        me.calc_loop_triangles()
+        uv = np.empty(len(me.loops) * 2, np.float32)
+        me.uv_layers[layer].data.foreach_get("uv", uv)
+        uv = uv.reshape(-1, 2) * np.array([W, H], np.float32)
+        lt = np.empty(len(me.loop_triangles) * 3, np.int32)
+        me.loop_triangles.foreach_get("loops", lt)
+        pi = np.empty(len(me.loop_triangles), np.int32)
+        me.loop_triangles.foreach_get("polygon_index", pi)
+        tag = np.zeros(len(me.polygons), np.int32)
+        if ATTR in me.attributes:
+            me.attributes[ATTR].data.foreach_get("value", tag)
+        for t in lt.reshape(-1, 3)[tag[pi] == 0]:
+            P = uv[t]
+            lo = np.maximum(np.floor(P.min(0)).astype(int), 0)
+            hi = np.minimum(np.ceil(P.max(0)).astype(int), [W - 1, H - 1])
+            if hi[0] < lo[0] or hi[1] < lo[1]:
+                continue
+            (x0, y0), (x1, y1), (x2, y2) = P
+            den = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2)
+            if abs(den) < 1e-12:
+                continue
+            gx, gy = np.meshgrid(np.arange(lo[0], hi[0] + 1) + 0.5, np.arange(lo[1], hi[1] + 1) + 0.5)
+            w0 = ((y1 - y2) * (gx - x2) + (x2 - x1) * (gy - y2)) / den
+            w1 = ((y2 - y0) * (gx - x2) + (x0 - x2) * (gy - y2)) / den
+            m = (w0 >= -0.02) & (w1 >= -0.02) & (1.0 - w0 - w1 >= -0.02)
+            cov[lo[1]:hi[1] + 1, lo[0]:hi[0] + 1] |= m
+    return cov
+
+
+def _grow(a, painted, cov, steps=6):
+    """the painted vertex light grown into the empty margin round its islands (mean of painted neighbours), `steps` texels: a 1k
+    downsample or a mip level of the light map then mixes this light, not the texel bake's steps, at the island edges (polish4)"""
+    done = painted.copy()
+    for _ in range(steps):
+        acc = np.zeros_like(a)
+        cnt = np.zeros(painted.shape, np.float32)
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            sh = np.roll(done, (dy, dx), (0, 1))
+            sa = np.roll(a, (dy, dx), (0, 1))
+            acc += sa * sh[..., None]
+            cnt += sh
+        new = (cnt > 0) & ~done & ~cov
+        if not new.any():
+            break
+        a[new] = acc[new] / cnt[new][:, None]
+        done |= new
+    return int(done.sum() - painted.sum())
+
+
+def _components(faces):
+    """faces joined through shared vertices"""
+    comp, seen = [], set()
+    vf = {}
+    for f in faces:
+        for v in f.verts:
+            vf.setdefault(v.index, []).append(f)
+    for f0 in faces:
+        if f0.index in seen:
+            continue
+        c, st = [], [f0]
+        seen.add(f0.index)
+        while st:
+            f = st.pop()
+            c.append(f)
+            for v in f.verts:
+                for g in vf[v.index]:
+                    if g.index not in seen:
+                        seen.add(g.index)
+                        st.append(g)
+        comp.append(c)
+    return comp
+
+
+def collapse_decor_uv(objs, layer="UV_LM"):
+    """after the light-map pack (object mode): every decor component's UV_LM onto one point inside its largest face's island"""
+    n = 0
+    for ob in objs:
+        me = ob.data
+        if ATTR not in me.attributes or layer not in me.uv_layers:
+            continue
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        al = bm.faces.layers.int.get(ATTR)
+        uvl = bm.loops.layers.uv[layer]
+        faces = [f for f in bm.faces if f[al] == DECOR]
+        for c in _components(faces):
+            big = max(c, key=lambda f: f.calc_area())
+            us = [l[uvl].uv.copy() for l in big.loops]
+            anchor = sum(us, us[0] * 0.0) / len(us)
+            for f in c:
+                for l in f.loops:
+                    l[uvl].uv = anchor
+            n += 1
+        bm.to_mesh(me)
+        bm.free()
+    return n
+
+
 def paint(obs, a, vlight, layer="UV_LM", ring=2.0):
     """rasterises every upholstery triangle into the float bake a with its vertex light interpolated (and `ring` texels past its edges)"""
     H, W = a.shape[0], a.shape[1]
     inside = np.zeros((H, W), bool)
+    cov = _coverage(obs, H, W, layer)
     n_tri = n_fix = 0
+    from mathutils import Vector
+    lo = Vector((1e9, 1e9, 1e9))
+    hi = Vector((-1e9, -1e9, -1e9))
+    for ob in obs:
+        for c in ob.bound_box:
+            w = ob.matrix_world @ Vector(c)
+            lo = Vector((min(lo.x, w.x), min(lo.y, w.y), min(lo.z, w.z)))
+            hi = Vector((max(hi.x, w.x), max(hi.y, w.y), max(hi.z, w.z)))
+    centre = (lo + hi) * 0.5
     for ob in obs:
         me = ob.data
         if ATTR not in me.attributes:
@@ -133,8 +358,21 @@ def paint(obs, a, vlight, layer="UV_LM", ring=2.0):
         if not faces:
             bm.free()
             continue
+        _leather_look(ob, bm, faces, light, centre)
         n_fix += _fix_buried(bm, faces, light)
-        for f in faces:
+        # the decor probes: the component's mean vertex light on a 5 x 5 texel block round its shared UV point
+        for c in _components([f for f in faces if f[al] == DECOR]):
+            vs = sorted({v.index for f in c for v in f.verts})
+            mean = light[vs].mean(axis=0)
+            u = c[0].loops[0][uvl].uv
+            cx, cy = int(u.x * W), int(u.y * H)
+            y0, y1, x0, x1 = max(cy - 2, 0), min(cy + 3, H), max(cx - 2, 0), min(cx + 3, W)
+            blk = ~cov[y0:y1, x0:x1] & ~inside[y0:y1, x0:x1]
+            sub = a[y0:y1, x0:x1]
+            sub[blk] = mean
+            inside[y0:y1, x0:x1] |= blk
+            n_tri += 1
+        for f in [f for f in faces if f[al] != DECOR]:
             ls = list(f.loops)
             for t in range(1, len(ls) - 1):
                 tri = (ls[0], ls[t], ls[t + 1])
@@ -169,10 +407,13 @@ def paint(obs, a, vlight, layer="UV_LM", ring=2.0):
                 val = (c0[..., None] * C[0] + c1[..., None] * C[1] + c2[..., None] * C[2]) / s[..., None]
                 ys, xs = slice(lo[1], hi[1] + 1), slice(lo[0], hi[0] + 1)
                 sub, subin = a[ys, xs], inside[ys, xs]
-                w_ring = m_ring & ~subin          # the ring never overwrites another upholstery triangle's own texels
+                # the ring never overwrites another upholstery triangle's own texels, nor (polish4) any other island's
+                w_ring = m_ring & ~subin & ~cov[ys, xs]
                 sub[w_ring] = val[w_ring]
                 sub[m_in] = val[m_in]
                 subin |= m_in
                 n_tri += 1
         bm.free()
+    grown = _grow(a, inside, cov)
+    print("[bake_house] uph margin grown", grown)
     return n_tri, n_fix

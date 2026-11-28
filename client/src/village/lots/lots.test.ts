@@ -12,7 +12,7 @@ import { lotTrimFootprints } from "./LotsVillagePatch";
 import { parkGateDoor } from "@caysonverse/shared/village/parkArea";
 import { parkGateTarget } from "../villageTargets";
 import { manifestPaths } from "./lotTextures";
-import { LOT_ROOM_PHONE_FILES, SACRED_MAP_MAX, capMips, isSacredHero, sacredCaps, sacredFile, sacredUrl } from "./LotRoom";
+import { LOT_ROOM_PHONE_FILES, PETAL_SATURATION, SACRED_MAP_MAX, capMips, isSacredHero, patchPetalFill, sacredCaps, sacredFile, sacredUrl } from "./LotRoom";
 
 const LOTS_DIR = resolve(__dirname, "..", "..", "..", "public", "models", "village", "lots");
 /** A GLB's JSON chunk. */
@@ -295,5 +295,47 @@ describe("the vestibule behind a lot's open door (owner 2026-11-19: grass inside
   it("a kit floor raised all the way in (the temple's 마루) needs none", () => {
     const root = room([box(43, 46, 0, 0.9, -40, -34)]);
     expect(vestibuleFloor(root, chapel, door, granite())).toBeNull();
+  });
+});
+
+describe("room flower petals (polish3, owner 2026-11-28: fresh colour, not grey)", () => {
+  const compiled = () => {
+    const m = new MeshStandardMaterial({ vertexColors: true });
+    patchPetalFill(m);
+    const shader = {
+      uniforms: {},
+      vertexShader: "void main() {}",
+      fragmentShader: ["#include <map_fragment>", "#include <color_fragment>", "#include <aomap_fragment>", "#include <normal_fragment_maps>",
+        "#include <roughnessmap_fragment>", "#include <metalnessmap_fragment>", "#include <emissivemap_fragment>"].join("\n"),
+    };
+    m.onBeforeCompile(shader as never, null as never);
+    return { m, fs: shader.fragmentShader };
+  };
+  it("draws the petal from its own colour: no plaster albedo, AO, normal or ORM", () => {
+    const { fs } = compiled();
+    for (const chunk of ["map_fragment", "aomap_fragment", "normal_fragment_maps", "roughnessmap_fragment", "metalnessmap_fragment"]) {
+      expect(fs).not.toContain(`#include <${chunk}>`);
+    }
+    expect(fs).toContain("float roughnessFactor");
+  });
+  it("lifts the chroma about the colour's own luminance (a white bloom stays white) and keeps the lit-through fill", () => {
+    const { fs, m } = compiled();
+    expect(PETAL_SATURATION).toBeGreaterThan(1.2);
+    expect(PETAL_SATURATION).toBeLessThan(2.6);
+    expect(fs).toMatch(/mix\( vec3\( petalL \), diffuseColor\.rgb/);
+    expect(fs).toContain("totalEmissiveRadiance += diffuseColor.rgb");
+    expect(m.customProgramCacheKey()).toContain("petal3");
+    // the same lift on the CPU: white stays white, a pale pink gets clearly pinker
+    const lift = (c: number[]) => { const l = 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!; return c.map((v) => Math.min(1, Math.max(0, l + (v - l) * PETAL_SATURATION))); };
+    expect(lift([1, 1, 1])).toEqual([1, 1, 1]);
+    const pink = lift([0.9, 0.55, 0.6]);
+    expect(pink[0]! - pink[1]!).toBeGreaterThan(0.9 - 0.55);
+  });
+  it("patches once", () => {
+    const m = new MeshStandardMaterial();
+    patchPetalFill(m);
+    const f = m.onBeforeCompile;
+    patchPetalFill(m);
+    expect(m.onBeforeCompile).toBe(f);
   });
 });

@@ -29,6 +29,12 @@ def seg(pc, phone=None):
     return (phone if phone is not None else max(6, int(pc * 0.5))) if PHONE else pc
 
 
+def segr(pc, phone):
+    """Round sections that keep `phone` sides on the phone after Mesh.lathe's phone LOD (n * G.LOD): seg() counts are scaled twice
+    there (seg(14, 9) drew 8 sides). 2026-11-28 prop sweep: the table-top props a phone looks down on."""
+    return int(math.ceil(phone / max(G.LOD, 0.05))) if PHONE else pc
+
+
 # ------------------------------------------------------------------------------------------------ surfaces --
 
 def hx(h):
@@ -192,9 +198,9 @@ def disc(m, cx, cy, cz, r, s, n, up=True):
     m.poly(pts, s)
 
 
-def cup(m, x, y, z, r=0.042, h=0.065, tint=(0.98, 0.97, 0.94), saucer=True, coffee=True, yaw=0.0):
+def cup(m, x, y, z, r=0.042, h=0.065, tint=(0.98, 0.97, 0.94), saucer=True, coffee=True, yaw=0.0, far=False):
     """A café cup on its saucer: a glazed porcelain bowl (rim lip, foot), a handle loop, latte art in it."""
-    n = seg(14, 9)
+    n = seg(14, 9) if far else segr(14, 12)   # (2026-11-28: the phone drew 8 sides; `far`: rows on shelves keep the old count)
     n0 = len(m.polys)
     if saucer:
         m.lathe([(0.0, 0.0), (0.045, 0.0), (0.05, 0.004), (0.072, 0.010), (0.074, 0.014), (0.05, 0.009), (0.0, 0.009)], n, S("LM_cafe_paint"), x, z, y)
@@ -213,9 +219,9 @@ def cup(m, x, y, z, r=0.042, h=0.065, tint=(0.98, 0.97, 0.94), saucer=True, coff
         planar(m, n2, "latte", x, z, r * 0.85)
 
 
-def plate(m, x, y, z, r, tint=(0.98, 0.97, 0.94)):
+def plate(m, x, y, z, r, tint=(0.98, 0.97, 0.94), far=False):
     n0 = len(m.polys)
-    m.lathe([(0.0, 0.0), (r * 0.6, 0.0), (r * 0.65, 0.004), (r * 0.95, 0.012), (r, 0.016), (r * 0.94, 0.016), (r * 0.62, 0.008), (0.0, 0.008)], seg(18, 10), S("LM_cafe_paint"), x, z, y)
+    m.lathe([(0.0, 0.0), (r * 0.6, 0.0), (r * 0.65, 0.004), (r * 0.95, 0.012), (r, 0.016), (r * 0.94, 0.016), (r * 0.62, 0.008), (0.0, 0.008)], seg(18, 10) if far else segr(18, 12), S("LM_cafe_paint"), x, z, y)
     glaze(m, n0, tint)
     return y + 0.008
 
@@ -262,9 +268,9 @@ def croissant(m, x, y, z, yaw=0.0, L=0.075, R=0.026, choc=False):
     remap(m, n0, "croissant", (1.0, 1.0, 1.0) if not choc else (0.94, 0.86, 0.78))
 
 
-def tart(m, x, y, z, r, top="tart_fruit", h=0.022):
+def tart(m, x, y, z, r, top="tart_fruit", h=0.022, far=False):
     """A tartlet: the fluted pâte sucrée ring (atlas crust), its rim, the filling's top (glazed fruit / torched meringue)."""
-    n = seg(20, 12)
+    n = seg(20, 12) if far else segr(20, 12)
     n0 = len(m.polys)
     m.lathe([(r * 0.92, 0.0), (r, h * 0.9), (r * 0.97, h), (r * 0.88, h * 0.92)], n, ART, x, z, y)
     remap(m, n0, "tart_crust")
@@ -318,8 +324,8 @@ def cake(m, x, y, z, r, h, top, side_tint, cut=False):
         P_.uv = [(u0 + (u1 - u0) * (0 if math.hypot(p[0] - x, p[2] - z) < 1e-6 else 1), v0 + (v1 - v0) * ((p[1] - y) / h)) for p in P_.pts]
 
 
-def macaron(m, x, y, z, tint, r=0.021):
-    n = seg(12, 8)
+def macaron(m, x, y, z, tint, r=0.021, far=False):
+    n = seg(12, 8) if far else segr(12, 8)
     for (y0, top) in ((y, False), (y + 0.012, True)):
         n0 = len(m.polys)
         prof = [(r * 0.9, 0.0), (r, 0.004), (r * 0.9, 0.009), (r * 0.5, 0.012), (0.0, 0.013)] if top else [(0.0, 0.0), (r * 0.6, 0.0), (r * 0.95, 0.003), (r, 0.007), (r * 0.92, 0.009)]
@@ -395,31 +401,33 @@ def bistro_table(r=0.33, top_h=0.755):
     """A bistro table: Carrara top (the atlas's round marble, a 2.4 cm slab with an eased edge) on a black cast-iron pedestal: a
     turned column, a round foot. Inside x/z +-0.34."""
     m = Mesh("table")
-    n = seg(32, 14)
+    n = segr(48, 36)   # (2026-11-28: the phone's 8 sides read as an octagon at the table; 24 still showed corners in round 2)
     n0 = len(m.polys)
     m.lathe([(0.0, top_h - 0.024), (r - 0.006, top_h - 0.024), (r, top_h - 0.016), (r, top_h - 0.006), (r - 0.006, top_h), (0.0, top_h)], n, ART, 0, 0, 0)
     planar(m, n0, "marble_round", 0.0, 0.0, r)
-    m.lathe([(0.0, 0.0), (0.24, 0.0), (0.24, 0.015), (0.2, 0.03), (0.06, 0.05), (0.04, 0.08), (0.03, 0.12), (0.03, 0.6), (0.045, 0.64), (0.035, 0.67), (0.12, 0.7), (0.14, top_h - 0.026), (0.0, top_h - 0.026)], seg(16, 10), IRON, 0, 0, 0)
+    # the round foot (what a phone sees from a chair: many sides) and the column and spider under the top (fewer)
+    m.lathe([(0.0, 0.0), (0.24, 0.0), (0.24, 0.015), (0.2, 0.03), (0.06, 0.05), (0.04, 0.08)], segr(40, 32), IRON, 0, 0, 0)
+    m.lathe([(0.04, 0.08), (0.03, 0.12), (0.03, 0.6), (0.045, 0.64), (0.035, 0.67), (0.12, 0.7), (0.14, top_h - 0.026), (0.0, top_h - 0.026)], segr(20, 12), IRON, 0, 0, 0)
     return m
 
 
 def plant_pot(m, x, z, r, h, kind="fig", seed=1):
     """A terracotta pot (rim, foot) with a leafy plant: a fiddle-leaf fig, a pothos trailing, or a palm."""
     rg = G.rng(seed)
-    n = seg(18, 10)
+    n = segr(40, 24)   # (round 2: the big pots still showed corners at 16)
     ph = min(0.42, r * 1.3)
     m.lathe([(0.0, 0.0), (r * 0.72, 0.0), (r * 0.78, 0.02), (r * 0.94, ph - 0.05), (r, ph - 0.05), (r, ph), (r * 0.9, ph), (r * 0.88, ph - 0.03), (0.0, ph - 0.03)], n, TERRA, x, z, 0.0)
     disc(m, x, ph - 0.035, z, r * 0.86, SOIL, n)
     if kind == "fig":
         trunk = [(x, ph - 0.04, z), (x + 0.02, ph + (h - ph) * 0.35, z - 0.01), (x - 0.01, h - 0.25, z + 0.02)]
-        m.tube(trunk, 0.018, 5, OAK_DK)
-        cnt = 9 if PHONE else 18
+        m.tube(trunk, 0.018, 6, OAK_DK)
+        cnt = 12 if PHONE else 18
         for k in range(cnt):
             t = k / cnt
             a = k * 2.399
             yy = ph + (h - ph) * (0.3 + 0.7 * t)
             stem = (x + 0.02 * math.cos(a), yy, z + 0.02 * math.sin(a))
-            fiddle(m, stem, a, 0.2 + 0.08 * rg.random(), 0.075, 0.03 + 0.04 * rg.random(), LEAF if k % 3 else LEAF_DK)
+            fiddle(m, stem, a, 0.2 + 0.08 * rg.random(), 0.075, 0.03 + 0.04 * rg.random(), LEAF if k % 3 else LEAF_DK, seed=seed * 31 + k)
     elif kind == "palm":
         cnt = 7 if PHONE else 12
         for k in range(cnt):
@@ -450,10 +458,15 @@ def plant_pot(m, x, z, r, h, kind="fig", seed=1):
                 heart(m, p, a + q, 0.045, LEAF if q % 2 else LEAF_DK)
 
 
-def fiddle(m, stem, angle, length, width, rise, leaf):
-    """A fiddle-leaf fig leaf with its petiole: a folded midrib, the blade's edges curling down (b1_room.fiddle_leaf's shape)."""
-    import b1_room as R
-    R.fiddle_leaf(m, stem, angle, length, width, rise, leaf)
+def fiddle(m, stem, angle, length, width, rise, leaf, seed=0):
+    """A fiddle-leaf fig leaf on its short petiole: a broad, glossy blade (flora.leaf: a curved, folded midrib, the edges falling
+    away), dark to bright green along it. 2026-11-28: was b1_room.fiddle_leaf, two folded diamonds that read as paper cut-outs."""
+    import flora as F
+    out = (math.cos(angle), 0.0, math.sin(angle))
+    base = G.add(G.add(stem, G.mul(out, 0.03)), (0, 0.02, 0))
+    m.member(stem, base, G.prof_round(0.004, 5), leaf)
+    F.leaf(m, base, out, length, width * 1.25, leaf, rise=0.35 + rise * 4, fall=0.8, fold=0.22,
+           c0=G.hexc("2C5A22"), c1=G.hexc("5E9A44") if leaf is LEAF else G.hexc("4A7F36"), seed=seed)
 
 
 def heart(m, p, a, s, leaf):
@@ -692,7 +705,9 @@ def curtain(m, f, u0, u1, top, bot, d, s=LINEN, tie=True, folds=None):
     pw = 0.32
     for side in (0, 1):
         a = u0 - 0.1 if side == 0 else u1 + 0.1 - pw
-        nf = 4 if PHONE else 7
+        # (2026-11-28: 4 / 7 strips alternating in depth: a zigzag that read as folded card on the phone) rounded folds, four
+        # strips to a fold, the depth a cosine
+        nf = 16 if PHONE else 24
         for i in range(nf):
             ua = a + pw * i / nf
             ub = a + pw * (i + 1) / nf
@@ -703,8 +718,8 @@ def curtain(m, f, u0, u1, top, bot, d, s=LINEN, tie=True, folds=None):
                 pb0 = cu + (ub - cu) * k0
                 pa1 = cu + (ua - cu) * k1
                 pb1 = cu + (ub - cu) * k1
-                da = d + 0.035 * (i % 2)
-                db = d + 0.035 * ((i + 1) % 2)
+                da = d + 0.0175 * (1.0 - math.cos(math.pi * i / 2))
+                db = d + 0.0175 * (1.0 - math.cos(math.pi * (i + 1) / 2))
                 q = [f.p(pa0, va, da), f.p(pb0, va, db), f.p(pb1, vb, db), f.p(pa1, vb, da)]
                 m.poly(q, s, smooth=True)
                 m.poly(list(reversed(q)), s, smooth=True)

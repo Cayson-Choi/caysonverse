@@ -20,6 +20,8 @@ import b1_geom as G
 import b1_parts as P
 import b2_parts as Q
 import b2_room as R2
+import flora as F
+import props_fine as PF
 from b1_geom import Mesh, S
 
 UNIT = "lot_chapel_nave"
@@ -110,6 +112,8 @@ def build(spec, unit, layout, sacred, phone=False):
     the lead cames, a simple stone rose tracery instead of the carved one, the door-niche saint not loaded."""
     global PHONE
     PHONE = phone
+    if phone:
+        G.LOD = 0.75   # (2026-11-28: the phone's round sections at 3/4 of the PC's sides, min 8: its budget with the finer candles)
     kit = P.Kit(None)
     kit.mats = dict(MATS)
     kit.sacred = []
@@ -586,7 +590,7 @@ def sanctuary(kit, sol):
         Gd.poly([(x0, 0.452, z0), (x0, 0.452, z1), (x1, 0.452, z1), (x1, 0.452, z0)], MARBLE_DOVE)
     # communion rail: marble balusters under a moulded rail, a gap in the middle
     bal = Mesh("baluster")
-    bal.lathe([(0.05, 0.0), (0.05, 0.05), (0.035, 0.1), (0.06, 0.28), (0.035, 0.46), (0.045, 0.52), (0.0, 0.53)], 6, MARBLE)
+    bal.lathe([(0.05, 0.0), (0.05, 0.05), (0.035, 0.1), (0.06, 0.28), (0.035, 0.46), (0.045, 0.52), (0.0, 0.53)], 6 if PHONE else 10, MARBLE)
     for (a, b) in ((ARCH_X0 + 0.15, 4.1), (5.3, ARCH_X1 - 0.15)):
         D.box(a, b, 0.45, 0.52, NZ + 0.32, NZ + 0.48, MARBLE)
         D.cbox(a - 0.02, b + 0.02, 1.05, 1.13, NZ + 0.3, NZ + 0.5, MARBLE, c=0.02)
@@ -610,18 +614,20 @@ def sanctuary(kit, sol):
     # on the altar: four brass candlesticks with lit candles, the closed book on a stand
     for x in (ax0 + 0.15, ax0 + 0.42, ax1 - 0.42, ax1 - 0.15):
         candlestick(D, fire, x, 1.46, (az0 + az1) / 2 + 0.15, 0.32, 0.36)
-    D.member((4.55, 1.46, 11.9), (4.7, 1.62, 11.98), G.prof_box(0.24, 0.02), BRASS)
-    D.cbox(4.5, 4.9, 1.6, 1.66, 11.8, 12.06, BOOK_RED, c=0.008)
+    # the missal open on an oak book rest (2026-11-28: was a red block on a brass bar)
+    at, tilt = PF.book_rest(D, 4.7, 1.46, 11.85, 0.36, 0.22, OAK, tilt=0.3)
+    PF.open_book(D, at[0], at[1], at[2], 0.34, 0.24, BOOK_RED, S("LM_chapel_plaster", G.hexc("FBF5E6")), tilt=tilt,
+                 ink=S("LM_chapel_plaster", G.hexc("B5ADA0")), lines=6 if PHONE else 9)
     # the gradine and the gilt tabernacle, the red sanctuary lamp on its brass bracket
     D.cbox(3.95, 5.45, 0.45, 1.12, 12.62, 13.15, MARBLE, c=0.02)
     D.cbox(3.9, 5.5, 1.12, 1.18, 12.58, 13.18, MARBLE, c=0.015)
     tabernacle(D, 4.7, 1.18, 12.86)
-    for (x, sc) in ((4.05, 1.0), (5.35, 1.0)):
-        vase(Gd, x, 1.18, 12.85, 0.42 * sc, PET_W)
+    # (the gradine's two vases of flowers: the merged sacred props' real-petal bouquets, lotprop__lot_chapel_nave_props (PC; the
+    # phone's budget has none). 2026-11-28: the kit's own blob bouquets in the goods, which LotRoom stripped at load, are gone)
     D.member((3.55, 2.05, 13.1), (3.55, 2.05, 12.65), G.prof_box(0.03, 0.03), BRASS)
     lamp_y = 1.62
     D.member((3.55, 2.05, 12.65), (3.55, lamp_y + 0.18, 12.65), G.prof_round(0.006, 4), BRASS)
-    Gd.lathe([(0.03, 0.0), (0.055, 0.03), (0.06, 0.12), (0.065, 0.16), (0.0, 0.16)], 8, BRASS, 3.55, 12.65, lamp_y - 0.04)
+    Gd.lathe([(0.03, 0.0), (0.055, 0.03), (0.06, 0.12), (0.065, 0.16), (0.0, 0.16)], 16, BRASS, 3.55, 12.65, lamp_y - 0.04)
     R2.glow_disc(fire, 3.55, lamp_y + 0.13, 12.65, 0.06, (1.0, 0.12, 0.08), 0.85, n=8)
     R2.candle_flame(fire, 3.55, lamp_y + 0.12, 12.65, 0.03, 0.009, seed=91)
     kit.room_lights.append(("point", 3.55, lamp_y + 0.25, 12.6, (1.0, 0.25, 0.15), 6.0))
@@ -631,7 +637,7 @@ def sanctuary(kit, sol):
     ambo(D, 2.45, 11.15)
     chair(D, 6.95, 12.35)
     for (x, z) in ((2.75, 12.55), (6.65, 11.25)):
-        urn(D, Gd, x, z)
+        urn(D, x, z)   # (its arrangement: the sacred props' flowers_urn, PC)
     # the crucifix (a real 16th-c. carved crucifix, scanned) on the apse wall above the tabernacle
     back = cz + APSE_R * math.cos(math.pi / (2 * APSE_N))   # the middle apse wall's plane
     lo, hi = R2.glb_bounds("lotstatue__lot_chapel_nave_crucifix")
@@ -662,12 +668,11 @@ def candlestick(m, fire, x, y, z, h, candle, tall=False):
     """A turned brass candlestick (`h` to the drip pan) with a wax candle and a soft flame."""
     if tall:
         m.lathe([(0.17, 0.0), (0.16, 0.04), (0.06, 0.12), (0.04, 0.3), (0.06, 0.36), (0.035, 0.42), (0.03, h - 0.15), (0.05, h - 0.1), (0.035, h - 0.06),
-                 (0.11, h - 0.02), (0.11, h), (0.0, h + 0.005)], 10, BRASS, x, z, y)
+                 (0.11, h - 0.02), (0.11, h), (0.0, h + 0.005)], 12 if PHONE else 18, BRASS, x, z, y)
     else:
         m.lathe([(0.075, 0.0), (0.07, 0.02), (0.03, 0.06), (0.022, h * 0.5), (0.035, h * 0.55), (0.02, h - 0.05), (0.06, h - 0.01), (0.06, h), (0.0, h + 0.003)],
-                8, BRASS, x, z, y)
-    m.lathe([(0.026 if tall else 0.018, 0.0), (0.026 if tall else 0.018, candle), (0.012, candle + 0.01), (0.0, candle + 0.012)], 8, WAX, x, z, y + h)
-    m.member((x, y + h + candle + 0.005, z), (x, y + h + candle + 0.02, z), G.prof_round(0.0015, 3), S("LM_chapel_oak", G.hexc("2A2018")))
+                12 if PHONE else 16, BRASS, x, z, y)
+    F.candle(m, x, y + h, z, 0.026 if tall else 0.018, candle + 0.006, WAX)
     R2.candle_flame(fire, x, y + h + candle + 0.012, z, 0.05 if tall else 0.04, 0.012 if tall else 0.01, seed=int(x * 100 + z * 10))
 
 
@@ -684,29 +689,12 @@ def tabernacle(m, x, y, z):
     m.box(x - 0.07, x + 0.07, y + 0.39, y + 0.414, zf - 0.024, zf - 0.012, GOLD)
     for sx in (-1, 1):
         for sz in (-1, 1):
-            m.lathe([(0.025, 0.0), (0.025, h - 0.02), (0.035, h)], 6, GOLD, x + sx * (w / 2 + 0.01), z + sz * (d / 2 + 0.01), y + 0.06)
+            m.lathe([(0.025, 0.0), (0.025, h - 0.02), (0.035, h)], 12, GOLD, x + sx * (w / 2 + 0.01), z + sz * (d / 2 + 0.01), y + 0.06)
     yt = y + 0.06 + h
     m.cbox(x - w / 2 - 0.05, x + w / 2 + 0.05, yt, yt + 0.06, z - d / 2 - 0.05, z + d / 2 + 0.05, GOLD, c=0.012)
-    m.lathe([(0.22, 0.0), (0.21, 0.08), (0.16, 0.18), (0.08, 0.24), (0.04, 0.26), (0.04, 0.32), (0.06, 0.34), (0.0, 0.38)], 12, GOLD, x, z, yt + 0.06)
+    m.lathe([(0.22, 0.0), (0.21, 0.08), (0.16, 0.18), (0.08, 0.24), (0.04, 0.26), (0.04, 0.32), (0.06, 0.34), (0.0, 0.38)], 20, GOLD, x, z, yt + 0.06)
     m.box(x - 0.008, x + 0.008, yt + 0.44, yt + 0.6, z - 0.008, z + 0.008, GOLD)
     m.box(x - 0.05, x + 0.05, yt + 0.53, yt + 0.546, z - 0.008, z + 0.008, GOLD)
-
-
-def vase(m, x, y, z, h, petal):
-    """A brass altar vase with a white bouquet (lilies and roses, real 3D heads)."""
-    m.lathe([(0.05, 0.0), (0.06, 0.02), (0.04, 0.05), (0.035, 0.1), (0.06, 0.18), (0.075, 0.22), (0.0, 0.22)], 8, BRASS, x, z, y)
-    rg = G.rng(int(x * 100 + z))
-    for k in range(9):
-        a = 2 * math.pi * k / 9 + rg.uniform(-0.2, 0.2)
-        r = rg.uniform(0.04, 0.14)
-        px, pz, py = x + r * math.cos(a), z + r * math.sin(a), y + 0.22 + h * rg.uniform(0.45, 0.85)
-        m.member((x, y + 0.2, z), (px, py, pz), G.prof_round(0.004, 3), LEAF)
-        if k % 3 == 0:
-            # a lily: a six-petal trumpet
-            m.lathe([(0.0, 0.0), (0.012, 0.01), (0.03, 0.05), (0.055, 0.08), (0.0, 0.06)], 6, petal, px, pz, py)
-        else:
-            m.sphere(px, py, pz, 0.035, petal if k % 2 else PET_CREAM, n=6, rings=4, sy=0.8)
-        m.sphere(px * 0.5 + x * 0.5, py - 0.08, pz * 0.5 + z * 0.5, 0.045, LEAF, n=5, rings=3, sy=0.6)
 
 
 def ambo(m, x, z):
@@ -734,28 +722,14 @@ def chair(m, x, z):
     m.cbox(x - 0.25, x + 0.25, y + 0.47, y + 0.52, z - 0.22, z + 0.2, CRIMSON, c=0.015)
     m.cbox(x - 0.24, x + 0.24, y + 0.6, y + 1.18, z + 0.19, z + 0.23, CRIMSON, c=0.015)
     for sx in (-1, 1):
-        m.lathe([(0.03, 0.0), (0.0, 0.08)], 6, GOLD, x + sx * 0.26, z + 0.2, y + 1.25)
+        m.lathe([(0.03, 0.0), (0.03, 0.01), (0.0, 0.08)], 12, GOLD, x + sx * 0.26, z + 0.2, y + 1.25)
 
 
-def urn(m, g, x, z):
-    """A brass urn on a marble pedestal with a big white-and-cream arrangement (flowers in 3D)."""
+def urn(m, x, z):
+    """A brass urn on a marble pedestal (its white-and-cream arrangement is a sacred prop: lotprop__lot_chapel_nave_props)."""
     y = 0.45
-    m.lathe([(0.16, 0.0), (0.15, 0.06), (0.1, 0.12), (0.09, 0.62), (0.15, 0.68), (0.16, 0.72), (0.0, 0.72)], 8, MARBLE, x, z, y)
-    m.lathe([(0.08, 0.0), (0.12, 0.05), (0.09, 0.14), (0.12, 0.26), (0.16, 0.32), (0.0, 0.32)], 10, BRASS, x, z, y + 0.72)
-    rg = G.rng(int(x * 37 + z * 11))
-    yb = y + 1.04
-    for k in range(16):
-        a = rg.uniform(0, 2 * math.pi)
-        r = rg.uniform(0.0, 0.3)
-        px, pz, py = x + r * math.cos(a), z + r * math.sin(a), yb + 0.05 + (0.32 - r) * rg.uniform(0.6, 1.2)
-        g.sphere(px, py, pz, rg.uniform(0.05, 0.075), PET_W if k % 3 else PET_CREAM, n=6, rings=4, sy=0.85)
-    for k in range(11):
-        a = rg.uniform(0, 2 * math.pi)
-        r = rg.uniform(0.15, 0.36)
-        g.sphere(x + r * math.cos(a), yb + rg.uniform(0.0, 0.2), z + r * math.sin(a), rg.uniform(0.06, 0.09), LEAF, n=5, rings=3, sy=0.55)
-    for k in range(4):
-        a = 2 * math.pi * k / 4 + 0.4
-        g.lathe([(0.0, 0.0), (0.014, 0.012), (0.035, 0.06), (0.06, 0.1), (0.0, 0.08)], 6, PET_W, x + 0.12 * math.cos(a), z + 0.12 * math.sin(a), yb + 0.42)
+    m.lathe([(0.16, 0.0), (0.15, 0.06), (0.1, 0.12), (0.09, 0.62), (0.15, 0.68), (0.16, 0.72), (0.0, 0.72)], 16 if PHONE else 20, MARBLE, x, z, y)
+    m.lathe([(0.08, 0.0), (0.12, 0.05), (0.09, 0.14), (0.12, 0.26), (0.16, 0.32), (0.158, 0.33), (0.13, 0.325), (0.0, 0.31)], 18 if PHONE else 20, BRASS, x, z, y + 0.72)
 
 
 # ------------------------------------------------------------------------------------------------ side altars --
@@ -787,8 +761,7 @@ def side_altars(kit, sol):
         yaw = math.pi   # facing straight down the nave (the solid is just the statue's size)
         R2.place(kit, "lotstatue__%s_%s" % (UNIT, name), "lotstatue__lot_chapel_nave_" + statue, (xc, 1.05, zc + 0.02), yaw,
                  "성모상 (Virgin and Child, a real marble scan)" if blue else "성인상 (a saint, real marble scan)")
-        for dx in (-0.22, 0.22):
-            vase(Gd, xc + dx, 1.05, z0 + 0.15, 0.25, PET_ROSE if blue else PET_W)
+        # (the side altars' vases: the sacred props' flowers_mary / _saint, PC; 2026-11-28: the kit's blob bouquets are gone)
         if blue:
             # a brass votive rack on the pedestal's front edge: two rows of tealights in red and clear glasses
             D.cbox(x0 + 0.05, x1 - 0.05, 0.9, 0.93, z0, z0 + 0.12, BRASS, c=0.006)
@@ -842,8 +815,8 @@ def font_confessional(kit, sol):
     r = sol["font"]["rect"]
     x, z = (r["x0"] + r["x1"]) / 2, (r["z0"] + r["z1"]) / 2
     D.lathe([(0.17, 0.0), (0.17, 0.06), (0.12, 0.1), (0.08, 0.16), (0.07, 0.7), (0.1, 0.76), (0.16, 0.8), (0.2, 0.9), (0.2, 0.96), (0.17, 0.97),
-             (0.12, 0.9), (0.0, 0.89)], 10, MARBLE, x, z)
-    D.lathe([(0.0, 0.0), (0.16, 0.0)], 10, GLASS, x, z, 0.93)
+             (0.12, 0.9), (0.0, 0.89)], 12 if PHONE else 20, MARBLE, x, z)
+    D.lathe([(0.0, 0.0), (0.16, 0.0)], 12 if PHONE else 20, GLASS, x, z, 0.93)
     # confessional: an oak booth with a panelled front, the priest's door with a pierced quatrefoil grille and a crimson
     # curtain on the penitent's side, a crested cornice
     c = sol["confessional"]["rect"]

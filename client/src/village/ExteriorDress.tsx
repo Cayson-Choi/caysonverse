@@ -20,6 +20,7 @@ import { patchHouseLight } from "./houses/housesPrep";
 import { litUniform, type VillageTier } from "./villageModelPrep";
 import { SURFACES, findSplits, geometryWithout, memorialTrimBoxes, takeFaces, trimGeometry, type FaceSplit, type SurfaceSpec } from "./exteriorFaces";
 import { terraceParasol } from "./cafe/terraceParasol";
+import { terraceTableTop } from "./cafe/terraceTableTop";
 
 /** White veined marble (canvas, 512, tiling): a warm white body with soft cloud and a few long grey veins, no joints. */
 export function marbleTexture(): CanvasTexture {
@@ -204,11 +205,12 @@ export function applyDress(root: Object3D, splits: FaceSplit[], sets: ReadonlyMa
     const tile = spec.pbr ? pbrSetInfo(spec.pbr).tileMeters : 1;
     const faces = takeFaces(s.mesh, s.taken, spec.uv, tile);
     const parasol = s.rule.surface === "parasol";
-    const geometry = parasol ? terraceParasol(faces.geometry) : faces.geometry;
-    if (parasol) faces.geometry.dispose();
+    const top = s.rule.surface === "terraceTop";
+    const geometry = parasol ? terraceParasol(faces.geometry) : top ? terraceTableTop(faces.geometry, tile) : faces.geometry;
+    if (parasol || top) faces.geometry.dispose();
     const m = new Mesh(geometry, mat);
     m.castShadow = parasol;
-    m.receiveShadow = parasol;
+    m.receiveShadow = parasol || top;
     m.name = `dress__${s.rule.id}`;
     m.matrixAutoUpdate = false;
     m.updateMatrix();
