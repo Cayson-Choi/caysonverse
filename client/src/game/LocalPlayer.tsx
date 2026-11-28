@@ -102,7 +102,7 @@ import {
 import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
-import { getTransitRenderPose, useTransitState } from "../net/transitSync";
+import { getTransitRenderPose, useTransitBoarded } from "../net/transitSync";
 import { busWalk, busCamState, busSeatGoal, busSeatPreferred, busWalkGoal, selfBusRide } from "./busRide";
 import { SELF_GAP, SELF_GAP_OUTDOOR, SELF_HEAD_CENTRE, selfGap, stepSelfGapHidden } from "./selfGap";
 import { selfRide } from "../land/coasterRide";
@@ -212,7 +212,7 @@ export function LocalPlayer({
   moveInput,
   blobShadow,
 }: LocalPlayerProps) {
-  const { boarded: busBoarded } = useTransitState();
+  const busBoarded = useTransitBoarded();
   const [, getKeys] = useKeyboardControls<MoveControl>();
   const groupRef = useRef<Group>(null);
   // The gait the player's input last asked for while in loco (idle / walk / run) — the E2E probe's getGait().
