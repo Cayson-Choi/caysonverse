@@ -124,7 +124,7 @@ export const SURFACES: Readonly<Record<string, SurfaceSpec>> = Object.freeze({
   giwa: { pbr: "roof_giwa", uv: { mode: "keep", unit: 2 }, tint: [4.6, 4.6, 4.8], normalStrength: 1.2, roughness: 1, metalness: 0, doubleSided: true },
   oak: { pbr: "wood_oak", uv: { mode: "box" }, tint: [1.05, 0.9, 0.7], normalStrength: 1, roughness: 1, metalness: 0 },
   // the terrace tables' rebuilt round tops: the baked swatch's warm walnut, oiled (a little sheen)
-  terraceTop: { pbr: "wood_oak", uv: { mode: "box" }, tint: [0.46, 0.28, 0.16], normalStrength: 0.8, roughness: 0.8, metalness: 0, nightGlow: [0.16, 0.09, 0.045] },
+  terraceTop: { pbr: "wood_oak", uv: { mode: "box" }, tint: [0.46, 0.28, 0.16], normalStrength: 0.8, roughness: 0.8, metalness: 0, nightGlow: [0.04, 0.022, 0.011] },
   // the cafe's warm honey boards and the kiosk's darker stain (the set's mean albedo is a mid grey-brown)
   siding: { pbr: "wood_siding", uv: { mode: "box" }, tint: [1.5, 1.08, 0.72], normalStrength: 1.4, roughness: 0.95, metalness: 0, nightGlow: [0.075, 0.04, 0.017] },
   // the memorial's stone order (memorialTrimBoxes): a mid-grey flamed granite plinth, warm light ashlar pilasters and cornice
