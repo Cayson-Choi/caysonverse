@@ -496,7 +496,7 @@ def _try_store(H, floor, wname, mid, w, depth, h, kind, k):
 
 def _storage(H, floor, objs, occ):
     """fills the free walls with storage (see the block comment above); marks the eye-level bins it took in occ"""
-    cap = getattr(H, "store_tri_cap", 51800)
+    cap = getattr(H, "store_tri_cap", 53400)   # polish4: rounder table decor (+2-3k) must not push the storage pieces (and their colliders) out
     walls = _walls()
     cands = []
     for wname, bins in occ.items():

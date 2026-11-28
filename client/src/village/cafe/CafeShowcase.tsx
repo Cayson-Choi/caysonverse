@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { entryCovering, villageLoad } from "../../ui/villageLoad";
 import { useFrame, useThree } from "@react-three/fiber";
 import {
   BufferGeometry,
@@ -54,6 +55,8 @@ declare global {
 
 /** The rooms behind the glass are read and drawn within this distance (m) of the camera; beyond, the glass alone. */
 export const CAFE_SHOW_M = { pc: 75, phone: 55 } as const;
+/** A PC starts the café rooms' own (walk-in) files within this distance (m) of the camera. */
+export const CAFE_WALK_IN_M = 22;
 /** How much of the village's live sun and sky reaches the rooms seen from outside (the bake carries their light). */
 export const CAFE_SHOW_DIRECT = 0.18;
 
@@ -457,8 +460,6 @@ export function CafeShowcase({ root }: { root: Object3D }) {
     if (!near) return;
     let live = true;
     const holds = AREAS.map(({ area }) => holdLotRoom(area, gl, true)!);
-    // a PC walks into the PC files: start them too (the door's prefetch of the rooms' own)
-    const pcHolds = phone ? [] : AREAS.map(({ area }) => holdLotRoom(area, gl, false)!);
     const made: Shown[] = [];
     void Promise.all(holds.map((h) => h.promise)).then((rooms) => {
       if (!live) return;
@@ -469,9 +470,22 @@ export function CafeShowcase({ root }: { root: Object3D }) {
       live = false;
       setShown([]);
       for (const s of made) s.dispose();
-      for (const h of [...holds, ...pcHolds]) h.release();
+      for (const h of holds) h.release();
     };
   }, [near, gl, phone, direct, night]);
+  // a PC walks into the PC files: start them too (the door's prefetch of the rooms' own) — only once the entry's loading screen has
+  // lifted, and only when the camera comes up to the café (fix/entry-full-load: ~25 MB for walking in, not for the plaza's view; read
+  // from the plaza they cost 0.5-1 s frames right after the reveal)
+  const covering = useSyncExternalStore(villageLoad.subscribe, entryCovering, entryCovering);
+  const [close, setClose] = useState(false);
+  const closeRef = useRef(false);
+  useEffect(() => {
+    if (!close || phone || covering) return;
+    const pcHolds = AREAS.map(({ area }) => holdLotRoom(area, gl, false)!);
+    return () => {
+      for (const h of pcHolds) h.release();
+    };
+  }, [close, phone, covering, gl])
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -484,6 +498,11 @@ export function CafeShowcase({ root }: { root: Object3D }) {
 
   useFrame(({ clock }) => {
     const d = camera.position.distanceTo(CENTRE);
+    const wantClose = closeRef.current ? d < CAFE_WALK_IN_M + 6 : d < CAFE_WALK_IN_M;
+    if (wantClose !== closeRef.current) {
+      closeRef.current = wantClose;
+      setClose(wantClose);
+    }
     const lim = phone ? CAFE_SHOW_M.phone : CAFE_SHOW_M.pc;
     const want = nearRef.current ? d < lim + 8 : d < lim;
     if (want !== nearRef.current) {

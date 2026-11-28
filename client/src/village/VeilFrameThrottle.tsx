@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { useThree } from "@react-three/fiber";
 import { renderersBehindLoadingVeil } from "../game/programGate";
 import { vegDressing } from "./vegDressing";
+import { entryCovering, villageLoad } from "../ui/villageLoad";
 
 const dressed = () => vegDressing.dressed();
 
@@ -16,10 +17,12 @@ export const COVERED_FRAME_MS = 400;
  */
 export function VeilFrameThrottle({ active }: { active: boolean }) {
   const ready = useSyncExternalStore(vegDressing.subscribe, dressed, dressed);
+  // the entry's loading screen covers the village past its dressing too (the scenery and the warm-up, EntryReveal): still unseen
+  const entering = useSyncExternalStore(villageLoad.subscribe, entryCovering, entryCovering);
   const gl = useThree((s) => s.gl);
   const setFrameloop = useThree((s) => s.setFrameloop);
   const invalidate = useThree((s) => s.invalidate);
-  const covered = active && !ready;
+  const covered = (active && !ready) || entering;
   useEffect(() => {
     if (!covered) return;
     renderersBehindLoadingVeil.add(gl);

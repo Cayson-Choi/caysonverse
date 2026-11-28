@@ -16,7 +16,7 @@ import { isTouchDevice } from "../../device";
 import { HUD_INFO_BTN_W_PX } from "../../game/hud";
 import { useTouchHudLayout } from "../../ui/useTouchHudLayout";
 import { useLocalArea } from "../villageArea";
-import { useTransitState } from "../../net/transitSync";
+import { useTransitBoarded } from "../../net/transitSync";
 import { villageClock } from "../villageClock";
 import { MAX_LABELS, clearSelection, selectFigure, skyOverlay } from "./finderRuntime";
 import { currentMoon, moonState } from "./StarSkyExtras";
@@ -90,7 +90,7 @@ export function StarFinder({ orbit }: { orbit: Orbit }) {
   }, [notice]);
 
   // Indoors (the memorial hall, a house) and aboard the bus there is no sky to search: it closes (UX 2026-11-16).
-  const { boarded } = useTransitState();
+  const boarded = useTransitBoarded();
   useEffect(() => {
     if ((area !== "village" || boarded) && useStarFinder.getState().open) closeFinder();
   }, [area, boarded]);

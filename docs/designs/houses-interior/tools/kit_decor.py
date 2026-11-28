@@ -9,7 +9,7 @@ from kit_storage import bowl, mug, dish, acell, books_stack
 
 
 # ------------------------------------------------------------------------------------------------ plants ----------
-def leaf(F, base, direction, length, width, droop=0.15, m="H_leaf", tn=None, segs=5, twist=0.0, curl=0.16):
+def leaf(F, base, direction, length, width, droop=0.15, m="H_leaf", tn=None, segs=5, twist=0.0, curl=0.24):
     """a curved two-sided blade from `base` (local pt) toward the local `direction` (unit, may point up-out), outline sin-shaped."""
     bx, bz, by = base
     dx, dz, dy = direction
@@ -27,7 +27,7 @@ def leaf(F, base, direction, length, width, droop=0.15, m="H_leaf", tn=None, seg
         cz = bz + dz * length * t
         cy = by + dy * length * t - droop * length * t * t
         # houses-real pass 2 (owner 2026-11-22: flat card leaves): the blade folds along its midrib (a V) and cups up at the margins
-        fold = 0.1 * w + 0.002
+        fold = 0.17 * w + 0.002     # polish4: a deeper midrib fold (the blades read as flat cards)
         prof.append(((cx - sx * w, cz - sz * w, cy + curl * w), (cx + sx * w, cz + sz * w, cy + curl * w), (cx, cz, cy - fold)))
     for i in range(segs):
         a0, a1, mid0 = prof[i]
@@ -464,7 +464,8 @@ def garlic_braid(F, n=10):
 def vase_branch(F, h=0.3, seed=2):
     """꽃병 + 가지 (8번 집 청자 화병): celadon-green vase with a long neck and a few leafy twigs."""
     rnd = random.Random(seed)
-    lathe(F, 0, 0, 0.0, [(0, 0.0), (0.05, 0.0), (0.095, 0.08), (0.1, 0.14), (0.06, 0.22), (0.03, 0.27), (0.035, h), (0.05, h + 0.02)], "H_ceramic", 20, tn=(0.62, 0.78, 0.7, 1))
+    lathe(F, 0, 0, 0.0, [(0, 0.0), (0.05, 0.0), (0.095, 0.08), (0.1, 0.14), (0.06, 0.22), (0.03, 0.27), (0.035, h), (0.05, h + 0.02), (0.042, h + 0.016), (0.0, h - 0.04)], "H_glaze", 40,
+          tn=(0.62, 0.78, 0.7, 1), keep=True)   # polish3: 28 sides kept, an open mouth (it read as a faceted plug at 12)
     for k in range(3):
         a = k * 2.1
         pts = [(0, 0, h), (0.05 * math.cos(a), 0.05 * math.sin(a), h + 0.18), (0.12 * math.cos(a), 0.12 * math.sin(a), h + 0.34)]

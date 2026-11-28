@@ -34,18 +34,20 @@ def welt(F, pts, tn, r=0.006, m="H_fabric"):
     tube(F, pts, r, m, 6, tn=tn, caps=False)
 
 
-def cushion_seat(F, x0, x1, z0, z1, y0, y1, m, tn, puff=0.012, sag=0.012, r=0.05):
+def cushion_seat(F, x0, x1, z0, z1, y0, y1, m, tn, puff=0.012, sag=0.012, r=0.05, tile=None):
     """a loose seat cushion. houses-real pass (owner 2026-11-21, "is this really a new house?"): brand-new cushions — a gently crowned top,
     no sat-in dip (sag is ignored) and no separate welt tube (it cut through the crowned top, the light bake turned those cuts into dark
     scallops along every seat front and the thin tube into a hard dark line)."""
-    rbox(F, x0, x1, z0, z1, y0, y1, m, r=r, seg=3, tile=0.5, tn=tn, puff=min(puff, 0.012), sag=0.0, cuts=4, smooth=True, bottom=False)
+    rbox(F, x0, x1, z0, z1, y0, y1, m, r=r, seg=3, tile=tile or (0.25 if m == "H_leather" else 0.5), tn=tn, puff=min(puff, 0.012), sag=0.0, cuts=4,
+         smooth=True, bottom=False)
 
 
 def back_cushion(F, x0, x1, z, y0, y1, thick, m, tn, tilt=0.2, puff=0.025):
     """interior polish (owner 2026-11-27: "faint dark bars on top of the sofa back cushions, seen from behind"): the crown is capped at
     6 mm. The top of a back cushion is only its 0.2 m thickness; the old 25 mm crown on the 10 cm between its round-overs stood up as a
     ridge with a crease all round it, and from behind it read as a separate darker / lighter bar on every cushion, day and night."""
-    rbox(F, x0, x1, z - thick, z, y0, y1, m, r=0.05, seg=3, tile=0.5, tn=tn, puff=min(puff, 0.006), cuts=3, smooth=True, tilt=tilt)
+    rbox(F, x0, x1, z - thick, z, y0, y1, m, r=0.05, seg=3, tile=0.25 if m == "H_leather" else 0.5, tn=tn, puff=min(puff, 0.006), cuts=3, smooth=True,
+         tilt=tilt)
 
 
 _PILLOW_K = [0]
@@ -134,17 +136,20 @@ def sofa_L(F, w=2.6, d=0.95, chaise=1.6, tn=None, **kw):
 def sofa_leather(F, w=2.1, d=0.86, seats=3, tn=None):   # layered pass 2: 0.86 m deep (see sofa_fabric: the seat click volume)
     """leather sofa (10 번 집, 6번 집): rolled arms, tufting buttons on the back, brown/tan leather, dark wood feet."""
     tn = tn or PAL["leather_brown"]
+    # polish3 (owner 2026-11-28, house 6: "가죽 소파가 밋밋"): a deeper hide than the fabric sofas' palette colour, and the grain at half the
+    # scale (0.25 m a repeat: at 0.5 m the cells read as a suede mottle)
+    tn = tuple(c * 0.78 for c in tn[:3]) + (1,)
     m = "H_leather"
     hw, hd = w / 2, d / 2
     for (sx, sz) in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
         leg(F, sx * (hw - 0.08), sz * (hd - 0.08), 0.0, 0.1, 0.035, 0.025, "H_wood_oak", WOOD["dark"])
-    rbox(F, -hw, hw, -hd, hd, 0.1, 0.30, m, r=0.04, seg=3, tile=0.5, tn=tn)
-    rbox(F, -hw, hw, -hd, -hd + 0.20, 0.30, 0.86, m, r=0.08, seg=4, tile=0.5, tn=tn, puff=0.02, cuts=4, smooth=True)
+    rbox(F, -hw, hw, -hd, hd, 0.1, 0.30, m, r=0.04, seg=3, tile=0.25, tn=tn)
+    rbox(F, -hw, hw, -hd, -hd + 0.20, 0.30, 0.86, m, r=0.08, seg=4, tile=0.25, tn=tn, puff=0.02, cuts=4, smooth=True)
     # rolled arms: horizontal cylinder tops
     for sgn in (-1, 1):
         x = sgn * (hw - 0.1)
-        rbox(F, x - 0.1, x + 0.1, -hd + 0.18, hd, 0.30, 0.54, m, r=0.04, seg=2, tile=0.5, tn=tn)
-        tube(F, [(x, -hd + 0.18, 0.60), (x, hd - 0.02, 0.60)], 0.095, m, 14, tn=tn, uv_per_m=2.0)
+        rbox(F, x - 0.1, x + 0.1, -hd + 0.18, hd, 0.30, 0.54, m, r=0.04, seg=2, tile=0.25, tn=tn)
+        tube(F, [(x, -hd + 0.18, 0.60), (x, hd - 0.02, 0.60)], 0.095, m, 14, tn=tn, uv_per_m=4.0)
         disc_cap = lathe(F, x, hd - 0.02, 0.0, [(0, 0.60 - 0.0)], m, 6) if False else None
         # arm front scroll
         lathe(F.sub(x, hd - 0.02, 0.60, 0), 0, 0, 0, [(0.0, 0.0), (0.0, 0.0)], m, 6) if False else None

@@ -1,4 +1,5 @@
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { entryCovering, villageLoad } from "../ui/villageLoad";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF, useTexture } from "@react-three/drei";
 import {
@@ -104,6 +105,17 @@ function Greybox() {
 }
 
 /**
+ * Start the lake's files (both models and their six maps) into the loaders' cache without building anything: the entry's loading
+ * screen calls it once the village model is in (fix/entry-full-load), so on a phone the download runs beside the vegetation's build
+ * and the lake mounts (after the dressing) with its files already there. The same cache LakeGlb reads: nothing is fetched twice.
+ */
+export function preloadLakeFiles(): void {
+  useGLTF.preload(LAKE_URLS.lake, DRACO_PATH);
+  useGLTF.preload(LAKE_URLS.structures, DRACO_PATH);
+  useTexture.preload([LAKE_URLS.lightmap, LAKE_URLS.lightmapNight, LAKE_URLS.reflDay, LAKE_URLS.reflNight, LAKE_URLS.structuresLm, LAKE_URLS.structuresLmNight]);
+}
+
+/**
  * lake.glb (A) and lake_structures.glb (B), dressed by lakeModelPrep.ts: the ground with A's day / night light maps through the
  * village's light-map recipe, the water with A's water data and reflection panoramas, the facilities with their helpers hidden
  * and their lamps lit at night.
@@ -204,6 +216,7 @@ function LakeDressedView({ dressed, tier, pose, structs, tex }: { dressed: LakeD
   // The parts mount one per task (stage 0..3), not all in one React commit (the ground's attach, the shore's build + shader compile and the
   // shopkeeper are each 0.1-0.4 s at 1x): a key pressed meanwhile is handled between them. They arrive within ~4 task turns (tens of ms).
   const [stage, setStage] = useState(0);
+  const covering = useSyncExternalStore(villageLoad.subscribe, entryCovering, entryCovering);
   useEffect(() => {
     if (stage >= 3) return;
     const id = setTimeout(() => setStage((n) => n + 1), 0);
@@ -215,7 +228,8 @@ function LakeDressedView({ dressed, tier, pose, structs, tex }: { dressed: LakeD
       {stage >= 1 && <primitive object={dressed.facilities} dispose={null} />}
       {/* the shallows and the shore: the bed's real depth for the water, the wet bank, reeds and lily pads (LakeShore.tsx) */}
       {stage >= 2 && <LakeShore terrain={dressed.terrain} water={water} tier={tier} />}
-      {stage >= 3 && <LakeShopInterior />}
+      {/* the shop's inside is for walking in: read once the entry's loading screen has lifted (fix/entry-full-load) */}
+      {stage >= 3 && !covering && <LakeShopInterior />}
       {/* the rental's shopkeeper behind the office window (owner 2026-11-16): npc.glb waits in a Suspense of its own; a failed one is no shopkeeper */}
       {stage >= 3 && (
         <LoadBoundary fallback={null} onReset={clearNpcCache} notice="대여점 주인 모습을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
@@ -392,8 +406,10 @@ const FACE_SIDE = (f: { x: number; z: number }, seq: number): Pt => {
 function LakeAnglers() {
   // lake_gear.glb's float (chunk C) once it is in; the drawn stand-in until then
   const [gearIn, setGearIn] = useState(() => lakeFloatParts() !== null);
+  // the gear and the fish are for fishing (the drawn float stands in until then): read once the entry's loading screen has lifted
+  const covering = useSyncExternalStore(villageLoad.subscribe, entryCovering, entryCovering);
   useEffect(() => {
-    if (gearIn) return;
+    if (gearIn || covering) return;
     let live = true;
     void loadLakeGear().then(() => {
       if (live && lakeFloatParts()) setGearIn(true);
@@ -401,7 +417,7 @@ function LakeAnglers() {
     return () => {
       live = false;
     };
-  }, [gearIn]);
+  }, [gearIn, covering]);
   const parts = useMemo(() => {
     const slots = new Map<string, Slot>();
     const real = gearIn ? lakeFloatParts() : null;

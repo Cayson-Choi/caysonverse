@@ -71,6 +71,11 @@ export function getBlobShadow(decal: GroundDecal | null = null): { geometry: Pla
       transparent: true,
       depthWrite: false,
       side: DoubleSide,
+      // both faces in ONE draw (perf/100, 2026-11-28): three draws a transparent double-sided material twice (back faces, then
+      // front) and marks the material changed before each half, so every blob under every avatar re-chose its shader program
+      // twice a frame (getParameters + cache key: ~4 ms a frame on a 4x phone with 30 players). A flat decal that writes no
+      // depth looks the same either way.
+      forceSinglePass: true,
     });
   }
   return { geometry, material: blobMaterialFor(material, decal) };

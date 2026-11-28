@@ -1,6 +1,6 @@
-import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { KeyboardControls, useProgress } from "@react-three/drei";
+import { KeyboardControls } from "@react-three/drei";
 import { Object3D, type DirectionalLight, type HemisphereLight } from "three";
 import type { Room } from "@colyseus/sdk";
 // TYPE-ONLY: schema decorators must never enter the browser bundle.
@@ -37,7 +37,6 @@ import { JumpButton } from "../ui/JumpButton";
 import { MenuPanel } from "../ui/MenuPanel";
 import { CoachMarks } from "../ui/CoachMarks";
 import { ClickHint } from "../ui/ClickHint";
-import { villageLoad } from "../ui/villageLoad";
 import { startJumpSync } from "../net/jumpSync";
 import { isTouchDevice } from "../device";
 import { getRenderProfile } from "./renderProfile";
@@ -147,22 +146,11 @@ function renderSlot(slot: ShellSlot, shell: ShellFrame): ReactNode {
   return typeof slot === "function" ? slot(shell) : slot;
 }
 
-/**
- * A small "불러오는 중…" chip while three's loaders fetch something after arrival (the lake, the hall). Never a cover over
- * the play (UX 2026-11-16: it tinted the whole screen while the lake came in behind a village already in play), and
- * nothing while the entry's own loading screen is up (VillageLoader shows the steps there).
+/*
+ * No "불러오는 중…" chip (fix/entry-full-load, 2026-11-28; owner: "광장화면 접속전에 다 로딩화면에서 다 로딩된 다음에 광장화면이 나오는거
+ * 아냐?"). Everything the plaza shows loads under the entry's loading screen (VillageScene EntryReveal); what is needed later loads
+ * quietly in the background, and a building's own door has its loading screen (AreaLoadingOverlay, the house and hall covers).
  */
-function LoadingOverlay() {
-  const { active } = useProgress();
-  const entering = useSyncExternalStore(villageLoad.subscribe, () => villageLoad.get().open, () => false);
-  if (!active) return null;
-  // kept in the page (hidden) under the loading screen: scripts wait for it to go as "everything is in"
-  return (
-    <div className="cv-loading" role="status" hidden={entering}>
-      불러오는 중…
-    </div>
-  );
-}
 
 /** The local player's synced spawn, else the middle of the map (the server places us before we mount). */
 function readSpawn(room: PlayersRoom, map: ActiveMap): Pose {
@@ -346,7 +334,6 @@ export function PlayShell(p: PlayShellProps) {
         <FrameGrab />
         {import.meta.env.DEV && <RenderStatsProbe />}
       </Canvas>
-      <LoadingOverlay />
       <Chat />
       {isTouchDevice ? <EmojiFan /> : <EmojiPalette />}
       <HudTop

@@ -376,13 +376,51 @@ def chest_drawers(F, w=1.0, d=0.45, h=0.85, tn=None, rows=4):
     col(F, -hw, hw, -hd, hd + 0.01, h + 0.025, name="drawers")
 
 
-def placemats(F, spots, tn=None):
-    """table mats under each place (spots = [(x, z, yaw)] local, y = 0 = the table top)."""
+def placemats(F, spots, tn=None, table=None, w=0.4, d=0.28):
+    """woven linen place mats under each place (spots = [(x, z, yaw)] local, y = 0 = the table top).
+    polish3 (owner 2026-11-28, house 1: a mat hung half off the table and read as a laptop or a rug): a thin (2.5 mm) linen mat with a
+    stitched hem, pulled in so it lies fully on the top 2 cm inside the edge: table = ("rect", half_w, half_d) or ("round", radius) in
+    this piece's frame. A mat that cannot fit is left out."""
     tn = tn or (0.78, 0.72, 0.62, 1)
-    for (x, z, a) in spots:
+    hem = tuple(c * 0.8 for c in tn[:3]) + (1,)
+    hw, hd = w / 2, d / 2
+
+    def inside(x, z, a):
+        if table is None:
+            return True
         ca, sa = math.cos(a), math.sin(a)
-        pts = [(x + ca * dx + sa * dz, z - sa * dx + ca * dz, 0.003) for (dx, dz) in ((-0.21, -0.15), (0.21, -0.15), (0.21, 0.15), (-0.21, 0.15))]
-        gface(F, pts, "H_fabric", (ca, -sa, 0), 0.5, (0, 0, 1), tn=tn)
+        for (cx, cz) in ((-hw, -hd), (hw, -hd), (hw, hd), (-hw, hd)):
+            lx, lz = x + cx * ca + cz * sa, z - cx * sa + cz * ca      # Frame.loc of the sub-frame (x, z, a)
+            if table[0] == "rect" and (abs(lx) > table[1] - 0.02 or abs(lz) > table[2] - 0.02):
+                return False
+            if table[0] == "round" and math.hypot(lx, lz) > table[1] - 0.02:
+                return False
+        return True
+
+    placed = []
+    for (x, z, a) in spots:
+        k = 0
+        while not inside(x, z, a) and k < 30:          # slide toward the table's middle, 1 cm at a time
+            ln = math.hypot(x, z) or 1.0
+            x, z = x - 0.01 * x / ln, z - 0.01 * z / ln
+            k += 1
+        if not inside(x, z, a) or any(math.hypot(x - px, z - pz) < min(w, d) + 0.02 for (px, pz) in placed):
+            continue
+        placed.append((x, z))
+        G = F.sub(x, z, 0.0, a)
+        # the hem: the mat's border band in a deeper shade, the field a hair proud of it (large faces only: a thin stitched strip would be
+        # under a light-map texel wide and bake dark)
+        rbox(G, -hw, hw, -hd, hd, 0.0005, 0.0028, "H_drape", r=0.0, seg=1, tile=0.3, tn=hem)
+        rbox(G, -hw + 0.018, hw - 0.018, -hd + 0.018, hd - 0.018, 0.0028, 0.0032, "H_drape", r=0.0, seg=1, tile=0.3, tn=tn, skip=("-y", "+x", "-x", "+z", "-z"))
+
+
+def table_runner(F, length=1.2, w=0.32, tn=None):
+    """a linen table runner along the table's long axis (x), y = 0 = the top, with a stitched hem (polish3: house 1's narrow table)."""
+    tn = tn or (0.86, 0.8, 0.7, 1)
+    hem = tuple(c * 0.8 for c in tn[:3]) + (1,)
+    hl, hw = length / 2, w / 2
+    rbox(F, -hl, hl, -hw, hw, 0.0005, 0.0028, "H_drape", r=0.0, seg=1, tile=0.3, tn=hem)
+    rbox(F, -hl + 0.022, hl - 0.022, -hw + 0.022, hw - 0.022, 0.0028, 0.0032, "H_drape", r=0.0, seg=1, tile=0.3, tn=tn, skip=("-y", "+x", "-x", "+z", "-z"))
 
 
 def electric_fan(F, h=1.05, tn=None):
@@ -485,28 +523,111 @@ def cushion_stack(F, n=4, w=0.5, tn_list=None):
 BRASS = (0.78, 0.6, 0.32, 1)
 
 
+def _petal(F, base, a, L, W, prof, m, tn, tn0=None, nu=3, nv=4, cup=0.35):
+    """one petal as a smooth curved sheet: from `base` (local x, z, y) out along the angle a; prof(v) -> (r, y) of its midline relative
+    to base (v 0 base .. 1 tip), its width W x sin-shaped, its edges cupped toward the flower's axis by `cup` x half-width."""
+    ox, oz = math.cos(a), math.sin(a)
+    sx, sz = -oz, ox
+    grid = []
+    for j in range(nv + 1):
+        v = j / nv
+        r, y = prof(v)
+        hw = 0.5 * W * max(0.12, math.sin(math.pi * min(0.96, 0.08 + 0.92 * v)) ** 0.65)
+        row = []
+        for i in range(nu + 1):
+            u = -1.0 + 2.0 * i / nu
+            rr = r - cup * hw * u * u
+            row.append((base[0] + ox * rr + sx * u * hw, base[1] + oz * rr + sz * u * hw, base[2] + y))
+        grid.append(row)
+    for j in range(nv):
+        t = (j + 0.5) / nv
+        c = tn if tn0 is None else tuple(tn0[k] + (tn[k] - tn0[k]) * min(1.0, t * 1.6) for k in range(3)) + (1,)
+        for i in range(nu):
+            gface(F, [grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]], m, None, 1.0, (ox, oz, 0.2), tn=c, smooth=True)
+
+
+def _tulip(F, top, col, seed):
+    """a tulip head at `top`: six cupped tepals (outer three, inner three turned 60 degrees), the cup closing a little at the lips"""
+    rnd = random.Random(seed)
+    tn0 = tuple(c * 0.8 for c in col[:3])
+    for (rm, L, W, off) in ((0.017, 0.056, 0.036, 0.0), (0.013, 0.052, 0.032, math.pi / 3)):
+        for k in range(3):
+            a = off + k * 2 * math.pi / 3 + rnd.uniform(-0.12, 0.12)
+            _petal(F, top, a, L, W, lambda v, rm=rm, L=L: (0.003 + rm * math.sin(math.pi * min(1.0, 0.1 + 0.85 * v)) ** 0.9, L * v), "H_petal",
+                   col, tn0, nu=3, nv=4, cup=0.45)
+
+
+def _rose(F, top, col, seed, r=0.03):
+    """an open garden rose: a tight centre and petals opening ring by ring (golden-angle spiral)"""
+    rnd = random.Random(seed)
+    n = 9
+    tn0 = tuple(c * 0.78 for c in col[:3])
+    for i in range(n):
+        k = i / (n - 1)
+        a = i * 2.39996 + rnd.uniform(-0.1, 0.1)
+        L = r * (0.6 + 0.6 * k)
+        o = 0.15 + 0.75 * k
+        _petal(F, top, a, L, L * (0.95 + 0.4 * k), lambda v, L=L, o=o, k=k: (0.002 + r * 0.1 * k + L * v * (0.25 + 0.6 * o),
+               L * v * (1.0 - 0.55 * o) * (1.0 - 0.25 * v * o)), "H_petal", col, tn0, nu=3, nv=3, cup=0.5 - 0.3 * k)
+
+
 def flower_vase(F, tn=None, kind="hydrangea", h=0.3, glass=False):
-    """fresh flowers in a vase (y = 0 = the table top): a fluted ceramic or glass vase, green stems, the blooms — hydrangea mop-heads
-    (clusters of small domes), roses or tulips (cupped heads) — in the house's accent colour."""
+    """fresh flowers in a vase (y = 0 = the table top). polish3 (owner 2026-11-28, house 1: crude vase and flowers): a smooth round glazed
+    vase (or clear glass), real stems arching out of its mouth, and the blooms built from their petals: tulips (six cupped tepals, long
+    blue-green leaves), garden roses (spiral of opening petals, small leaves) or hydrangea mop-heads, in the house's colour."""
+    from kit_core import tube
+    from kit_decor import leaf
     tn = tn or (0.88, 0.72, 0.82, 1)
-    vase_m, vase_tn = ("H_glass", None) if glass else ("H_ceramic", (0.94, 0.93, 0.9, 1))
-    lathe(F, 0, 0, 0.0, [(0.0, 0.0), (0.05, 0.0), (0.07, h * 0.35), (0.055, h * 0.75), (0.045, h * 0.9), (0.055, h), (0.0, h)], vase_m, 12, tn=vase_tn)
-    import random
+    vase_m, vase_tn = ("H_glass", None) if glass else ("H_glaze", (0.94, 0.93, 0.9, 1))
+    mouth = 0.045
+    lathe(F, 0, 0, 0.0, [(0.0, 0.0), (0.045, 0.0), (0.058, 0.012), (0.068, h * 0.3), (0.066, h * 0.55), (0.052, h * 0.8), (0.042, h * 0.92),
+                         (mouth + 0.004, h), (mouth, h + 0.004), (mouth - 0.006, h - 0.01), (0.0, h * 0.8)], vase_m, 36, tn=vase_tn, keep=True)
     rnd = random.Random(int(tn[0] * 100 + tn[1] * 10))
-    heads = 5 if kind == "hydrangea" else 9
-    for i in range(heads):
-        a = i * 2.4 + rnd.uniform(-0.2, 0.2)
-        r = 0.04 + 0.1 * rnd.random() if kind != "hydrangea" else 0.03 + 0.08 * rnd.random()
-        top = (math.cos(a) * r, math.sin(a) * r, h + 0.12 + 0.12 * rnd.random())
-        bar(F, (0.0, 0.0, h * 0.6), top, 0.008, 0.008, "H_leaf", tn=(0.35, 0.5, 0.3, 1))
-        c = tuple(min(1.0, v * (0.9 + 0.2 * rnd.random())) for v in tn[:3]) + (1,)
-        if kind == "hydrangea":
-            lathe(F, top[0], top[1], top[2] - 0.03, [(0.0, 0.0), (0.06, 0.02), (0.07, 0.05), (0.04, 0.085), (0.0, 0.095)], "H_fabric", 9, tn=c)
+    green = (0.33, 0.5, 0.28, 1)
+    if kind == "hydrangea":
+        for i in range(3):     # polish4: three fuller heads (triangle budget for the rounder florets)
+            a = i * 2.4 + rnd.uniform(-0.2, 0.2)
+            r = 0.03 + 0.08 * rnd.random()
+            top = (math.cos(a) * r, math.sin(a) * r, h + 0.12 + 0.12 * rnd.random())
+            tube(F, [(0.0, 0.0, h - 0.02), (top[0] * 0.5, top[1] * 0.5, h + (top[2] - h) * 0.6), top], 0.004, "H_leaf", 4, tn=green, caps=False)
+            c = tuple(min(1.0, v * (0.9 + 0.2 * rnd.random())) for v in tn[:3]) + (1,)
+            # polish4: the blue kept in daylight (the pale tint washed out to white under the day bake): chroma x 2.4, a shade deeper
+            lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+            c = tuple(max(0.0, min(1.0, (lum + (v - lum) * 2.4) * 0.86)) for v in c[:3]) + (1,)
+            # a mop-head: a low dome of floret clusters (polish3: one fabric-textured blob read as a knitted pom-pom)
+            lathe(F, top[0], top[1], top[2] - 0.03, [(0.0, 0.0), (0.05, 0.015), (0.058, 0.04), (0.0, 0.05)], "H_petal", 10, tn=tuple(x * 0.82 for x in c[:3]) + (1,), keep=True)
+            for q in range(6):
+                qa = q * 1.047 + i
+                qr = 0.034 if q else 0.0
+                cy = top[2] + (0.012 if q else 0.03)
+                cc = tuple(min(1.0, x * (0.95 + 0.1 * ((q * 7 + i) % 3) / 2)) for x in c[:3]) + (1,)
+                lathe(F, top[0] + qr * math.cos(qa), top[1] + qr * math.sin(qa), cy - 0.012,
+                      [(0.0, 0.0), (0.016, 0.003), (0.025, 0.012), (0.023, 0.025), (0.012, 0.032), (0.0, 0.034)], "H_petal", 12,
+                      tn=cc, keep=True)
+        for k in range(4):
+            a = k * 1.7
+            leaf(F, (math.cos(a) * 0.03, math.sin(a) * 0.03, h + 0.01), (math.cos(a), math.sin(a), 0.35), 0.11, 0.06, droop=0.25, tn=green, segs=4)
+        return
+    n = 6
+    for i in range(n):
+        a = i * 2.39996 + rnd.uniform(-0.2, 0.2)
+        spread = (0.03 + 0.075 * ((i + 0.5) / n) ** 0.7) * (1.0 if kind == "tulip" else 0.8)
+        tall = h + (0.2 if kind == "tulip" else 0.12) - 0.08 * (i / n) + rnd.uniform(-0.02, 0.02)
+        top = (math.cos(a) * spread, math.sin(a) * spread, tall)
+        mid = (math.cos(a) * spread * 0.35, math.sin(a) * spread * 0.35, h + (tall - h) * 0.55)
+        st = (math.cos(a) * 0.01, math.sin(a) * 0.01, h - 0.02)
+        tube(F, [st, mid, top], 0.0032, "H_leaf", 4, tn=green, caps=False)
+        c = tuple(min(1.0, v * (0.92 + 0.12 * rnd.random())) for v in tn[:3]) + (1,)
+        if kind == "tulip":
+            _tulip(F, (top[0], top[1], top[2] - 0.004), c, i + 3)
         else:
-            lathe(F, top[0], top[1], top[2] - 0.02, [(0.0, 0.0), (0.025, 0.01), (0.035, 0.04), (0.03, 0.06), (0.0, 0.05)], "H_fabric", 7, tn=c)
-    for k in range(4):
-        a = k * 1.7
-        bar(F, (0.0, 0.0, h * 0.8), (math.cos(a) * 0.12, math.sin(a) * 0.12, h + 0.02), 0.05, 0.006, "H_leaf", tn=(0.35, 0.55, 0.32, 1))
+            _rose(F, (top[0], top[1], top[2] - 0.004), c, i + 7, r=0.032 + 0.008 * rnd.random())
+            leaf(F, mid, (math.cos(a + 1.1), math.sin(a + 1.1), 0.25), 0.045, 0.026, droop=0.12, tn=(0.3, 0.46, 0.26, 1), segs=3)
+    if kind == "tulip":
+        for k in range(4):
+            a = k * 1.57 + 0.4
+            leaf(F, (math.cos(a) * 0.02, math.sin(a) * 0.02, h - 0.01), (math.cos(a), math.sin(a), 1.2), 0.17, 0.034, droop=0.55,
+                 tn=(0.42, 0.56, 0.4, 1), segs=4, curl=0.22)
 
 
 def wall_sconce(F, tn=None):
@@ -525,8 +646,8 @@ def coffee_styling(F, tn=None, w=0.5):
     tn = tn or (0.85, 0.7, 0.75, 1)
     rbox(F, -0.2, 0.2, -0.13, 0.13, 0.0, 0.02, "H_wood_oak", r=0.006, seg=1, tn=(0.55, 0.38, 0.25, 1))
     rbox(F, -0.18, 0.18, -0.11, 0.11, 0.004, 0.025, "H_wood_oak", r=0.0, seg=1, tn=(0.6, 0.42, 0.28, 1), skip=("-y",))
-    cyl(F, -0.08, 0.0, 0.02, 0.1, 0.04, "H_paint", segs=10, tn=(0.97, 0.95, 0.9, 1))
-    lathe(F, 0.08, 0.0, 0.02, [(0.0, 0.0), (0.035, 0.0), (0.04, 0.05), (0.015, 0.12), (0.02, 0.14), (0.0, 0.14)], "H_ceramic", 10, tn=tn)
+    cyl(F, -0.08, 0.0, 0.02, 0.1, 0.04, "H_paint", segs=16, tn=(0.97, 0.95, 0.9, 1), keep=True)
+    lathe(F, 0.08, 0.0, 0.02, [(0.0, 0.0), (0.035, 0.0), (0.04, 0.05), (0.015, 0.12), (0.02, 0.14), (0.0, 0.14)], "H_glaze", 24, tn=tn, keep=True)
     for k, (c, dy) in enumerate((((0.3, 0.38, 0.45, 1), 0.0), ((0.88, 0.85, 0.78, 1), 0.035))):
         rbox(F, w / 2 - 0.05 - 0.28, w / 2 - 0.05, -0.12 + 0.01 * k, 0.1 + 0.01 * k, dy, dy + 0.035, "H_paint", r=0.004, seg=1, tn=c) if w > 0.5 else None
 

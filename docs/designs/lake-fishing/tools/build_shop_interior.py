@@ -398,32 +398,33 @@ ROD_COLS = ["rod_black", "rod_navy", "rod_wine", "rod_green", "rod_grey", "rod_w
 
 
 def reel(fr, body="gunmetal", line="line_green", knob="pl_black", size=1.0):
-    """A spinning reel, its foot at the origin, the body above (+y), the spool's axis along +z (toward the rod tip)."""
+    """A spinning reel, its foot at the origin, the body above (+y), the spool's axis along +z (toward the rod tip). (2026-11-28 prop
+    sweep round 2: twice the sides on every round part — the glass shelf's reels read as polygons at the counter)"""
     s = size
     box("atlas", fr, -0.009 * s, 0.009 * s, 0.0, 0.005 * s, -0.036 * s, 0.036 * s, key="gunmetal")
     box("atlas", fr, -0.005 * s, 0.005 * s, 0.005 * s, 0.05 * s, -0.012 * s, 0.008 * s, key=body)
     yb = 0.078 * s
-    cyl_f("atlas", fr, (-0.021 * s, yb, -0.012 * s), (0.021 * s, yb, -0.012 * s), 0.03 * s, sides=10, key=body)
-    cyl_f("atlas", fr, (0, yb, 0.012 * s), (0, yb, 0.044 * s), 0.025 * s, 0.021 * s, sides=10, key=body)
-    cyl_f("atlas", fr, (0, yb, 0.044 * s), (0, yb, 0.048 * s), 0.025 * s, sides=12, key="gunmetal")
-    cyl_f("atlas", fr, (0, yb, 0.048 * s), (0, yb, 0.071 * s), 0.0195 * s, sides=12, key=line, capkey="gunmetal")
-    cyl_f("atlas", fr, (0, yb, 0.071 * s), (0, yb, 0.075 * s), 0.023 * s, sides=12, key="chrome")
-    cyl_f("atlas", fr, (0, yb, 0.075 * s), (0, yb, 0.081 * s), 0.011 * s, 0.009 * s, sides=8, key="chrome")
+    cyl_f("atlas", fr, (-0.021 * s, yb, -0.012 * s), (0.021 * s, yb, -0.012 * s), 0.03 * s, sides=20, key=body)
+    cyl_f("atlas", fr, (0, yb, 0.012 * s), (0, yb, 0.044 * s), 0.025 * s, 0.021 * s, sides=20, key=body)
+    cyl_f("atlas", fr, (0, yb, 0.044 * s), (0, yb, 0.048 * s), 0.025 * s, sides=24, key="gunmetal")
+    cyl_f("atlas", fr, (0, yb, 0.048 * s), (0, yb, 0.071 * s), 0.0195 * s, sides=24, key=line, capkey="gunmetal")
+    cyl_f("atlas", fr, (0, yb, 0.071 * s), (0, yb, 0.075 * s), 0.023 * s, sides=24, key="chrome")
+    cyl_f("atlas", fr, (0, yb, 0.075 * s), (0, yb, 0.081 * s), 0.011 * s, 0.009 * s, sides=16, key="chrome")
     # the bail: a wire half-hoop over the spool's front, from arm to arm
     pts = []
-    for k in range(7):
-        a = math.pi * k / 6
+    for k in range(13):
+        a = math.pi * k / 12
         pts.append(fr.g(math.cos(a) * 0.027 * s, yb + math.sin(a) * 0.027 * s - 0.004 * s, 0.07 * s))
-    poly_tube("atlas", pts, 0.0014 * s, "chrome", 4)
+    poly_tube("atlas", pts, 0.0014 * s, "chrome", 6)
     for sx in (-1, 1):
-        cyl_f("atlas", fr, (sx * 0.024 * s, yb - 0.004 * s, 0.03 * s), (sx * 0.027 * s, yb - 0.004 * s, 0.07 * s), 0.003 * s, sides=4, key=body)
+        cyl_f("atlas", fr, (sx * 0.024 * s, yb - 0.004 * s, 0.03 * s), (sx * 0.027 * s, yb - 0.004 * s, 0.07 * s), 0.003 * s, sides=6, key=body)
     # handle: shaft, arm, knob
     side = 1
-    cyl_f("atlas", fr, (side * 0.021 * s, yb, -0.012 * s), (side * 0.04 * s, yb, -0.012 * s), 0.0035 * s, sides=6, key="gunmetal")
-    cyl_f("atlas", fr, (side * 0.04 * s, yb, -0.012 * s), (side * 0.043 * s, yb - 0.04 * s, -0.012 * s), 0.003 * s, sides=5, key="gunmetal")
-    cyl_f("atlas", fr, (side * 0.043 * s, yb - 0.042 * s, -0.012 * s), (side * 0.063 * s, yb - 0.042 * s, -0.012 * s), 0.0075 * s, 0.0065 * s, sides=8, key=knob)
+    cyl_f("atlas", fr, (side * 0.021 * s, yb, -0.012 * s), (side * 0.04 * s, yb, -0.012 * s), 0.0035 * s, sides=10, key="gunmetal")
+    cyl_f("atlas", fr, (side * 0.04 * s, yb, -0.012 * s), (side * 0.043 * s, yb - 0.04 * s, -0.012 * s), 0.003 * s, sides=8, key="gunmetal")
+    cyl_f("atlas", fr, (side * 0.043 * s, yb - 0.042 * s, -0.012 * s), (side * 0.063 * s, yb - 0.042 * s, -0.012 * s), 0.0075 * s, 0.0065 * s, sides=16, key=knob)
     # the side cover's gold ring
-    cyl_f("atlas", fr, (-0.0215 * s, yb, -0.012 * s), (-0.0225 * s, yb, -0.012 * s), 0.018 * s, sides=10, key="gold", caps=(False, True))
+    cyl_f("atlas", fr, (-0.0215 * s, yb, -0.012 * s), (-0.0225 * s, yb, -0.012 * s), 0.018 * s, sides=20, key="gold", caps=(False, True))
 
 
 def rod_spinning(base, tilt_x, tilt_z, length, col, grip, seed, with_reel=None):

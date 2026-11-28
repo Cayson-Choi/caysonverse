@@ -17,6 +17,7 @@ import b1_parts as P
 import b2_parts as Q
 import b2_room as R2
 import flora as F
+import props_fine as PF
 from b1_geom import Mesh, S
 
 UNIT = "lot_church_nave"
@@ -194,8 +195,8 @@ def sconce(kit, f, u):
     f.box(D, u - 0.06, u + 0.06, 2.4, 2.72, 0.0, 0.02, BRASS)
     arm_end = f.p(u, 2.62, 0.24)
     D.tube([f.p(u, 2.5, 0.02), f.p(u, 2.48, 0.14), arm_end], 0.012, 5, BRASS)
-    D.lathe([(0.0, 0.0), (0.055, 0.02), (0.06, 0.035), (0.0, 0.03)], 8, BRASS, arm_end[0], arm_end[2], arm_end[1])
-    D.lathe([(0.017, 0.0), (0.017, 0.14), (0.0, 0.145)], 6, WAX, arm_end[0], arm_end[2], arm_end[1] + 0.03)
+    D.lathe([(0.0, 0.0), (0.055, 0.02), (0.06, 0.035), (0.0, 0.03)], 16, BRASS, arm_end[0], arm_end[2], arm_end[1])
+    F.candle(D, arm_end[0], arm_end[1] + 0.03, arm_end[2], 0.017, 0.145, WAX)
     R2.candle_flame(kit.fire["candles"], arm_end[0], arm_end[1] + 0.175, arm_end[2], 0.045, 0.012, seed=int(u * 13))
     kit.room_lights.append(("point", arm_end[0], arm_end[1] + 0.25, arm_end[2], (1.0, 0.78, 0.5), 18.0))
 
@@ -303,7 +304,7 @@ def chancel(kit, sol):
     D.box(x0, x1, 0.27, 0.31, z0, z0 + 0.06, OAK, skip=("-y",))
     # communion rail: white turned balusters, an oak top rail, a gap at the middle; kneeling cushion strip
     bal = Mesh("baluster")
-    bal.lathe([(0.04, 0.0), (0.04, 0.05), (0.025, 0.1), (0.045, 0.25), (0.025, 0.4), (0.035, 0.46), (0.0, 0.47)], 6, TRIM)
+    bal.lathe([(0.04, 0.0), (0.04, 0.05), (0.025, 0.1), (0.045, 0.25), (0.025, 0.4), (0.035, 0.46), (0.0, 0.47)], 10, TRIM)
     zr = z0 + 0.2
     for (a, b) in ((x0 + 0.3, 3.3), (4.5, x1 - 0.3)):
         D.box(a, b, 0.3, 0.36, zr - 0.06, zr + 0.06, TRIM)
@@ -318,7 +319,7 @@ def chancel(kit, sol):
     tx0, tx1, tz0, tz1 = 2.9, 4.9, 9.35, 10.05
     for x in (tx0 + 0.07, tx1 - 0.07):
         for z in (tz0 + 0.07, tz1 - 0.07):
-            D.lathe([(0.05, 0.0), (0.05, 0.1), (0.035, 0.2), (0.05, 0.42), (0.035, 0.7), (0.045, 0.78), (0.0, 0.79)], 8, OAK, x, z, 0.3)
+            D.lathe([(0.05, 0.0), (0.05, 0.1), (0.035, 0.2), (0.05, 0.42), (0.035, 0.7), (0.045, 0.78), (0.0, 0.79)], 12, OAK, x, z, 0.3)
     D.cbox(tx0 + 0.03, tx1 - 0.03, 0.95, 1.09, tz0 + 0.03, tz1 - 0.03, OAK, c=0.012)
     D.cbox(tx0 - 0.05, tx1 + 0.05, 1.09, 1.14, tz0 - 0.05, tz1 + 0.05, OAK_DK, c=0.012)
     # white linen: the top cloth (flat, a soft rolled edge) and a frontal falling in soft folds with a gilt-thread hem
@@ -335,7 +336,11 @@ def chancel(kit, sol):
     # (the phone's file has no small goods; the altar's flowers go in its furniture there, at the phone's petal detail: 2026-11-27,
     # without them the phone's altar was two candles and a book)
     bouquet(D if PHONE else Gd, 3.9, 1.15, 9.75, 0.35)
-    D.cbox(3.62, 4.18, 1.15, 1.2, 9.48, 9.62, S("LM_church_plaster", G.hexc("2F3E5E")), c=0.008)   # a closed book (blue cloth)
+    # the altar Bible, open on a small oak book rest in front of the flowers, facing the nave (2026-11-28: was a 56 x 14 cm
+    # dark slab that read as a laptop): navy cloth boards, cream pages curving up from the gutter, faint text lines
+    at, tilt = PF.book_rest(D, 3.9, 1.152, 9.5, 0.34, 0.2, OAK, tilt=0.32)
+    PF.open_book(D, at[0], at[1], at[2], 0.32, 0.22, S("LM_church_plaster", G.hexc("283A5E")), S("LM_church_plaster", G.hexc("FBF5E6")),
+                 tilt=tilt, ink=S("LM_church_plaster", G.hexc("B9B1A2")))
     # an oak reredos behind the table: a panelled dado with three pointed arches and a moulded cresting, a soft blue
     # arched panel above it framing the cross
     reredos(kit)
@@ -347,8 +352,11 @@ def chancel(kit, sol):
     pulpit(kit, 1.2, 9.1)
     # flower stands with white hydrangeas either side
     for x in (0.75, 7.05):
-        D.lathe([(0.15, 0.0), (0.12, 0.05), (0.05, 0.12), (0.04, 0.85), (0.15, 0.92), (0.0, 0.94)], 8, OAK, x, 10.0, 0.3)
-        hydrangea(Gd, x, 1.24, 10.0)
+        D.lathe([(0.15, 0.0), (0.12, 0.05), (0.05, 0.12), (0.04, 0.85), (0.13, 0.9), (0.15, 0.915), (0.15, 0.935), (0.0, 0.94)], 24, OAK, x, 10.0, 0.3)
+        if PHONE:
+            rose_bowl(D, x, 1.24, 10.0)   # (the phone: a bare stand read as a missing pot; hydrangea heads cost 1k each, 2026-11-28)
+        else:
+            hydrangea(Gd, x, 1.24, 10.0)
 
 
 def reredos(kit):
@@ -404,7 +412,16 @@ def pulpit(kit, x, z):
     D.lathe([(R - 0.03, 0.0), (R - 0.03, 0.04)], 6, OAK, x, z, yb - 0.02, phase=math.pi / 6, cap_top=True, smooth=False)
     # the book rest facing the nave, with a blue fall
     D.member((x - 0.22, yb + 1.0, z - 0.42), (x + 0.22, yb + 1.0, z - 0.42), G.prof_box(0.04, 0.06), OAK_DK)
-    D.box(x - 0.2, x + 0.2, yb + 0.55, yb + 0.95, z - 0.47, z - 0.455, BLUE)
+    # the pulpit fall (2026-11-28 round 2: a flat navy board): blue cloth hanging from the book rest in soft folds, a gilt-thread
+    # hem, a gold fringe and an embroidered gold cross
+    gilt = S("LM_church_brass", G.hexc("F2CE7A"))
+    F.drape(D, x - 0.2, x + 0.2, yb + 0.56, yb + 0.95, z - 0.462, BLUE, folds=3, depth=0.009, face=-1, hem=gilt, seed=7)
+    nfr = 17 if PHONE else 33
+    for k in range(nfr):
+        fx = x - 0.195 + 0.39 * k / (nfr - 1)
+        D.box(fx - 0.0018, fx + 0.0018, yb + 0.515, yb + 0.562, z - 0.468, z - 0.464, gilt)
+    D.box(x - 0.012, x + 0.012, yb + 0.66, yb + 0.86, z - 0.479, z - 0.475, gilt)
+    D.box(x - 0.055, x + 0.055, yb + 0.78, yb + 0.804, z - 0.479, z - 0.475, gilt)
     D.box(x - 0.21, x + 0.21, yb + 0.93, yb + 0.97, z - 0.48, z - 0.44, S("LM_church_brass", G.hexc("E8C27C")))
     # the stair: four oak treads rising from the chancel floor behind it (inside the chancel)
     for k in range(4):
@@ -478,6 +495,24 @@ def hydrangea(m, x, y, z):
     G.LOD = lod0
 
 
+def rose_bowl(m, x, y, z):
+    """The phone's flower stand: the same white porcelain urn with a low dome of white roses (flora.py, coarse petals) and a
+    collar of leaves — what the hydrangea urn reads as at a fraction of its triangles."""
+    k0 = len(m.polys)
+    m.lathe([(0.1, 0.0), (0.12, 0.02), (0.14, 0.06), (0.125, 0.2), (0.14, 0.24), (0.15, 0.26), (0.0, 0.26)], 16, LINEN, x, z, y)
+    F.flat_from(m, k0)
+    green = LEAF.t(G.hexc("3F6E35"))
+    lod0, G.LOD = G.LOD, 0.4
+    for k in range(7):
+        a = 2 * math.pi * k / 7
+        F.leaf(m, (x + 0.1 * math.cos(a), y + 0.25, z + 0.1 * math.sin(a)), (math.cos(a), 0, math.sin(a)), 0.15, 0.075, green,
+               rise=0.35, fall=1.1, c0=G.hexc("2E5A2A"), c1=G.hexc("5A8F45"), seed=60 + k)
+    heads = [(0.0, 0.0, 0.1)] + [(0.085 * math.cos(2 * math.pi * k / 6), 0.085 * math.sin(2 * math.pi * k / 6), 0.06) for k in range(6)]
+    for i, (dx, dz, dy) in enumerate(heads):
+        F.rose(m, (x + dx, y + 0.26 + dy, z + dz), 0.065, PET_W, G.hexc("FFFCF5" if i % 3 else "FBF4E6"), open_=0.55, seed=90 + i * 7, centre_dk=0.9)
+    G.LOD = lod0
+
+
 # ------------------------------------------------------------------------------------------------ pews, organ, hymn board --
 
 PEW = R2.pew_kind("pew", 2.6, PAINT_PEW, PAINT_PEW_DK, BLUE, None)
@@ -506,7 +541,7 @@ def organ(kit, sol):
         t = (k + 0.5) / 7
         z = z0 + 0.08 + (z1 - z0 - 0.16) * t
         hh = 0.8 + 0.7 * (1 - abs(2 * t - 1))
-        Gd.lathe([(0.01, 0.0), (0.04, 0.16), (0.04, hh), (0.038, hh + 0.01)], 8, S("LM_church_brass", G.hexc("E6E8EA")), x1 - 0.2, z, 1.25)
+        Gd.lathe([(0.01, 0.0), (0.04, 0.16), (0.04, hh), (0.038, hh + 0.01)], 12, S("LM_church_brass", G.hexc("E6E8EA")), x1 - 0.2, z, 1.25)
     D.cbox(x1 - 0.32, x1 - 0.02, 2.85, 2.95, z0, z1, OAK_DK, c=0.012)
     for z in (z0 + 0.02, z1 - 0.02):
         D.box(x1 - 0.3, x1 - 0.05, 1.25, 2.85, z - 0.02, z + 0.02, OAK)

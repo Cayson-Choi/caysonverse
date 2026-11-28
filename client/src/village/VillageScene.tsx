@@ -12,7 +12,7 @@ import { armedHouseUse, currentPadWalk, disarmHouseUse, stepPadWalk, takeArmedHo
 import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor, sendUseStair } from "../net/connection";
-import { rideStatusText, sendBusRide, sendBusSit, sendBusStand, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState } from "../net/transitSync";
+import { rideStatusText, sendBusRide, sendBusSit, sendBusStand, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState, useTransitBoarded } from "../net/transitSync";
 import { BUS_VIEW_YAW, busCamGoal, busSeatPreferred, busWalk, selfBusRide } from "../game/busRide";
 import { requestViewToggle, viewState } from "../game/viewState";
 import { recenterYaw } from "../game/cameraControls";
@@ -25,13 +25,15 @@ import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
 import { VegVeil } from "./VegVeil";
 import { VeilFrameThrottle } from "./VeilFrameThrottle";
+import { EntryReveal } from "./EntryReveal";
+import { entryCovering, villageLoad } from "../ui/villageLoad";
 import { vegDressing } from "./vegDressing";
 import { vegetationPark } from "./veg/villageVegetation";
 import { doorFade } from "./doorFadeModel";
 import { useQualityTier } from "../game/QualityEffects";
 import { SceneWarmUp } from "../game/SceneWarmUp";
-import { VILLAGE_LAYOUT, isHouseArea, isLotArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
-import { HOUSE_STAIR_TARGET_PREFIX } from "@caysonverse/shared/village/houseTargets";
+import { VILLAGE_LAYOUT, isHouseArea, isIndoorArea, isLotArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
+import { HOUSE_EXIT_TARGET_ID, HOUSE_STAIR_TARGET_PREFIX } from "@caysonverse/shared/village/houseTargets";
 import { houseNumberOf } from "@caysonverse/shared/village/houseAreas";
 import { PlotMarkers } from "./PlotMarkers";
 import { HallArea } from "./MemorialHall";
@@ -43,9 +45,28 @@ import { VillageBus } from "./VillageBus";
 import { BUSSTOP_MODEL_URL, BusStopShelter } from "./BusStopShelter";
 import { VillageMusic } from "./VillageMusic";
 import { AreaSfx } from "./AreaSfx";
-import { LakeLampLights, LakeWorld } from "../lake/LakeScene";
+import { LakeLampLights, LakeWorld, preloadLakeFiles } from "../lake/LakeScene";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
-import { clearBusCache, clearVillageCaches, holdVillageFiles, holdsVillageFiles } from "./villageRelease";
+import {
+  clearBusCache,
+  clearVillageCaches,
+  endVillageReturnHold,
+  holdVillageFiles,
+  holdVillageForReturn,
+  holdsVillageFiles,
+  noteBusRequested,
+  noteHousesRequested,
+  noteMountainsRequested,
+  noteVillageRequested,
+  RETURN_HOLD_MS,
+} from "./villageRelease";
+import { preloadVillageFiles } from "./villagePreload";
+import { preloadBus } from "./villageBusLoader";
+import { mountainsMode, preloadMountains } from "./VillageMountains";
+import { houseFlowerPark, housesMode } from "./houses/VillageHouses";
+import { preloadHouses } from "./houses/housesLoader";
+import { LOT_EXIT_TARGET_PREFIX } from "./lots/lotTargets";
+import type { QualityTier } from "../game/quality";
 import { LoadBoundary } from "./LoadBoundary";
 import { ParkSkyline } from "./skyline/ParkSkyline";
 import { VillageParkWall } from "./skyline/VillageParkWall";
@@ -57,6 +78,7 @@ import {
   BUS_STAND_TARGET_ID,
   RIDE_BOARD_PREFIX,
   PARK_DOOR_ID,
+  MEMORIAL_DOOR_ID,
   CUBBY_TARGET_PREFIX,
   GUIDE_TARGET_PREFIX,
   KEYPAD_TARGET_PREFIX,
@@ -150,7 +172,29 @@ function PlainGround() {
 }
 
 const dressedNow = () => vegDressing.dressed();
-/** Its children mount once the village has been dressed (and stay: a later cover does not take them away). */
+/**
+ * The village model is in while the entry's loading screen is up (its download no longer competes with anything): the lake's FILES
+ * start then (LakeFilesEarly). Its build and the skyline's wait for the dressing on every tier: run beside the vegetation's build they
+ * made it miss its 20 s cap (measured: dressed by the fail-safe at 66 s on a 4x phone, 39 s on a PC, with bare trees growing after).
+ */
+const modelInUnderLoader = () => {
+  const s = villageLoad.get();
+  return s.open && (s.modelIn || s.dressed);
+};
+
+/** Under the entry's loading screen, once the village model is in: the lake's files start (a phone builds the lake after the dressing). */
+function LakeFilesEarly() {
+  const early = useSyncExternalStore(villageLoad.subscribe, modelInUnderLoader, modelInUnderLoader);
+  useEffect(() => {
+    if (early) preloadLakeFiles();
+  }, [early]);
+  return null;
+}
+/**
+ * Its children mount once the village has been dressed (and stay: a later cover does not take them away). Under the entry's loading
+ * screen that is still before the reveal: the screen waits for them too (EntryReveal; fix/entry-full-load, 2026-11-28: they used to
+ * come in after the reveal, with the "불러오는 중…" chip over the plaza for 5-12 s).
+ */
 function AfterDressed({ children }: { children: ReactNode }) {
   const dressed = useSyncExternalStore(vegDressing.subscribe, dressedNow, dressedNow);
   const [once, setOnce] = useState(dressed);
@@ -227,8 +271,10 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
           <SceneWarmUp key={tier} />
         </Suspense>
       </LoadBoundary>
-      {/* The lake (100 m east) waits until the village is dressed (UX 2026-11-16): its files and its build never compete
-          with the plaza's on the way in, and its Suspense is its own (it never holds the village back). */}
+      {/* The lake (100 m east): its files start once the village model is in, its build waits until the village is dressed (it
+          never competes with the vegetation's), and its Suspense is its own (it never holds the village back). On the entry both
+          still happen under the loading screen (EntryReveal waits for them). */}
+      <LakeFilesEarly />
       <AfterDressed>
         <Suspense fallback={null}>
           <LakeWorld pose={pose} tier={tier} />
@@ -282,8 +328,48 @@ function selfServerPose(): { x: number; z: number; area: string } | null {
   return me ? { x: me.x, z: me.z, area: normalizeArea(me.area) } : null;
 }
 
+/** A target that takes the player out of a building into the village: the hall's door from inside, a house's or a lot room's way out. */
+function isWayOut(area: string, id: string): boolean {
+  return (area === "hall" && id === MEMORIAL_DOOR_ID) || id === HOUSE_EXIT_TARGET_ID || id.startsWith(LOT_EXIT_TARGET_PREFIX);
+}
+
+/** When the way out was last offered or pressed (performance.now()): the way-out hold lasts while this is recent. */
+let wayOutAt = -Infinity;
+/**
+ * The building the player is in, and whether they have been away from its way out since they came in: one arrives right beside the
+ * door (the hall's arrival is within the door's reach), and that is no sign of leaving. Only coming back to the pad is.
+ */
+let wayOutArea = "";
+let wayOutArmed = false;
+
+/**
+ * The player is at a building's way out (on its pad, or pressing it) on the light tier, whose village files went while indoors
+ * (villageRelease.ts holdsVillageFiles): fetch and decode them again NOW, while the player still stands at the door and the
+ * curtain closes, instead of after the area has flipped (perf/return, 2026-11-28: 14-41 s of empty ground on a 4x phone).
+ * Held for RETURN_HOLD_MS after the last offer; a player who turns back lets them go again.
+ */
+function prefetchVillageReturn(tier: QualityTier): void {
+  if (holdsVillageFiles(tier, "hall")) return; // the rich tier never let them go
+  wayOutAt = performance.now();
+  const fresh = holdVillageForReturn(() => isIndoorArea(localArea()) && (performance.now() - wayOutAt < RETURN_HOLD_MS || doorFade.covered()));
+  if (!fresh) return;
+  noteVillageRequested();
+  preloadVillageFiles();
+  noteBusRequested();
+  preloadBus();
+  if (mountainsMode() === "new") {
+    noteMountainsRequested();
+    preloadMountains();
+  }
+  if (housesMode() === "new") {
+    noteHousesRequested();
+    preloadHouses();
+  }
+}
+
 function VillageDoors({ pose }: { pose: Pose }) {
-  const { boarded } = useTransitState();
+  const tier = useQualityTier();
+  const boarded = useTransitBoarded();
   const keypadOpen = useKeypad().buildingId !== null;
   useEffect(() => {
     // Nothing is offered while the cubby card or a guide's questions are open (the E / action button hides).
@@ -304,6 +390,16 @@ function VillageDoors({ pose }: { pose: Pose }) {
       if (keypad) {
         const n = houseNumberOf(keypad.id.slice(KEYPAD_TARGET_PREFIX.length));
         if (n !== null && houseOpen(keypad.id.slice(KEYPAD_TARGET_PREFIX.length))) prefetchHouse(n);
+      }
+      // back at a building's way out the village's files start to come back (light tier: they went while indoors)
+      if (area !== wayOutArea) {
+        wayOutArea = area;
+        wayOutArmed = false;
+      }
+      if (isIndoorArea(area)) {
+        const atWayOut = base.some((t) => t.kind === "door" && isWayOut(area, t.id));
+        if (!atWayOut) wayOutArmed = true;
+        else if (wayOutArmed) prefetchVillageReturn(tier);
       }
       return bus ? [...base, bus] : base;
     });
@@ -370,12 +466,24 @@ function VillageDoors({ pose }: { pose: Pose }) {
       });
       // the park's door: the loading screen stands from this press until the other side is drawn (areaLoading.ts)
       if (target.id === PARK_DOOR_ID && doorFade.covered()) beginAreaLoading(localArea() === "park" ? "village" : "park");
+      // a building's way out on the light tier: its files come again (started at the pad), and "마을로 나가는 중…" stands until the
+      // village is drawn — never the empty ground it stands on (perf/return)
+      const from = localArea();
+      if (!stair && isIndoorArea(from) && isWayOut(from, target.id) && !holdsVillageFiles(tier, from) && doorFade.covered()) {
+        prefetchVillageReturn(tier);
+        beginAreaLoading("outside");
+      }
     });
     return () => {
       setTargetSource(null);
       setTargetHandler(null);
     };
-  }, [pose, boarded, keypadOpen]);
+  }, [pose, boarded, keypadOpen, tier]);
+  // outside again: the village scene holds the files itself from here (its own hold), the way-out hold ends without letting go
+  const area = useLocalArea();
+  useEffect(() => {
+    if (area === "village") endVillageReturnHold(true);
+  }, [area]);
   // A tap on a house's or a lot building's door armed its use (houseTap.ts; a stair's tap never arms: tapUsesOnArrival): once the walk has brought us into the pad's reach, it is used.
   const lastArea = useRef<string | null>(null);
   useFrame(() => {
@@ -394,7 +502,9 @@ function VillageDoors({ pose }: { pose: Pose }) {
       else if (armedRide() !== null && peekClickTarget() === null) armRide(null);
       return;
     }
-    if (area === "village") maybePreloadPark(pose.x, pose.z); // the park's files start loading as the gate comes near
+    // the park's files start loading as the gate comes near — never under the entry's loading screen (fix/entry-full-load: the plaza is
+    // within PRELOAD_RANGE_M of the gate, and ~10 MB of the park's files competed with village.glb for the phone's bandwidth)
+    if (area === "village" && !entryCovering()) maybePreloadPark(pose.x, pose.z);
     // a tap on a stair / door: its walk is followed onto the pad, planned again from here if it ended short (houseTap.ts stepPadWalk)
     // (inside a house or a lot room only: a room's way round is a small search; a village door tapped from afar keeps its one walk)
     if ((isHouseArea(area) || isLotArea(area)) && stepPadWalk(pose.x, pose.z, peekClickTarget() !== null || peekPendingClick() !== null) === "replan") {
@@ -580,6 +690,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
   const holdFiles = holdsVillageFiles(tier, area);
   // The village's built vegetation is kept while this scene is up (indoors too): freed one tick after it goes.
   useEffect(() => vegetationPark.hold(), []);
+  useEffect(() => houseFlowerPark.hold(), []);
   useEffect(() => (holdFiles ? holdVillageFiles() : undefined), [holdFiles]);
   if (!room) return null;
 
@@ -610,6 +721,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <AreaSfx area={area} />
           {(area === "village" || area === "park") && <StarSky tier={tier} />}
           <VeilFrameThrottle active={area === "village"} />
+          <EntryReveal phone={tier !== "high"} />
         </>
       )}
       hudColumn={

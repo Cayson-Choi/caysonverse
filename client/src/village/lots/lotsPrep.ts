@@ -88,6 +88,10 @@ export const LOT_LOOK = {
 
 const lampUniform = { value: [new Vector3(0, -100, 0)] as Vector3[] };
 const nightUniform = { value: 0 };
+/** How far the lots' materials pull their colours toward grey now (the night fade, NIGHT_COLOUR): the gate board's crisp letters follow it. */
+export function lotNightDesaturate(): number {
+  return nightUniform.value;
+}
 let lampCount = 1;
 
 const FRAG_PARS = (count: number) => /* glsl */ `

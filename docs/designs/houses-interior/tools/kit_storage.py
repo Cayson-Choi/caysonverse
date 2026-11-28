@@ -210,19 +210,19 @@ def bookwall(F, w=3.6, d=0.34, h=3.6, tn=None, seed=7, ladder=True):
 
 def dish(F, cx, cz, y, r=0.1, h=0.03, tn=None, plate=True):
     tn = tn or (0.95, 0.95, 0.92, 1)
-    lathe(F, cx, cz, y, [(0, 0.0), (r * 0.5, 0.0), (r * 0.55, 0.005), (r, h), (r * 0.98, h + 0.004), (r * 0.5, 0.008), (0, 0.006)], "H_ceramic", 14, tn=tn)
+    lathe(F, cx, cz, y, [(0, 0.0), (r * 0.5, 0.0), (r * 0.55, 0.005), (r, h), (r * 0.98, h + 0.004), (r * 0.5, 0.008), (0, 0.006)], "H_glaze", 14, tn=tn)
 
 
 def bowl(F, cx, cz, y, r=0.065, tn=None):
     tn = tn or (0.85, 0.9, 0.93, 1)
     lathe(F, cx, cz, y, [(0, 0.0), (r * 0.45, 0.0), (r * 0.5, 0.01), (r, 0.06), (r * 1.02, 0.065), (r * 0.96, 0.066), (r * 0.5, 0.02), (0, 0.016)],
-          "H_ceramic", 20, tn=tn)
+          "H_glaze", 28, tn=tn, keep=True)
 
 
 def mug(F, cx, cz, y, tn=None, r=0.04, h=0.095):
     tn = tn or (0.9, 0.9, 0.88, 1)
-    lathe(F, cx, cz, y, [(0, 0.0), (r, 0.0), (r * 1.04, h), (r * 0.9, h), (r * 0.88, 0.01), (0, 0.008)], "H_ceramic", 14, tn=tn)
-    tube(F, [(cx + r, cz, y + h * 0.8), (cx + r * 1.6, cz, y + h * 0.75), (cx + r * 1.6, cz, y + h * 0.3), (cx + r, cz, y + h * 0.2)], 0.005, "H_ceramic", 6, tn=tn)
+    lathe(F, cx, cz, y, [(0, 0.0), (r, 0.0), (r * 1.04, h), (r * 0.9, h), (r * 0.88, 0.01), (0, 0.008)], "H_glaze", 24, tn=tn, keep=True)
+    tube(F, [(cx + r, cz, y + h * 0.8), (cx + r * 1.6, cz, y + h * 0.75), (cx + r * 1.6, cz, y + h * 0.3), (cx + r, cz, y + h * 0.2)], 0.005, "H_glaze", 6, tn=tn)
 
 
 def wall_shelf(F, w=1.4, d=0.24, rows=2, tn=None, dishes=True):

@@ -107,6 +107,10 @@ export const DRESS_RULES: readonly FaceRule[] = Object.freeze([
   { id: "cafe-siding", material: "LM_wood", mesh: /^village_lm_/, box: CAFE_SHELL_BOX, test: (t) => isWarm(t, 0.9, 0.68, 0.43) && onShell(t, CAFE_SHELL_BOX), surface: "siding" },
   // the flower kiosk by the bus stop: the same flat swatch in a darker brown -> the same siding, stained darker
   { id: "kiosk-siding", material: "LM_wood", mesh: /^village_lm_/, box: KIOSK_BOX, test: (t) => isWarm(t, 0.62, 0.36, 0.19) && Math.abs(t.ny) < 0.3 && outward(t, KIOSK_BOX), surface: "sidingDark" },
+  // the café terrace's two round bistro tables (prop sweep 2026-11-28): the baked tops are octagons that a phone over the table shows
+  // as eight flat facets -> rebuilt as true discs of the same size (cafe/terraceTableTop.ts) in oiled walnut
+  { id: "cafe-terrace-top-s", material: "LM_wood", mesh: /^village_lm_/, box: [41.7, 0.7, -18.2, 42.9, 0.8, -17.0], test: (t) => isWarm(t, 0.391, 0.201, 0.091), surface: "terraceTop" },
+  { id: "cafe-terrace-top-n", material: "LM_wood", mesh: /^village_lm_/, box: [41.7, 0.7, -13.2, 42.9, 0.8, -12.0], test: (t) => isWarm(t, 0.391, 0.201, 0.091), surface: "terraceTop" },
   // the plaza trees' seats: saturated brown plastic -> natural oak boards
   { id: "plaza-tree-seats", material: "LM_wood", box: [-40, -0.1, -40, 40, 1.0, 40], test: (t) => !!t.color && t.color[0] > 0.42 && t.color[0] < 0.68 && t.color[1] > 0.22 && t.color[1] < 0.38 && t.color[2] < 0.26, surface: "oak" },
 ]);
@@ -119,6 +123,8 @@ export const SURFACES: Readonly<Record<string, SurfaceSpec>> = Object.freeze({
   parasol: { pbr: null, uv: { mode: "box" }, tint: [0.88, 0.88, 0.88], normalStrength: 1, roughness: 0.9, metalness: 0, doubleSided: true },
   giwa: { pbr: "roof_giwa", uv: { mode: "keep", unit: 2 }, tint: [4.6, 4.6, 4.8], normalStrength: 1.2, roughness: 1, metalness: 0, doubleSided: true },
   oak: { pbr: "wood_oak", uv: { mode: "box" }, tint: [1.05, 0.9, 0.7], normalStrength: 1, roughness: 1, metalness: 0 },
+  // the terrace tables' rebuilt round tops: the baked swatch's warm walnut, oiled (a little sheen)
+  terraceTop: { pbr: "wood_oak", uv: { mode: "box" }, tint: [0.46, 0.28, 0.16], normalStrength: 0.8, roughness: 0.8, metalness: 0, nightGlow: [0.04, 0.022, 0.011] },
   // the cafe's warm honey boards and the kiosk's darker stain (the set's mean albedo is a mid grey-brown)
   siding: { pbr: "wood_siding", uv: { mode: "box" }, tint: [1.5, 1.08, 0.72], normalStrength: 1.4, roughness: 0.95, metalness: 0, nightGlow: [0.075, 0.04, 0.017] },
   // the memorial's stone order (memorialTrimBoxes): a mid-grey flamed granite plinth, warm light ashlar pilasters and cornice

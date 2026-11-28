@@ -25,7 +25,7 @@ import { dayNight } from "../dayNightDriver";
 import { bushPlant } from "../veg/vegPlants";
 import { arc, buildFountainStone, createStoneFountainWater, profile, type FountainDesign } from "../fountain/stoneFountain";
 import { GATE_FOUNTAIN } from "../fountain/fountainDesigns";
-import { drawnTris, lotSurfaceMaterial, muteLotLampsNear, patchLotLight, type LotNodes } from "./lotsPrep";
+import { drawnTris, lotNightDesaturate, lotSurfaceMaterial, muteLotLampsNear, patchLotLight, type LotNodes } from "./lotsPrep";
 import { tintForecourt } from "./entranceGardens";
 import { buildGateBoard, isOldGateBarrier } from "./gateBoard";
 import { GATE_WINDOW_MAPS, buildGateMaps, isOldGateMap } from "./gateMap";
@@ -623,7 +623,7 @@ export function dressGateLot(nodes: LotNodes, low: boolean, mats: GateDressMater
     const leaf = nodes.root.getObjectByName(`door__lot_gate_main_${side}`);
     if (leaf) leaf.rotation.y = turn * GATE_LEAF_OPEN;
   }
-  const board = buildGateBoard(low, patchLotLight);
+  const board = buildGateBoard(low, patchLotLight, lotNightDesaturate);
   detail.add(board.group);
   nodes.own.geometries.push(...board.geometries);
   for (const m of board.materials) own(m);

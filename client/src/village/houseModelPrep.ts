@@ -1,6 +1,7 @@
 import { BufferAttribute, Color, Matrix4, RepeatWrapping, SRGBColorSpace, Vector3, type InstancedMesh, type Material, type Mesh, type MeshBasicMaterial, type Object3D, type Texture } from "three";
 import { isHouseMirrorMaterial, splitMirrorMesh } from "./houseMirror";
 import { isLampShadeMaterial, prepareShadeMesh, type HouseLamp } from "./houseLampGlow";
+import { houseWantsNormals, smoothNormalsByPosition } from "./houseLeather";
 import { COLLIDER_PREFIX, LIGHTMAP_MATERIAL_PREFIX, configureLightmap, isMesh, lightmapMaterial, materialsOf } from "../game/hub/hubModelPrep";
 import { HOUSE_FLOORS, HOUSE_NODE, houseFiles, houseFloorBounds, type HouseFloor, type HouseNumber } from "@caysonverse/shared/village/houseAreas";
 import { freeTexture } from "./villageModelPrep";
@@ -239,6 +240,7 @@ export function dressLoadedHouse(scene: Object3D, n: HouseNumber): void {
       m.color.set("#ffffff");
       return;
     }
+    if (houseWantsNormals(m.name)) smoothNormalsByPosition(o.geometry); // the leather's / glaze's sheen, the round props' light (houseLeather.ts)
     const paper = WALL_PAPER.has(m.name);
     if (!paper && cuts.length === 0) return;
     const scale = paper ? WALLPAPER_SCALE[n] : undefined;

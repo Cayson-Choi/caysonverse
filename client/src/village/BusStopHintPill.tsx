@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Pose } from "../game/types";
-import { transitNowMs, transitTripAt, useTransitState } from "../net/transitSync";
+import { transitNowMs, transitTripAt, useTransitBoarded } from "../net/transitSync";
 import { busStopHintAt, createHintGate, type BusStopHint } from "./busStopHint";
 import { isTouchDevice } from "../device";
 import { busRiderCount } from "../game/remoteStore";
@@ -14,7 +14,7 @@ import "./crosswalkHint.css";
  */
 export function BusStopHintPill({ pose }: { pose: Pose }) {
   const [hint, setHint] = useState<BusStopHint | null>(null);
-  const { boarded } = useTransitState();
+  const boarded = useTransitBoarded();
   useEffect(() => {
     // The first sample is always published, a null one too (createHintGate: boarding must clear the line).
     const changed = createHintGate();

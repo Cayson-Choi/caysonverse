@@ -19,6 +19,7 @@ import b1_geom as G
 import b1_parts as P
 import b1_room as R
 import school_room_dress as SD
+import flora as F
 from b1_geom import Mesh, S
 
 FLOOR = S("LM_school_floor")                                 # floor_wood
@@ -556,10 +557,17 @@ def reading_corner(kit, sol):
     D.lathe([(0.15, 0.0), (0.19, 0.33), (0.20, 0.35), (0.20, 0.38), (0.181, 0.38), (0.179, 0.35)], 16, POT, px, pz)
     D.lathe([(0.179, 0.35), (0, 0.35)], 16, SOIL, px, pz)
     D.member((px, 0.35, pz), (px, 1.60, pz), G.prof_round(0.018, 5), OAK_DK)
+    # the rubber plant's leaves: broad glossy blades (flora.leaf; 2026-11-28: b1_room.fiddle_leaf's folded diamonds read as big flat
+    # hexagons at a phone's distance), a coarse blade at the phone's budget
+    lod0, G.LOD = G.LOD, 0.45
     for k in range(18):
         t = k / 17
         length = 0.235 - 0.05 * t + 0.012 * math.sin(k * 1.8)
-        R.fiddle_leaf(Gd, (px, 0.57 + t * 1.02, pz), k * 2.40, length, length * 0.30, -0.07 + 0.15 * t, LEAF if k % 2 else LEAF_DK)
+        a = k * 2.40
+        out = (math.cos(a), 0.0, math.sin(a))
+        F.leaf(Gd, (px + 0.015 * out[0], 0.57 + t * 1.02, pz + 0.015 * out[2]), out, length, length * 0.45, LEAF if k % 2 else LEAF_DK,
+               rise=0.3 + 0.5 * t, fall=0.8, fold=0.2, c0=G.hexc("2C5A22"), c1=G.hexc("5E9A44") if k % 2 else G.hexc("4A7F36"), seed=k)
+    G.LOD = lod0
 
 
 def curtains(kit):

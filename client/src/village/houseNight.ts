@@ -1,5 +1,6 @@
 import type { Material, Texture } from "three";
 import { FLAME_GLSL, houseEmberY, houseFireLight, houseFireTime, houseHearthMax, houseHearthMin } from "./houseFire";
+import { LEATHER_FRAG_PARS, LEATHER_VERT, LEATHER_VERT_PARS, houseRoundLitOf, houseSheenOf, roundLitFrag, sheenFrag } from "./houseLeather";
 
 /**
  * A house at night (집 실내 G): the baked light of a house changes with the village's clock, like the memorial hall's (hallNight.ts).
@@ -58,16 +59,31 @@ export function patchHouseLightmapMaterial(material: Material): void {
   if (patched.has(material)) return;
   patched.add(material);
   const drape = material.name === "LM_drape" || material.name === "E_H_drape";
+  // polish 3: leather takes a view-dependent sheen on top of its baked light (houseLeather.ts; its geometry carries smooth normals)
+  // polish 4: glazed ceramics too (a sharper, brighter lobe)
+  const sheen = houseSheenOf(material.name);
+  // polish 4: round small things (glaze, atlas props) read the light map blurred and shaped by their normal (houseLeather.ts ROUND_LIT)
+  const round = houseRoundLitOf(material.name);
+  const leather = sheen !== null || round !== null; // (needs the normal varying)
+  const texelTo = round
+    ? TEXEL_TO.replace("texture2D( lightMap, vLightMapUv )", `texture2D( lightMap, vLightMapUv, ${round.bias.toFixed(1)} )`).replace(
+        "texture2D( uHouseNightMap, vLightMapUv )",
+        `texture2D( uHouseNightMap, vLightMapUv, ${round.bias.toFixed(1)} )`,
+      ) + roundLitFrag(round)
+    : TEXEL_TO;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uHouseNight = houseNightUniform;
     shader.uniforms.uHouseNightMap = houseNightMapUniform;
     shader.uniforms.uHouseFire = houseFireLight;
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vHouseFireW;")
-      .replace("#include <project_vertex>", FIRE_WORLD);
-    shader.fragmentShader = shader.fragmentShader.replace("void main() {", PARS).replace(TEXEL_FROM, (drape ? DRAPE_TEXEL_TO : TEXEL_TO) + FIRE_LIGHT);
+      .replace("#include <common>", "#include <common>\nvarying vec3 vHouseFireW;" + (leather ? "\n" + LEATHER_VERT_PARS : ""))
+      .replace("#include <project_vertex>", FIRE_WORLD + (leather ? LEATHER_VERT : ""));
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", (leather ? LEATHER_FRAG_PARS + "\n" : "") + PARS)
+      .replace(TEXEL_FROM, (drape ? DRAPE_TEXEL_TO : texelTo) + FIRE_LIGHT);
+    if (sheen) shader.fragmentShader = shader.fragmentShader.replace("#include <opaque_fragment>", sheenFrag(sheen.sheen));
   };
-  material.customProgramCacheKey = () => (drape ? "house-lightmap-night-drape" : "house-lightmap-night");
+  material.customProgramCacheKey = () => (drape ? "house-lightmap-night-drape" : sheen ? `house-lightmap-night-${sheen.kind}` : round ? "house-lightmap-night-round" : "house-lightmap-night");
   material.needsUpdate = true;
 }
 
