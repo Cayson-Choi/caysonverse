@@ -215,16 +215,25 @@ describe("dawn and dusk: the blend, the golden hour and the key light", () => {
       (s) => s.dayTint[0],
       (s) => s.stars,
     ];
+    // every step is checked; only a jump is turned into a message (one expect per step was 155k of them: seconds on a loaded box)
+    const jumps: string[] = [];
+    let steps = 0;
     for (const date of ["2026-06-21", "2026-12-21"]) {
       const start = kst(`${date}T00:00:00`);
       let prev = dayNightAt(start);
       for (let t = start + TARGET_SECONDS * 1000; t < start + 86_400_000; t += TARGET_SECONDS * 1000) {
         const s = dayNightAt(t);
-        fields.forEach((f, i) => expect(Math.abs(f(s) - f(prev)), `${date} field ${i} at ${new Date(t).toISOString()}`).toBeLessThan(0.02));
+        fields.forEach((f, i) => {
+          const d = Math.abs(f(s) - f(prev));
+          if (!(d < 0.02)) jumps.push(`${date} field ${i} at ${new Date(t).toISOString()}: ${d}`);
+        });
+        steps++;
         prev = s;
       }
     }
-  });
+    expect(steps).toBe(2 * (86_400 / TARGET_SECONDS - 1));
+    expect(jumps).toEqual([]);
+  }, 30_000);
 });
 
 describe("the memorial hall: always the warm indoor light", () => {

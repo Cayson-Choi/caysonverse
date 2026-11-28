@@ -48,12 +48,22 @@ describe("viewState — reset", () => {
     viewState.ovCenterZ = 4;
     viewState.ovHeight = 60;
     viewState.orbitGoal = { yaw: 1, pitch: 0.4 };
+    viewState.ovFocus = { x: 12, z: -30 }; // a pending "지도에서 보기" (01e763a9) must not survive into a fresh scene
+    viewState.ovPick = "memorial";
+    // The star finder's fields are not reset's: StarFinder's effect owns skyLook (true while it is open, false in its cleanup;
+    // a child's effect runs before PlayShell's reset, so clearing it here would undo an open finder), and CameraRig eases
+    // skyZoom back to 1 and rewrites skyFovBase every frame (5bcb4737).
+    viewState.skyLook = true;
+    viewState.skyZoom = 0.5;
+    viewState.skyZoomGoal = 0.4;
+    viewState.skyFovBase = 60;
     useViewStore.getState().setFp(true);
     useViewStore.getState().setOv(true);
 
     resetViewMode();
 
-    expect(viewState).toEqual({
+    const { skyLook, skyZoom, skyZoomGoal, skyFovBase, ...view } = viewState;
+    expect(view).toEqual({
       mode: "tp",
       blend: 0,
       fpYaw: 0,
@@ -63,8 +73,15 @@ describe("viewState — reset", () => {
       ovCenterX: 0,
       ovCenterZ: 0,
       ovHeight: 0,
+      ovFocus: null,
+      ovPick: null,
       orbitGoal: null,
     });
+    expect({ skyLook, skyZoom, skyZoomGoal, skyFovBase }).toEqual({ skyLook: true, skyZoom: 0.5, skyZoomGoal: 0.4, skyFovBase: 60 });
+    viewState.skyLook = false; // leave the shared object as a fresh page has it
+    viewState.skyZoom = 1;
+    viewState.skyZoomGoal = 1;
+    viewState.skyFovBase = 55;
     expect(useViewStore.getState().isFp).toBe(false);
     expect(useViewStore.getState().isOv).toBe(false);
   });

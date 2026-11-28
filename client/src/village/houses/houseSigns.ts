@@ -7,6 +7,8 @@
  */
 import {
   BoxGeometry,
+  Float32BufferAttribute,
+  Object3D,
   PlaneGeometry,
   BufferGeometry,
   CanvasTexture,
@@ -22,7 +24,8 @@ import { houseSlots, type HouseSlot } from "@caysonverse/shared/village/houseExt
 import type { HouseExteriorState } from "@caysonverse/shared/village/houseOwnership";
 import type { SceneryHouse } from "@caysonverse/shared/village/villageLayout";
 import { patchHouseLight } from "./housesPrep";
-import { crispTextTexture, sharpenTextMaterial } from "../../game/sceneText";
+import { crispTextTexture, inkMaskMaterial, sharpenTextMaterial } from "../../game/sceneText";
+import type { InkLabel } from "../../game/inkLabels";
 
 /** A board to draw: where (the slot), how big (m), what it says. */
 export interface HouseBoard {
@@ -88,22 +91,26 @@ function pack(boards: readonly HouseBoard[], width: number): { cells: Cell[]; ed
   return { cells, edge, height };
 }
 
+/** The nameplate's lettering ("N번 집"): a deep charcoal cut-vinyl on X2's cream acrylic face (porch_kit.py nameplate), in a `w` x `h` cell. */
+export function paintPlateLettering(ctx: CanvasRenderingContext2D, w: number, h: number, lines: readonly string[], tone: (css: string) => string = (c) => c): void {
+  ctx.fillStyle = tone("#26292c");
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const n = lines.length;
+  lines.forEach((line, i) => {
+    const size = Math.round(h * (n === 1 ? 0.6 : i === 0 ? 0.46 : 0.3));
+    ctx.font = `700 ${size}px ${FONT}`;
+    ctx.fillText(line, w / 2, n === 1 ? h * 0.54 : i === 0 ? h * 0.36 : h * 0.76, w * 0.92);
+  });
+}
+
 function drawBoard(ctx: CanvasRenderingContext2D, b: HouseBoard, c: Cell): void {
   const sign = b.kind === "sign";
   ctx.save();
   ctx.translate(c.x, c.y);
   if (b.kind === "nameplate") {
-    // the lettering only, on X2's cream acrylic face (porch_kit.py nameplate): a deep charcoal cut-vinyl "N번 집"
     ctx.clearRect(0, 0, c.w, c.h);
-    ctx.fillStyle = "#26292c";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const n = b.lines.length;
-    b.lines.forEach((line, i) => {
-      const size = Math.round(c.h * (n === 1 ? 0.6 : i === 0 ? 0.46 : 0.3));
-      ctx.font = `700 ${size}px ${FONT}`;
-      ctx.fillText(line, c.w / 2, n === 1 ? c.h * 0.54 : i === 0 ? c.h * 0.36 : c.h * 0.76, c.w * 0.92);
-    });
+    paintPlateLettering(ctx, c.w, c.h, b.lines);
     ctx.restore();
     return;
   }
@@ -133,6 +140,12 @@ function drawBoard(ctx: CanvasRenderingContext2D, b: HouseBoard, c: Cell): void 
   ctx.restore();
 }
 
+/** Give a geometry the aInk attribute (-1: not lettering) when it has none (merged geometries need the same attributes). */
+function withInk(g: BufferGeometry): BufferGeometry {
+  if (!g.getAttribute("aInk")) g.setAttribute("aInk", new Float32BufferAttribute(new Float32Array(g.getAttribute("position").count).fill(-1), 1));
+  return g;
+}
+
 /** UV of a cell (atlas height H, flipY true: v up). */
 function cellUv(c: Cell, W: number, H: number): [number, number, number, number] {
   return [c.x / W, 1 - (c.y + c.h) / H, (c.x + c.w) / W, 1 - c.y / H];
@@ -142,13 +155,21 @@ function cellUv(c: Cell, W: number, H: number): [number, number, number, number]
 /** The nameplate's lettering: inside X2's acrylic face (0.42 x 0.16, clear of its corner rosettes), 0.5 mm in front of it. */
 const PLATE_TEXT = { width: 0.4, height: 0.14, out: -0.0035 } as const;
 
-function boardGeometry(b: HouseBoard, front: [number, number, number, number], edge: [number, number, number, number]): BufferGeometry {
+/** Where a nameplate's lettering lies (world): the slot's pose, PLATE_TEXT.out in front of its origin. */
+export function plateLetteringMatrix(b: HouseBoard): Matrix4 {
+  return new Matrix4()
+    .compose(new Vector3(b.slot.x, b.slot.y, b.slot.z), new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), b.slot.yaw), new Vector3(1, 1, 1))
+    .multiply(new Matrix4().makeTranslation(0, 0, PLATE_TEXT.out));
+}
+
+/** `ink`: the nameplate's index among the lettering the overlay may draw (its vertices' aInk), -1 for none. */
+function boardGeometry(b: HouseBoard, front: [number, number, number, number], edge: [number, number, number, number], ink = -1): BufferGeometry {
   if (b.kind === "nameplate") {
     const q = new PlaneGeometry(PLATE_TEXT.width, PLATE_TEXT.height);
     const quv = q.getAttribute("uv");
     for (let i = 0; i < quv.count; i++) quv.setXY(i, front[0] + (front[2] - front[0]) * quv.getX(i), front[1] + (front[3] - front[1]) * quv.getY(i));
-    q.translate(0, 0, PLATE_TEXT.out);
-    q.applyMatrix4(new Matrix4().compose(new Vector3(b.slot.x, b.slot.y, b.slot.z), new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), b.slot.yaw), new Vector3(1, 1, 1)));
+    q.applyMatrix4(plateLetteringMatrix(b));
+    q.setAttribute("aInk", new Float32BufferAttribute(new Float32Array(q.getAttribute("position").count).fill(ink), 1));
     return q;
   }
   const g = new BoxGeometry(b.slot.width, b.slot.height, b.depth);
@@ -172,6 +193,7 @@ function boardGeometry(b: HouseBoard, front: [number, number, number, number], e
     for (let i = 0; i < su.count; i++) su.setXY(i, edge[0] + (edge[2] - edge[0]) * su.getX(i), edge[1] + (edge[3] - edge[1]) * su.getY(i));
     parts.push(stake);
   }
+  for (const p of parts) withInk(p);
   const out = parts.length > 1 ? mergeGeometries(parts, false)! : g;
   const m = new Matrix4().compose(new Vector3(b.slot.x, b.slot.y, b.slot.z), new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), b.slot.yaw), new Vector3(1, 1, 1));
   out.applyMatrix4(m);
@@ -180,12 +202,14 @@ function boardGeometry(b: HouseBoard, front: [number, number, number, number], e
 
 export interface HouseSignsMesh {
   mesh: Mesh | null;
+  /** The nameplates' lettering for the label overlay (inkLabels.ts): anchors under `mesh`, the painter, the 3D copy's switch. */
+  plates: InkLabel[];
   dispose(): void;
 }
 
 /** The boards as one mesh (null when there is none), with its atlas. */
 export function buildHouseSigns(boards: readonly HouseBoard[], anisotropy = 4): HouseSignsMesh {
-  if (boards.length === 0 || typeof document === "undefined") return { mesh: null, dispose() {} };
+  if (boards.length === 0 || typeof document === "undefined") return { mesh: null, plates: [], dispose() {} };
   const W = 1024;
   const { cells, edge, height } = pack(boards, W);
   const canvas = document.createElement("canvas");
@@ -202,8 +226,10 @@ export function buildHouseSigns(boards: readonly HouseBoard[], anisotropy = 4): 
   tex.colorSpace = SRGBColorSpace;
   tex.anisotropy = anisotropy;
   const edgeUv = cellUv({ x: edge.x + 4, y: edge.y + 4, w: 8, h: 8 }, W, height);
+  const plateIndex = new Map<HouseBoard, number>();
+  for (const b of boards) if (b.kind === "nameplate") plateIndex.set(b, plateIndex.size);
   const geo = mergeGeometries(
-    boards.map((b, i) => boardGeometry(b, cellUv(cells[i]!, W, height), edgeUv)),
+    boards.map((b, i) => boardGeometry(b, cellUv(cells[i]!, W, height), edgeUv, plateIndex.get(b) ?? -1)),
     false,
   )!;
   geo.computeBoundingSphere();
@@ -211,12 +237,41 @@ export function buildHouseSigns(boards: readonly HouseBoard[], anisotropy = 4): 
   const mat = new MeshStandardMaterial({ name: "M_house_boards", map: tex, roughness: 0.5, metalness: 0.05, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   patchHouseLight(mat, "boards");
   sharpenTextMaterial(mat);
+  const hidden = inkMaskMaterial(mat, plateIndex.size);
   const mesh = new Mesh(geo, mat);
   mesh.name = "house_boards";
   mesh.castShadow = false;
   mesh.matrixAutoUpdate = false;
+  // each nameplate's lettering on the overlay where the scene is drawn at fewer pixels than the screen has (inkLabels.ts)
+  const plates: InkLabel[] = [];
+  for (const [b, i] of plateIndex) {
+    const anchor = new Object3D();
+    anchor.name = `house_plate_ink__${b.house}`;
+    anchor.matrixAutoUpdate = false;
+    anchor.matrix.copy(plateLetteringMatrix(b));
+    mesh.add(anchor);
+    // the lettering's cell is the slot's (0.42 x 0.16), laid on the 0.40 x 0.14 quad: the same stretch here
+    const cellW = Math.round(b.slot.width * PX_PER_M);
+    const cellH = Math.round(b.slot.height * PX_PER_M);
+    plates.push({
+      object: anchor,
+      w: PLATE_TEXT.width,
+      h: PLATE_TEXT.height,
+      paint(g, w, h, tone) {
+        const cw = h * (cellW / cellH);
+        g.save();
+        g.scale(w / cw, 1);
+        paintPlateLettering(g, cw, h, b.lines, tone);
+        g.restore();
+      },
+      setInk(on) {
+        hidden[i] = on ? 0 : 1;
+      },
+    });
+  }
   return {
     mesh,
+    plates,
     dispose() {
       geo.dispose();
       mat.dispose();

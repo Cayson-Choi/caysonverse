@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import config from "@colyseus/tools";
 import { defineRoom, type Client } from "colyseus";
@@ -16,6 +16,10 @@ import type { MapGeometry } from "@caysonverse/shared/school/geometry";
 import { PlayerRoom, baseTracking, type Tracking } from "./PlayerRoom";
 import { CHAT_NOT_NICE, type ProfanityResult } from "./profanity";
 import { rooms, type VillageRoom } from "./index";
+
+// A real server and real sockets/HTTP: each step takes well under a second alone, but a loaded machine (the whole suite in parallel,
+// other worktrees) has pushed a boot past the 10 s hook default and a round trip past the 5 s test default. A hang still fails.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 /**
  * The shared PlayerRoom base (escape phase 1, Task 2). Its own port: every integration test

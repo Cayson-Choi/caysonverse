@@ -26,6 +26,7 @@ import {
   type OldHouseCut,
 } from "./housesPrep";
 import { buildHouseSigns, houseBoards } from "./houseSigns";
+import { addInkLabel } from "../../game/inkLabels";
 import { getLocalPose, setPorchesDrawn } from "./houseLift";
 import { createVegetation, type VillageVegetation } from "../veg/villageVegetation";
 import { vegModeFrom } from "../veg/vegMode";
@@ -160,7 +161,10 @@ export function VillageHouses({ villageRoot, tier }: { villageRoot: Object3D; ti
   }, [gl]);
   useEffect(() => {
     if (signs.mesh) nodes.root.add(signs.mesh);
+    // the number plates' lettering crisp on the label overlay (inkLabels.ts)
+    const off = signs.plates.map((l) => addInkLabel(l));
     return () => {
+      for (const o of off) o();
       if (signs.mesh) nodes.root.remove(signs.mesh);
       signs.dispose();
     };

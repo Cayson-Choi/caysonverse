@@ -24,6 +24,7 @@ import { buildCubbyPropMeshes, layoutCubbyProps, makePhotoMaterial, placementMat
 import { burningCandles, candleClock, pruneCandles, showInstances } from "./hallCandles";
 import { FLAME_BASE_LIFT, FLAME_CARD, WICK, makeCandleLook, makeWicks } from "./hallCandleLook";
 import { dressHall, patchSignsAtlas } from "./hallDressing";
+import { addInkLabel } from "../game/inkLabels";
 import { MEMORIAL_LIGHTMAP_URLS, MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, disposeMemorial, prepareMemorial } from "./memorialModelPrep";
 import { clearMemorialCaches, holdMemorialFiles, noteMemorialRequested, setMemorialTier } from "./memorialRelease";
 import { disposeHallNight, hallNightReady, hallNightUniform, hallNightWeight, loadHallNight, skylightColour } from "./hallNight";
@@ -215,6 +216,13 @@ function MemorialHall() {
   const dressing = useMemo(() => dressHall(nodes.root, tier), [nodes, tier]);
   useEffect(() => () => dressing.dispose(), [dressing]);
   useEffect(() => dressing.startPainting(), [dressing]);
+  // the zone signs' and the museum label's letters crisp on the label overlay (inkLabels.ts)
+  useEffect(() => {
+    const off = dressing.inks.map((l) => addInkLabel(l));
+    return () => {
+      for (const o of off) o();
+    };
+  }, [dressing]);
   // The props' glass (2026-11-17): the candle's votive holder and the frame's glass are clear — a faint white film, so the ivory wax
   // and the photo read true through them (the file's tinted glass made the wax grey-blue).
   useMemo(() => {

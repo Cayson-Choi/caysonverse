@@ -14,6 +14,7 @@ import { VILLAGE_SEATS, isLotSeat } from "@caysonverse/shared/village/benchSeats
 import { HOUSES_BLOCK, allHouseWalls } from "@caysonverse/shared/village/housesGeometry";
 import { VILLAGE_LAYOUT, villageBounds, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { spreadArrival } from "@caysonverse/shared/village/arrivalSpot";
+import { VILLAGE_WALL_SOLIDS } from "@caysonverse/shared/village/parkWall";
 import {
   LOTS_WITH_MODEL,
   LOT_INTERIORS,
@@ -61,13 +62,15 @@ describe("lots v2 outside (L5v2)", () => {
     }
   });
 
-  it("the shared geometry has every lot box and every room's furniture (the rooms' last)", () => {
+  // The rooms' furniture closes the village's own list; since 2026-11-20 (ccbd5d81) 케이슨랜드's castle wall (withParkWall) is
+  // appended after it, so the rooms sit right before the wall's solids (parkWall.test.ts checks the wall is the very last).
+  it("the shared geometry has every lot box and every room's furniture (the rooms' last before the park wall)", () => {
     const lots = lotGeometryColliders();
     for (const b of lots.obstacles) expect(villageGeometry.obstacles).toContainEqual(b);
     for (const b of lots.cameraBoxes) expect(villageGeometry.cameraBoxes).toContainEqual(b);
     const rooms = lotRoomColliders();
-    const n = villageGeometry.obstacles.length;
-    expect(villageGeometry.obstacles.slice(n - rooms.obstacles.length)).toEqual(rooms.obstacles);
+    const end = villageGeometry.obstacles.length - VILLAGE_WALL_SOLIDS.obstacles.length;
+    expect(villageGeometry.obstacles.slice(end - rooms.obstacles.length, end)).toEqual(rooms.obstacles);
     for (const b of rooms.cameraBoxes) expect(villageGeometry.cameraBoxes).toContainEqual(b);
   });
 

@@ -1,4 +1,5 @@
 import { TEXT_ANISOTROPY, sharpenTextMaterial } from "../../game/sceneText";
+import { addInkLabel, type InkTone } from "../../game/inkLabels";
 import {
   BoxGeometry,
   BufferGeometry,
@@ -11,6 +12,7 @@ import {
   LinearFilter,
   LinearMipmapLinearFilter,
   Mesh,
+  Object3D,
   MeshStandardMaterial,
   PlaneGeometry,
   SRGBColorSpace,
@@ -71,19 +73,18 @@ function star(g: CanvasRenderingContext2D, x: number, y: number, r: number): voi
  * Draw the panel. `height` false: the colours (navy enamel, a gilt rule round it, gilt and cream lettering); true: the relief (white = proud:
  * the rule, the letters, the stars), a little soft at the edges so the bump reads as a rounded emboss.
  */
-export function drawGateBoardCanvas(height: boolean): HTMLCanvasElement {
-  const w = Math.round(GATE_BOARD.width * PX_PER_M);
-  const h = Math.round(GATE_BOARD.height * PX_PER_M);
+export function drawGateBoardCanvas(height: boolean, letters = true, scale = 1): HTMLCanvasElement {
+  const w = Math.round(GATE_BOARD.width * PX_PER_M * scale);
+  const h = Math.round(GATE_BOARD.height * PX_PER_M * scale);
   const c = document.createElement("canvas");
   c.width = w;
   c.height = h;
   const g = c.getContext("2d")!;
   const GILT = height ? "#fff" : "#f0c460";
-  const CREAM = height ? "#d8d8d8" : "#f6efe2";
   if (height) {
     g.fillStyle = "#000";
     g.fillRect(0, 0, w, h);
-    g.filter = "blur(1.6px)";
+    g.filter = `blur(${1.6 * scale}px)`;
   } else {
     const grd = g.createLinearGradient(0, 0, 0, h);
     grd.addColorStop(0, "#27358f");
@@ -96,8 +97,20 @@ export function drawGateBoardCanvas(height: boolean): HTMLCanvasElement {
   g.strokeStyle = GILT;
   g.lineWidth = Math.round(h * 0.022);
   g.strokeRect(m, m, w - 2 * m, h - 2 * m);
-  g.lineWidth = Math.max(2, Math.round(h * 0.006));
+  g.lineWidth = Math.max(2 * scale, Math.round(h * 0.006));
   g.strokeRect(m * 1.6, m * 1.6, w - 3.2 * m, h - 3.2 * m);
+  if (letters) paintGateLettering(g, w, h, height);
+  return c;
+}
+
+/**
+ * The panel's lettering on a `w` x `h` canvas: the lines, the gilt line's dark under-edge and its two stars. `height`: the relief's
+ * white (the bump map); else the colours, through `tone` (the label overlay draws them crisp: inkLabels.ts).
+ */
+export function paintGateLettering(g: CanvasRenderingContext2D, w: number, h: number, height: boolean, tone: InkTone = (c) => c): void {
+  const GILT = tone(height ? "#fff" : "#f0c460");
+  const CREAM = tone(height ? "#d8d8d8" : "#f6efe2");
+  const m = Math.round(h * 0.06);
   g.textAlign = "center";
   g.textBaseline = "middle";
   const top = m * 2.3;
@@ -118,7 +131,7 @@ export function drawGateBoardCanvas(height: boolean): HTMLCanvasElement {
     const tw = g.measureText(line.text).width;
     if (!height && line.gilt) {
       // a dark edge under the gilt letters: the enamel's shadow side
-      g.fillStyle = "rgba(6, 10, 40, 0.55)";
+      g.fillStyle = tone("rgba(6, 10, 40, 0.55)");
       g.fillText(line.text, w / 2 + px * 0.035, y + lh / 2 + px * 0.045);
     }
     g.fillStyle = line.gilt ? GILT : CREAM;
@@ -129,7 +142,6 @@ export function drawGateBoardCanvas(height: boolean): HTMLCanvasElement {
     }
     y += lh;
   }
-  return c;
 }
 
 /** The board's turned post as lathe profiles (radius, height): a foot and a shaft (enamel), two collars and a ball finial (gilt). */
@@ -251,9 +263,42 @@ export function buildGateBoard(low: boolean, patch: (m: MeshStandardMaterial, ke
   const face = new MeshStandardMaterial({ name: "LM_gate_board_face", map: colour, bumpMap: bump, bumpScale: 2.4, roughness: 0.3, metalness: 0 });
   patch(face, "gate_board_face");
   sharpenTextMaterial(face); // the lettering half a mip sharper (sceneText.ts)
+  // the lettering crisp on the label overlay where the scene is drawn at fewer pixels than the screen has (inkLabels.ts): the panel
+  // shows its enamel and rules only meanwhile (both maps without letters, made on first use at half the pixels)
+  let blank: { colour: CanvasTexture; bump: CanvasTexture } | null = null;
+  const anchor = new Object3D();
+  anchor.name = "gate_board_ink";
+  anchor.position.set(0, y0 + h / 2, 0.0045);
+  const offInk = addInkLabel({
+    object: anchor,
+    w,
+    h,
+    paint: (g, pw, ph, tone) => paintGateLettering(g, pw, ph, false, tone),
+    // the enamel just under the last line, over the inner rule (its albedo: the gradient there)
+    probe: { x: 0, y: -h / 2 + 0.101, albedo: "#1a2465" },
+    setInk(on) {
+      if (!on && !blank) {
+        const bc = new CanvasTexture(drawGateBoardCanvas(false, false, 0.5));
+        bc.colorSpace = SRGBColorSpace;
+        const bb = new CanvasTexture(drawGateBoardCanvas(true, false, 0.5));
+        for (const t of [bc, bb]) {
+          t.generateMipmaps = true;
+          t.minFilter = LinearMipmapLinearFilter;
+          t.magFilter = LinearFilter;
+          t.anisotropy = TEXT_ANISOTROPY;
+        }
+        blank = { colour: bc, bump: bb };
+      }
+      face.map = on || !blank ? colour : blank.colour;
+      face.bumpMap = on || !blank ? bump : blank.bump;
+    },
+  });
   face.addEventListener("dispose", () => {
+    offInk();
     colour.dispose();
     bump.dispose();
+    blank?.colour.dispose();
+    blank?.bump.dispose();
   });
   const panelGeo = new PlaneGeometry(w, h).translate(0, y0 + h / 2, 0.0045);
 
@@ -267,6 +312,6 @@ export function buildGateBoard(low: boolean, patch: (m: MeshStandardMaterial, ke
   const panel = new Mesh(panelGeo, face);
   panel.name = "gate_board_panel";
   for (const m of [frame, panel]) m.raycast = () => {};
-  group.add(frame, panel);
+  group.add(frame, panel, anchor);
   return { group, geometries: [solid, panelGeo], materials: [paint, face], textures: [colour, bump], triangles: solid.getAttribute("position").count / 3 + 2 };
 }
