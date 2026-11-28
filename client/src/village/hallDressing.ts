@@ -18,12 +18,13 @@ import {
   Vector3,
   Box3,
   type Material,
-  type Object3D,
+  Object3D,
   type Texture,
 } from "three";
 import { VILLAGE_LAYOUT, zoneLetter, type CubbyWall } from "@caysonverse/shared/village/villageLayout";
 import { versionedUrl } from "./modelUrl";
 import { crispTextTexture, sharpenTextMaterial } from "../game/sceneText";
+import type { InkLabel, InkTone } from "../game/inkLabels";
 
 /**
  * Runtime dressing of the memorial hall (owner 2026-11-20), on top of memorial.glb without re-baking it:
@@ -116,18 +117,26 @@ function rng(seed: number): () => number {
   };
 }
 
+const asIs: InkTone = (c) => c;
+
 /** Gold leaf, vertical (light at the top, deeper below): engraved letters and the brass border. */
-function goldGradient(g: CanvasRenderingContext2D, y0: number, y1: number): CanvasGradient {
+function goldGradient(g: CanvasRenderingContext2D, y0: number, y1: number, tone: InkTone = asIs): CanvasGradient {
   const gr = g.createLinearGradient(0, y0, 0, y1);
-  gr.addColorStop(0, "#fbe9b4");
-  gr.addColorStop(0.45, "#e2b961");
-  gr.addColorStop(0.55, "#c99a45");
-  gr.addColorStop(1, "#f0d38c");
+  gr.addColorStop(0, tone("#fbe9b4"));
+  gr.addColorStop(0.45, tone("#e2b961"));
+  gr.addColorStop(0.55, tone("#c99a45"));
+  gr.addColorStop(1, tone("#f0d38c"));
   return gr;
 }
 
 /** The sign's face: dark walnut, a brass border, gilded engraved letters. */
 export function paintZoneSign(g: CanvasRenderingContext2D, w: number, h: number, label: string): void {
+  paintZoneBoard(g, w, h, label);
+  paintZoneInk(g, w, h, label);
+}
+
+/** The face without its letters: the walnut and the brass border (the 3D face while the overlay draws the letters). */
+export function paintZoneBoard(g: CanvasRenderingContext2D, w: number, h: number, label: string): void {
   const wood = g.createLinearGradient(0, 0, 0, h);
   wood.addColorStop(0, "#4a3020");
   wood.addColorStop(0.5, "#3a2418");
@@ -155,18 +164,21 @@ export function paintZoneSign(g: CanvasRenderingContext2D, w: number, h: number,
   g.strokeStyle = "rgba(0,0,0,0.45)";
   roundRect(g, m + h * 0.03, m + h * 0.03, w - 2 * m - h * 0.06, h - 2 * m - h * 0.06, h * 0.035);
   g.stroke();
-  // the letters: an engraved cut (dark below-right, light above-left) filled with gold leaf
+}
+
+/** The letters alone: an engraved cut (dark below-right, light above-left) filled with gold leaf; colours through `tone`. */
+export function paintZoneInk(g: CanvasRenderingContext2D, w: number, h: number, label: string, tone: InkTone = asIs): void {
   const size = Math.round(h * 0.6);
   g.font = `700 ${size}px ${FONT}`;
   g.textAlign = "center";
   g.textBaseline = "middle";
   const cx = w / 2;
   const cy = h / 2 + h * 0.02;
-  g.fillStyle = "rgba(0,0,0,0.6)";
+  g.fillStyle = tone("rgba(0,0,0,0.6)");
   g.fillText(label, cx + h * 0.008, cy + h * 0.012);
-  g.fillStyle = "rgba(255,236,190,0.35)";
+  g.fillStyle = tone("rgba(255,236,190,0.35)");
   g.fillText(label, cx - h * 0.005, cy - h * 0.007);
-  g.fillStyle = goldGradient(g, cy - size / 2, cy + size / 2);
+  g.fillStyle = goldGradient(g, cy - size / 2, cy + size / 2, tone);
   g.fillText(label, cx, cy);
 }
 
@@ -343,27 +355,37 @@ export function takePaintingSlots(root: Object3D): PaintingSlot[] {
  * smear on a phone, fix/pine-text), drawn at 768 x 300 with heavier weights, mipmapped and sampled half a mip sharper.
  */
 export const MUSEUM_LABEL = { w: 0.26, h: 0.101 } as const;
-function labelTexture(): CanvasTexture {
-  const W = 768;
-  const H = 300;
+const LABEL_PX = { w: 768, h: 300 } as const;
+/** The museum label's card (no lettering): 768 x 300 px. */
+function paintLabelBoard(g: CanvasRenderingContext2D): void {
+  const { w: W, h: H } = LABEL_PX;
   const k = W / 1024;
-  const [c, g] = canvas(W, H);
+  g.fillStyle = "#f6f1e7";
+  g.fillRect(0, 0, W, H);
+  g.strokeStyle = "rgba(60,40,20,0.25)";
+  g.lineWidth = 6 * k;
+  g.strokeRect(3 * k, 3 * k, W - 6 * k, H - 6 * k);
+}
+/** The museum label's lettering, in the card's 768 x 300 px (scale the context for another size). */
+function paintLabelInk(g: CanvasRenderingContext2D, tone: InkTone = asIs): void {
+  const W = LABEL_PX.w;
+  const k = W / 1024;
+  g.textAlign = "left";
+  g.textBaseline = "alphabetic";
+  g.fillStyle = tone("#241b14");
+  g.font = `800 ${Math.round(98 * k)}px ${FONT}`;
+  g.fillText(LOUNGE_PAINTING.artist, 56 * k, 142 * k, W - 112 * k);
+  g.font = `600 ${Math.round(74 * k)}px ${FONT}`;
+  g.fillText(`${LOUNGE_PAINTING.title}, ${LOUNGE_PAINTING.year}`, 56 * k, 248 * k, W - 112 * k);
+  g.fillStyle = tone("#4f4236");
+  g.font = `500 ${Math.round(52 * k)}px ${FONT}`;
+  g.fillText("Vincent van Gogh · Wheat Field with Cypresses", 56 * k, 336 * k, W - 112 * k);
+}
+function labelTexture(board = false): CanvasTexture {
+  const [c, g] = canvas(LABEL_PX.w, LABEL_PX.h);
   const paint = () => {
-    g.fillStyle = "#f6f1e7";
-    g.fillRect(0, 0, W, H);
-    g.strokeStyle = "rgba(60,40,20,0.25)";
-    g.lineWidth = 6 * k;
-    g.strokeRect(3 * k, 3 * k, W - 6 * k, H - 6 * k);
-    g.textAlign = "left";
-    g.textBaseline = "alphabetic";
-    g.fillStyle = "#241b14";
-    g.font = `800 ${Math.round(98 * k)}px ${FONT}`;
-    g.fillText(LOUNGE_PAINTING.artist, 56 * k, 142 * k, W - 112 * k);
-    g.font = `600 ${Math.round(74 * k)}px ${FONT}`;
-    g.fillText(`${LOUNGE_PAINTING.title}, ${LOUNGE_PAINTING.year}`, 56 * k, 248 * k, W - 112 * k);
-    g.fillStyle = "#4f4236";
-    g.font = `500 ${Math.round(52 * k)}px ${FONT}`;
-    g.fillText("Vincent van Gogh · Wheat Field with Cypresses", 56 * k, 336 * k, W - 112 * k);
+    paintLabelBoard(g);
+    if (!board) paintLabelInk(g);
   };
   paint();
   const t = canvasTexture(c);
@@ -378,6 +400,8 @@ function labelTexture(): CanvasTexture {
 export interface HallDressing {
   group: Group;
   zones: ZoneSign[];
+  /** The zone signs' and the museum label's lettering for the label overlay (inkLabels.ts); register while the hall is shown. */
+  inks: InkLabel[];
   /** The painting's placement (for checks), or null when the model has no painting. */
   painting: { x: number; y: number; z: number; width: number; height: number; url: string } | null;
   /** Dim with the hall's night weight (0 day .. 1 night). */
@@ -393,6 +417,7 @@ export function dressHall(root: Object3D, tier: "high" | "low"): HallDressing {
   group.name = "hall_dressing";
   const own: Array<{ dispose(): void }> = [];
   const lit: Array<{ m: MeshBasicMaterial; day: number; night: number }> = [];
+  const inks: InkLabel[] = [];
   let night = 0;
   /** A material's colour for the hall's light now (the painting keeps its placeholder colour until its image is in). */
   const tone = (e: { m: MeshBasicMaterial; day: number; night: number }) => {
@@ -431,6 +456,29 @@ export function dressHall(root: Object3D, tier: "high" | "low"): HallDressing {
     plate.rotation.y = z.yaw;
     plate.userData.label = z.label;
     group.add(plate);
+    // the letters crisp on the label overlay (inkLabels.ts): the face shows its walnut and brass only meanwhile (made on first use,
+    // at half the face's pixels: no lettering to keep sharp)
+    const anchor = new Object3D();
+    anchor.name = `zone_sign_ink_${zoneLetter(z.bank)}`;
+    anchor.position.z = ZONE_SIGN.d / 2;
+    plate.add(anchor);
+    let boardTex: CanvasTexture | null = null;
+    inks.push({
+      object: anchor,
+      w: ZONE_SIGN.w,
+      h: ZONE_SIGN.h,
+      paint: (g2, w, h, t) => paintZoneInk(g2, w, h, z.label, t),
+      light: () => face.color.r,
+      setInk: (on) => {
+        if (!on && !boardTex) {
+          const [bc, bg] = canvas(px / 2, Math.round(((px / 2) * ZONE_SIGN.h) / ZONE_SIGN.w));
+          paintZoneBoard(bg, bc.width, bc.height, z.label);
+          boardTex = canvasTexture(bc);
+          own.push(boardTex);
+        }
+        face.map = on || !boardTex ? tex : boardTex;
+      },
+    });
     const halo = new Mesh(glowGeo, glow);
     halo.name = `zone_glow_${zoneLetter(z.bank)}`;
     const back = ZONE_SIGN.d / 2 + 0.008;
@@ -529,6 +577,29 @@ export function dressHall(root: Object3D, tier: "high" | "low"): HallDressing {
     label.name = "lounge_painting_label";
     label.position.set(outerW / 2 + 0.06 + MUSEUM_LABEL.w / 2, -outerH / 2 + 0.2, 0.006);
     frame.add(label);
+    const labelAnchor = new Object3D();
+    labelAnchor.name = "lounge_painting_label_ink";
+    label.add(labelAnchor);
+    let labelBoard: CanvasTexture | null = null;
+    inks.push({
+      object: labelAnchor,
+      w: MUSEUM_LABEL.w,
+      h: MUSEUM_LABEL.h,
+      paint: (g2, w, h, t) => {
+        g2.save();
+        g2.scale(w / LABEL_PX.w, h / LABEL_PX.h);
+        paintLabelInk(g2, t);
+        g2.restore();
+      },
+      light: () => lm.color.r,
+      setInk: (on) => {
+        if (!on && !labelBoard) {
+          labelBoard = labelTexture(true);
+          own.push(labelBoard);
+        }
+        lm.map = on || !labelBoard ? lt : labelBoard;
+      },
+    });
     group.add(frame);
     painting = { x: wall.x, y: wall.y, z: wall.z, width: pw, height: ph, url };
   }
@@ -546,6 +617,7 @@ export function dressHall(root: Object3D, tier: "high" | "low"): HallDressing {
   return {
     group,
     zones,
+    inks,
     painting,
     update,
     startPainting: () => startPainting(),

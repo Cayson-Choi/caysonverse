@@ -906,7 +906,9 @@ const runTs = (script: string, ...args: string[]) =>
     cwd: REPO_ROOT,
   });
 
-describe("CLIs", () => {
+// Every test here starts one or two real `tsx` processes (a cold transform each): 1-3 s apiece alone, past vitest's 5 s default when
+// the whole suite (or another worktree) loads the machine. The checks are the exit codes and the output, not the time.
+describe("CLIs", { timeout: 60_000 }, () => {
   let tmp = "";
   beforeEach(() => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), "cv-school-glb-"));

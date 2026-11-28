@@ -25,7 +25,7 @@ import {
 } from "three";
 import { FullScreenQuad } from "three/examples/jsm/postprocessing/Pass.js";
 import { UnrealBloomPass } from "three-stdlib";
-import { setRenderScale } from "./renderScale";
+import { markPostChainFrame, setRenderScale } from "./renderScale";
 import { LABEL_LAYER } from "./spriteCanvas";
 
 /**
@@ -467,6 +467,7 @@ export class PostChain {
    * framebuffer). The labels are not drawn here (labelOverlay.ts).
    */
   render(renderer: WebGLRenderer, scene: Object3D, camera: Camera): void {
+    markPostChainFrame();
     const oldAutoClear = renderer.autoClear;
     const oldMask = camera.layers.mask;
     renderer.autoClear = false;

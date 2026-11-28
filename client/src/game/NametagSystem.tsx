@@ -3,6 +3,7 @@ import { addAfterEffect, useThree } from "@react-three/fiber";
 import type { PerspectiveCamera } from "three";
 import { createNametagFrame } from "./nametagFrame";
 import { LabelOverlay, labelPixelRatio } from "./labelOverlay";
+import { InkLayer } from "./inkLayer";
 import { LABEL_LAYER } from "./spriteCanvas";
 
 /**
@@ -41,6 +42,8 @@ export function NametagSystem(): null {
     const parent = gl.domElement.parentElement;
     if (!parent) return;
     const o = new LabelOverlay();
+    // the signs' lettering at the device's pixel ratio where the scene is drawn at fewer pixels (inkLabels.ts)
+    o.ink = new InkLayer();
     (o.canvas as unknown as HTMLCanvasElement).className = "cv-label-overlay";
     // right after the 3D canvas: under every drei <Html> marker (MapPlaces, OverviewMarker), which are added to the same
     // container, as the labels were when WebGL drew them
@@ -49,6 +52,8 @@ export function NametagSystem(): null {
     if (import.meta.env.DEV) (window as unknown as { __cvLabelOverlay?: LabelOverlay }).__cvLabelOverlay = o;
     return () => {
       if (overlay.current === o) overlay.current = null;
+      o.ink?.dispose();
+      o.ink = null;
       o.dispose();
     };
   }, [gl]);
@@ -62,6 +67,12 @@ export function NametagSystem(): null {
       const delta = Number.isNaN(last) ? 1 / 60 : Math.min((now - last) / 1000, 0.25);
       last = now;
       const dpr = labelPixelRatio();
+      const o = overlay.current;
+      if (o?.ink) {
+        const w = Math.max(1, Math.round(state.size.width * dpr));
+        const h = Math.max(1, Math.round(state.size.height * dpr));
+        o.ink.update(state.gl, state.scene, state.camera, w, h, dpr);
+      }
       overlay.current?.draw(state.scene, state.camera, state.size.width, state.size.height, dpr);
       frame.update(state.camera as PerspectiveCamera, state.size.width, state.size.height, delta, now, dpr);
     });
